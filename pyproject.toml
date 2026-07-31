@@ -4,13 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "horizun-pbi-mcp"
-# PEP 440. El equivalente visible es "1.0.0-rc.2" (branding.VERSION),
+# PEP 440. El equivalente visible es "1.0.0-rc.3" (branding.VERSION),
 # que es el que anuncia serverInfo y el que lleva el tag de Git.
-version = "1.0.0rc2"
+version = "1.0.0rc3"
 description = "Servidor MCP para Power BI: modelo semantico en vivo (DAX/TOM), proyectos .pbip (TMDL/PBIR), autoria de informes, auditoria integral y workflows."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     # Acotada por arriba a proposito: el servidor fija la version del producto
     # con `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`

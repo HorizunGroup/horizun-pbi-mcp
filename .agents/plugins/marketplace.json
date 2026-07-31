@@ -1,0 +1,12 @@
+{
+  "name": "horizun",
+  "interface": {"displayName": "Horizun Open Source"},
+  "plugins": [
+    {
+      "name": "horizun-pbi-mcp",
+      "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "main"},
+      "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+      "category": "Developer Tools"
+    }
+  ]
+}

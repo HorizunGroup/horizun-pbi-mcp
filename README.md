@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.2** — 90 tools, 854 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.3** — 90 tools, 859 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -66,6 +66,37 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 ---
 
 ## Instalación
+
+### Directa desde Codex o Claude (recomendada)
+
+No necesitas descargar ni registrar un `.exe`, crear `.mcp.json` ni localizar
+manualmente este repositorio. El plugin prepara un entorno Python aislado en la
+carpeta de datos del cliente y verifica todas las descargas.
+
+**Codex:**
+
+```bash
+codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
+codex plugin add horizun-pbi-mcp@horizun
+```
+
+**Claude Code:**
+
+```bash
+claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
+claude plugin install horizun-pbi-mcp@horizun
+```
+
+Al abrir la primera sesión, el plugin ejecuta toda la preparación en segundo
+plano automáticamente. Consulta `pbi_install_status`; cuando termine, reinicia
+el cliente y quedarán disponibles las 90 tools `pbi_*`. No hay descargas ni
+scripts adicionales que el usuario deba ejecutar manualmente.
+
+> **Límite técnico honesto:** no hay ejecutable propio, pero sí necesitas
+> Windows, Power BI Desktop y Python 3.10+. El servidor debe correr localmente:
+> un MCP remoto no puede acceder al motor local de Desktop ni a tus `.pbip`.
+
+### Instalación manual para desarrollo
 
 ```bash
 cd horizun-pbi-mcp
@@ -300,7 +331,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**854 pruebas, 2 omitidas.** Las dos omisiones son de entorno y dicen cómo ejecutarlas:
+**859 pruebas, 2 omitidas.** Las dos omisiones son de entorno y dicen cómo ejecutarlas:
 
 | Omitida | Condición |
 |---|---|
@@ -331,4 +362,5 @@ python scripts/doctor.py
 
 ## Licencia
 
-MIT.
+Código abierto bajo la licencia [Apache License 2.0](LICENSE). Consulta también
+[NOTICE](NOTICE) para atribuciones y marcas de terceros.

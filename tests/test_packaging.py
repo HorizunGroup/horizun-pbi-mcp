@@ -83,6 +83,14 @@ def test_el_wheel_contiene_los_modulos_raiz(wheel):
         f"El wheel no incluye {faltan}. Revisa py-modules en pyproject.toml.")
 
 
+def test_el_wheel_lleva_licencia_apache_y_notice(wheel):
+    nombres = set(zipfile.ZipFile(wheel).namelist())
+    assert any(nombre.endswith("/licenses/LICENSE") for nombre in nombres), (
+        "el wheel no incluye LICENSE")
+    assert any(nombre.endswith("/licenses/NOTICE") for nombre in nombres), (
+        "el wheel no incluye NOTICE")
+
+
 def test_el_wheel_lleva_el_manifiesto_de_esquemas(wheel):
     """El MANIFIESTO va en el paquete; los esquemas NO.
 
@@ -247,7 +255,7 @@ def test_el_sdist_lleva_el_codigo_y_la_licencia(sdist):
     def hay(sufijo):
         return any(n.endswith(sufijo) for n in nombres)
 
-    for necesario in ("/src/server.py", "/src/branding.py", "/LICENSE",
+    for necesario in ("/src/server.py", "/src/branding.py", "/LICENSE", "/NOTICE",
                       "/pyproject.toml", "/src/services/txn.py"):
         assert hay(necesario), f"el sdist no incluye {necesario}"
 

@@ -5,6 +5,26 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.3] — 2026-07-31
+
+**90 tools, 859 pruebas** (2 omitidas), contrato congelado.
+
+### Añadido
+
+- Distribución como plugin local de **Codex** y **Claude Code**, con manifiestos
+  nativos, skill de instalación y preparación automática del runtime aislado.
+- Arranque de instalación por MCP: no exige descargar, registrar ni ejecutar un
+  binario propio. Python sigue siendo necesario para acceder a Power BI Desktop
+  y a archivos locales.
+
+### Cambiado
+
+- Licencia del proyecto a **Apache License 2.0**, con `NOTICE` y metadatos de
+  paquete coherentes. Los binarios de Microsoft siguen sin redistribuirse.
+- Versión declarada: `1.0.0-rc.3` visible, `1.0.0rc3` en PEP 440.
+
+---
+
 ## [1.0.0-rc.2] — 2026-07-31
 
 Sustituye a `1.0.0-rc.1`, cuya matriz de CI estaba en rojo. **90 tools, 854 pruebas** (2 omitidas), contrato congelado.
@@ -83,7 +103,7 @@ honestidad de la API, redacción de secretos y empaquetado.
 ### Corregido — Calidad y empaquetado
 
 - Tres aserciones que no podían fallar (dos `or True` y un test vacío bajo un *skip* incondicional).
-- `LICENSE` MIT real; `mcp` acotada a `>=1.28.1,<2` con test de compatibilidad, porque el servidor depende del atributo privado `_mcp_server.version`.
+- `LICENSE` se publicó inicialmente como MIT; desde RC3 el proyecto usa Apache-2.0. `mcp` sigue acotada a `>=1.28.1,<2` con test de compatibilidad, porque el servidor depende del atributo privado `_mcp_server.version`.
 - Se prueba también el **sdist**: construcción e instalación en un entorno limpio.
 
 ---

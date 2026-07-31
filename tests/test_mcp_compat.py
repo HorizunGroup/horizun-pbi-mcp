@@ -66,20 +66,21 @@ def test_la_cota_de_mcp_esta_declarada():
 
 
 def test_hay_licencia_y_coincide_con_pyproject():
-    """J1: `license = MIT` sin archivo LICENSE no es una licencia."""
+    """La licencia publica debe ser Apache-2.0 completa y coherente."""
     licencia = REPO / "LICENSE"
     assert licencia.exists(), "falta el archivo LICENSE"
     texto = licencia.read_text(encoding="utf-8")
-    assert "MIT License" in texto
-    assert "Permission is hereby granted" in texto
+    assert "Apache License" in texto
+    assert "Version 2.0, January 2004" in texto
+    assert "https://www.apache.org/licenses/" in texto
 
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'text = "MIT"' in pyproject or "MIT" in pyproject
+    assert 'text = "Apache-2.0"' in pyproject
 
 
 def test_la_licencia_aclara_que_las_dll_no_se_redistribuyen():
     """J5: las DLL de Microsoft no van en el repositorio ni en el paquete."""
-    texto = (REPO / "LICENSE").read_text(encoding="utf-8")
+    texto = (REPO / "NOTICE").read_text(encoding="utf-8")
     assert "NO redistribuye" in texto or "does NOT redistribute" in texto
     assert "fetch_libs" in texto
 

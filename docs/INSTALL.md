@@ -1,6 +1,30 @@
 # Instalación y registro de Horizun PBI MCP
 
-Guía reproducible desde cero. Al final, un cliente MCP debe ver 34 tools `pbi_*`.
+## Plugin directo para Codex y Claude Code
+
+Esta es la vía recomendada para usuarios finales. No requiere un instalador
+ejecutable propio ni editar archivos MCP a mano:
+
+```bash
+# Codex
+codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
+codex plugin add horizun-pbi-mcp@horizun
+
+# Claude Code
+claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
+claude plugin install horizun-pbi-mcp@horizun
+```
+
+La preparación empieza automáticamente en la primera sesión. Mientras avanza
+verás `pbi_install_runtime` y `pbi_install_status`; tras reiniciar el cliente
+aparecerán las 90 tools. No hay que descargar ni ejecutar nada por separado. El
+runtime y las descargas verificadas quedan en datos locales del plugin, fuera
+del repositorio y de tus proyectos.
+
+Python 3.10+ sigue siendo un requisito: es el proceso local que permite hablar
+con Power BI Desktop. Node 20 solo es necesario para el validador PBIR opcional.
+
+Guía reproducible desde cero. Al final, un cliente MCP debe ver 90 tools `pbi_*`.
 
 ---
 

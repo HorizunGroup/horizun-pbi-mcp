@@ -19,7 +19,7 @@ Cada afirmación lleva su **nivel de verificación**. No se mezclan.
 
 | Servidor | Versión | Estado | Nivel máximo alcanzado |
 |---|---|---|---|
-| **Horizun PBI MCP** (este repo) | 0.1.0 | Presente, arranca | **Probada** — handshake stdio, 34 tools, 59 pruebas, DAX en vivo, fixture PBIR |
+| **Horizun PBI MCP** (este repo) | 1.0.0-rc.3 | Presente, arranca | **Probada** — handshake stdio, 90 tools, 859 pruebas, DAX en vivo, fixture PBIR |
 | **powerbi-report-mcp** | 0.9.6 | Presente y compilado en `..\PowerBI MCP\powerbi-report-mcp\dist\index.js` | **Observada** — 57 nombres de tool extraídos del bundle y del README. **No ejecutado** |
 | **@microsoft/powerbi-modeling-mcp** | 0.5.0-beta.11 | Descargado a temporal, extraído y leído. **No ejecutado** | **Declarada** — README + CHANGELOG + `index.js`. Ejecución **detenida** por condición de parada (§2.1) |
 
@@ -125,7 +125,7 @@ Lo que sigue siendo, hasta donde alcanza la evidencia, exclusivo de este proyect
 | Refresh | ✅ Local | 📄 **Declarada** (XMLA + API async, Fabric) | Ellos van más lejos |
 | Power BI Service / Fabric | ❌ No | 📄 **Declarada** (workspaces, DeployToFabric, Entra ID) | No competir aquí |
 | Confirmación en escrituras | ✅ `confirm=true` obligatorio en destructivas | 📄 **Declarada: desactivada por defecto** (`--require-confirmation` para activarla) | Diferencia de política, a nuestro favor |
-| Licencia / telemetría | MIT, sin telemetría | Propietaria PREVIEW, telemetría por uso | Diferencia estructural |
+| Licencia / telemetría | Apache-2.0, sin telemetría | Propietaria PREVIEW, telemetría por uso | Diferencia estructural |
 
 **Ninguna fila de la columna Microsoft pasa de *Declarada*.** Está leída de su documentación, no ejecutada. El nombre de un paquete —y su README— no son evidencia de comportamiento.
 

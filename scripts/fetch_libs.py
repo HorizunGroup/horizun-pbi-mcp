@@ -265,11 +265,16 @@ def instalar() -> Dict[str, Any]:
 
 
 def main() -> int:
+    global LIBS
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--check", action="store_true", help="solo informar")
+    p.add_argument("--dest", default=None, help="directorio de instalacion")
     p.add_argument("--update", action="store_true",
                    help="recalcular el manifiesto desde las versiones fijadas")
     args = p.parse_args()
+
+    if args.dest:
+        LIBS = Path(args.dest).expanduser().resolve()
 
     if args.update:
         try:
