@@ -1,0 +1,40 @@
+{
+  "_README": [
+    "Plantilla de configuracion MCP para HORIZUN-PBI-MCP (cliente: Claude Code).",
+    "NO la uses tal cual: los marcadores <...> deben sustituirse por rutas ABSOLUTAS.",
+    "",
+    "Forma recomendada (resuelve las rutas de tu maquina automaticamente):",
+    "    python scripts/make_mcp_config.py --client claude-code --write",
+    "",
+    "Forma manual: copia este archivo como .mcp.json y sustituye:",
+    "    <PYTHON_EXE>   ruta al interprete, p.ej. C:/Python313/python.exe",
+    "                   (si usas un venv, apunta al python.exe DE ESE VENV)",
+    "    <PROJECT_ROOT> ruta a esta carpeta, p.ej. C:/dev/horizun-pbi-mcp",
+    "",
+    "Si instalaste el paquete (pip install horizun-pbi-mcp), es mas simple:",
+    "    \"command\": \"horizun-pbi-mcp\", \"args\": []",
+    "",
+    "En Windows usa barras normales (/) dentro del JSON, o escapa las barras",
+    "invertidas (\\). No dejes rutas de otra maquina.",
+    "",
+    "Variables de entorno: el prefijo actual es HORIZUN_PBI_MCP_*. Se aceptan",
+    "las antiguas PBI_MCP_* por compatibilidad, pero las nuevas tienen",
+    "prioridad.",
+    "",
+    "Otros clientes (Claude Desktop, Codex, stdio generico): ver docs/INSTALL.md",
+    "",
+    "Esta clave _README es solo documentacion; los clientes MCP la ignoran."
+  ],
+  "mcpServers": {
+    "horizun-pbi-mcp": {
+      "type": "stdio",
+      "command": "<PYTHON_EXE>",
+      "args": [
+        "<PROJECT_ROOT>/src/server.py"
+      ],
+      "env": {
+        "HORIZUN_PBI_MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

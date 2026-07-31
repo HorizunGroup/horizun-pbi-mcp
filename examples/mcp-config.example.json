@@ -1,0 +1,21 @@
+{
+  "_comment": [
+    "HORIZUN-PBI-MCP — ejemplo minimo para un cliente MCP por stdio.",
+    "Sustituye <PYTHON_EXE> y <PROJECT_ROOT> por rutas ABSOLUTAS de TU maquina.",
+    "Si instalaste el paquete: \"command\": \"horizun-pbi-mcp\", \"args\": [].",
+    "Generador automatico: python scripts/make_mcp_config.py --client all",
+    "Guia por cliente (Claude Code / Claude Desktop / Codex): docs/INSTALL.md"
+  ],
+  "mcpServers": {
+    "horizun-pbi-mcp": {
+      "type": "stdio",
+      "command": "<PYTHON_EXE>",
+      "args": [
+        "<PROJECT_ROOT>/src/server.py"
+      ],
+      "env": {
+        "HORIZUN_PBI_MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

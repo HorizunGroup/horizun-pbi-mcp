@@ -1,0 +1,33 @@
+table Calendar
+	dataCategory: Time
+
+	column Date
+		isKey
+		dataType: dateTime
+		formatString: General Date
+		summarizeBy: none
+		sourceColumn: Date
+		lineageTag: 22222222-2222-2222-2222-222222222201
+
+	column Year
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: Year
+		lineageTag: 22222222-2222-2222-2222-222222222202
+
+	column MonthNumber
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: MonthNumber
+		lineageTag: 22222222-2222-2222-2222-222222222203
+
+	partition Calendar = m
+		mode: import
+		source =
+				let
+					Origen = Table.FromRows({})
+				in
+					Origen
+
+	annotation PBI_ResultType = Table

@@ -1,0 +1,5 @@
+relationship rel_fact_calendar
+	fromColumn: Fact.DateKey
+	toColumn: Calendar.Date
+	crossFilteringBehavior: OneDirection
+	isActive: true
