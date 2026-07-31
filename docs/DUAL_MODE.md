@@ -1,6 +1,6 @@
 # `mode="both"` — por qué está bloqueado (R15)
 
-**Estado: ABIERTO. `both` no se habilita en la v1.0.0-rc.1.**
+**Estado: ABIERTO. `both` no se habilita en la v1.0.0-rc.2.**
 
 Este documento explica por qué, qué se conserva mientras tanto, y cómo tendría que diseñarse si algún día se implementa. **No describe nada que exista hoy.**
 

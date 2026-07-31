@@ -106,6 +106,14 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ## Etiquetado
 
-Primero **`v1.0.0-rc.1`**, privada.
+Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.2`**.
 
-`v1.0.0` solo después de probar la instalación **desde el repositorio publicado**, en una máquina o entorno limpio.
+La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir con el tag **antes** de etiquetar. Instalar desde un tag y obtener un paquete que reporta otra versión es exactamente lo que estas comprobaciones existen para evitar.
+
+`v1.0.0` estable solo después de:
+
+1. clonar el repositorio **publicado** en una máquina o entorno limpio;
+2. instalar siguiendo el README, sin atajos;
+3. `pytest`, `doctor` y contract check en verde **allí**;
+4. registrar el MCP en un cliente y comprobar el handshake;
+5. la matriz de CI **completamente** en verde, sin jobs saltados por dependencia.

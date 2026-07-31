@@ -7,7 +7,29 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ## [1.0.0-rc.2] — 2026-07-31
 
-Release candidate. 90 tools, 854 pruebas (2 omitidas, cada una con su condición documentada), contrato congelado.
+Sustituye a `1.0.0-rc.1`, cuya matriz de CI estaba en rojo. **90 tools, 854 pruebas** (2 omitidas), contrato congelado.
+
+### Corregido
+
+- **El contract check dependía de la versión de Python.** `test_contract_matches_golden` fallaba en 3.10 y pasaba en 3.13, reportando las 90 tools como «descripción modificada» sin que nada del producto hubiera cambiado.
+
+  Python 3.13 cambió cómo se guardan los docstrings ([gh-81283](https://github.com/python/cpython/issues/81283)): desde esa versión el compilador les quita la sangría. Las descripciones de las tools **son** sus docstrings, y el golden se generó con 3.14, así que en 3.10 sobraba exactamente la sangría (`pbi_list_tables` 130 → 138 bytes).
+
+  El contrato normaliza ahora con `inspect.cleandoc` antes de congelar y de comparar. El golden no cambia ni un byte: lo que cambia es que 3.10 produzca lo mismo. `requires-python = ">=3.10"` se conserva — el producto sí soporta 3.10; el defecto estaba en cómo se congelaba el contrato.
+
+- Las acciones del workflow suben a `checkout@v7`, `setup-python@v7`, `setup-node@v7` y `upload-artifact@v7`: las anteriores corren sobre un runtime Node que el runner marca como obsoleto.
+
+### Cambiado
+
+- Versión declarada: `1.0.0-rc.2` visible, `1.0.0rc2` en PEP 440.
+
+---
+
+## [1.0.0-rc.1] — 2026-07-31
+
+Primera candidata pública. 90 tools, contrato congelado.
+
+> **Sustituida por `1.0.0-rc.2`**: se publicó con la matriz de CI en rojo (`test (3.10)` fallaba y `build` quedaba saltado). El tag y su evidencia se conservan.
 
 ### Añadido
 
