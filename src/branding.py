@@ -18,15 +18,14 @@ PRODUCT_NAME = "Horizun PBI MCP"
 MCP_SERVER_NAME = "horizun-pbi-mcp"
 #: Nombre del paquete distribuible.
 PACKAGE_NAME = "horizun-pbi-mcp"
-#: Version del producto (no la de la libreria mcp).
 #: Version VISIBLE del producto: la que anuncia serverInfo y la que coincide
 #: con el tag de Git. Publicar un paquete que por dentro dice "1.0.0" estable
-#: mientras el tag dice "-rc.1" es mentir sobre la madurez de la release.
-VERSION = "1.0.0-rc.1"
+#: mientras el tag dice "-rc.2" es mentir sobre la madurez de la release.
+VERSION = "1.0.0-rc.2"
 
 #: La misma version en el formato que exige PEP 440 para `pyproject.toml`.
-#: `1.0.0-rc.1` no es valido ahi; el equivalente normalizado es `1.0.0rc1`.
-VERSION_PEP440 = "1.0.0rc1"
+#: `1.0.0-rc.2` no es valido ahi; el equivalente normalizado es `1.0.0rc2`.
+VERSION_PEP440 = "1.0.0rc2"
 #: Logger raiz.
 LOGGER_NAME = "horizun_pbi_mcp"
 #: Prefijo de las tools. NO cambia: es contrato publico.

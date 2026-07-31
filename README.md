@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.1** — 90 tools, 854 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.2** — 90 tools, 854 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|

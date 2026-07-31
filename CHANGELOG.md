@@ -5,7 +5,7 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
-## [1.0.0-rc.1] — 2026-07-31
+## [1.0.0-rc.2] — 2026-07-31
 
 Release candidate. 90 tools, 854 pruebas (2 omitidas, cada una con su condición documentada), contrato congelado.
 
