@@ -1,5 +1,10 @@
 name: ci
 
+# Las acciones van en su mayor actual (checkout v7, setup-python v7,
+# setup-node v7, upload-artifact v7): las v4/v5 corren sobre un runtime Node
+# que el runner ya marca como obsoleto. Es INDEPENDIENTE del Node 20 que se
+# instala mas abajo para el validador PBIR de Microsoft.
+#
 # Windows y solo Windows: Power BI Desktop es Windows-only, la capa en vivo usa
 # .NET Framework via pythonnet, y buena parte de la suite comprueba semantica de
 # rutas de Windows (UNC, \\?\, nombres reservados, ADS). En Linux no probaria lo
@@ -30,16 +35,16 @@ jobs:
         python-version: ["3.10", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       # Node >= 20 para el validador PBIR oficial de Microsoft. Sin el, la
       # suite pasa igual: las pruebas usan un CLI falso determinista y la de
       # integracion real se omite sola.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -76,9 +81,9 @@ jobs:
     runs-on: windows-latest
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -94,7 +99,7 @@ jobs:
           python -m pip install twine
           python -m twine check dist/*
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ github.sha }}
           path: dist/

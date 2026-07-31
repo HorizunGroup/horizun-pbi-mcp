@@ -24,6 +24,7 @@ Regenerar el golden despues de un cambio DELIBERADO:
 """
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -48,10 +49,26 @@ def _strip_titles(node: Any) -> Any:
 
 
 def _normalize_description(text: str | None) -> str:
-    """Normaliza la descripcion: sin espacios al final de linea ni al final."""
+    """Normaliza la descripcion para que NO dependa de la version de Python.
+
+    Las descripciones salen del docstring de cada tool, y Python 3.13 cambio
+    como se guardan: desde esa version el compilador les quita la sangria
+    (gh-81283). En 3.10-3.12 el `__doc__` conserva los espacios de indentacion
+    de cada linea de continuacion; en 3.13+ no.
+
+    Sin dedentar aqui, el golden generado con un interprete no cuadra con el
+    de otro: el CI en 3.10 reportaba las 90 descripciones como "modificadas",
+    con exactamente los bytes de sangria de diferencia (130 -> 138 en una tool
+    con una linea de continuacion a 8 espacios).
+
+    `inspect.cleandoc` hace justo eso: quita la sangria comun de las lineas
+    siguientes y normaliza los extremos. Despues se limpian los espacios al
+    final de cada linea, que ninguna version toca.
+    """
     if not text:
         return ""
-    return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+    limpio = inspect.cleandoc(text)
+    return "\n".join(line.rstrip() for line in limpio.splitlines()).strip()
 
 
 def _param_contract(name: str, schema: Dict[str, Any], required: set) -> Dict[str, Any]:

@@ -293,3 +293,54 @@ def test_diff_reports_are_human_readable():
     assert "RUPTURAS DE COMPATIBILIDAD" in text
     assert "pbi_x" in text
     assert "--write" in text, "el reporte debe decir como regenerar el golden"
+
+
+# ================== el contrato no puede depender de la version de Python ====
+def test_la_descripcion_se_normaliza_igual_con_y_sin_sangria():
+    """REGRESION: el CI en Python 3.10 marcaba las 90 tools como modificadas.
+
+    Python 3.13 cambio como se guardan los docstrings: desde esa version el
+    compilador les quita la sangria (gh-81283). En 3.10-3.12 el `__doc__`
+    conserva los espacios de cada linea de continuacion.
+
+    El golden se genero con 3.14, asi que en 3.10 TODAS las descripciones
+    salian mas largas —exactamente los bytes de sangria— y el contract check
+    fallaba sin que nada del producto hubiera cambiado.
+    """
+    como_310 = ("Lista los modelos abiertos.\n\n"
+                "        Devuelve puerto y catalogo.\n"
+                "        Conviene llamarla primero.\n        ")
+    como_313 = ("Lista los modelos abiertos.\n\n"
+                "Devuelve puerto y catalogo.\n"
+                "Conviene llamarla primero.\n")
+
+    assert len(como_310) != len(como_313), "el escenario debe diferir en crudo"
+    assert (contract_utils._normalize_description(como_310)          # noqa: SLF001
+            == contract_utils._normalize_description(como_313)), (   # noqa: SLF001
+        "la normalizacion depende de la sangria: el golden no sera portable "
+        "entre versiones de Python")
+
+
+def test_la_normalizacion_es_idempotente():
+    """Normalizar dos veces no puede cambiar el resultado."""
+    texto = "Titulo.\n\n    Cuerpo con sangria.\n    Y otra linea.\n    "
+    una = contract_utils._normalize_description(texto)               # noqa: SLF001
+    dos = contract_utils._normalize_description(una)                 # noqa: SLF001
+    assert una == dos
+
+
+def test_el_golden_no_tiene_sangria_residual():
+    """Si el golden se regenerara en 3.10 sin normalizar, se notaria aqui."""
+    golden = contract_utils.load_golden()
+    con_sangria = [t["name"] for t in golden["tools"]
+                   if any(l.startswith(("    ", "\t"))
+                          for l in t["description"].splitlines()[1:]
+                          if l.strip())]
+    # Las lineas de una lista o un bloque indentado a proposito son legitimas;
+    # lo que no puede haber es sangria UNIFORME en todas las continuaciones.
+    for nombre in con_sangria:
+        d = [t for t in golden["tools"] if t["name"] == nombre][0]["description"]
+        cuerpo = [l for l in d.splitlines()[1:] if l.strip()]
+        assert not all(l.startswith("        ") for l in cuerpo), (
+            f"{nombre}: el golden conserva la sangria del docstring; se genero "
+            "con un Python anterior a 3.13 y sin normalizar")
