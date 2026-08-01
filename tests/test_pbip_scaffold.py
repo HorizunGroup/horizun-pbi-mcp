@@ -33,6 +33,49 @@ def test_crea_la_estructura_completa(tmp_path):
     assert (raiz / "Presupuesto.SemanticModel" / "definition" / "tables").is_dir()
 
 
+def test_escribe_los_archivos_que_el_validador_oficial_exige(tmp_path):
+    """`.platform` y `definition/version.json` no son opcionales.
+
+    Sin ellos el TMDL parsea, el validador propio dice que todo esta bien, y
+    Power BI Desktop abre una ventana 'Sin titulo' con el modelo vacio: ni
+    carga ni explica por que. El validador oficial de Microsoft los reporta
+    como PBIR_PLATFORM_MISSING y PBIR_VERSION_MISSING.
+    """
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    informe = Path(r["report_dir"])
+    modelo = Path(r["semantic_model_dir"])
+
+    assert (informe / ".platform").exists()
+    assert (informe / "definition" / "version.json").exists()
+    # El modelo semantico tambien lleva el suyo.
+    assert (modelo / ".platform").exists()
+
+    plataforma = json.loads((informe / ".platform").read_text(encoding="utf-8"))
+    assert plataforma["metadata"]["type"] == "Report"
+    assert plataforma["metadata"]["displayName"] == "Demo"
+    assert plataforma["config"]["logicalId"]
+
+    del_modelo = json.loads((modelo / ".platform").read_text(encoding="utf-8"))
+    assert del_modelo["metadata"]["type"] == "SemanticModel"
+    # Dos artefactos distintos no pueden compartir identidad.
+    assert del_modelo["config"]["logicalId"] != plataforma["config"]["logicalId"]
+
+
+def test_el_esqueleto_se_revisa_con_el_validador_oficial(tmp_path):
+    """El generador comprueba lo que escribe, si el CLI esta disponible.
+
+    Si no lo esta se dice (`checked: False`) en vez de darlo por bueno.
+    """
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    revision = r["report_validation"]
+
+    assert "checked" in revision
+    if revision["checked"]:
+        assert revision["status"] in ("passed", "passed_with_warnings")
+    else:
+        assert revision["reason"]
+
+
 def test_el_informe_apunta_al_modelo_por_ruta_relativa(tmp_path):
     """Una ruta absoluta ata el proyecto a esta maquina."""
     r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")

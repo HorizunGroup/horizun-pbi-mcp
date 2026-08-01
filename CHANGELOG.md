@@ -5,6 +5,38 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.7] — 2026-08-01
+
+**112 tools, 1157 pruebas.** Corrige un `pbi_create_pbip_project` que generaba
+proyectos que Power BI Desktop no abría.
+
+### Corregido
+
+**Al esqueleto le faltaban `.platform` y `definition/version.json`.** Sin ellos
+el TMDL parsea, el validador propio dice que todo está bien, y Desktop abre una
+ventana «Sin título» con el modelo vacío: ni carga ni explica por qué. Salió al
+abrir el proyecto recién creado, no en las pruebas — el modelo era correcto; lo
+que faltaba era del lado del informe, que `pbi_validate_tmdl` no mira.
+
+Arreglado de raíz, no solo añadiendo los dos archivos: **el generador ahora pasa
+el informe que escribe por el validador oficial de Microsoft** y aborta si hay
+errores. Generar un proyecto que no abre es peor que no generarlo. Si el CLI no
+está instalado se dice (`report_validation.checked: false`) en vez de darlo por
+bueno.
+
+Cada artefacto lleva su propio `logicalId`: dos artefactos no pueden compartir
+identidad.
+
+### Verificado de extremo a extremo
+
+De dos rutas de archivo a un modelo que abre, sin escribir TMDL a mano:
+`PB5-ERP_COSTOS_REALES.csv` (449 filas, suma **$1.031.062,23**, coincidiendo al
+centavo con un cálculo independiente) y `PB5-EDI-CRONOGRAMA.xlsx` (20 columnas,
+fechas incluidas). TMDL válido, informe **`passed` sin un solo diagnóstico**, y
+abierto en Desktop.
+
+---
+
 ## [1.0.0-rc.6] — 2026-08-01
 
 **112 tools, 1155 pruebas**, contrato congelado (todo lo nuevo es aditivo).

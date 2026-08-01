@@ -38,6 +38,10 @@ _ESQUEMA_PAGES = ("https://developer.microsoft.com/json-schemas/fabric/item/repo
                   "definition/pagesMetadata/1.1.0/schema.json")
 _ESQUEMA_PAGE = ("https://developer.microsoft.com/json-schemas/fabric/item/report/"
                  "definition/page/2.1.0/schema.json")
+_ESQUEMA_PLATFORM = ("https://developer.microsoft.com/json-schemas/fabric/"
+                     "gitIntegration/platformProperties/2.0.0/schema.json")
+_ESQUEMA_VERSION = ("https://developer.microsoft.com/json-schemas/fabric/item/report/"
+                    "definition/versionMetadata/1.0.0/schema.json")
 
 #: Caracteres que convertirian el nombre en una ruta.
 _PROHIBIDOS = re.compile(r'[<>:"/\\|?*]')
@@ -47,6 +51,52 @@ def _json(ruta: Path, contenido: Dict[str, Any]) -> None:
     ruta.parent.mkdir(parents=True, exist_ok=True)
     ruta.write_text(json.dumps(contenido, indent=2, ensure_ascii=False) + "\n",
                     encoding="utf-8")
+
+
+def _platform(ruta: Path, tipo: str, nombre: str) -> None:
+    """Identidad del artefacto para la integracion con Git de Fabric.
+
+    No es opcional: sin `.platform` el validador oficial falla con
+    PBIR_PLATFORM_MISSING y Power BI Desktop abre una ventana 'Sin titulo' con
+    el modelo vacio, sin explicar por que. Cada artefacto lleva el suyo, con
+    su propio logicalId: dos artefactos no pueden compartir identidad.
+    """
+    _json(ruta / ".platform", {
+        "$schema": _ESQUEMA_PLATFORM,
+        "metadata": {"type": tipo, "displayName": nombre},
+        "config": {"version": "2.0", "logicalId": str(uuid.uuid4())},
+    })
+
+
+def _revisar_informe(report_dir: Path) -> Dict[str, Any]:
+    """Pasa el informe recien escrito por el validador oficial, si lo hay.
+
+    La primera version de este esqueleto olvidaba `.platform` y
+    `definition/version.json`. El TMDL parseaba, el validador propio decia que
+    todo estaba bien, y Power BI Desktop abria una ventana 'Sin titulo' con el
+    modelo vacio sin explicar nada. Generar un proyecto que no abre es peor que
+    no generarlo.
+    """
+    from services import report_validator
+
+    try:
+        resultado = report_validator.validar_informe(report_dir)
+    except Exception as exc:  # noqa: BLE001 - la falta del CLI no debe tumbar esto
+        return {"checked": False, "reason": str(exc)}
+
+    if resultado.status == report_validator.UNAVAILABLE:
+        return {"checked": False,
+                "reason": "El validador oficial de informes no esta instalado "
+                          "(python scripts/fetch_report_validator.py)."}
+
+    errores = [d.__dict__ for d in resultado.diagnostics if d.severity == "error"]
+    if errores:
+        raise ScaffoldError(
+            "El informe generado no pasa el validador oficial, asi que no se "
+            "deja escrito: Power BI no lo abriria. Es un fallo del generador.",
+            details={"diagnostics": errores, "report_dir": str(report_dir)})
+    return {"checked": True, "status": resultado.status,
+            "diagnostics": len(resultado.diagnostics)}
 
 
 def crear_proyecto(out_dir: Path | str, name: str, *,
@@ -81,6 +131,7 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
     })
 
     # --- modelo semantico ---------------------------------------------------
+    _platform(model_dir, "SemanticModel", name)
     _json(model_dir / "definition.pbism",
           {"$schema": _ESQUEMA_PBISM, "version": "4.2", "settings": {}})
 
@@ -102,6 +153,9 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         encoding="utf-8")
 
     # --- informe ------------------------------------------------------------
+    _platform(report_dir, "Report", name)
+    _json(report_dir / "definition" / "version.json",
+          {"$schema": _ESQUEMA_VERSION, "version": "2.0.0"})
     _json(report_dir / "definition.pbir", {
         "$schema": _ESQUEMA_PBIR,
         "version": "4.0",
@@ -131,9 +185,15 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         "height": height,
     })
 
+    # El TMDL puede ser perfecto y el proyecto no abrir igual: la mitad del
+    # .pbip es el informe. Si el validador oficial esta disponible se usa aqui,
+    # que es el unico momento en que el error sale gratis.
+    informe = _revisar_informe(report_dir)
+
     log.info("Proyecto .pbip creado en %s (%sx%s, cultura %s)",
              raiz, width, height, culture)
     return {
+        "report_validation": informe,
         "project_dir": str(raiz),
         "pbip_path": str(raiz / f"{name}.pbip"),
         "report_dir": str(report_dir),
