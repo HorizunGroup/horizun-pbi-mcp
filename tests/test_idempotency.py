@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -69,23 +70,88 @@ def test_en_vuelo_vivo_devuelve_request_in_progress(store, monkeypatch):
     assert exc.value.code == "request_in_progress"
 
 
+#: Margen para la coordinacion entre hilos de la prueba de abajo. Es generoso a
+#: proposito: en una maquina sana los eventos se cumplen en milisegundos, asi que
+#: agotarlo solo puede significar que la coordinacion se rompio (un hilo que no
+#: arranco, un evento que nadie senala), nunca que la maquina iba lenta.
+TIMEOUT_SINCRONIZACION = 30.0
+
+
 def test_en_vuelo_que_termina_durante_la_espera_devuelve_el_resultado(store, monkeypatch):
-    """La espera es acotada, pero si el otro acaba a tiempo se aprovecha."""
-    monkeypatch.setattr(idempotency, "WAIT_SECONDS", 1.0)
+    """La espera es acotada, pero si el otro acaba a tiempo se aprovecha.
+
+    Los dos hilos se coordinan por EVENTO, no por reloj. Antes el hilo que
+    termina dormia 0.15s y se confiaba en que la espera de 1s no se agotara
+    primero; con la suite completa por delante ese margen no siempre se cumplia
+    y la prueba fallaba sin que la idempotencia tuviera nada que ver. Ahora:
+
+    1. el hilo que termina no escribe hasta que el principal ha leido el
+       `in_flight` —si escribiera antes, el principal contestaria por la via de
+       reproduccion directa y esto dejaria de probar la espera—;
+    2. el bucle de espera del principal no vuelve a mirar el registro hasta que
+       el otro hilo ha acabado de escribirlo.
+
+    Con esas dos barreras el resultado no depende de cuanto tarde nadie, y
+    `WAIT_SECONDS` deja de ser una carrera contra la carga de la maquina.
+    """
+    monkeypatch.setattr(idempotency, "WAIT_SECONDS", 5.0)
     idempotency.comenzar(store, "r1", "op", PAYLOAD)
 
-    import threading
+    leido_en_vuelo = threading.Event()      # el principal ya se comprometio a esperar
+    resultado_guardado = threading.Event()  # el otro ya llamo a terminar_ok
+    descoordinado = []                      # fallos de la cita entre hilos
 
     def terminar():
-        time.sleep(0.15)
-        idempotency.terminar_ok(store, "r1", "op", PAYLOAD, {"ok": True, "n": 7})
+        try:
+            if not leido_en_vuelo.wait(TIMEOUT_SINCRONIZACION):
+                descoordinado.append(
+                    "el hilo principal no llego a leer el in_flight en "
+                    f"{TIMEOUT_SINCRONIZACION:g}s")
+                return
+            idempotency.terminar_ok(store, "r1", "op", PAYLOAD, {"ok": True, "n": 7})
+        except Exception as exc:                  # pragma: no cover - diagnostico
+            descoordinado.append(f"el hilo que termina la peticion reviento: {exc!r}")
+        finally:
+            resultado_guardado.set()   # pase lo que pase, el principal no se cuelga
 
-    hilo = threading.Thread(target=terminar)
+    leer_real = store.leer
+    primera_lectura = True   # todas salen del hilo principal: no hace falta lock
+
+    def leer_coordinado(request_id):
+        """Convierte cada lectura del registro en una cita con el otro hilo."""
+        nonlocal primera_lectura
+        if primera_lectura:
+            primera_lectura = False
+            registro = leer_real(request_id)
+            leido_en_vuelo.set()       # ya vio el in_flight: el otro puede terminar
+            return registro
+        # Lecturas del bucle de espera: no se mira el registro hasta que el otro
+        # hilo termino de escribirlo, tarde lo que tarde.
+        if not resultado_guardado.wait(TIMEOUT_SINCRONIZACION):
+            descoordinado.append(
+                "el hilo que termina la peticion no guardo el resultado en "
+                f"{TIMEOUT_SINCRONIZACION:g}s")
+            resultado_guardado.set()   # no volver a esperar en cada vuelta
+        return leer_real(request_id)
+
+    monkeypatch.setattr(store, "leer", leer_coordinado)
+
+    hilo = threading.Thread(target=terminar, name="termina-el-en-vuelo")
     hilo.start()
     try:
         salida = idempotency.comenzar(store, "r1", "op", PAYLOAD)
+    except idempotency.RequestInProgressError as exc:
+        # Se juzga despues: si la cita entre hilos fallo, la causa es esa y no
+        # la idempotencia, y el mensaje debe decirlo.
+        salida = f"RequestInProgressError: {exc}"
     finally:
-        hilo.join()
+        hilo.join(TIMEOUT_SINCRONIZACION)
+
+    if hilo.is_alive():
+        descoordinado.append("el hilo que termina la peticion no acabo")
+    assert not descoordinado, (
+        "fallo la SINCRONIZACION de la prueba, no la idempotencia: "
+        + "; ".join(descoordinado))
     assert salida == {"ok": True, "n": 7, "idempotent_replay": True}
 
 

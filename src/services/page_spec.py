@@ -175,11 +175,11 @@ def validate_schema(spec: Any) -> List[Dict[str, str]]:
                 continue
             if not v.get("type"):
                 errores.append(_err(f"{base}.type", "Falta 'type'.",
-                                    f"Soportados: {sorted(set(visual_factory.TYPE_MAP))}"))
+                                    f"Soportados: {visual_factory.SUPPORTED}"))
             elif str(v["type"]).lower() not in visual_factory.TYPE_MAP:
                 errores.append(_err(
                     f"{base}.type", f"Tipo no soportado: '{v['type']}'.",
-                    f"Soportados: {sorted(set(visual_factory.TYPE_MAP.values()))}"))
+                    f"Soportados: {visual_factory.SUPPORTED}"))
             campos = v.get("fields")
             if campos is not None and not isinstance(campos, dict):
                 errores.append(_err(f"{base}.fields",

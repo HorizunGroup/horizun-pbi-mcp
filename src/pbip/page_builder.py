@@ -84,7 +84,7 @@ def building_blocks(active: ActivePbip, model_data: Optional[Dict[str, Any]]) ->
         "model": {"tables": tables, "measures": measures},
         "visual_catalog": catalog,
         "existing_pages": pages_info,
-        "supported_visual_types": sorted(set(visual_factory.TYPE_MAP.values())),
+        "supported_visual_types": visual_factory.SUPPORTED,
         "hint": "Arma un spec con page_name, canvas y visuals[{type,title,fields,position}]. "
                 "Omite position para auto-acomodar con 'layout'.",
     }

@@ -5,6 +5,35 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.5] — 2026-07-31
+
+**108 tools, 1097 pruebas**, contrato congelado. Integra tres correcciones que
+salieron de tareas en segundo plano y refuerza el contrato de tipos de visual.
+
+### Corregido
+
+- **`TYPE_MAP` ahora se DERIVA en minúsculas** (`{real.lower(): real}`) en vez
+  de escribirse a mano. Antes se corrigió bajando las claves una a una, lo que
+  dejaba el defecto a un descuido de distancia: bastaba añadir una clave en
+  camelCase para volver a anunciar un tipo que se rechaza. Ahora es imposible
+  por construcción.
+- **Se anunciaba menos de lo que se acepta**: el mensaje de error del factory,
+  el hint del validador y `pbi_page_building_blocks` listaban solo los
+  `visualType` reales, ocultando los alias cómodos (`matrix`, `barChart`,
+  `button`). Los tres beben ahora de `SUPPORTED`, y hay pruebas que comprueban
+  que no puedan divergir.
+- **La prueba `live` de DAX no se ejecutaba nunca**: importaba nombres que ya no
+  existen dentro de un `except Exception: return False`, así que el ImportError
+  se leía como "no hay Desktop abierto" y salía omitida incluso con un modelo
+  cargado. El import pasa a nivel de módulo: renombrar algo rompe la
+  recolección en vez de disfrazarse de omisión.
+- **La prueba de idempotencia en vuelo era intermitente**: se coordinaba por
+  reloj (`sleep` de 0,15 s contra una espera de 1 s) y bajo la carga de la suite
+  completa ese margen no siempre se cumplía. Ahora los dos hilos se citan por
+  eventos, con dos barreras, y el resultado no depende de lo que tarde nadie.
+
+---
+
 ## [1.0.0-rc.4] — 2026-07-31
 
 **108 tools, 1008 pruebas** (2 omitidas), contrato congelado.

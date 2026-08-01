@@ -17,7 +17,7 @@ import venv
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.0.0-rc.4"
+VERSION = "1.0.0-rc.5"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 

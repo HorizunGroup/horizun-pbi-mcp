@@ -25,33 +25,48 @@ log = get_logger("visual_factory")
 HTML_CONTENT_TYPE = "htmlContent443BE3AD55E043BF878BED274D3A6865"
 
 # Nombre amigable -> visualType real de PBIR
-TYPE_MAP = {
-    "card": "card",
-    "cardvisual": "cardVisual",
+# visualTypes reales de PBIR que sabemos construir. Se escriben con las
+# mayusculas de PBIR porque asi se serializan a visual.json.
+REAL_TYPES = (
+    "card",
+    "cardVisual",
+    "tableEx",
+    "pivotTable",
+    "slicer",
+    "clusteredBarChart",
+    "clusteredColumnChart",
+    "lineChart",
+    "pieChart",
+    HTML_CONTENT_TYPE,
+    # Elementos de composicion: no consultan datos, decoran y navegan.
+    "textbox",
+    "shape",
+    "image",
+    "pageNavigator",
+    "actionButton",
+)
+
+# Nombre amigable -> visualType real de PBIR. Se escriben como se le muestran al
+# usuario; la busqueda no distingue mayusculas.
+ALIASES = {
     "table": "tableEx",
-    "tableex": "tableEx",
     "matrix": "pivotTable",
-    "pivottable": "pivotTable",
-    "slicer": "slicer",
-    "barchart": "clusteredBarChart",
-    "clusteredbarchart": "clusteredBarChart",
-    "columnchart": "clusteredColumnChart",
-    "clusteredcolumnchart": "clusteredColumnChart",
-    "linechart": "lineChart",
-    "piechart": "pieChart",
-    "htmlcontent": HTML_CONTENT_TYPE,
-    HTML_CONTENT_TYPE.lower(): HTML_CONTENT_TYPE,
-    # --- Elementos de composicion: no consultan datos, decoran y navegan. ---
-    "textbox": "textbox",
+    "barChart": "clusteredBarChart",
+    "columnChart": "clusteredColumnChart",
+    "htmlContent": HTML_CONTENT_TYPE,
     "text": "textbox",
-    "shape": "shape",
     "rectangle": "shape",
-    "image": "image",
-    "pagenavigator": "pageNavigator",
     "navigation": "pageNavigator",
-    "actionbutton": "actionButton",
     "button": "actionButton",
 }
+
+# `resolve_type` busca en minusculas, asi que las CLAVES se DERIVAN en minusculas:
+# una clave escrita en camelCase aqui seria inalcanzable —y se anunciaria como
+# soportada mientras se rechaza al usarla, que es el defecto que esto corrige—.
+# Cada tipo real es ademas alias de si mismo, de modo que todo lo que se anuncia
+# se puede escribir tal cual en el spec.
+TYPE_MAP = {real.lower(): real for real in REAL_TYPES}
+TYPE_MAP.update({alias.lower(): real for alias, real in ALIASES.items()})
 
 #: Visuales que NO llevan consulta: su contenido vive entero en `objects`.
 #: Pedirles campos es un error del que llama, no algo que se ignore en silencio.
@@ -72,7 +87,8 @@ ROLE_MAP = {
     HTML_CONTENT_TYPE: {"values": "content", "content": "content"},
 }
 
-SUPPORTED = sorted(set(TYPE_MAP))
+# Lo que sale aqui lo acepta `resolve_type`, y al reves: misma fuente.
+SUPPORTED = sorted(REAL_TYPES + tuple(ALIASES), key=str.lower)
 
 
 def resolve_type(visual_type: str) -> str:
@@ -80,7 +96,7 @@ def resolve_type(visual_type: str) -> str:
     if key not in TYPE_MAP:
         raise VisualFactoryError(
             f"Tipo de visual no soportado: '{visual_type}'. "
-            f"Soportados: {sorted(set(TYPE_MAP.values()))}.")
+            f"Soportados: {SUPPORTED}.")
     return TYPE_MAP[key]
 
 

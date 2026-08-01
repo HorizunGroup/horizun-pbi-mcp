@@ -19,7 +19,7 @@ Cada afirmación lleva su **nivel de verificación**. No se mezclan.
 
 | Servidor | Versión | Estado | Nivel máximo alcanzado |
 |---|---|---|---|
-| **Horizun PBI MCP** (este repo) | 1.0.0-rc.4 | Presente, arranca | **Probada** — handshake stdio, 108 tools, 1008 pruebas, DAX en vivo, fixture PBIR |
+| **Horizun PBI MCP** (este repo) | 1.0.0-rc.5 | Presente, arranca | **Probada** — handshake stdio, 108 tools, 1097 pruebas, DAX en vivo, fixture PBIR |
 | **powerbi-report-mcp** | 0.9.6 | Presente y compilado en `..\PowerBI MCP\powerbi-report-mcp\dist\index.js` | **Observada** — 57 nombres de tool extraídos del bundle y del README. **No ejecutado** |
 | **@microsoft/powerbi-modeling-mcp** | 0.5.0-beta.11 | Descargado a temporal, extraído y leído. **No ejecutado** | **Declarada** — README + CHANGELOG + `index.js`. Ejecución **detenida** por condición de parada (§2.1) |
 
