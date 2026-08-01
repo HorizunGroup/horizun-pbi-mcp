@@ -161,6 +161,90 @@ def test_el_color_del_texto_sale_del_tema_no_de_una_constante():
         assert spec["visuals"][0]["options"]["color"] == esperado
 
 
+def _luminancia(hexa: str) -> float:
+    """Luminancia relativa WCAG de un #RRGGBB."""
+    c = hexa.lstrip("#")
+    canales = [int(c[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lineal = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+              for x in canales]
+    return 0.2126 * lineal[0] + 0.7152 * lineal[1] + 0.0722 * lineal[2]
+
+
+def contraste(a: str, b: str) -> float:
+    la, lb = _luminancia(a), _luminancia(b)
+    claro, oscuro = max(la, lb), min(la, lb)
+    return (claro + 0.05) / (oscuro + 0.05)
+
+
+@pytest.mark.parametrize("sistema", sorted(design.SISTEMAS))
+def test_el_titulo_contrasta_con_su_propio_fondo(sistema):
+    """Lo unico de 'se ve bien' que se puede comprobar sin abrir: el contraste."""
+    spec = design.componer(sistema, title="T", subtitle="S")
+    fondo = theme.PRESETS[design.SISTEMAS[sistema]["theme"]]["tema"]["background"]
+
+    titulo = spec["visuals"][0]["options"]["color"]
+    subtitulo = spec["visuals"][1]["options"]["color"]
+    assert contraste(titulo, fondo) >= 4.5, f"titulo de '{sistema}' ilegible"
+    assert contraste(subtitulo, fondo) >= 3.0, f"subtitulo de '{sistema}' flojo"
+
+
+@pytest.mark.parametrize("sistema", sorted(design.SISTEMAS))
+def test_componer_sobre_el_tema_de_otro_sistema_sigue_siendo_legible(sistema):
+    """El defecto que solo se vio abriendo.
+
+    Un informe admite UN tema. Componer una pagina de 'informe' sobre un
+    informe con el tema de 'sala' escribia el titulo en #0B0B0B sobre un fondo
+    #1A1A19: contraste 1,02:1. El JSON era perfecto, el validador oficial decia
+    que si, y la pagina estaba en blanco a efectos practicos.
+    """
+    for otro, datos in design.SISTEMAS.items():
+        tema = theme.PRESETS[datos["theme"]]["tema"]
+        paleta = {"foreground": tema["foreground"],
+                  "label": tema["textClasses"]["label"]["color"]}
+        spec = design.componer(sistema, title="T", subtitle="S", palette=paleta)
+
+        titulo = spec["visuals"][0]["options"]["color"]
+        assert contraste(titulo, tema["background"]) >= 4.5, (
+            f"'{sistema}' compuesto sobre el tema de '{otro}' deja el titulo "
+            "ilegible")
+
+
+def test_sin_paleta_manda_el_color_del_propio_sistema():
+    """El comportamiento por defecto no cambia: solo se puede sobreescribir."""
+    spec = design.componer("informe", title="T")
+    esperado = theme.PRESETS["claro"]["tema"]["foreground"]
+    assert spec["visuals"][0]["options"]["color"] == esperado
+
+
+@pytest.mark.parametrize("sistema,tamano", [("sala", 44), ("informe", 28),
+                                            ("foco", 28)])
+def test_el_numero_del_indicador_lleva_el_tamano_del_sistema(sistema, tamano):
+    """En una sala el KPI es el texto que MAS se lee.
+
+    Sin fijarlo salia al tamano por defecto —el mas pequeno de la pagina— sobre
+    un lienzo de 1920x1080 pensado para leerse a cuatro metros. Ningun
+    validador lo ve: el JSON es correcto.
+    """
+    spec = design.componer(sistema, title="T", kpis=["[M]"])
+    tarjeta = next(v for v in spec["visuals"] if v["type"] == "card")
+
+    assert tarjeta["options"]["value_font_size"] == tamano
+    # Y sin la etiqueta de categoria, que repetia el titulo de la tarjeta y
+    # salia mas grande que el propio dato.
+    assert tarjeta["options"]["show_category_label"] is False
+
+
+def test_el_numero_cabe_en_la_banda_de_indicadores():
+    """Un numero mas alto que su banda sale cortado."""
+    from pbip import visual_factory
+
+    for sistema, datos in design.SISTEMAS.items():
+        piso = visual_factory.piso_de_texto(datos["tipografia"]["kpi"])
+        assert datos["bandas"]["kpi"] >= piso, (
+            f"en '{sistema}' el KPI necesita {piso}px y la banda tiene "
+            f"{datos['bandas']['kpi']}px")
+
+
 def test_la_composicion_es_determinista():
     a = design.componer("informe", **_pagina_completa())
     b = design.componer("informe", **_pagina_completa())

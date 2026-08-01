@@ -335,13 +335,21 @@ def test_la_regla_se_aplica_a_todas_las_filas():
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C")
     bloque = vis["visual"]["objects"]["values"][0]
-    assert bloque["selector"] == {"data": [{"dataViewWildcard": {"matchingOption": 1}}]}
+    # Se comprueba `data`, no el selector entero: ahi ademas va `metadata`, que
+    # es lo que acota la regla a SU campo y permite colorear varias medidas.
+    assert bloque["selector"]["data"] == [
+        {"dataViewWildcard": {"matchingOption": 1}}]
     assert "backColor" in bloque["properties"]
 
 
-def test_una_segunda_regla_sustituye_a_la_primera():
-    """Dos degradados sobre la misma propiedad se pisan; dejar los dos escritos
-    solo haria impredecible cual gana."""
+def test_una_segunda_regla_sobre_el_MISMO_campo_sustituye_a_la_primera():
+    """Dos degradados sobre el mismo campo si se pisan: dejar los dos escritos
+    haria impredecible cual gana.
+
+    Sobre campos DISTINTOS conviven, que es lo que permite un mapa de calor de
+    varias medidas; eso lo cubre
+    `test_colorear_una_segunda_medida_no_borra_la_primera`.
+    """
     from pbip import conditional_format as cf
 
     vis = _visual_matriz()
@@ -350,7 +358,7 @@ def test_una_segunda_regla_sustituye_a_la_primera():
     assert r["replaced"] is True
     bloques = vis["visual"]["objects"]["values"]
     assert len(bloques) == 1
-    grad = (bloques[0]["properties"]["backColor"]["solid"]["expr"]["FillRule"]
+    grad = (bloques[0]["properties"]["backColor"]["solid"]["color"]["expr"]["FillRule"]
             ["FillRule"]["linearGradient2"])
     assert grad["min"]["color"]["Literal"]["Value"] == "'#D03B3B'"
 
@@ -366,6 +374,84 @@ def test_destino_y_colores_se_validan():
         cf.build_fill_rule(_campo(), "rojo", "#000000")
     with pytest.raises(cf.ConditionalFormatError):
         cf.build_fill_rule(_campo(), "#FFFFFF", "#000000", null_strategy="inventada")
+
+
+def _campo_de(propiedad, entidad="qa"):
+    return {"Measure": {"Expression": {"SourceRef": {"Entity": entidad}},
+                        "Property": propiedad}}
+
+
+def test_colorear_una_segunda_medida_no_borra_la_primera():
+    """El defecto: en una matriz de varias metricas solo quedaba pintada la ultima.
+
+    Se reemplazaba cualquier bloque que tuviera esa propiedad, sin mirar a que
+    campo apuntaba. El rodeo conocido era dinamizar las metricas a filas para
+    tener una sola medida; ya no hace falta.
+    """
+    from pbip import conditional_format as cf
+
+    vis = _visual_matriz()
+    cf.apply_to_visual(vis, _campo_de("Importe"), "#FFFFFF", "#2A78D6")
+    cf.apply_to_visual(vis, _campo_de("Unidades"), "#FFFFFF", "#EB6834")
+
+    bloques = vis["visual"]["objects"]["values"]
+    assert len(bloques) == 2
+    assert {b["selector"]["metadata"] for b in bloques} == {"qa.Importe",
+                                                            "qa.Unidades"}
+
+
+def test_repetir_el_mismo_campo_sustituye_su_regla_y_solo_la_suya():
+    """Acumular tampoco puede significar dejar dos reglas del mismo campo."""
+    from pbip import conditional_format as cf
+
+    vis = _visual_matriz()
+    cf.apply_to_visual(vis, _campo_de("Importe"), "#FFFFFF", "#FF0000")
+    cf.apply_to_visual(vis, _campo_de("Unidades"), "#FFFFFF", "#0000FF")
+    r = cf.apply_to_visual(vis, _campo_de("Importe"), "#FFFFFF", "#00FF00")
+
+    assert r["replaced"] is True
+    bloques = vis["visual"]["objects"]["values"]
+    assert len(bloques) == 2
+    importe = next(b for b in bloques
+                   if b["selector"]["metadata"] == "qa.Importe")
+    gradiente = (importe["properties"]["backColor"]["solid"]["color"]["expr"]
+                 ["FillRule"]["FillRule"]["linearGradient2"])
+    assert gradiente["max"]["color"]["Literal"]["Value"] == "'#00FF00'"
+
+
+def test_la_regla_se_acota_al_campo_con_metadata():
+    """`selector.metadata` es lo que el esquema oficial llama 'scope to a field'.
+
+    Sin el, dos degradados sobre la misma propiedad no se pueden distinguir.
+    """
+    from pbip import conditional_format as cf
+
+    vis = _visual_matriz()
+    cf.apply_to_visual(vis, _campo(), "#FFFFFF", "#000000")
+    selector = vis["visual"]["objects"]["values"][0]["selector"]
+
+    assert selector["metadata"] == "qa.Puntaje"
+    # Y sigue aplicandose a todas las filas, no solo a la primera.
+    assert selector["data"] == [{"dataViewWildcard": {"matchingOption": 1}}]
+
+
+@pytest.mark.parametrize("campo,esperado", [
+    ({"Measure": {"Expression": {"SourceRef": {"Entity": "V"}}, "Property": "M"}},
+     "V.M"),
+    ({"Column": {"Expression": {"SourceRef": {"Entity": "V"}}, "Property": "C"}},
+     "V.C"),
+    ({"Measure": {"Property": "SinTabla"}}, "SinTabla"),
+    ({"Algo": {"raro": 1}}, None),
+])
+def test_la_referencia_del_campo_se_deduce_como_en_el_resto_del_servidor(
+        campo, esperado):
+    """Tiene que coincidir con el `queryRef` que escribe `visual_factory`.
+
+    Si no coinciden, la regla apunta a una columna que el visual no tiene.
+    """
+    from pbip import conditional_format as cf
+
+    assert cf.query_ref(campo) == esperado
 
 
 @pytest.mark.parametrize("target,grupo,prop", [

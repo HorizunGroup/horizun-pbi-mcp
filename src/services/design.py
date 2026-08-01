@@ -35,6 +35,7 @@ exigiendo abrirla.
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
@@ -62,7 +63,11 @@ SISTEMAS: Dict[str, Dict[str, Any]] = {
         "canvas": {"width": 1920, "height": 1080},
         "grid": {"columns": 12, "margin": 40, "gutter": 20},
         "bandas": {"kpi": 168, "apoyo": 300},
-        "tipografia": {"titulo": 36, "subtitulo": 16, "seccion": 13},
+        # `kpi` es el numero de la tarjeta, y en una sala es el texto que MAS
+        # se lee: sin fijarlo sale al tamano por defecto —el mas pequeno de la
+        # pagina— y no se lee a cuatro metros. Se descubrio abriendo, no
+        # validando: el JSON era perfecto.
+        "tipografia": {"titulo": 36, "subtitulo": 16, "seccion": 13, "kpi": 44},
     },
     "informe": {
         "titulo": "Informe para repartir",
@@ -72,7 +77,7 @@ SISTEMAS: Dict[str, Dict[str, Any]] = {
         "canvas": {"width": 1280, "height": 720},
         "grid": {"columns": 12, "margin": 24, "gutter": 16},
         "bandas": {"kpi": 112, "apoyo": 200},
-        "tipografia": {"titulo": 24, "subtitulo": 12, "seccion": 11},
+        "tipografia": {"titulo": 24, "subtitulo": 12, "seccion": 11, "kpi": 28},
     },
     "foco": {
         "titulo": "Estado primero",
@@ -82,7 +87,7 @@ SISTEMAS: Dict[str, Dict[str, Any]] = {
         "canvas": {"width": 1280, "height": 720},
         "grid": {"columns": 12, "margin": 24, "gutter": 16},
         "bandas": {"kpi": 112, "apoyo": 200},
-        "tipografia": {"titulo": 24, "subtitulo": 12, "seccion": 11},
+        "tipografia": {"titulo": 24, "subtitulo": 12, "seccion": 11, "kpi": 28},
     },
 }
 
@@ -176,9 +181,56 @@ def _reparto(total_columnas: int, cuantos: int) -> List[Dict[str, int]]:
 
 
 # -------------------------------------------------------------- composicion --
+def tinta(system: str, palette: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """Colores de texto que hay que usar. `palette` gana sobre la del sistema.
+
+    El color es del INFORME y la geometria de la PAGINA: un informe solo puede
+    declarar un tema. Componer una pagina con un sistema distinto al tema
+    aplicado y escribir el color del sistema es lo que pintaba el titulo en
+    #0B0B0B sobre un fondo #1A1A19 —contraste 1:1, invisible—, y no lo veia ni
+    el validador oficial ni las pruebas de geometria. Solo se ve abriendo.
+    """
+    base = theme_mod.PRESETS[SISTEMAS[system]["theme"]]["tema"]
+    fuerte = (palette or {}).get("foreground") or base["foreground"]
+    suave = ((palette or {}).get("label")
+             or base["textClasses"]["label"]["color"])
+    return {"strong": str(fuerte), "muted": str(suave)}
+
+
+def paleta_del_informe(active: Any) -> Optional[Dict[str, str]]:
+    """Colores del tema que el informe declara AHORA. None si no hay ninguno.
+
+    Es lo que permite que una pagina compuesta con un sistema se lea sobre el
+    tema que el informe tenga puesto, sea cual sea.
+    """
+    from utils.json_utils import read_json
+
+    if not getattr(active, "report_dir", None):
+        return None
+    report_dir = Path(active.report_dir)
+    informe = report_dir / "definition" / "report.json"
+    if not informe.exists():
+        return None
+    try:
+        nombre = ((read_json(informe).get("themeCollection") or {})
+                  .get("customTheme") or {}).get("name")
+        if not nombre:
+            return None
+        tema = read_json(report_dir / "StaticResources" / "RegisteredResources"
+                         / nombre)
+    except Exception as exc:                                 # noqa: BLE001
+        log.info("No se pudo leer el tema aplicado: %s", exc)
+        return None
+    etiqueta = ((tema.get("textClasses") or {}).get("label") or {}).get("color")
+    return {"theme_file": nombre, "foreground": tema.get("foreground"),
+            "label": etiqueta or tema.get("foreground"),
+            "background": tema.get("background")}
+
+
 def _texto(system: str, texto: str, nivel: str, y: float, *,
            inicio: int = 0, ancho: Optional[int] = None,
-           id_: str = "") -> Dict[str, Any]:
+           id_: str = "", palette: Optional[Dict[str, Any]] = None
+           ) -> Dict[str, Any]:
     """Un bloque de texto del sistema: tamaño, color y altura, ya resueltos.
 
     La altura no se elige: es el piso que exige el tamaño de fuente. Por debajo
@@ -187,9 +239,8 @@ def _texto(system: str, texto: str, nivel: str, y: float, *,
     """
     s = SISTEMAS[system]
     tam = s["tipografia"][nivel]
-    paleta = theme_mod.PRESETS[s["theme"]]["tema"]
-    color = paleta["foreground"] if nivel == "titulo" else paleta[
-        "textClasses"]["label"]["color"]
+    colores = tinta(system, palette)
+    color = colores["strong"] if nivel == "titulo" else colores["muted"]
     geo = columna(system, inicio, ancho if ancho is not None else s["grid"]["columns"])
     return {
         "id": id_ or f"texto_{nivel}",
@@ -227,7 +278,8 @@ def componer(system: str, *, title: str, subtitle: str = "",
              hero: Optional[Dict[str, Any]] = None,
              supports: Optional[List[Dict[str, Any]]] = None,
              detail: Optional[Dict[str, Any]] = None,
-             page_name: str = "") -> Dict[str, Any]:
+             page_name: str = "",
+             palette: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Traduce una intencion en un spec de pagina completo y colocado.
 
     La composicion es siempre la misma, de arriba abajo: banda de titulo,
@@ -246,11 +298,12 @@ def componer(system: str, *, title: str, subtitle: str = "",
     y = float(margen)
 
     # --- banda de titulo -----------------------------------------------------
-    cabecera = _texto(system, title, "titulo", y, id_="titulo")
+    cabecera = _texto(system, title, "titulo", y, id_="titulo", palette=palette)
     visuales.append(cabecera)
     y += cabecera["position"]["height"]
     if subtitle:
-        sub = _texto(system, subtitle, "subtitulo", y, id_="subtitulo")
+        sub = _texto(system, subtitle, "subtitulo", y, id_="subtitulo",
+                     palette=palette)
         visuales.append(sub)
         y += sub["position"]["height"]
     y += medianil
@@ -266,6 +319,12 @@ def componer(system: str, *, title: str, subtitle: str = "",
                 "title": _rotulo(kpi, f"Indicador {i + 1}"),
                 "position": {**geo, "y": round(y), "height": alto},
                 "fields": {"values": [_campo(kpi)]},
+                # El numero al tamano del sistema, y sin la etiqueta de
+                # categoria: repite el titulo que ya lleva la tarjeta encima y
+                # salia MAS grande que el propio dato.
+                "options": {"value_font_size": s["tipografia"]["kpi"],
+                            "bold_value": True,
+                            "show_category_label": False},
             })
         y += alto + medianil
 

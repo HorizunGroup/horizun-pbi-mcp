@@ -5,6 +5,51 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.10] — 2026-08-01
+
+**116 tools, 1255 pruebas.**
+
+Tres defectos que **no se ven ni abriendo el archivo ni validándolo**: solo
+mirando la pantalla. Los tres pasaban el validador oficial de Microsoft con
+cero errores.
+
+### Corregido
+
+- **El formato condicional no pintaba nada.** La regla se escribía como
+  `{"solid": <expresión>}`, sin el nivel `color` que lleva cualquier otro color
+  del PBIR. El esquema oficial declara esa parte como
+  `additionalProperties: {}` —acepta literalmente cualquier cosa—, así que el
+  CLI de Microsoft daba el visto bueno y Power BI simplemente no coloreaba.
+  Se descubrió abriendo el informe y viendo una tabla sin color.
+
+- **Colorear una segunda medida borraba la primera.** Se reemplazaba cualquier
+  bloque que tuviera esa propiedad, sin mirar a qué campo apuntaba: en una
+  matriz de varias métricas acababa pintada solo la última. Ahora cada regla se
+  acota a su campo con `selector.metadata` —que el esquema describe como
+  *"defines the scope to a specific field"*—, y solo se reemplaza la del mismo
+  campo. El rodeo conocido, dinamizar las métricas a filas, ya no hace falta.
+
+- **El título de una página podía quedar invisible.** Un informe admite **un**
+  tema, pero `pbi_compose_page` incrustaba el color del sistema de la página.
+  Componer con `informe` sobre un informe con el tema de `sala` escribía el
+  título en `#0B0B0B` sobre un fondo `#1A1A19`: contraste 1,02:1. El color pasa
+  a salir del tema que el informe tiene puesto; la geometría sigue siendo de la
+  página. Hay una prueba de contraste WCAG que lo caza sin abrir nada.
+
+- **El número del indicador era el texto más pequeño de la página.** En `sala`
+  —lienzo de 1920×1080 pensado para leerse a cuatro metros— el KPI salía al
+  tamaño por defecto. Cada sistema declara ahora su tamaño de KPI (44pt en
+  `sala`, 28pt en el resto) y se apaga la etiqueta de categoría, que repetía el
+  título de la tarjeta y salía más grande que el propio dato.
+
+### Verificado abriéndolo
+
+Se generó un proyecto con datos reales, se abrió en Power BI Desktop y se
+miraron las cuatro páginas. Es lo que encontró los cuatro defectos de arriba:
+la suite estaba en verde y el validador oficial también.
+
+---
+
 ## [1.0.0-rc.9] — 2026-08-01
 
 **116 tools, 1233 pruebas.**

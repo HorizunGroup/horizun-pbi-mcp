@@ -85,9 +85,50 @@ def build_fill_rule(field: Dict[str, Any], min_color: str, max_color: str,
                                   "FillRule": gradiente}}}
 
 
-def _selector_todas_las_filas() -> Dict[str, Any]:
-    """Aplica la regla a todas las filas, no solo a la primera."""
-    return {"data": [{"dataViewWildcard": {"matchingOption": 1}}]}
+def query_ref(field: Dict[str, Any]) -> Optional[str]:
+    """`Tabla.Campo` a partir del nodo de campo. None si no se reconoce.
+
+    Es la misma forma que escribe `visual_factory` en `queryRef`, y tiene que
+    serlo: es lo que empareja la regla de color con su columna del visual.
+    """
+    for clase in ("Measure", "Column", "Aggregation", "HierarchyLevel"):
+        nodo = field.get(clase)
+        if not isinstance(nodo, dict):
+            continue
+        propiedad = nodo.get("Property")
+        if not propiedad:
+            continue
+        entidad = ((nodo.get("Expression") or {}).get("SourceRef") or {}).get("Entity")
+        return f"{entidad}.{propiedad}" if entidad else str(propiedad)
+    return None
+
+
+def _propiedad_de_color(regla: Dict[str, Any]) -> Dict[str, Any]:
+    """Envuelve la regla como lo que es: el COLOR de un relleno solido.
+
+    La forma es `{"solid": {"color": <expresion>}}`, la misma con la que
+    `visual_factory` escribe un color literal. Antes se escribia
+    `{"solid": <expresion>}`, sin el nivel `color`, y ahi no lo veia nadie: el
+    esquema oficial declara esta parte como `additionalProperties: {}` —acepta
+    cualquier cosa— asi que el validador de Microsoft daba el visto bueno y
+    Power BI simplemente no pintaba nada. Se descubrio abriendo el informe y
+    mirando una tabla sin colorear.
+    """
+    return {"solid": {"color": regla}}
+
+
+def _selector(referencia: Optional[str]) -> Dict[str, Any]:
+    """A que celdas se aplica la regla.
+
+    `dataViewWildcard` la extiende a todas las filas —sin el solo pinta la
+    primera—, y `metadata` la acota A UN CAMPO. Eso segundo es lo que permite
+    que una matriz tenga un degradado distinto por medida: el esquema oficial
+    lo describe como "defines the scope to a specific field".
+    """
+    selector: Dict[str, Any] = {"data": [{"dataViewWildcard": {"matchingOption": 1}}]}
+    if referencia:
+        selector["metadata"] = referencia
+    return selector
 
 
 def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
@@ -97,9 +138,15 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
                     null_strategy: str = "asZero") -> Dict[str, Any]:
     """Añade la regla al visual (se modifica en el sitio) y describe el cambio.
 
-    Si ya habia una regla en el mismo destino se sustituye: dos degradados
-    sobre la misma propiedad no se suman, se pisan, y dejar las dos escritas
-    solo haria impredecible cual gana.
+    Se sustituye la regla del MISMO campo, y solo esa. Antes se reemplazaba
+    cualquier bloque que tuviera esa propiedad, sin mirar a que campo apuntaba:
+    colorear una segunda medida borraba el degradado de la primera, y en una
+    matriz de varias metricas acababa pintada solo la ultima. El rodeo conocido
+    era dinamizar las metricas a filas para tener una sola medida; ya no hace
+    falta.
+
+    Dos degradados sobre la misma propiedad no se pisan mientras cada uno este
+    acotado a su campo con `selector.metadata`.
     """
     clave = str(target).strip().lower()
     if clave not in DESTINOS:
@@ -117,23 +164,33 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
     objetos = nodo.setdefault("objects", {})
     bloques: List[Dict[str, Any]] = objetos.setdefault(grupo, [])
 
-    selector = _selector_todas_las_filas()
+    referencia = query_ref(field)
+    selector = _selector(referencia)
     reemplazado = False
     for bloque in bloques:
         props = bloque.get("properties") or {}
-        if propiedad in props:
-            props[propiedad] = {"solid": regla}
-            bloque["selector"] = selector
-            reemplazado = True
-            break
+        if propiedad not in props:
+            continue
+        # El campo al que apunta el bloque es lo que decide si esto es la misma
+        # regla o una distinta. Sin esta comparacion, colorear una medida
+        # borraba el degradado de la anterior.
+        if (bloque.get("selector") or {}).get("metadata") != referencia:
+            continue
+        props[propiedad] = _propiedad_de_color(regla)
+        bloque["selector"] = selector
+        reemplazado = True
+        break
     if not reemplazado:
-        bloques.append({"properties": {propiedad: {"solid": regla}},
+        bloques.append({"properties": {propiedad: _propiedad_de_color(regla)},
                         "selector": selector})
 
-    log.info("Formato condicional en %s.%s (%s)", grupo, propiedad,
+    log.info("Formato condicional en %s.%s sobre %s (%s)", grupo, propiedad,
+             referencia or "campo sin referencia",
              "sustituido" if reemplazado else "anadido")
     return {"target": clave, "object_group": grupo, "property": propiedad,
-            "replaced": reemplazado,
+            "field_ref": referencia, "replaced": reemplazado,
+            "rules_on_property": sum(
+                1 for b in bloques if propiedad in (b.get("properties") or {})),
             "gradient": "linearGradient3" if mid_color else "linearGradient2",
             "colors": {"min": min_color, "mid": mid_color, "max": max_color},
             "null_strategy": null_strategy}

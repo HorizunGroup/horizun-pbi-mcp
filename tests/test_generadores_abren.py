@@ -307,6 +307,47 @@ def test_una_pagina_con_filtros_e_interacciones_pasa_el_validador(proyecto_real)
 
 @pytest.mark.abre
 @requiere_oraculos
+def test_un_mapa_de_calor_con_dos_medidas_pasa_el_validador(proyecto_real):
+    """Dos degradados en la misma matriz, uno por medida.
+
+    Antes solo se podia colorear una: la segunda borraba a la primera. Aqui se
+    comprueba que las dos reglas conviven Y que el CLI oficial las acepta —el
+    `selector.metadata` que las distingue no me lo he inventado, sale del
+    esquema `formattingObjectDefinitions`—.
+    """
+    from pbip import conditional_format
+    from utils.json_utils import read_json, write_json
+
+    active, md = proyecto_real
+    compilado = page_spec.compile_spec(active, {
+        "schema_version": "1.0",
+        "page": {"name": "calor", "displayName": "Mapa de calor"},
+        "visuals": [{"type": "matrix", "title": "Calor",
+                     "position": {"x": 20, "y": 20, "width": 800, "height": 400},
+                     "fields": {"rows": ["Regiones[Zona]"],
+                                "values": ["Ventas[Importe Total]"]}}]}, md)
+    res = page_spec.apply_spec(active, compilado)
+
+    visual = pbir_reader.list_visuals(active, res["page_id"])[0]
+    ruta = Path(visual["file"])
+    datos = read_json(ruta)
+    for propiedad, color in [("Importe Total", "#2A78D6"),
+                             ("Unidades", "#EB6834")]:
+        conditional_format.apply_to_visual(
+            datos, {"Measure": {"Expression": {"SourceRef": {"Entity": "Ventas"}},
+                                "Property": propiedad}},
+            "#FFFFFF", color)
+    write_json(ruta, datos)
+
+    bloques = datos["visual"]["objects"]["values"]
+    assert len(bloques) == 2, "la segunda regla borro la primera"
+
+    errores = _errores_pbir(active)
+    assert errores == [], [f"{d.code} {d.path}" for d in errores]
+
+
+@pytest.mark.abre
+@requiere_oraculos
 def test_tema_y_marcador_no_invalidan_el_informe(proyecto_real):
     """El tema y los marcadores tocan report.json: se validan como todo lo demas."""
     active, md = proyecto_real

@@ -106,21 +106,49 @@ def register(mcp) -> None:
         orden. Si algo no cabe se dice con la cuenta hecha, en vez de encogerlo
         hasta que no se lea.
 
+        El COLOR del texto sale del tema que el informe tiene puesto, no del
+        sistema: un informe solo admite un tema, y escribir el color del
+        sistema pintaba el titulo casi invisible en cuanto los dos no
+        coincidian. La geometria si es de la pagina. Si no cuadran se avisa.
+
         `dry_run=true` devuelve el spec con todas las posiciones y no escribe.
         Aplica el mismo camino que `pbi_apply_page_spec`, asi que pasa por la
         misma validacion y la misma transaccion.
         """
         def _impl():
             active = get_session().require_active_pbip()
+            paleta = design.paleta_del_informe(active)
             spec = design.componer(
                 system, title=title, subtitle=subtitle, kpis=kpis, hero=hero,
-                supports=supports, detail=detail, page_name=page_name)
+                supports=supports, detail=detail, page_name=page_name,
+                palette=paleta)
+
+            avisos = []
+            propio = design.tokens(system)["theme"]
+            if paleta and paleta.get("theme_file"):
+                if not paleta["theme_file"].lower().startswith(
+                        propio.replace("_", "").lower()[:6]):
+                    avisos.append(
+                        f"El informe tiene el tema '{paleta['theme_file']}' y "
+                        f"'{system}' trae el suyo. Se usa la rejilla de "
+                        f"'{system}' y el COLOR del informe, que es lo unico "
+                        "legible. Aplica pbi_apply_design_system si quieres "
+                        "los dos del mismo sistema.")
+            else:
+                avisos.append(
+                    "El informe no declara ningun tema propio: se usan los "
+                    "colores de '" + system + "'. Aplica "
+                    "pbi_apply_design_system para que coincidan de verdad.")
+
             if dry_run:
                 return {"dry_run": True, "system": system, "spec": spec,
-                        "visual_count": len(spec["visuals"])}
+                        "visual_count": len(spec["visuals"]),
+                        "applied_theme": paleta, "warnings": avisos}
             compilado = page_spec.compile_spec(active, spec, _model_data())
             resultado = page_spec.apply_spec(active, compilado)
             return {"dry_run": False, "system": system, "spec": spec,
-                    **resultado}
+                    "applied_theme": paleta,
+                    "warnings": avisos + list(resultado.get("warnings") or []),
+                    **{k: v for k, v in resultado.items() if k != "warnings"}}
 
         return guard(_impl) if dry_run else guard_mutation(_impl)

@@ -106,7 +106,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ## Etiquetado
 
-Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.9`**.
+Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.10`**.
 
 La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir con el tag **antes** de etiquetar. Instalar desde un tag y obtener un paquete que reporta otra versión es exactamente lo que estas comprobaciones existen para evitar.
 
