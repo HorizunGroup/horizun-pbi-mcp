@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.5** — 108 tools, 1097 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.6** — 112 tools, 1155 pruebas (1 omitida, con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -22,7 +22,7 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura actual, deuda estructural e invariantes |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Convivencia con otros MCP de Power BI, con niveles de verificación |
 | [`AGENTS.md`](AGENTS.md) | Reglas para modificar este repositorio sin romper el contrato |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 108 tools por bloque, con su clase de riesgo |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 112 tools por bloque, con su clase de riesgo |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Por qué `mode="both"` está bloqueado (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | Las dos capas de validación PBIR y sus límites |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Qué se comprueba antes de publicar |
@@ -91,7 +91,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Al abrir la primera sesión, el plugin ejecuta toda la preparación en segundo
 plano automáticamente. Consulta `pbi_install_status`; cuando termine, reinicia
-el cliente y quedarán disponibles las 108 tools `pbi_*`. No hay descargas ni
+el cliente y quedarán disponibles las 112 tools `pbi_*`. No hay descargas ni
 scripts adicionales que el usuario deba ejecutar manualmente.
 
 > **Límite técnico honesto:** no hay ejecutable propio, pero sí necesitas
@@ -342,7 +342,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**1097 pruebas, 2 omitidas.** Las dos omisiones son de entorno y dicen cómo ejecutarlas:
+**1155 pruebas, 1 omitida.** La omisión es de entorno y dice cómo ejecutarla:
 
 | Omitida | Condición |
 |---|---|
@@ -357,7 +357,7 @@ python -m pytest -m live                # contra Power BI Desktop abierto
 python -m pytest -m live_validator      # contra el CLI oficial de Microsoft
 ```
 
-Verificar el contrato MCP (las 108 tools están congeladas):
+Verificar el contrato MCP (las 112 tools están congeladas):
 
 ```bash
 python -m tests.contract_utils

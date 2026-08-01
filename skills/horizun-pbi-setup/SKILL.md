@@ -17,7 +17,7 @@ y descarga las DLL y esquemas fijados, verificando sus hashes.
 3. Consulta `pbi_install_status` hasta que indique `ready` o `failed`. No inicies
    procesos adicionales mientras esté `installing`.
 4. Si termina en `ready`, pide reiniciar Codex o Claude. Al volver, comprueba que
-   `tools/list` expone las 90 tools `pbi_*`, no solo las dos de instalación.
+   `tools/list` expone las 112 tools `pbi_*`, no solo las dos de instalación.
 5. Si falla, informa el paso y el mensaje devueltos por el status. No borres el
    runtime ni ocultes el error; una nueva llamada permite reintentar.
 

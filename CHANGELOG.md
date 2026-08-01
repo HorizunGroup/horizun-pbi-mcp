@@ -5,9 +5,14 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
-## [No publicado]
+## [1.0.0-rc.6] — 2026-08-01
 
-**112 tools, 1153 pruebas**, contrato congelado (todo lo nuevo es aditivo).
+**112 tools, 1155 pruebas**, contrato congelado (todo lo nuevo es aditivo).
+
+Esta versión sale de un caso real: construir dos tableros y romper el proyecto
+seis veces seguidas descubriendo a mano lo que el MCP debía haber dicho. El hilo
+que une todo lo de abajo es dejar de usar Power BI Desktop como detector de
+errores — llega al final, cuando ya se entregó.
 
 ### Corregido — una tabla que se creaba y no existía
 
