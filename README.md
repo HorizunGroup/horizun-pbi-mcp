@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.7** — 112 tools, 1157 pruebas (1 omitida, con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.8** — 112 tools, 1169 pruebas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -342,7 +342,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**1157 pruebas, 1 omitida.** La omisión es de entorno y dice cómo ejecutarla:
+**1169 pruebas, 3 omitidas.** La omisión es de entorno y dice cómo ejecutarla:
 
 | Omitida | Condición |
 |---|---|

@@ -46,6 +46,34 @@ _ESQUEMA_VERSION = ("https://developer.microsoft.com/json-schemas/fabric/item/re
 #: Caracteres que convertirian el nombre en una ruta.
 _PROHIBIDOS = re.compile(r'[<>:"/\\|?*]')
 
+#: Nombre del tema base propio. No se copia el de Microsoft (CY26SU05):
+#: vendorizarlo en un repositorio Apache-2.0 no es nuestro para hacerlo.
+_TEMA_BASE = "HorizunBase"
+
+#: Versiones de esquema que este generador escribe. Power BI las exige dentro
+#: de `themeCollection.baseTheme` y deben describir lo que hay de verdad.
+_VERSIONES = {"report": "3.3.0", "page": "2.1.0", "visual": "2.7.0"}
+
+
+def _escribir_tema_base(report_dir: Path, nombre: str) -> None:
+    """Tema base minimo pero completo, propio.
+
+    Un informe sin tema base resuelto no carga: Power BI busca el archivo, no
+    lo encuentra y aborta la vista. La paleta es neutra a proposito —quien
+    quiera identidad propia aplica la suya con `pbi_apply_theme`, que sabe
+    escribir el archivo y declararlo.
+    """
+    _json(report_dir / "StaticResources" / "SharedResources" / "BaseThemes"
+          / f"{nombre}.json", {
+        "name": nombre,
+        "dataColors": ["#2A78D6", "#EB6834", "#1BAF7A", "#EDA100",
+                       "#E87BA4", "#008300", "#4A3AA7", "#E34948"],
+        "background": "#FFFFFF",
+        "foreground": "#252423",
+        "tableAccent": "#2A78D6",
+        "good": "#0CA30C", "neutral": "#FAB219", "bad": "#D03B3B",
+    })
+
 
 def _json(ruta: Path, contenido: Dict[str, Any]) -> None:
     ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -162,10 +190,31 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         # Relativa: una ruta absoluta ata el proyecto a esta maquina.
         "datasetReference": {"byPath": {"path": f"../{name}.SemanticModel"}},
     })
+    # Un informe NECESITA un tema base resuelto, y son TRES cosas que van
+    # juntas o no van: la declaracion en `themeCollection`, la entrada en
+    # `resourcePackages` y el archivo en disco. Ademas, `reportVersionAtImport`
+    # es obligatorio dentro de baseTheme —Power BI lo dice literalmente: "La
+    # propiedad necesaria 'reportVersionAtImport' no se incluyo"—.
+    #
+    # El tema se genera aqui en vez de copiar el de Microsoft: vendorizar
+    # CY26SU05.json en un repositorio Apache-2.0 no es nuestro para hacerlo.
+    _escribir_tema_base(report_dir, _TEMA_BASE)
     _json(report_dir / "definition" / "report.json", {
         "$schema": _ESQUEMA_REPORT,
-        "themeCollection": {"baseTheme": {"name": "CY26SU05",
-                                          "type": "SharedResources"}},
+        "themeCollection": {
+            "baseTheme": {
+                "name": _TEMA_BASE,
+                "type": "SharedResources",
+                "reportVersionAtImport": _VERSIONES,
+            }
+        },
+        "resourcePackages": [{
+            "name": "SharedResources",
+            "type": "SharedResources",
+            "items": [{"name": _TEMA_BASE,
+                       "path": f"BaseThemes/{_TEMA_BASE}.json",
+                       "type": "BaseTheme"}],
+        }],
         "settings": {},
     })
 

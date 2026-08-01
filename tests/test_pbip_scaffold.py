@@ -76,6 +76,66 @@ def test_el_esqueleto_se_revisa_con_el_validador_oficial(tmp_path):
         assert revision["reason"]
 
 
+def test_el_tema_base_lleva_reportVersionAtImport(tmp_path):
+    """Power BI lo exige, y sin el se niega a abrir el informe.
+
+    El mensaje es literal: "La propiedad necesaria 'reportVersionAtImport' no
+    se incluyo en la propiedad /themeCollection/baseTheme de report.json".
+    Ningun validador de esquema lo detectaba.
+    """
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    reporte = json.loads((Path(r["report_dir"]) / "definition" / "report.json")
+                         .read_text(encoding="utf-8"))
+    base = reporte["themeCollection"]["baseTheme"]
+
+    assert "reportVersionAtImport" in base
+    # Tiene que describir lo que este generador escribe de verdad.
+    assert set(base["reportVersionAtImport"]) == {"report", "page", "visual"}
+
+
+def test_el_tema_base_es_propio_no_el_de_microsoft(tmp_path):
+    """Copiar CY26SU05.json a un repositorio Apache-2.0 no es nuestro."""
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    reporte = json.loads((Path(r["report_dir"]) / "definition" / "report.json")
+                         .read_text(encoding="utf-8"))
+    assert reporte["themeCollection"]["baseTheme"]["name"] != "CY26SU05"
+
+
+def test_no_declara_un_tema_que_no_puede_resolver(tmp_path):
+    """Declarar un tema sin su archivo revienta Power BI al auto-guardar.
+
+    `report.json` decia `baseTheme: CY26SU05` pero no se escribia
+    `StaticResources/SharedResources/BaseThemes/CY26SU05.json` ni el
+    `resourcePackages` que lo resuelve. Desktop lo busca, obtiene null y lanza
+    NullReferenceException en GetEnhancedReportDocument. El modelo cargaba
+    bien: fallaba solo la vista del informe.
+
+    O se declara con su archivo, o no se declara. Un esqueleto no puede
+    prometer un recurso que no trae.
+    """
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    definicion = Path(r["report_dir"]) / "definition"
+    reporte = json.loads((definicion / "report.json").read_text(encoding="utf-8"))
+
+    declarados = set()
+    for paquete in reporte.get("resourcePackages", []):
+        for item in paquete.get("items", []):
+            declarados.add(item.get("name"))
+
+    for clave, tema in (reporte.get("themeCollection") or {}).items():
+        nombre = tema.get("name")
+        assert nombre in declarados, (
+            f"themeCollection.{clave} declara '{nombre}' y no hay ningun "
+            f"resourcePackage que lo resuelva: {declarados}")
+
+    # Y lo declarado tiene que existir en disco.
+    for paquete in reporte.get("resourcePackages", []):
+        carpeta = Path(r["report_dir"]) / "StaticResources" / paquete["name"]
+        for item in paquete.get("items", []):
+            assert (carpeta / item["path"]).exists(), \
+                f"declarado y ausente: {paquete['name']}/{item['path']}"
+
+
 def test_el_informe_apunta_al_modelo_por_ruta_relativa(tmp_path):
     """Una ruta absoluta ata el proyecto a esta maquina."""
     r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")

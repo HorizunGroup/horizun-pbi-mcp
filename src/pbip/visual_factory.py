@@ -9,6 +9,7 @@ Estrategia (Fase 8):
 from __future__ import annotations
 
 import copy
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -189,8 +190,14 @@ def _set_title(vis: Dict[str, Any], title: str) -> None:
     if isinstance(tarr, list) and tarr and isinstance(tarr[0], dict):
         props = tarr[0].setdefault("properties", {})
         props["text"] = {"expr": {"Literal": {"Value": value}}}
+        # Sin `show` explicito, el defecto de una tarjeta es OCULTO: se pedia
+        # un titulo, no fallaba nada, y en pantalla no habia titulo. Un rotulo
+        # que se pide y no aparece es peor que no poder pedirlo.
+        props.setdefault("show", {"expr": {"Literal": {"Value": "true"}}})
     else:
-        vco["title"] = [{"properties": {"text": {"expr": {"Literal": {"Value": value}}}}}]
+        vco["title"] = [{"properties": {
+            "text": {"expr": {"Literal": {"Value": value}}},
+            "show": {"expr": {"Literal": {"Value": "true"}}}}}]
 
 
 # ------------------------------------------------------------------ decorativos --
@@ -255,6 +262,67 @@ def _build_textbox(opciones: Dict[str, Any]) -> Dict[str, Any]:
     if opciones.get("align"):
         parrafo["horizontalTextAlignment"] = opciones["align"]
     return {"general": [{"properties": {"paragraphs": [parrafo]}}]}
+
+
+#: Relleno que Power BI deja por defecto arriba y abajo de un texto.
+_PADDING_TEXTO = 8
+
+
+def piso_de_texto(font_size: float, padding: int = _PADDING_TEXTO) -> int:
+    """Altura minima de un textbox para que no salga barra de scroll.
+
+    Es la cuenta del validador oficial de Microsoft. Por debajo de ella el
+    texto se corta, que es un fallo que ningun validador de esquema ve porque
+    el JSON es perfectamente valido.
+    """
+    return max(18, math.ceil(float(font_size) * 25 / 16)) + padding * 2
+
+
+def _ajustar_alto_de_texto(pos: Dict[str, float], opciones: Dict[str, Any],
+                           warnings: List[str]) -> None:
+    """Sube la altura al piso si se quedo corta, y lo dice.
+
+    Se corrige en vez de solo avisar: quien compone una pagina no tiene por que
+    saber la formula, y un texto cortado no es lo que nadie queria.
+    """
+    tamano = opciones.get("font_size")
+    if tamano is None:
+        return
+    minimo = piso_de_texto(tamano)
+    if pos["height"] < minimo:
+        warnings.append(
+            f"La altura {pos['height']:.0f}px se queda corta para un texto de "
+            f"{tamano}pt y saldria cortado con barra de scroll; se sube a "
+            f"{minimo}px.")
+        pos["height"] = float(minimo)
+
+
+def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any],
+                                 opciones: Dict[str, Any]) -> None:
+    """Formato del numero y de la etiqueta de una tarjeta.
+
+    Con un titulo propio descriptivo, la etiqueta de categoria repite el mismo
+    texto y ademas suele salir mas grande que el dato. Nada de esto se toca si
+    no se pide: no se inventa formato que nadie encargo.
+    """
+    objetos = vis.setdefault("objects", {})
+    if opciones.get("show_category_label") is False:
+        objetos["categoryLabels"] = [{"properties": {"show": _lit(False)}}]
+
+    props: Dict[str, Any] = {}
+    if opciones.get("value_font_size") is not None:
+        # El tamano va como numero crudo con sufijo D, sin comillas: `_lit`
+        # entrecomillaria la cadena y Power BI lo leeria como texto.
+        props["fontSize"] = {"expr": {"Literal": {
+            "Value": f"{opciones['value_font_size']}D"}}}
+    if opciones.get("bold_value"):
+        props["bold"] = _lit(True)
+    if opciones.get("value_color"):
+        props["color"] = {"solid": {"color": _lit(opciones["value_color"])}}
+    if props:
+        objetos["labels"] = [{"properties": props}]
+    if not objetos:
+        vis.pop("objects", None)
 
 
 def _build_shape(opciones: Dict[str, Any]) -> Dict[str, Any]:
@@ -437,11 +505,17 @@ def build_visual(
             raise VisualFactoryError(
                 f"Un visual '{actual_type}' no lleva campos: su contenido se "
                 "define en 'options' (text, fill, shape, target_page...).")
-        vis = _build_decorativo(actual_type, options or {})
-        if title is not None:
-            # Por defecto van sin titulo; si se pide uno hay que reactivarlo.
+        opciones = options or {}
+        vis = _build_decorativo(actual_type, opciones)
+        # En un elemento de composicion `title` es el NOMBRE del visual dentro
+        # del spec, no una etiqueta para el lienzo: encenderlo imprimia
+        # "Titulo" sobre el titulo de una portada y "Logo Acme" sobre un
+        # logo. Se muestra solo si se pide a proposito.
+        if title is not None and opciones.get("show_title"):
             vis.setdefault("visualContainerObjects", {})["title"] = [
                 {"properties": {"show": _lit(True), "text": _lit(title)}}]
+        if actual_type == "textbox":
+            _ajustar_alto_de_texto(pos, opciones, warnings)
         return {"visual": {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis},
                 "actual_type": actual_type,
                 "origin": "elemento de composicion",
@@ -461,6 +535,8 @@ def build_visual(
         vis.setdefault("drillFilterOtherVisuals", True)
         if title is not None:
             _set_title(vis, title)  # preserva el estilo del titulo de la plantilla
+        if actual_type in ("card", "cardVisual"):
+            _aplicar_opciones_de_tarjeta(vis, options or {})
         origin = f"clonado de {template}"
     else:
         vis = {
@@ -470,6 +546,8 @@ def build_visual(
         }
         if title is not None:
             _set_title(vis, title)
+        if actual_type in ("card", "cardVisual"):
+            _aplicar_opciones_de_tarjeta(vis, options or {})
         data = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
         origin = "plantilla minima (validar en Power BI Desktop)"
         warnings.append(

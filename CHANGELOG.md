@@ -5,6 +5,50 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.8] — 2026-08-01
+
+**112 tools, 1169 pruebas.**
+
+Tres defectos que solo se ven **abriendo** el informe. Ninguno lo detecta un
+validador de esquema: el JSON es correcto en los tres casos.
+
+### Corregido
+
+- **El esqueleto generaba informes que Power BI se negaba a abrir.** Un informe
+  necesita un tema base *resuelto*, y son cuatro cosas que van juntas o no van:
+  la declaración en `themeCollection`, **`reportVersionAtImport` dentro de
+  ella**, la entrada en `resourcePackages` y el archivo en disco. Faltaban
+  todas. Power BI lo dice literalmente —«La propiedad necesaria
+  'reportVersionAtImport' no se incluyó»— pero solo al abrir.
+
+  El tema base ahora **lo genera el MCP** (`HorizunBase`) en vez de copiar el de
+  Microsoft: vendorizar `CY26SU05.json` en un repositorio Apache-2.0 no es
+  nuestro para hacerlo. Paleta neutra a propósito; la identidad propia se aplica
+  con `pbi_apply_theme`.
+
+- **`title` se imprimía sobre el lienzo.** En un spec, `title` identifica al
+  visual; en un elemento de composición no es una etiqueta que nadie quiera ver.
+  Salía «Titulo» sobre el título de una portada y habría salido «Logo Acme»
+  sobre un logo. Ahora los decorativos no lo muestran salvo `show_title: true`.
+
+- **Y al revés: pedir un título en una tarjeta no lo mostraba.** Se escribía el
+  texto pero no `show`, y el defecto de una tarjeta es *oculto*. Se pedía un
+  rótulo, no fallaba nada, y en pantalla no había rótulo.
+
+### Añadido
+
+- **Altura mínima automática en los textos.** Por debajo del piso que exige el
+  tamaño de fuente, Power BI mete barra de scroll y corta el texto. Se aplica la
+  fórmula del validador oficial —`max(18, ceil(pt × 25/16)) + relleno`—, se
+  corrige hacia arriba y **se avisa**: quien compone una página no tiene por qué
+  saber la fórmula.
+- **Formato de tarjeta desde el spec**: `value_font_size`, `bold_value`,
+  `value_color` y `show_category_label`, para que el número pese más que su
+  etiqueta y no se repita el mismo texto arriba y abajo. Sin opciones no se
+  toca nada: no se inventa formato que nadie encargó.
+
+---
+
 ## [1.0.0-rc.7] — 2026-08-01
 
 **112 tools, 1157 pruebas.** Corrige un `pbi_create_pbip_project` que generaba
