@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.3** — 90 tools, 859 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.3** — 108 tools, 1008 pruebas (2 omitidas, ambas con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -22,7 +22,7 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura actual, deuda estructural e invariantes |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Convivencia con otros MCP de Power BI, con niveles de verificación |
 | [`AGENTS.md`](AGENTS.md) | Reglas para modificar este repositorio sin romper el contrato |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 90 tools por bloque, con su clase de riesgo |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 108 tools por bloque, con su clase de riesgo |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Por qué `mode="both"` está bloqueado (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | Las dos capas de validación PBIR y sus límites |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Qué se comprueba antes de publicar |
@@ -42,13 +42,15 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 - **Medidas:** crear/editar/borrar medidas DAX en el modelo abierto (`live`), en el archivo TMDL (`pbip`) o en ambos (`both`).
 - **Refresh local:** refresca el modelo abierto en Desktop (no el Service).
 - **PBIP:** abrir/validar proyectos, backups automáticos.
+- **Conversión `.pbix` → `.pbip`:** informe a PBIR (copiado si el `.pbix` ya lo trae, traducido si guarda el formato heredado) y modelo a TMDL, archivo suelto o carpeta en lote.
 - **Visuales PBIR:** listar/documentar visuales, crear visuales (clonando plantillas reales del informe), mover/redimensionar y acomodar por layouts.
 
 ## Qué NO hace
 
 - No mueve ni crea visuales "en vivo" en el lienzo abierto (Power BI Desktop no expone API para eso). Los visuales se editan por archivos PBIR con el proyecto `.pbip`.
 - No refresca ni publica en el **Power BI Service** (solo local).
-- No convierte un `.pbix` a `.pbip` por ti: guarda el informe como *Power BI Project (.pbip)* con el formato de reporte mejorado (**PBIR**) activado.
+- No extrae el modelo de un `.pbix` sin Power BI Desktop: el stream `DataModel` es un backup comprimido con XPress9 que solo el motor de Analysis Services sabe leer. Al convertir, el `.pbix` se abre en Desktop para serializar el modelo.
+- No traduce los marcadores del formato **heredado** a PBIR: su modelo de estado es distinto y la conversión los reporta como pendientes (`dropped`) en vez de perderlos en silencio. Crear marcadores nuevos sí se puede (`pbi_create_bookmark`).
 - No inventa campos ni medidas inexistentes al generar páginas.
 
 ---
@@ -89,7 +91,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Al abrir la primera sesión, el plugin ejecuta toda la preparación en segundo
 plano automáticamente. Consulta `pbi_install_status`; cuando termine, reinicia
-el cliente y quedarán disponibles las 90 tools `pbi_*`. No hay descargas ni
+el cliente y quedarán disponibles las 108 tools `pbi_*`. No hay descargas ni
 scripts adicionales que el usuario deba ejecutar manualmente.
 
 > **Límite técnico honesto:** no hay ejecutable propio, pero sí necesitas
@@ -187,7 +189,7 @@ Sale con código **0** si todo lo obligatorio está bien. Distingue dependencia 
 
 ---
 
-## Tools disponibles (90)
+## Tools disponibles (93)
 
 > Catálogo completo por bloque: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Inventario del baseline con clase de riesgo y precondiciones: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -213,6 +215,15 @@ Sale con código **0** si todo lo obligatorio está bien. Distingue dependencia 
 
 **Proyecto PBIP (Fase 6)**
 - `pbi_open_pbip_project` (`path`), `pbi_validate_pbip_project`, `pbi_backup_pbip_project` (`mode: folder|zip`, `scope: report|model|both`).
+
+**Conversión `.pbix` → `.pbip`**
+- `pbi_inspect_pbix` — radiografía del archivo sin convertirlo ni abrir Desktop: formato del informe, si lleva modelo propio, páginas y recursos.
+- `pbi_list_convertible_pbix` — vista previa de una carpeta: qué se copiaría, qué habría que traducir y cuáles necesitan Desktop.
+- `pbi_convert_pbix_to_pbip` — genera el proyecto. Acepta un `.pbix` o una carpeta (`recursive`), y devuelve por archivo lo escrito, los avisos y lo que quedó fuera (`dropped`).
+
+> El informe se traduce sin Desktop, pero el **modelo** obliga a abrir cada `.pbix` en Power BI Desktop (se reutiliza la sesión si ya está abierto, y se cierra si la abrió la tool). Con `include_model=false` se genera solo la mitad del informe, al instante. El `.pbix` original nunca se modifica.
+>
+> Power BI Desktop **no abre un `.pbip` con rutas de 260 caracteres o más**: elige un `out_dir` corto (`C:\pbip`). La tool lo comprueba antes de escribir y aborta con el detalle en vez de dejar un proyecto que no abre.
 
 **Edición de modelo**
 - `pbi_set_column_visibility` / `pbi_hide_columns` — ocultar/mostrar columnas (p.ej. IDs). `mode: live|pbip|both`.
@@ -331,7 +342,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**859 pruebas, 2 omitidas.** Las dos omisiones son de entorno y dicen cómo ejecutarlas:
+**1008 pruebas, 2 omitidas.** Las dos omisiones son de entorno y dicen cómo ejecutarlas:
 
 | Omitida | Condición |
 |---|---|
@@ -346,7 +357,7 @@ python -m pytest -m live                # contra Power BI Desktop abierto
 python -m pytest -m live_validator      # contra el CLI oficial de Microsoft
 ```
 
-Verificar el contrato MCP (las 90 tools están congeladas):
+Verificar el contrato MCP (las 108 tools están congeladas):
 
 ```bash
 python -m tests.contract_utils

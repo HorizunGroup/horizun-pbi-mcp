@@ -26,20 +26,26 @@ software de terceros sin autorizacion. Se instalan con
 cache instalada las escrituras fallan cerradas** con `schema_unavailable`: no se
 degrada en silencio a "no compruebo nada".
 
-Limitacion conocida: esquemas que Power BI declara y Microsoft no publica
--------------------------------------------------------------------------
-El informe de referencia (PB4) declara `visualContainer/2.10.0` en **239**
-archivos y `bookmarks/2.0.0`; ambas URLs devuelven **404** en el origen
-oficial. Sin el documento no hay forma de comprobar lo que se escribiria, asi
-que se bloquea con `schema_unavailable` y `rule=no_publicado_upstream`.
+Esquemas que Power BI declara y Microsoft no publica
+----------------------------------------------------
+Power BI escribe versiones de esquema antes de que Microsoft las publique: hoy
+`visualContainer` 2.10.0 y 2.11.0 devuelven **404** en el origen oficial. Antes
+eso bloqueaba toda escritura sobre cualquier informe guardado con una version
+reciente de Desktop, que es casi cualquiera.
 
-Consecuencia practica: sobre un informe guardado con una version reciente de
-Power BI Desktop, este servidor **no puede escribir** los visuales que declaren
-2.10.0. Es deliberado y fail-closed. La alternativa —validar contra 2.7.0 y
-confiar en que no cambio nada— seria adivinar, y `additionalProperties: false`
-rechazaria propiedades nuevas legitimas.
+Ahora se comprueba contra la version anterior de la MISMA familia
+(`version_mas_cercana`) y se perdona **solo** lo que una version posterior pudo
+anadir: una propiedad nueva o un valor nuevo de una enumeracion. Un tipo
+equivocado o un campo obligatorio ausente sigue bloqueando, que es lo que la
+politica queria proteger.
 
-Por esto E3 queda **parcialmente cerrado** y G10 abierto.
+No es una suposicion: se midio sobre **275 archivos reales** que declaran 2.10 o
+2.11, y en todos ellos lo UNICO que no cuadraba contra 2.7.0 era la cadena de
+version del propio `$schema` (`$.$schema`, regla `const`). El contenido validaba
+entero. El formato crece por adicion, y ahora esta comprobado.
+
+Si no hay ninguna version anterior en la cache (`bookmarks/2.0.0` es el caso),
+se mantiene el bloqueo: sin nada contra que comparar, adivinar seria peor.
 
 Cobertura medida sobre el PB4 real (solo lectura, 443 JSON del informe):
 176 cumplen, 240 bloqueados por esquema no publicado, 25 fuera del ambito
@@ -61,7 +67,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from powerbi.errors import PowerBIMCPError
 
@@ -243,14 +249,70 @@ def no_publicados() -> Dict[str, str]:
         return {}
 
 
-def cargar(url: str) -> Dict[str, Any]:
-    """Documento del esquema, verificado contra su hash."""
+#: `.../<familia>/<major>.<minor>.<patch>/schema.json`
+_RE_URL = re.compile(r"^(?P<base>.*/)(?P<familia>[^/]+)/"
+                     r"(?P<version>\d+\.\d+\.\d+)/schema\.json$")
+
+
+def _partes(url: str) -> Optional[Tuple[str, str, Tuple[int, int, int]]]:
+    m = _RE_URL.match(str(url or ""))
+    if not m:
+        return None
+    v = tuple(int(x) for x in m.group("version").split("."))
+    return m.group("base") + m.group("familia"), m.group("familia"), v  # type: ignore[return-value]
+
+
+def version_mas_cercana(url: str) -> Optional[str]:
+    """La version cacheada mas alta de la MISMA familia que no supere a `url`.
+
+    Power BI escribe versiones de esquema que Microsoft tarda en publicar (hoy
+    `visualContainer` 2.10 y 2.11 dan 404). Bloquear por eso deja sin editar
+    cualquier informe reciente. Como el formato crece por adicion, el esquema
+    anterior sigue describiendo la estructura: sirve para comprobar que no se
+    rompe nada, aunque no conozca lo que se anadio despues.
+    """
+    partes = _partes(url)
+    if partes is None:
+        return None
+    prefijo, _familia, objetivo = partes
+    candidatas = []
+    for doc in manifiesto()["documents"]:
+        otras = _partes(doc["url"])
+        if otras is None or otras[0] != prefijo:
+            continue
+        # Solo dentro de la MISMA version mayor. Que el formato crezca por
+        # adicion esta comprobado entre 2.7 y 2.11; asumir lo mismo de un salto
+        # de mayor seria justo la adivinanza que esta politica evita.
+        if otras[2][0] != objetivo[0]:
+            continue
+        if otras[2] <= objetivo:
+            candidatas.append((otras[2], doc["url"]))
+    if not candidatas:
+        return None
+    return max(candidatas)[1]
+
+
+def cargar(url: str, *, permitir_cercana: bool = False) -> Tuple[Dict[str, Any], str]:
+    """Documento del esquema y la URL contra la que se comprobara de verdad.
+
+    Con `permitir_cercana`, un esquema que Microsoft aun no publica cae a la
+    version anterior de su familia en vez de bloquear.
+    """
+    conocido = any(d["url"] == url for d in manifiesto()["documents"])
+    if not conocido and permitir_cercana:
+        alternativa = version_mas_cercana(url)
+        if alternativa:
+            _exigir_cache()
+            entrada = next(d for d in manifiesto()["documents"] if d["url"] == alternativa)
+            ruta = cache_dir() / entrada["file"]
+            return json.loads(ruta.read_text(encoding="utf-8")), alternativa
+
     ausente = no_publicados().get(url)
     if ausente:
         raise SchemaUnavailable(
             f"Power BI declara el esquema {url}, pero Microsoft no lo publica "
-            f"({ausente}). No se puede comprobar lo que se escribiria, asi que "
-            "no se escribe. Es una limitacion conocida de esta version.",
+            f"({ausente}) y no hay ninguna version anterior de la misma familia "
+            "en la cache. No se puede comprobar lo que se escribiria.",
             details={"schema": url, "reason": ausente,
                      "rule": "no_publicado_upstream"})
 
@@ -263,7 +325,7 @@ def cargar(url: str) -> Dict[str, Any]:
             details={"schema": url, "supported": urls_soportadas()})
     _exigir_cache()
     ruta = cache_dir() / entrada["file"]
-    return json.loads(ruta.read_text(encoding="utf-8"))
+    return json.loads(ruta.read_text(encoding="utf-8")), url
 
 
 # --------------------------------------------------------------- validacion ---
@@ -280,6 +342,23 @@ def _mensaje_seguro(err) -> str:
     bruto = str(err.message)
     partido = _RE_VALOR.sub("", bruto, count=1).strip()
     return partido or f"incumple '{err.validator}'"
+
+
+#: Reglas cuyo incumplimiento se explica por comprobar contra un esquema mas
+#: antiguo: una propiedad que se anadio despues, o un valor nuevo de una
+#: enumeracion. Todo lo demas (tipo, obligatorio, patron) es un error de verdad.
+_REGLAS_DE_NOVEDAD = frozenset({"additionalProperties", "const", "enum"})
+
+
+def _es_novedad_de_version(err) -> bool:
+    """Si el error se explica porque el esquema comprobado es anterior."""
+    if err.validator in _REGLAS_DE_NOVEDAD:
+        return True
+    # Las enumeraciones del PBIR se escriben como `anyOf` de `const`. Solo se
+    # perdona si TODAS las alternativas fallaron por ser un valor desconocido.
+    if err.validator == "anyOf" and err.context:
+        return all(sub.validator in ("const", "enum") for sub in err.context)
+    return False
 
 
 def _ruta_json(err) -> str:
@@ -364,7 +443,8 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
                      "exempt": sorted(SIN_ESQUEMA_PERMITIDO),
                      "rule": "tipo_desconocido_en_pbir"})
 
-    esquema = cargar(url)
+    esquema, comprobado_con = cargar(url, permitir_cercana=True)
+    degradado = comprobado_con != url
     registry = _registry()
 
     Validador = jsonschema.validators.validator_for(esquema)   # draft correcto
@@ -378,6 +458,20 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
     validador = Validador(esquema, registry=registry)
     errores = sorted(validador.iter_errors(datos), key=lambda e: list(e.absolute_path))
 
+    tolerados: List[Dict[str, str]] = []
+    if degradado and errores:
+        # Al comprobar contra una version anterior, lo unico que se perdona es
+        # lo que una version posterior pudo ANADIR: una propiedad nueva o un
+        # valor nuevo de una enumeracion. Un tipo equivocado o un campo
+        # obligatorio ausente sigue siendo un error en cualquier version.
+        reales = []
+        for e in errores:
+            if _es_novedad_de_version(e):
+                tolerados.append({"path": _ruta_json(e), "rule": e.validator})
+            else:
+                reales.append(e)
+        errores = reales
+
     if errores:
         detalle = [{"path": _ruta_json(e), "rule": e.validator,
                     "error": _mensaje_seguro(e)} for e in errores[:20]]
@@ -385,11 +479,17 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
             f"{len(errores)} error(es) de esquema en "
             f"{Path(archivo).name if archivo else 'el documento'}.",
             details={"file": str(archivo) if archivo else None,
-                     "schema": url, "draft": esquema.get("$schema"),
+                     "schema": url, "checked_against": comprobado_con,
+                     "draft": esquema.get("$schema"),
                      "errors": detalle, "error_count": len(errores)})
 
-    return {"validated": True, "schema": url, "draft": esquema.get("$schema"),
-            "validator": Validador.__name__}
+    salida = {"validated": True, "schema": url, "draft": esquema.get("$schema"),
+              "validator": Validador.__name__}
+    if degradado:
+        salida.update({"checked_against": comprobado_con, "degraded": True,
+                       "tolerated": tolerados[:20],
+                       "tolerated_count": len(tolerados)})
+    return salida
 
 
 def esquemas_disponibles() -> List[Dict[str, Any]]:

@@ -117,9 +117,13 @@ def test_hay_una_pagina_con_esquema_no_publicado(proyecto):
               "vsfuturo000000000006" / "visual.json")
     datos = json.loads(futuro.read_text(encoding="utf-8-sig"))
 
-    with pytest.raises(pbir_schema.SchemaUnavailable) as exc:
-        pbir_schema.validar(datos, archivo=futuro)
-    assert exc.value.details["rule"] == "no_publicado_upstream"
+    # Antes esto bloqueaba y dejaba sin editar cualquier informe reciente.
+    # Ahora se comprueba contra la version anterior de la familia y se deja
+    # constancia de que la comprobacion fue aproximada.
+    resultado = pbir_schema.validar(datos, archivo=futuro)
+    assert resultado["validated"] is True
+    assert resultado["degraded"] is True
+    assert "2.7.0" in resultado["checked_against"]
 
 
 def test_el_drillthrough_se_puede_anadir(proyecto):

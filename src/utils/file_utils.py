@@ -60,6 +60,38 @@ def zip_dir(src_dir: PathLike, dst_zip: PathLike) -> Path:
     return dst_p
 
 
+#: Power BI Desktop rechaza abrir un .pbip si alguna ruta se pasa de estos
+#: limites (`PBIProjectUtils.EnsureNotLong`). No es una limitacion del disco
+#: —Windows admite rutas largas— sino del propio lector de proyectos, asi que
+#: hay que respetarlos aunque el sistema de archivos acepte la escritura.
+PBIP_MAX_RUTA_ARCHIVO = 260
+PBIP_MAX_RUTA_CARPETA = 248
+
+
+def rutas_demasiado_largas(base: PathLike, relativas) -> list:
+    """Rutas que Power BI Desktop no podria leer, dadas `base` y sus relativas.
+
+    Devuelve [{path, length, limit, kind}] vacio si todo cabe. Se comprueba
+    ANTES de escribir: un proyecto a medio generar que Desktop no abre es peor
+    que no generarlo.
+    """
+    raiz = Path(base)
+    problemas = []
+    vistas = set()
+    for relativa in relativas:
+        completa = raiz / relativa
+        texto = str(completa)
+        if len(texto) >= PBIP_MAX_RUTA_ARCHIVO:
+            problemas.append({"path": texto, "length": len(texto),
+                              "limit": PBIP_MAX_RUTA_ARCHIVO, "kind": "file"})
+        carpeta = str(completa.parent)
+        if len(carpeta) >= PBIP_MAX_RUTA_CARPETA and carpeta not in vistas:
+            vistas.add(carpeta)
+            problemas.append({"path": carpeta, "length": len(carpeta),
+                              "limit": PBIP_MAX_RUTA_CARPETA, "kind": "folder"})
+    return problemas
+
+
 def human_size(num_bytes: int) -> str:
     size = float(num_bytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):

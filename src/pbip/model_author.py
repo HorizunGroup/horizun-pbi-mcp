@@ -1,0 +1,466 @@
+"""Autoria del modelo semantico en TMDL: mas alla de las medidas.
+
+Hasta ahora el servidor solo sabia crear medidas, y eso deja fuera cosas que
+un tablero necesita a diario: una columna calculada para clasificar, una
+relacion para que dos tablas se filtren, una jerarquia para poder profundizar.
+
+Tres reglas del formato que no se deducen leyendo la documentacion y que aqui
+estan resueltas:
+
+- La descripcion es un doc-comment `///` ENCIMA de la declaracion. La propiedad
+  `description:` no existe y Power BI rechaza el archivo.
+- Toda entidad lleva `lineageTag`: es lo que permite renombrarla sin romper los
+  visuales que la usan.
+- Las relaciones viven en `relationships.tmdl`, no dentro de la tabla, y
+  referencian las columnas como `Tabla.Columna` con la tabla entrecomillada si
+  lleva espacios.
+"""
+from __future__ import annotations
+
+import re
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from config import ActivePbip
+from logging_config import get_logger
+from powerbi.errors import PowerBIMCPError, ValidationError
+from pbip.tmdl_reader import find_table_file
+from utils.validation import (tmdl_quote_name, validate_measure_expression,
+                              validate_object_name)
+
+log = get_logger("model_author")
+
+#: Como resume Power BI una columna por defecto.
+RESUMEN = ("none", "sum", "average", "min", "max", "count", "distinctCount")
+#: Tipos de dato de una columna calculada.
+TIPOS = ("string", "int64", "double", "decimal", "boolean", "dateTime", "binary")
+#: Cardinalidades y sentido del filtro de una relacion.
+CARDINALIDADES = ("one", "many")
+FILTRO_CRUZADO = ("oneDirection", "bothDirections", "automatic")
+
+
+class ModelAuthorError(PowerBIMCPError):
+    code = "model_author_error"
+
+
+def _indent(linea: str) -> int:
+    n = 0
+    for c in linea:
+        if c == "\t":
+            n += 1
+        else:
+            break
+    return n
+
+
+def _definition(active: ActivePbip) -> Path:
+    if not active.semantic_model_dir:
+        raise ModelAuthorError("El proyecto no tiene carpeta .SemanticModel.")
+    d = Path(active.semantic_model_dir) / "definition"
+    if not d.exists():
+        raise ModelAuthorError(f"No existe {d}: el modelo no esta en TMDL.")
+    return d
+
+
+def _escribir(active: ActivePbip, ruta: Path, lineas: List[str],
+              herramienta: str) -> Dict[str, Any]:
+    """Escritura transaccional, con las mismas garantias que el resto."""
+    from services import txn as txn_service
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation=herramienta)
+    texto = "\n".join(lineas)
+    if not texto.endswith("\n"):
+        texto += "\n"
+    cm = txn_service.project_transaction(active, [ruta], tool=herramienta)
+    with cm as t:
+        t.write_text(ruta, texto)
+    return {"file": str(ruta), "backup": cm.result["journal"],
+            "transaction": cm.result}
+
+
+def _bloque_existe(lineas: List[str], palabra: str, nombre: str) -> Optional[int]:
+    """Indice de la linea donde empieza `<palabra> <nombre>`, si existe."""
+    objetivo = nombre.strip("'")
+    for i, linea in enumerate(lineas):
+        limpio = linea.strip()
+        if not limpio.startswith(palabra + " "):
+            continue
+        declarado = limpio[len(palabra):].strip().split("=")[0].strip()
+        if declarado.strip("'") == objetivo:
+            return i
+    return None
+
+
+def _fin_del_bloque(lineas: List[str], inicio: int) -> int:
+    """Primera linea despues del bloque que empieza en `inicio`."""
+    base = _indent(lineas[inicio])
+    j = inicio + 1
+    ultimo = inicio
+    while j < len(lineas):
+        if lineas[j].strip() and _indent(lineas[j]) <= base:
+            break
+        if lineas[j].strip():
+            ultimo = j
+        j += 1
+    return ultimo + 1
+
+
+# ------------------------------------------------------- columna calculada ---
+def create_calculated_column(active: ActivePbip, table: str, name: str,
+                             expression: str, *,
+                             data_type: str = "string",
+                             format_string: Optional[str] = None,
+                             display_folder: Optional[str] = None,
+                             description: Optional[str] = None,
+                             summarize_by: str = "none",
+                             is_hidden: bool = False,
+                             overwrite: bool = False) -> Dict[str, Any]:
+    """Añade una columna calculada (DAX) a una tabla existente."""
+    name = validate_object_name(name, "columna")
+    expression = validate_measure_expression(expression)
+    if data_type not in TIPOS:
+        raise ModelAuthorError(f"Tipo no soportado: '{data_type}'. Usa {list(TIPOS)}.")
+    if summarize_by not in RESUMEN:
+        raise ModelAuthorError(
+            f"summarize_by no soportado: '{summarize_by}'. Usa {list(RESUMEN)}.")
+
+    ruta = find_table_file(active, table)
+    lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
+
+    existente = _bloque_existe(lineas, "column", tmdl_quote_name(name))
+    if existente is None:
+        existente = _bloque_existe(lineas, "column", name)
+    if existente is not None:
+        if not overwrite:
+            raise ModelAuthorError(
+                f"La columna '{name}' ya existe en '{table}'. Usa overwrite=true.")
+        fin = _fin_del_bloque(lineas, existente)
+        del lineas[existente:fin]
+        insercion = existente
+    else:
+        insercion = _indice_insercion_en_tabla(lineas)
+
+    bloque: List[str] = []
+    if description:
+        bloque += [f"\t/// {l.strip()}" for l in str(description).splitlines()]
+    if "\n" in expression:
+        bloque.append(f"\tcolumn {tmdl_quote_name(name)} =")
+        bloque += ["\t\t\t" + l for l in expression.split("\n")]
+    else:
+        bloque.append(f"\tcolumn {tmdl_quote_name(name)} = {expression}")
+    bloque.append(f"\t\tdataType: {data_type}")
+    if format_string:
+        bloque.append(f"\t\tformatString: {format_string}")
+    if is_hidden:
+        bloque.append("\t\tisHidden")
+    bloque.append(f"\t\tlineageTag: {uuid.uuid4()}")
+    bloque.append(f"\t\tsummarizeBy: {summarize_by}")
+    if display_folder:
+        bloque.append(f"\t\tdisplayFolder: {display_folder}")
+    bloque.append("")
+
+    lineas[insercion:insercion] = bloque
+    salida = _escribir(active, ruta, lineas, "pbi_create_calculated_column")
+    log.info("Columna calculada '%s' en '%s'", name, table)
+    return {"table": table, "column": name, "data_type": data_type,
+            "action": "replaced" if existente is not None else "created",
+            "expression": expression, **salida}
+
+
+def infer_columns(session: Any, expression: str) -> List[Dict[str, str]]:
+    """Deduce columnas y tipos de una tabla calculada EJECUTANDO su DAX.
+
+    TMDL exige declarar las columnas de una tabla calculada, y no se pueden
+    adivinar leyendo la expresion. En vez de pedirselas a quien llama —que
+    tendria que teclear diez columnas a mano y equivocarse en los tipos— se
+    evalua la expresion acotada a una fila contra el modelo abierto y se lee el
+    esquema que devuelve el motor. Es la unica fuente que no adivina.
+    """
+    from powerbi import dax_runner
+
+    consulta = f"EVALUATE TOPN(1, {expression})"
+    r = dax_runner.run_dax(session, consulta, max_rows=1)
+    columnas: List[Dict[str, str]] = []
+    equivalencia = {"int": "int64", "float": "double", "str": "string",
+                    "bool": "boolean", "datetime": "dateTime",
+                    "decimal": "decimal"}
+    for c in r.get("column_types") or []:
+        nombre = str(c.get("name", "")).strip()
+        # El motor devuelve 'Tabla[Columna]' o '[Columna]'
+        if "[" in nombre and nombre.endswith("]"):
+            nombre = nombre[nombre.rindex("[") + 1:-1]
+        if not nombre:
+            continue
+        columnas.append({"name": nombre,
+                         "data_type": equivalencia.get(str(c.get("type")), "string")})
+    if not columnas:
+        raise ModelAuthorError(
+            "La expresion no devolvio ninguna columna, asi que no hay tabla que "
+            "declarar. Comprueba el DAX con pbi_run_dax.",
+            details={"query": consulta})
+    return columnas
+
+
+def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
+                            columns: Optional[List[Dict[str, str]]] = None,
+                            session: Any = None,
+                            description: Optional[str] = None,
+                            overwrite: bool = False) -> Dict[str, Any]:
+    """Crea una tabla calculada (DAX) como archivo TMDL propio.
+
+    `columns` se puede dar a mano; si no, se deducen ejecutando la expresion
+    contra el modelo abierto (`session`). Sin una de las dos cosas no se puede
+    escribir la tabla, y se dice en vez de generar uno vacio.
+    """
+    name = validate_object_name(name, "tabla")
+    expression = validate_measure_expression(expression)
+
+    definicion = _definition(active)
+    carpeta = definicion / "tables"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    seguro = re.sub(r'[<>:"/\\|?*]', "_", name)
+    ruta = carpeta / f"{seguro}.tmdl"
+    if ruta.exists() and not overwrite:
+        raise ModelAuthorError(
+            f"Ya existe la tabla '{name}'. Usa overwrite=true para reemplazarla.")
+
+    if not columns:
+        if session is None:
+            raise ModelAuthorError(
+                "Hacen falta las columnas de la tabla calculada. Pasalas en "
+                "'columns' o abre el modelo en Power BI Desktop para deducirlas "
+                "ejecutando la expresion.")
+        columns = infer_columns(session, expression)
+
+    lineas: List[str] = []
+    if description:
+        lineas += [f"/// {l.strip()}" for l in str(description).splitlines()]
+    lineas.append(f"table {tmdl_quote_name(name)}")
+    lineas.append(f"\tlineageTag: {uuid.uuid4()}")
+    lineas.append("")
+    for col in columns:
+        tipo = col.get("data_type", "string")
+        if tipo not in TIPOS:
+            raise ModelAuthorError(
+                f"Tipo no soportado en la columna '{col.get('name')}': '{tipo}'.")
+        lineas.append(f"\tcolumn {tmdl_quote_name(col['name'])}")
+        lineas.append(f"\t\tdataType: {tipo}")
+        lineas.append(f"\t\tlineageTag: {uuid.uuid4()}")
+        lineas.append("\t\tsummarizeBy: none")
+        lineas.append(f"\t\tsourceColumn: {col['name']}")
+        lineas.append("")
+    lineas.append(f"\tpartition {tmdl_quote_name(name)} = calculated")
+    lineas.append("\t\tmode: import")
+    if "\n" in expression:
+        lineas.append("\t\tsource =")
+        lineas += ["\t\t\t\t" + l for l in expression.split("\n")]
+    else:
+        lineas.append(f"\t\tsource = {expression}")
+    lineas.append("")
+
+    salida = _escribir(active, ruta, lineas, "pbi_create_calculated_table")
+    log.info("Tabla calculada '%s' con %s columnas", name, len(columns))
+    return {"table": name, "columns": columns, "column_count": len(columns),
+            "expression": expression,
+            "action": "replaced" if overwrite else "created", **salida}
+
+
+#: Modos de almacenamiento de una particion.
+MODOS = ("import", "directQuery", "dual")
+
+
+def set_storage_mode(active: ActivePbip, table: str, mode: str) -> Dict[str, Any]:
+    """Cambia el modo de almacenamiento de las particiones de una tabla.
+
+    Con `directQuery` el dato se consulta al origen en cada interaccion y deja
+    de haber refresco que esperar, pero **no es un interruptor inocuo**:
+
+    - la consulta M tiene que ser plegable al origen; si lleva pasos que no se
+      traducen a SQL, Power BI rechaza la tabla al abrirla;
+    - las columnas y tablas calculadas dejan de estar disponibles;
+    - cada visual se convierte en una consulta al servidor, y un origen lento
+      se nota en todo el informe.
+
+    Por eso se devuelve el modo anterior y las particiones tocadas: es un
+    cambio que hay que poder deshacer sabiendo exactamente que se cambio.
+    """
+    if mode not in MODOS:
+        raise ModelAuthorError(
+            f"Modo no soportado: '{mode}'. Usa {list(MODOS)}.")
+
+    ruta = find_table_file(active, table)
+    lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
+
+    anteriores: List[str] = []
+    tocadas = 0
+    dentro_de_particion = False
+    for i, linea in enumerate(lineas):
+        limpio = linea.strip()
+        if _indent(linea) == 1 and limpio.startswith("partition "):
+            dentro_de_particion = True
+            continue
+        if dentro_de_particion and limpio.startswith("mode:"):
+            anteriores.append(limpio.split(":", 1)[1].strip())
+            lineas[i] = f"\t\tmode: {mode}"
+            tocadas += 1
+            dentro_de_particion = False
+        elif _indent(linea) <= 1 and limpio and not limpio.startswith("partition "):
+            dentro_de_particion = False
+
+    if not tocadas:
+        raise ModelAuthorError(
+            f"La tabla '{table}' no declara ninguna particion con 'mode:'. "
+            "Una tabla calculada sin particion importada no tiene modo que "
+            "cambiar.")
+
+    salida = _escribir(active, ruta, lineas, "pbi_set_storage_mode")
+    log.info("Modo de '%s': %s -> %s (%s particiones)", table,
+             ",".join(sorted(set(anteriores))), mode, tocadas)
+    return {"table": table, "mode": mode,
+            "previous": sorted(set(anteriores)), "partitions_changed": tocadas,
+            "warning": ("DirectQuery exige que la consulta M sea plegable al "
+                        "origen y desactiva las columnas calculadas. Abre el "
+                        "informe y comprueba la tabla antes de dar el cambio "
+                        "por bueno.") if mode == "directQuery" else None,
+            **salida}
+
+
+def _indice_insercion_en_tabla(lineas: List[str]) -> int:
+    """Antes de la particion: las columnas van declaradas por encima."""
+    for i, linea in enumerate(lineas):
+        if _indent(linea) == 1 and linea.strip().startswith("partition "):
+            return i
+    for i in range(len(lineas) - 1, -1, -1):
+        if lineas[i].strip():
+            return i + 1
+    return len(lineas)
+
+
+# --------------------------------------------------------------- relacion ----
+def create_relationship(active: ActivePbip, from_table: str, from_column: str,
+                        to_table: str, to_column: str, *,
+                        from_cardinality: str = "many",
+                        to_cardinality: str = "one",
+                        cross_filtering: str = "oneDirection",
+                        is_active: bool = True,
+                        name: Optional[str] = None,
+                        overwrite: bool = False) -> Dict[str, Any]:
+    """Crea una relacion entre dos columnas.
+
+    Por defecto muchos-a-uno con filtro en un sentido, que es lo que Power BI
+    crea y lo unico que no introduce ambiguedad en el modelo.
+    """
+    for etiqueta, valor, validos in (("from_cardinality", from_cardinality, CARDINALIDADES),
+                                     ("to_cardinality", to_cardinality, CARDINALIDADES),
+                                     ("cross_filtering", cross_filtering, FILTRO_CRUZADO)):
+        if valor not in validos:
+            raise ModelAuthorError(
+                f"{etiqueta} no soportado: '{valor}'. Usa {list(validos)}.")
+
+    ruta = _definition(active) / "relationships.tmdl"
+    lineas = ruta.read_text(encoding="utf-8-sig").splitlines() if ruta.exists() else []
+
+    desde = f"{tmdl_quote_name(from_table)}.{tmdl_quote_name(from_column)}"
+    hasta = f"{tmdl_quote_name(to_table)}.{tmdl_quote_name(to_column)}"
+
+    # Una relacion duplicada entre las mismas columnas no la admite el motor.
+    for i, linea in enumerate(lineas):
+        if linea.strip().startswith("fromColumn:") and linea.split(":", 1)[1].strip() == desde:
+            fin = _fin_del_bloque(lineas, max(0, i - 1))
+            trozo = "\n".join(lineas[max(0, i - 1):fin])
+            if f"toColumn: {hasta}" in trozo:
+                if not overwrite:
+                    raise ModelAuthorError(
+                        f"Ya existe una relacion de {desde} a {hasta}. "
+                        "Usa overwrite=true para reemplazarla.")
+                inicio = max(0, i - 1)
+                del lineas[inicio:fin]
+                break
+
+    identificador = name or str(uuid.uuid4())
+    bloque = [f"relationship {tmdl_quote_name(identificador)}"]
+    if not is_active:
+        bloque.append("\tisActive: false")
+    if from_cardinality != "many":
+        bloque.append(f"\tfromCardinality: {from_cardinality}")
+    if to_cardinality != "one":
+        bloque.append(f"\ttoCardinality: {to_cardinality}")
+    if cross_filtering != "oneDirection":
+        bloque.append(f"\tcrossFilteringBehavior: {cross_filtering}")
+    bloque.append(f"\tfromColumn: {desde}")
+    bloque.append(f"\ttoColumn: {hasta}")
+    bloque.append("")
+
+    if lineas and lineas[-1].strip():
+        lineas.append("")
+    lineas += bloque
+    salida = _escribir(active, ruta, lineas, "pbi_create_relationship")
+    log.info("Relacion %s -> %s", desde, hasta)
+    return {"name": identificador, "from": desde, "to": hasta,
+            "from_cardinality": from_cardinality, "to_cardinality": to_cardinality,
+            "cross_filtering": cross_filtering, "is_active": is_active, **salida}
+
+
+# -------------------------------------------------------------- jerarquia ----
+def create_hierarchy(active: ActivePbip, table: str, name: str,
+                     levels: List[str], *,
+                     display_folder: Optional[str] = None,
+                     description: Optional[str] = None,
+                     overwrite: bool = False) -> Dict[str, Any]:
+    """Crea una jerarquia sobre columnas de la MISMA tabla.
+
+    `levels`: nombres de columna, de mayor a menor granularidad. El orden es el
+    de profundizacion, y por eso no se ordena ni se deduplica: es informacion.
+    """
+    name = validate_object_name(name, "jerarquia")
+    if not levels:
+        raise ModelAuthorError("Una jerarquia necesita al menos un nivel.")
+    if len(set(levels)) != len(levels):
+        raise ModelAuthorError(
+            f"Hay niveles repetidos en la jerarquia: {levels}. Cada nivel debe "
+            "ser una columna distinta.")
+
+    ruta = find_table_file(active, table)
+    lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
+    columnas = {l.strip()[len("column"):].strip().split("=")[0].strip().strip("'")
+                for l in lineas if _indent(l) == 1 and l.strip().startswith("column ")}
+    faltan = [n for n in levels if n not in columnas]
+    if faltan:
+        raise ModelAuthorError(
+            f"Estas columnas no existen en '{table}': {faltan}.",
+            details={"available": sorted(columnas)})
+
+    existente = _bloque_existe(lineas, "hierarchy", tmdl_quote_name(name))
+    if existente is None:
+        existente = _bloque_existe(lineas, "hierarchy", name)
+    if existente is not None:
+        if not overwrite:
+            raise ModelAuthorError(
+                f"La jerarquia '{name}' ya existe en '{table}'. Usa overwrite=true.")
+        fin = _fin_del_bloque(lineas, existente)
+        del lineas[existente:fin]
+        insercion = existente
+    else:
+        insercion = _indice_insercion_en_tabla(lineas)
+
+    bloque: List[str] = []
+    if description:
+        bloque += [f"\t/// {l.strip()}" for l in str(description).splitlines()]
+    bloque.append(f"\thierarchy {tmdl_quote_name(name)}")
+    if display_folder:
+        bloque.append(f"\t\tdisplayFolder: {display_folder}")
+    bloque.append(f"\t\tlineageTag: {uuid.uuid4()}")
+    bloque.append("")
+    for nivel in levels:
+        bloque.append(f"\t\tlevel {tmdl_quote_name(nivel)}")
+        bloque.append(f"\t\t\tlineageTag: {uuid.uuid4()}")
+        bloque.append(f"\t\t\tcolumn: {tmdl_quote_name(nivel)}")
+        bloque.append("")
+
+    lineas[insercion:insercion] = bloque
+    salida = _escribir(active, ruta, lineas, "pbi_create_hierarchy")
+    log.info("Jerarquia '%s' en '%s' con %s niveles", name, table, len(levels))
+    return {"table": table, "hierarchy": name, "levels": list(levels),
+            "action": "replaced" if existente is not None else "created", **salida}

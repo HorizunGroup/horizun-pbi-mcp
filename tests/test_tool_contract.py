@@ -69,6 +69,9 @@ MACROFASE_A_TOOLS = [
 
 # Exploracion y auditoria del modelo semantico (Macrofase B).
 MACROFASE_B_TOOLS = [
+    "pbi_create_calculated_column", "pbi_create_calculated_table",
+    "pbi_create_relationship", "pbi_set_storage_mode",
+    "pbi_create_hierarchy",
     "pbi_model_summary", "pbi_search_model", "pbi_get_object",
     "pbi_measure_dependencies", "pbi_column_dependencies",
     "pbi_list_hierarchies", "pbi_list_roles", "pbi_list_perspectives",
@@ -77,7 +80,7 @@ MACROFASE_B_TOOLS = [
 
 # Autoria de informes PBIR (Macrofase C).
 MACROFASE_C_TOOLS = [
-    "pbi_get_visual", "pbi_report_capabilities",
+    "pbi_get_visual", "pbi_report_capabilities", "pbi_set_conditional_format",
     "pbi_duplicate_visual", "pbi_delete_visual", "pbi_set_visual_title",
     "pbi_set_visual_z_order", "pbi_replace_visual_field",
     "pbi_copy_visual_format",
@@ -89,6 +92,7 @@ MACROFASE_C_TOOLS = [
 
 # Constructor declarativo de paginas (Macrofase D).
 MACROFASE_D_TOOLS = [
+    "pbi_propose_dashboard",
     "pbi_list_page_presets", "pbi_generate_page_spec", "pbi_validate_page_spec",
     "pbi_preview_page_spec", "pbi_diff_page_spec", "pbi_apply_page_spec",
     "pbi_validate_generated_page",
@@ -96,6 +100,7 @@ MACROFASE_D_TOOLS = [
 
 # Auditoria integral y autofixes (Macrofase E).
 MACROFASE_E_TOOLS = [
+    "pbi_profile_data",
     "pbi_audit_project", "pbi_audit_report_only", "pbi_plan_audit_fixes",
     "pbi_apply_audit_fixes", "pbi_list_autofix_rules",
 ]
@@ -114,9 +119,27 @@ FASE_F_R5_TOOLS = [
     "pbi_purge_backups",
 ]
 
+#: Conversion de .pbix a proyecto .pbip (informe PBIR + modelo TMDL).
+CONVERSION_TOOLS = [
+    "pbi_inspect_pbix",
+    "pbi_convert_pbix_to_pbip",
+    "pbi_list_convertible_pbix",
+]
+
+#: Identidad visual: paletas validadas y su registro en el informe.
+THEME_TOOLS = [
+    "pbi_list_themes",
+    "pbi_apply_theme",
+    "pbi_add_image_resource",
+    "pbi_list_report_resources",
+    "pbi_create_bookmark",
+    "pbi_list_bookmarks",
+    "pbi_delete_bookmark",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
-                + FASE_F_R5_TOOLS)
+                + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

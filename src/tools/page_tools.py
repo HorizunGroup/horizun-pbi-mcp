@@ -20,7 +20,55 @@ RELOAD_HINT = ("Reabre el informe en Power BI Desktop para ver la hoja. "
                "Edita el PBIR con Desktop cerrado para no sobrescribir cambios.")
 
 
+def normalizar_spec(spec: Any) -> Any:
+    """Acepta los dos dialectos de spec que conviven en el servidor.
+
+    `pbi_create_page_from_spec` nacio con `{page_name, canvas}`; el constructor
+    declarativo posterior usa `{schema_version, page:{name,width,height}}`. Se
+    validaba con uno y no se podia aplicar con el otro, y el mensaje de error
+    ("falta 'page_name'") no daba ninguna pista de que hubiera dos formatos.
+
+    Traducir aqui es aditivo: quien ya llamaba con el formato viejo no nota
+    nada, y el nuevo deja de rebotar. La firma de la tool no cambia, que es lo
+    que el contrato del baseline protege.
+    """
+    if not isinstance(spec, dict) or "page_name" in spec:
+        return spec
+    pagina = spec.get("page")
+    if not isinstance(pagina, dict):
+        return spec
+
+    traducido = {k: v for k, v in spec.items() if k not in ("page", "schema_version")}
+    traducido["page_name"] = pagina.get("name")
+    lienzo = {k: pagina[k] for k in ("width", "height") if pagina.get(k)}
+    if lienzo and "canvas" not in traducido:
+        traducido["canvas"] = lienzo
+    return traducido
+
+
 def register(mcp) -> None:
+
+    @mcp.tool()
+    def pbi_propose_dashboard() -> Dict[str, Any]:
+        """Mira el modelo y PROPONE varios diseños distintos, con su porque.
+
+        A diferencia de pbi_page_building_blocks, que entrega el inventario y
+        deja el diseño en manos de quien pregunta, esto clasifica lo que hay
+        —que columna es un estado, cual una fecha, cuales forman una familia de
+        metricas comparables— y devuelve paginas completas con un spec listo
+        para aplicar.
+
+        Devuelve tambien `blockers`: lo que hay que resolver ANTES de construir
+        (p.ej. un modelo sin medidas, donde todo visual caeria en sumas
+        implicitas), y `themes` con las paletas disponibles.
+
+        Usalo para ofrecer opciones al usuario en vez de decidir por el.
+        """
+        from pbip import theme
+        from services import proposals
+
+        return guard(lambda: proposals.propose(_model_data(), theme.list_presets()))
+
     @mcp.tool()
     def pbi_page_building_blocks() -> Dict[str, Any]:
         """Entrega el material para diseniar una hoja: modelo (tablas/medidas/columnas),
@@ -73,7 +121,7 @@ def register(mcp) -> None:
             session = get_session()
             active = session.require_active_pbip()
             mi = _measure_index(_model_data())
-            res = page_builder.create_page_from_spec(active, spec, mi)
+            res = page_builder.create_page_from_spec(active, normalizar_spec(spec), mi)
             res["reload_hint"] = RELOAD_HINT
             return res
         return guard_mutation(_impl)

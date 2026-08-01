@@ -17,7 +17,141 @@ def _active():
     return get_session().require_active_pbip()
 
 
+def _tema_activo():
+    from config import get_session
+
+    return get_session().require_active_pbip()
+
+
 def register(mcp) -> None:
+
+    @mcp.tool()
+    def pbi_add_image_resource(path: str, name: Optional[str] = None,
+                               overwrite: bool = False,
+                               request_id: str = "") -> Dict[str, Any]:
+        """Incrusta una imagen en el informe y la deja lista para usar.
+
+        La copia a StaticResources y la declara en report.json: sin las dos
+        cosas Power BI no la encuentra y el visual sale vacio sin dar ningun
+        error. Devuelve `item_name`, que es lo que se le pasa al visual de tipo
+        'image' en options.resource.
+
+        `path`: archivo local (.png .jpg .gif .bmp .svg).
+        """
+        from pbip import resources
+
+        return guard_mutation(lambda: resources.add_image(
+            _tema_activo(), path, name=name, overwrite=overwrite))
+
+    @mcp.tool()
+    def pbi_list_report_resources() -> Dict[str, Any]:
+        """Recursos del informe: declarados, en disco y los que no cuadran.
+
+        Un archivo sin declarar no lo encuentra Power BI; una declaracion sin
+        archivo deja el visual vacio. Los dos casos son invisibles al abrir el
+        informe, asi que se listan aparte.
+        """
+        from pbip import resources
+
+        return guard(lambda: resources.list_resources(_tema_activo()))
+
+    @mcp.tool()
+    def pbi_create_bookmark(display_name: str, page: str,
+                            filters: Optional[List[Dict[str, Any]]] = None,
+                            target_visuals: Optional[List[str]] = None,
+                            suppress_data: bool = False,
+                            suppress_display: bool = False,
+                            name: Optional[str] = None,
+                            overwrite: bool = False,
+                            request_id: str = "") -> Dict[str, Any]:
+        """Crea un marcador: un estado del informe al que volver con un boton.
+
+        Escribe el archivo del marcador Y lo mete en el indice: sin el indice
+        Power BI no lo muestra aunque el archivo exista.
+
+        `page`: id o titulo de la pagina que activara. `filters`: filtros a
+        guardar, con la misma forma que en un page spec. `target_visuals`
+        limita a que visuales afecta. Devuelve `usage`, listo para pasarselo a
+        un boton con action='bookmark'.
+        """
+        from pbip import bookmarks
+
+        return guard_mutation(lambda: bookmarks.create_bookmark(
+            _tema_activo(), display_name, page, filters=filters,
+            target_visuals=target_visuals, suppress_data=suppress_data,
+            suppress_display=suppress_display, name=name, overwrite=overwrite))
+
+    @mcp.tool()
+    def pbi_list_bookmarks() -> Dict[str, Any]:
+        """Marcadores del informe, y los que no cuadran entre indice y disco.
+
+        Un marcador que no esta en el indice no se muestra; una entrada del
+        indice sin archivo rompe el panel. Los dos casos son mudos al abrir.
+        """
+        from pbip import bookmarks
+
+        return guard(lambda: bookmarks.list_bookmarks(_tema_activo()))
+
+    @mcp.tool()
+    def pbi_delete_bookmark(name: str, confirm: bool = False,
+                            request_id: str = "") -> Dict[str, Any]:
+        """Borra un marcador y lo quita del indice. Destructiva: confirm=true."""
+        from pbip import bookmarks
+        from powerbi.errors import ValidationError
+
+        def _impl():
+            if not confirm:
+                raise ValidationError(
+                    "Borrar un marcador es destructivo. Repite con confirm=true.")
+            return bookmarks.delete_bookmark(_tema_activo(), name)
+
+        return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_list_themes() -> Dict[str, Any]:
+        """Temas de informe disponibles, con su paleta y para que sirve cada uno.
+
+        Devuelve, por tema: el escenario de uso, el color de fondo, los colores
+        de serie EN SU ORDEN (el orden es lo que garantiza que dos series
+        contiguas se distingan tambien con daltonismo) y los colores de estado.
+
+        Usalo para PROPONER un esquema antes de construir, en vez de decidirlo
+        por el usuario.
+        """
+        from pbip import theme
+
+        return guard(lambda: {"count": len(theme.PRESETS),
+                              "themes": theme.list_presets(),
+                              "note": ("Los colores de estado (good/neutral/bad) "
+                                       "son iguales en los tres: el semaforo "
+                                       "significa lo mismo en cualquier tema.")})
+
+    @mcp.tool()
+    def pbi_apply_theme(preset: str = "control_room",
+                        name: Optional[str] = None,
+                        data_colors: Optional[List[str]] = None,
+                        request_id: Optional[str] = None) -> Dict[str, Any]:
+        """Aplica un tema de colores al informe .pbip activo.
+
+        Escribe el JSON del tema en StaticResources/RegisteredResources y lo
+        declara en report.json (themeCollection + resourcePackages). Sin las
+        tres cosas Power BI Desktop lo ignora en silencio.
+
+        `preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de
+        series por la tuya (#RRGGBB); ojo, entonces el orden deja de estar
+        verificado contra daltonismo. `name`: nombre visible del tema.
+
+        Requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import theme
+
+        def _impl():
+            activo = _tema_activo()
+            construido = theme.build_theme(preset=preset, name=name,
+                                           data_colors=data_colors)
+            return theme.apply_theme(activo, construido)
+
+        return guard_mutation(_impl)
 
     # ---------------------------------------------------------- inspeccion ---
     @mcp.tool()
@@ -71,6 +205,34 @@ def register(mcp) -> None:
         """Cambia el titulo de un visual PRESERVANDO su formato (fuente, color)."""
         return guard_mutation(lambda: pbir_edit.set_visual_title(
             _active(), page, visual_id, title))
+
+    @mcp.tool()
+    def pbi_set_conditional_format(page: str, visual_id: str, field: str,
+                                   min_color: str, max_color: str,
+                                   target: str = "background",
+                                   mid_color: Optional[str] = None,
+                                   null_strategy: str = "asZero",
+                                   request_id: str = "") -> Dict[str, Any]:
+        """Colorea un visual segun el valor de un campo (degradado).
+
+        Es lo que convierte una matriz de numeros en un mapa de calor, o unas
+        barras planas en una escala de semaforo.
+
+        `field`: 'Tabla[Campo]' o '[Medida]' de donde sale el valor.
+        `target`: 'background' o 'font' para tablas y matrices; 'bars' para
+        barras, columnas y puntos. `mid_color`: si lo indicas, el degradado
+        tiene tres paradas en vez de dos, util cuando hay un punto neutro.
+        `null_strategy`: asZero | none | specificColor.
+
+        Si el visual ya tenia una regla en ese mismo destino, se sustituye:
+        dos degradados sobre la misma propiedad no se suman, se pisan.
+        """
+        from tools.visual_tools import _measure_index, _model_data
+
+        return guard_mutation(lambda: pbir_edit.set_conditional_format(
+            _active(), page, visual_id, field, min_color, max_color,
+            target=target, mid_color=mid_color, null_strategy=null_strategy,
+            measure_index=_measure_index(_model_data())))
 
     @mcp.tool()
     def pbi_set_visual_z_order(page: str, order: List[str], request_id: str = "") -> Dict[str, Any]:

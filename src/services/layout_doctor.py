@@ -57,9 +57,21 @@ def detect_issues(visuals: List[Dict[str, Any]],
 
     ordenados = sorted(visuals, key=lambda v: (v.get("id") or ""))
 
-    # --- colisiones -------------------------------------------------------
-    for i, a in enumerate(ordenados):
-        for b in ordenados[i + 1:]:
+    # Los elementos de composicion (fondos, bandas, titulos, botones) SE
+    # SUPERPONEN a proposito: un rectangulo de fondo esta debajo de todo por
+    # definicion, y un boton no muestra datos, asi que "demasiado pequeno para
+    # leerse" no le aplica. Sin esta distincion una portada normal generaba
+    # veinte avisos falsos y enterraba los de verdad.
+    from pbip.visual_factory import DECORATIVOS
+
+    def _es_composicion(v: Dict[str, Any]) -> bool:
+        return str(v.get("type") or "") in DECORATIVOS
+
+    graficos = [v for v in ordenados if not _es_composicion(v)]
+
+    # --- colisiones (solo entre visuales de datos) ------------------------
+    for i, a in enumerate(graficos):
+        for b in graficos[i + 1:]:
             solape = _solapan(a, b)
             if solape:
                 hallazgos.append(_hallazgo(
@@ -90,7 +102,9 @@ def detect_issues(visuals: List[Dict[str, Any]],
                 "Muevelo o redimensionalo.", True))
 
         ancho, alto = x2 - x1, y2 - y1
-        if ancho < MIN_ANCHO or alto < MIN_ALTO:
+        # El minimo legible aplica a los visuales que muestran DATOS. Un boton
+        # o una banda de color no tienen ejes ni etiquetas que apretar.
+        if not _es_composicion(v) and (ancho < MIN_ANCHO or alto < MIN_ALTO):
             hallazgos.append(_hallazgo(
                 "layout_visual_too_small", "warning",
                 {"kind": "visual", "id": v["id"], "type": v.get("type")},

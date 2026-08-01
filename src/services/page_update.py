@@ -121,7 +121,9 @@ def planificar(active: ActivePbip, compilado: Dict[str, Any], *,
     if page_id is None:
         materializado = pbir_writer.plan_page_with_visuals(
             active, compilado["page_name"], compilado["canvas"]["width"],
-            compilado["canvas"]["height"], compilado["visuals"])
+            compilado["canvas"]["height"], compilado["visuals"],
+            filter_config=compilado.get("page_filter_config"),
+            interactions=compilado.get("page_interactions"))
         return {"change": CREATE, "page_id": materializado["page_id"],
                 "files": materializado["files"], "deletes": [],
                 "ensure_dirs": materializado["ensure_dirs"],
@@ -195,6 +197,14 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
     nueva_pagina["width"] = compilado["canvas"]["width"]
     nueva_pagina["height"] = compilado["canvas"]["height"]
     nueva_pagina["name"] = page_id          # el id NO cambia
+    # Filtros e interacciones: se declaran o se quitan segun el spec, para que
+    # aplicar dos veces el mismo spec deje siempre el mismo resultado.
+    for clave, valor in (("filterConfig", compilado.get("page_filter_config")),
+                         ("visualInteractions", compilado.get("page_interactions"))):
+        if valor:
+            nueva_pagina[clave] = valor
+        else:
+            nueva_pagina.pop(clave, None)
     if nueva_pagina != actual_pagina:
         archivos[page_json] = nueva_pagina
 

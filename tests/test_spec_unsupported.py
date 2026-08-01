@@ -1,12 +1,14 @@
-"""Fase C1 — `filters` e `interactions` se rechazan en vez de descartarse.
+"""Lo que el spec acepta pero el escritor no sabe materializar se RECHAZA.
 
-El esquema los aceptaba (solo comprobaba que fueran listas) y NADIE los
-serializaba a PBIR. Un spec con filtros producia una pagina sin filtros y sin
-decirlo: el usuario solo lo descubria abriendo el informe, lejos de la
-operacion que lo causo.
+Origen: el esquema aceptaba `filters` e `interactions` (solo comprobaba que
+fueran listas) y nadie los serializaba. Un spec con filtros producia una pagina
+sin filtros y sin decirlo, y el usuario solo lo descubria abriendo el informe.
 
-Las pruebas de abajo fallan contra el codigo anterior, donde
-`compile_spec(spec_con_filtros)` devolvia una pagina tan tranquila.
+Hoy ambos SI se serializan (ver `test_filtros_e_interacciones.py`), asi que
+`NO_SOPORTADO_AUN` esta vacio. Lo que se prueba aqui es el MECANISMO: mientras
+quede algo sin implementar, tiene que fallar pronto y decir que propiedad es.
+El mecanismo se ejercita inyectando una propiedad ficticia, no dependiendo de
+que siga habiendo huecos.
 """
 from __future__ import annotations
 
@@ -19,6 +21,20 @@ from pbip import pbir_reader, project_locator, tmdl_reader
 from services import page_spec
 from services.page_spec import UnsupportedSpecFeature
 from tests.fixtures import synthetic
+
+
+@pytest.fixture
+def gate(monkeypatch):
+    """Reactiva el mecanismo con una propiedad que de verdad no se soporta.
+
+    Asi la prueba mide el mecanismo y no la lista de huecos del dia, que
+    cambia segun se van implementando.
+    """
+    monkeypatch.setitem(page_spec.NO_SOPORTADO_AUN, "filters",
+                        "propiedad ficticia para ejercitar el rechazo")
+    monkeypatch.setitem(page_spec.NO_SOPORTADO_AUN, "interactions",
+                        "propiedad ficticia para ejercitar el rechazo")
+    return page_spec.NO_SOPORTADO_AUN
 
 
 def spec_base(**extra):
@@ -58,14 +74,14 @@ INTERACCION = {"source": "v1", "target": "v2", "type": "none"}
     ("filters", [FILTRO]),
     ("interactions", [INTERACCION]),
 ])
-def test_no_soportado_se_rechaza(clave, valor):
+def test_no_soportado_se_rechaza(clave, valor, gate):
     with pytest.raises(UnsupportedSpecFeature) as exc:
         page_spec.assert_soportado(spec_base(**{clave: valor}))
     assert exc.value.code == "unsupported_feature"
     assert clave in exc.value.details["properties"]
 
 
-def test_el_error_identifica_la_propiedad_exacta():
+def test_el_error_identifica_la_propiedad_exacta(gate):
     spec = spec_base(filters=[FILTRO, FILTRO], interactions=[INTERACCION])
     with pytest.raises(UnsupportedSpecFeature) as exc:
         page_spec.assert_soportado(spec)
@@ -81,7 +97,7 @@ def test_listas_vacias_siguen_valiendo():
     page_spec.assert_soportado(spec_base())
 
 
-def test_falla_antes_del_dry_run(proyecto):
+def test_falla_antes_del_dry_run(proyecto, gate):
     """Se rechaza al compilar, asi que preview, diff, dry_run y apply fallan igual."""
     active, md, raiz = proyecto
     antes = huella(raiz)
@@ -100,7 +116,7 @@ def test_un_spec_sin_filtros_sigue_creando_la_pagina(proyecto):
     assert len(compilado["visuals"]) == 1
 
 
-def test_la_tool_de_validacion_lo_reporta_como_etapa(proyecto, monkeypatch):
+def test_la_tool_de_validacion_lo_reporta_como_etapa(proyecto, monkeypatch, gate):
     """pbi_validate_page_spec no puede decir 'valido' y luego fallar al aplicar."""
     import config as cfg
     from server import build_server

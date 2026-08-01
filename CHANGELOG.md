@@ -5,6 +5,139 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [No publicado]
+
+**108 tools, 1008 pruebas** (2 omitidas), contrato congelado.
+
+### Añadido
+
+- **Elementos de composición**: `textbox`, `shape`, `image`, `actionButton` y
+  `pageNavigator`. Hasta ahora el servidor solo sabía crear visuales de datos,
+  así que no podía hacer una portada ni un menú de navegación. No llevan
+  consulta: su contenido se define en `options` (texto, relleno, forma, página
+  destino), y pedirles campos es un error explícito en vez de un visual vacío.
+  Las estructuras se extrajeron de informes reales, no de la documentación.
+- **Identidad visual**: `pbi_list_themes` y `pbi_apply_theme`, con tres paletas
+  verificadas con el validador de la skill `dataviz` (banda de luminosidad,
+  croma, separación bajo protanopia/deuteranopia/tritanopia y contraste). Los
+  colores de estado son fijos en los tres temas: el semáforo significa lo mismo
+  se pinte donde se pinte, y un color de estado nunca se reutiliza como serie.
+  Aplicar un tema escribe el JSON, lo declara en `themeCollection` y lo registra
+  en `resourcePackages`: sin las tres cosas Desktop lo ignora en silencio.
+- La vista previa HTML dibuja los elementos de composición **con su aspecto**
+  (color, texto, botones) en vez de como cajas de alambre, de modo que se puede
+  juzgar una portada sin abrir Power BI Desktop.
+
+### Corregido
+
+- **`TYPE_MAP` declaraba claves en camelCase y la búsqueda las pasaba a
+  minúsculas**: `cardVisual`, `tableEx` y `pivotTable` se anunciaban como
+  soportados y se rechazaban al usarlos, con un mensaje que los listaba como
+  válidos. Ahora hay una prueba que recorre todos los tipos anunciados.
+- **El detector de layout trataba los elementos de composición como gráficos**:
+  una portada normal producía una veintena de avisos falsos —un fondo *debe*
+  estar debajo de todo, y un botón no es "demasiado pequeño para mostrar datos"—
+  y entre ellos se perdía el aviso de verdad. Ahora el solape y el tamaño mínimo
+  solo aplican a los visuales de datos; el orden Z se sigue comprobando en todos.
+
+### Añadido (conversión)
+
+- **Conversión `.pbix` → `.pbip`**, en archivo suelto o carpeta en lote:
+  `pbi_convert_pbix_to_pbip`, `pbi_inspect_pbix` y `pbi_list_convertible_pbix`.
+  - **Informe**: si el `.pbix` ya guarda PBIR (Desktop reciente lo hace) se copia
+    byte a byte; si trae el `Report/Layout` heredado se traduce. La traducción
+    resuelve los alias de tabla a nombres de entidad, fusiona `projections` con
+    `prototypeQuery.Select`, convierte los enums numéricos a cadena y pasa
+    `OrderBy` a `sortDefinition`. Las equivalencias se derivaron comparando un
+    informe real guardado por Desktop en los dos formatos.
+  - **Modelo**: el stream `DataModel` es un backup ABF comprimido con XPress9 y
+    no se puede leer sin el motor, así que el `.pbix` se abre en Power BI
+    Desktop y se serializa a TMDL con el `TmdlSerializer` oficial. Se reutiliza
+    la sesión si el informe ya está abierto y solo se cierra lo que abrió la
+    tool. El `.pbix` original nunca se modifica.
+  - La conversión reporta lo que **no** tiene equivalente (`dropped`) en vez de
+    perderlo en silencio: hoy, los marcadores del formato heredado.
+  - Verificado sobre 72 informes heredados reales: 6705 documentos válidos
+    contra los esquemas oficiales, y proyectos que Power BI Desktop abre.
+
+### Corregido
+
+- El serializador de TMDL corre sobre .NET Framework, que rechaza rutas de 260
+  caracteres o más aunque Windows las admita. Ahora se serializa en un temporal
+  corto y se traslada al destino con Python.
+- Power BI Desktop tampoco abre un `.pbip` con rutas largas
+  (`PBIProjectUtils.EnsureNotLong`). La conversión lo comprueba **antes** de
+  escribir y aborta indicando cuánto sobra, en vez de dejar un proyecto que no
+  abre.
+- El descubrimiento de instancias daba por listo un motor que aún no había
+  cargado el modelo: Desktop crea la base antes de poblarla y había una ventana
+  de varios segundos en la que el TMDL habría salido sin tablas.
+
+### Desbloqueado — esquemas que Microsoft no publica
+
+Power BI escribe versiones de esquema antes de publicarlas: `visualContainer`
+2.10.0 y 2.11.0 dan **404**. Eso bloqueaba **toda** escritura sobre cualquier
+informe guardado con una versión reciente de Desktop, que es casi cualquiera.
+
+Ahora se comprueba contra la versión anterior de la misma familia y se perdona
+solo lo que una versión posterior pudo **añadir** (una propiedad nueva, un valor
+nuevo de enumeración). Un tipo equivocado o un campo obligatorio ausente sigue
+bloqueando. Medido sobre **275 archivos reales** que declaran 2.10 u 2.11: en
+todos, lo único que discrepaba contra 2.7.0 era la cadena de versión del propio
+`$schema`. La aproximación no cruza versiones mayores, y sin ninguna versión
+anterior en caché se mantiene el bloqueo. El único esquema sin publicar que
+queda sin alternativa es `bookmarks/` (plural), que algunos informes declaran
+para el índice de marcadores; los que este servidor escribe —`bookmark/2.1.0`
+y `bookmarksMetadata/1.0.0`— sí están publicados, así que crear marcadores se
+comprueba entero.
+
+### Añadido — autoría que faltaba
+
+- **Formato condicional** (`pbi_set_conditional_format`): degradado de dos o
+  tres paradas sobre fondo, texto o barras. Es lo que convierte una matriz de
+  números en un mapa de calor. Con selector comodín, o el color solo pintaría
+  la primera fila.
+- **Filtros e interacciones**: antes se rechazaban por no saber serializarlos.
+  La trampa del formato es que el filtro tiene dos mitades con reglas distintas
+  —`field` referencia la tabla por nombre y la consulta interna por alias—, y
+  escribir el nombre en ambas produce un filtro que Power BI ignora sin avisar.
+- **Modelo semántico más allá de las medidas**: `pbi_create_calculated_column`,
+  `pbi_create_relationship` y `pbi_create_hierarchy`.
+- **Recursos**: `pbi_add_image_resource` y `pbi_list_report_resources`. Copiar
+  una imagen sin declararla la deja invisible para Power BI, y declararla sin
+  copiarla deja el visual vacío: los dos casos son mudos al abrir el informe.
+- **`pbi_propose_dashboard`**: clasifica el modelo —qué columna es un estado,
+  cuál una fecha, cuáles forman una familia comparable— y devuelve diseños
+  completos con su porqué y un spec aplicable, en vez de esperar instrucciones.
+- **`pbi_profile_data`**: perfila los VALORES, no la estructura. Detecta
+  porcentajes fuera de 0-100, columnas vacías o de un solo valor. Sobre un
+  modelo real encontró en segundos un `pct_codificado` que valía −800.
+- **Marcadores**: `pbi_create_bookmark`, `pbi_list_bookmarks` y
+  `pbi_delete_bookmark`. Se escribe el archivo Y el índice, porque sin índice
+  Power BI no lo muestra aunque el archivo exista. Dentro de un marcador el
+  filtro usa la clave `expression`, no `field` como en `filterConfig`: son
+  estructuras parecidas con nombres distintos, y usar la de al lado produce un
+  marcador que no restaura nada.
+- **`pbi_set_storage_mode`**: import / directQuery / dual. Devuelve el modo
+  anterior y cuántas particiones cambiaron, porque es un cambio que hay que
+  poder deshacer sabiendo exactamente qué se tocó, y avisa de que DirectQuery
+  exige consultas plegables y desactiva las columnas calculadas.
+- **`pbi_create_calculated_table`**: deduce las columnas EJECUTANDO el DAX
+  contra el modelo abierto, porque TMDL las exige declaradas y no se pueden
+  adivinar leyendo la expresión.
+
+### Corregido — precedencias y dialectos
+
+- **La validación de campos miraba el modelo equivocado**: prefería el modelo
+  en vivo sobre el TMDL del proyecto, así que bastaba tener otro `.pbix` abierto
+  en Desktop para que las medidas recién escritas se dieran por inexistentes.
+- **Dos dialectos de spec incompatibles**: se validaba con
+  `{schema_version, page}` y se aplicaba con `{page_name}`. Un spec que pasaba
+  la validación rebotaba al crearlo, con un error que ni mencionaba que hubiera
+  dos formatos. Ahora `pbi_create_page_from_spec` acepta los dos.
+
+---
+
 ## [1.0.0-rc.3] — 2026-07-31
 
 **90 tools, 859 pruebas** (2 omitidas), contrato congelado.

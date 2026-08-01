@@ -285,6 +285,44 @@ def set_visual_title(active: ActivePbip, page: str, visual_id: str,
             "backup": cm.result["journal"], "transaction": cm.result}
 
 
+def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
+                           field_ref: str, min_color: str, max_color: str, *,
+                           target: str = "background",
+                           mid_color: Optional[str] = None,
+                           null_strategy: str = "asZero",
+                           measure_index: Optional[Dict[str, str]] = None
+                           ) -> Dict[str, Any]:
+    """Pinta un visual segun el valor de un campo (degradado).
+
+    `field_ref` se resuelve igual que en el resto del servidor ('Tabla[Campo]'),
+    de modo que la referencia del color y la de la consulta son la misma cosa.
+    """
+    from pbip import conditional_format, visual_factory
+
+    ruta = _visual_file(active, page, visual_id)
+    if not ruta.exists():
+        raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
+    datos = read_json(ruta)
+
+    avisos: List[str] = []
+    nodo = visual_factory._field_node(                       # noqa: SLF001
+        field_ref, visual_factory._infer_kind(field_ref, measure_index),  # noqa: SLF001
+        measure_index, avisos)["field"]
+
+    detalle = conditional_format.apply_to_visual(
+        datos, nodo, min_color, max_color, target=target,
+        mid_color=mid_color, null_strategy=null_strategy)
+
+    assert_escritura_pbir(active, operation="Aplicar formato condicional")
+    cm = txn_service.project_transaction(active, [ruta],
+                                         tool="pbi_set_conditional_format")
+    with cm as t:
+        t.write_json(ruta, datos)
+    return {"visual_id": visual_id, "page": page, "field": field_ref,
+            **detalle, "warnings": avisos,
+            "backup": cm.result["journal"], "transaction": cm.result}
+
+
 def set_visual_z_order(active: ActivePbip, page: str,
                        order: List[str]) -> Dict[str, Any]:
     """Fija el orden Z de los visuales de una pagina.

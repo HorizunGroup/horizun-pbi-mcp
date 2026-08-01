@@ -19,6 +19,27 @@ def _active():
 def register(mcp) -> None:
 
     @mcp.tool()
+    def pbi_profile_data(tables: Optional[List[str]] = None,
+                         max_columns: int = 60) -> Dict[str, Any]:
+        """Perfila los VALORES del modelo abierto y devuelve lo que no cuadra.
+
+        Complementa a pbi_audit_model, que revisa la estructura: un porcentaje
+        que vale -800 no es un defecto del modelo sino de los datos, y solo se
+        ve consultandolos.
+
+        Detecta porcentajes fuera de 0-100, columnas vacias, columnas de un
+        solo valor y columnas mayormente vacias. Cada hallazgo trae la consulta
+        que lo demuestra y la consecuencia concreta sobre el tablero.
+
+        Solo lectura. `tables` acota el trabajo; `max_columns` evita que un
+        modelo grande agote el timeout y devuelva un perfil a medias.
+        """
+        from services import data_profile
+
+        return guard(lambda: data_profile.profile_model(
+            get_session(), tables=tables, max_columns=max_columns))
+
+    @mcp.tool()
     def pbi_audit_project(rules: Optional[List[str]] = None,
                           min_severity: str = "info",
                           formats: Optional[List[str]] = None) -> Dict[str, Any]:

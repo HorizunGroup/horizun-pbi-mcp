@@ -229,6 +229,8 @@ def plan_page_with_visuals(
     visuals: List[Dict[str, Any]],
     *,
     page_id: Optional[str] = None,
+    filter_config: Optional[Dict[str, Any]] = None,
+    interactions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Calcula TODO lo que se escribiria, sin escribir ni comprobar permisos.
 
@@ -262,8 +264,13 @@ def plan_page_with_visuals(
         planificados.append({"id": vid, "path": _visual_path(page_dir, vid),
                              "visual": vdict, "meta": item.get("meta", {})})
 
+    pagina = _page_json(pid, display_name, width, height)
+    if filter_config:
+        pagina["filterConfig"] = filter_config
+    if interactions:
+        pagina["visualInteractions"] = interactions
     archivos: Dict[Path, Any] = {
-        page_json_path: _page_json(pid, display_name, width, height),
+        page_json_path: pagina,
         pages_json_path: _pages_metadata(active, pid),
     }
     for p in planificados:

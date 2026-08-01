@@ -167,6 +167,52 @@ def create_page_from_spec(active: ActivePbip, spec: Dict[str, Any],
 
 
 # --------------------------------------------------------------- HTML maqueta ---
+def _caja_decorativa(vtype: str, opciones: Dict[str, Any], estilo_pos: str,
+                     z: float) -> Optional[str]:
+    """Dibuja los elementos de composicion con su ASPECTO, no como alambre.
+
+    Un rectangulo de relleno negro y un cuadro de texto blanco son cajas
+    identicas en un wireframe, y ahi se pierde justo lo que hay que revisar:
+    si la portada se ve. Estos se pintan con su color y su texto para poder
+    juzgar la composicion sin abrir Power BI Desktop.
+    """
+    o = opciones or {}
+    base = (f'style="{estilo_pos}z-index:{int(z)};box-sizing:border-box;'
+            f'position:absolute;overflow:hidden;')
+    if vtype == "shape":
+        relleno = o.get("fill") or "#3A3A46"
+        texto = html.escape(str(o.get("text") or ""))
+        cuerpo = (f'<span style="color:{o.get("text_color") or "#FFF"};'
+                  f'font-size:{float(o.get("font_size") or 14):.0f}px;'
+                  f'font-weight:600">{texto}</span>') if texto else ""
+        return (f'<div {base}background:{relleno};display:flex;'
+                f'align-items:center;justify-content:center;">{cuerpo}</div>')
+    if vtype == "textbox":
+        return (f'<div {base}display:flex;align-items:center;'
+                f'justify-content:{"center" if o.get("align") == "center" else "flex-start"};'
+                f'color:{o.get("color") or "#E6E6EF"};'
+                f'font-size:{float(o.get("font_size") or 12):.0f}px;'
+                f'font-weight:{"700" if o.get("bold") else "400"};line-height:1.2">'
+                f'{html.escape(str(o.get("text") or ""))}</div>')
+    if vtype == "actionButton":
+        return (f'<div {base}background:{o.get("fill") or "#2A78D6"};'
+                f'border-radius:6px;display:flex;align-items:center;'
+                f'justify-content:center;color:{o.get("text_color") or "#FFF"};'
+                f'font-size:{float(o.get("font_size") or 12):.0f}px;font-weight:600">'
+                f'{html.escape(str(o.get("text") or o.get("icon") or "boton"))}</div>')
+    if vtype == "image":
+        return (f'<div {base}background:#2B2B3D;border:1.5px dashed #6C7A99;'
+                f'border-radius:6px;display:flex;align-items:center;'
+                f'justify-content:center;color:#8AA0B4;font-size:11px">'
+                f'{html.escape(str(o.get("resource") or "imagen"))}</div>')
+    if vtype == "pageNavigator":
+        return (f'<div {base}background:#252535;border:1.5px solid #2EC4B6;'
+                f'border-radius:6px;display:flex;align-items:center;gap:6px;'
+                f'padding:0 10px;color:#2EC4B6;font-size:11px">'
+                f'&#9664; navegador de paginas &#9654;</div>')
+    return None
+
+
 def _visual_box_html(v: Dict[str, Any], canvas: Dict[str, int]) -> str:
     pos = v.get("position", {})
     x = float(pos.get("x", 0)); y = float(pos.get("y", 0))
@@ -175,6 +221,14 @@ def _visual_box_html(v: Dict[str, Any], canvas: Dict[str, int]) -> str:
     left = 100 * x / cw; top = 100 * y / ch
     width = 100 * w / cw; height = 100 * h / ch
     vtype = v.get("type") or "?"
+
+    decorativo = _caja_decorativa(
+        vtype, v.get("options") or {},
+        f"left:{left:.2f}%;top:{top:.2f}%;width:{width:.2f}%;height:{height:.2f}%;",
+        float(pos.get("z", 0)))
+    if decorativo is not None:
+        return decorativo
+
     color = _TYPE_COLORS.get(vtype, "#8AA0B4")
     title = html.escape(str(v.get("title") or ""))
     fields = (v.get("measures") or []) + (v.get("columns") or [])

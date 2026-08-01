@@ -203,7 +203,136 @@ def hide_columns_service(session, columns: Any, hidden: bool,
     return _reconstruir_resultados(solicitadas, por_columna, m, duplicadas)
 
 
+def _proyecto_activo():
+    from config import get_session
+
+    return get_session().require_active_pbip()
+
+
 def register(mcp) -> None:
+
+    @mcp.tool()
+    def pbi_create_calculated_column(table: str, name: str, expression: str,
+                                     data_type: str = "string",
+                                     format_string: Optional[str] = None,
+                                     display_folder: Optional[str] = None,
+                                     description: Optional[str] = None,
+                                     summarize_by: str = "none",
+                                     is_hidden: bool = False,
+                                     overwrite: bool = False,
+                                     request_id: str = "") -> Dict[str, Any]:
+        """Crea una columna calculada (DAX) en una tabla del modelo .pbip.
+
+        `data_type`: string | int64 | double | decimal | boolean | dateTime.
+        `summarize_by`: como se agrega por defecto; 'none' para clasificaciones
+        y textos, que es lo que casi siempre se quiere.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import model_author
+
+        return guard_mutation(lambda: model_author.create_calculated_column(
+            _proyecto_activo(), table, name, expression, data_type=data_type,
+            format_string=format_string, display_folder=display_folder,
+            description=description, summarize_by=summarize_by,
+            is_hidden=is_hidden, overwrite=overwrite))
+
+    @mcp.tool()
+    def pbi_create_calculated_table(name: str, expression: str,
+                                    columns: Optional[List[Dict[str, str]]] = None,
+                                    description: Optional[str] = None,
+                                    overwrite: bool = False,
+                                    request_id: str = "") -> Dict[str, Any]:
+        """Crea una tabla calculada (DAX) en el modelo .pbip.
+
+        Resuelve el caso tipico de tener diez metricas guardadas en diez
+        COLUMNAS en vez de en filas: con una tabla calculada que las dinamice
+        se obtiene una matriz de verdad, en lugar de escribir una medida por
+        columna.
+
+        TMDL exige declarar las columnas y no se pueden adivinar leyendo el
+        DAX: si no pasas `columns`, se deducen EJECUTANDO la expresion contra
+        el modelo abierto en Power BI Desktop y leyendo el esquema que devuelve
+        el motor. Para eso hace falta el modelo abierto Y seleccionado.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import model_author
+
+        return guard_mutation(lambda: model_author.create_calculated_table(
+            _proyecto_activo(), name, expression, columns=columns,
+            session=get_session() if not columns else None,
+            description=description, overwrite=overwrite))
+
+    @mcp.tool()
+    def pbi_set_storage_mode(table: str, mode: str,
+                             request_id: str = "") -> Dict[str, Any]:
+        """Cambia el modo de almacenamiento de una tabla: import | directQuery | dual.
+
+        Con directQuery el dato se consulta al origen en cada interaccion y
+        desaparece el refresco, pero NO es un interruptor inocuo: la consulta M
+        tiene que ser plegable al origen, las columnas y tablas calculadas
+        dejan de estar disponibles, y cada visual pasa a ser una consulta al
+        servidor.
+
+        Devuelve el modo anterior y cuantas particiones cambiaron, para poder
+        deshacerlo sabiendo exactamente que se toco.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import model_author
+
+        return guard_mutation(lambda: model_author.set_storage_mode(
+            _proyecto_activo(), table, mode))
+
+    @mcp.tool()
+    def pbi_create_relationship(from_table: str, from_column: str,
+                                to_table: str, to_column: str,
+                                from_cardinality: str = "many",
+                                to_cardinality: str = "one",
+                                cross_filtering: str = "oneDirection",
+                                is_active: bool = True,
+                                name: Optional[str] = None,
+                                overwrite: bool = False,
+                                request_id: str = "") -> Dict[str, Any]:
+        """Crea una relacion entre dos columnas del modelo .pbip.
+
+        Por defecto muchos-a-uno con filtro en un sentido: es lo que crea Power
+        BI y lo unico que no introduce ambiguedad. `cross_filtering`
+        'bothDirections' resuelve casos concretos y complica el modelo entero,
+        asi que conviene justificarlo.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import model_author
+
+        return guard_mutation(lambda: model_author.create_relationship(
+            _proyecto_activo(), from_table, from_column, to_table, to_column,
+            from_cardinality=from_cardinality, to_cardinality=to_cardinality,
+            cross_filtering=cross_filtering, is_active=is_active,
+            name=name, overwrite=overwrite))
+
+    @mcp.tool()
+    def pbi_create_hierarchy(table: str, name: str, levels: List[str],
+                             display_folder: Optional[str] = None,
+                             description: Optional[str] = None,
+                             overwrite: bool = False,
+                             request_id: str = "") -> Dict[str, Any]:
+        """Crea una jerarquia sobre columnas de la misma tabla.
+
+        `levels`: nombres de columna de MAYOR a MENOR granularidad (p.ej.
+        ['Anio','Mes','Dia']). El orden es el de profundizacion y se respeta
+        tal cual: no se ordena ni se deduplica porque es informacion.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import model_author
+
+        return guard_mutation(lambda: model_author.create_hierarchy(
+            _proyecto_activo(), table, name, levels,
+            display_folder=display_folder, description=description,
+            overwrite=overwrite))
+
     @mcp.tool()
     def pbi_set_column_visibility(table: str, column: str, hidden: bool = True,
                                   mode: str = "live", request_id: str = "") -> Dict[str, Any]:

@@ -1,4 +1,4 @@
-# Catálogo de tools — 88
+# Catálogo de tools — 101
 
 Generado sobre el contrato congelado en `tests/golden/tools_v1.json`.
 Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma de respuesta desde la versión 0.1.0.
@@ -12,6 +12,11 @@ Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma d
 | D — spec declarativo | 7 |
 | E — auditoría integral | 5 |
 | F — workflows | 8 |
+| G — conversión `.pbix` | 3 |
+| H — composición, tema y marcadores | 7 |
+| I — autoría de modelo | 3 |
+| J — propuestas y perfilado | 2 |
+| K — formato condicional | 1 |
 
 ---
 
@@ -63,6 +68,39 @@ Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma d
 | `pbi_backup_pbip_project` | Backup con manifiesto de hashes |
 | `pbi_plan_change` | Calcula un plan con diff y `plan_token`, sin escribir |
 | `pbi_apply_plan` | Aplica el plan si el estado no cambió |
+
+## Conversión `.pbix` → `.pbip`
+
+| Tool | Qué hace |
+|---|---|
+| `pbi_inspect_pbix` | Radiografía del `.pbix` sin convertirlo ni abrir Desktop |
+| `pbi_list_convertible_pbix` | Vista previa de una carpeta: qué se copia, qué se traduce, qué necesita Desktop |
+| `pbi_convert_pbix_to_pbip` | Genera el proyecto (informe PBIR + modelo TMDL); acepta archivo o carpeta |
+
+## Composición e identidad visual
+
+| Tool | Qué hace |
+|---|---|
+| `pbi_list_themes` | Paletas disponibles, verificadas contra daltonismo, con su escenario de uso |
+| `pbi_apply_theme` | Escribe el tema y lo declara en el informe (las tres partes o ninguna) |
+| `pbi_add_image_resource` | Incrusta una imagen y la declara: sin las dos cosas el visual sale vacío |
+| `pbi_list_report_resources` | Recursos declarados, en disco y los que no cuadran |
+| `pbi_set_conditional_format` | Color que sale del dato: convierte una matriz en mapa de calor |
+
+## Autoría del modelo semántico
+
+| Tool | Qué hace |
+|---|---|
+| `pbi_create_calculated_column` | Columna calculada DAX, declarada antes de la partición |
+| `pbi_create_relationship` | Relación entre columnas, en `relationships.tmdl` |
+| `pbi_create_hierarchy` | Jerarquía sobre columnas de la misma tabla |
+
+## Propuestas y calidad del dato
+
+| Tool | Qué hace |
+|---|---|
+| `pbi_propose_dashboard` | Clasifica el modelo y propone diseños completos, con su porqué |
+| `pbi_profile_data` | Perfila los VALORES: porcentajes fuera de rango, columnas vacías |
 
 ## Autoría de informes (PBIR)
 

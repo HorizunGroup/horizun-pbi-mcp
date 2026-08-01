@@ -23,12 +23,23 @@ RELOAD_HINT = (
 
 
 def _model_data() -> Optional[Dict[str, Any]]:
+    """Modelo contra el que se resuelven los campos al escribir en el informe.
+
+    Manda el TMDL del proyecto activo, no el modelo en vivo. Quien escribe un
+    visual lo escribe en ESE .pbip, y sus campos tienen que existir ahi. Al
+    reves —que mandara el modelo en vivo— bastaba con tener otro .pbix abierto
+    en Desktop para que las medidas recien escritas en el TMDL se dieran por
+    inexistentes y se rechazara la pagina.
+
+    El modelo en vivo sigue siendo el respaldo: sin proyecto abierto, o sin
+    TMDL, es la unica fuente que hay.
+    """
     session = get_session()
     try:
-        if session.active_model:
-            return model_reader.read_model(session)
         if session.active_pbip and session.active_pbip.has_tmdl:
             return tmdl_reader.read_semantic_model(session.active_pbip)
+        if session.active_model:
+            return model_reader.read_model(session)
     except Exception as exc:  # noqa: BLE001
         log.warning("No se pudo leer el modelo para resolver campos: %s", exc)
     return None

@@ -23,6 +23,7 @@ from config import get_session, get_settings  # noqa: E402
 from logging_config import get_logger, setup_logging  # noqa: E402
 from tools import (  # noqa: E402
     audit_tools,
+    convert_tools,
     dax_tools,
     documentation_tools,
     explore_tools,
@@ -40,6 +41,7 @@ from tools import (  # noqa: E402
 
 _TOOL_MODULES = (
     audit_tools,
+    convert_tools,
     dax_tools,
     documentation_tools,
     explore_tools,

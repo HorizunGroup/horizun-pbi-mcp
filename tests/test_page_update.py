@@ -250,9 +250,20 @@ def test_fallo_intermedio_revierte_todo(proyecto, monkeypatch):
     assert huella(raiz) == antes, "el rollback debe dejarlo byte a byte igual"
 
 
-def test_filtros_no_soportados_siguen_rechazandose(proyecto):
+def test_los_filtros_de_pagina_llegan_al_page_json(proyecto):
+    """Antes se rechazaban por no saber serializarlos; ahora se escriben."""
     _s, active, md, _r = proyecto
     s = spec()
     s["filters"] = [{"field": "Calendar[Year]", "values": [2024]}]
-    with pytest.raises(page_spec.UnsupportedSpecFeature):
-        compilar(active, md, s)
+    compilado = compilar(active, md, s)
+
+    config = compilado["page_filter_config"]
+    filtro = config["filters"][0]
+    assert filtro["type"] == "Categorical"
+    assert filtro["field"]["Column"]["Property"] == "Year"
+    # dentro de la consulta del filtro la tabla va por ALIAS, no por nombre
+    consulta = filtro["filter"]
+    assert consulta["From"][0]["Entity"] == "Calendar"
+    origen = (consulta["Where"][0]["Condition"]["In"]["Expressions"][0]
+              ["Column"]["Expression"]["SourceRef"])
+    assert "Source" in origen and "Entity" not in origen

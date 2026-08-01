@@ -192,7 +192,7 @@ def test_regla_oficial_anyof_de_const():
 
 def test_regla_oficial_const_del_propio_schema():
     """El esquema fija el valor EXACTO de `$schema` con `const`."""
-    base = pbir_schema.cargar(VISUAL)
+    base, _url = pbir_schema.cargar(VISUAL)
     assert base["properties"]["$schema"]["const"] == VISUAL, (
         "el esquema oficial ya no fija $schema con const; revisa la prueba")
 
@@ -227,12 +227,43 @@ def test_propiedad_obligatoria_ausente(tmp_path):
 
 
 # =========================================================== taxonomia ========
-def test_version_futura_se_bloquea():
+def test_version_futura_de_otra_mayor_se_bloquea():
+    """Un salto de version MAYOR no se aproxima: ahi el formato puede romper.
+
+    Dentro de la misma mayor si se comprueba contra la anterior (ver
+    `test_version_no_publicada_cae_a_la_anterior`), porque esta medido que el
+    formato crece por adicion. Entre mayores no hay tal garantia.
+    """
     futuro = visual_valido()
     futuro["$schema"] = VISUAL.replace("2.7.0", "9.9.0")
     with pytest.raises(SchemaUnsupported) as exc:
         pbir_schema.validar(futuro)
     assert exc.value.code == "schema_unsupported"
+
+
+def test_version_no_publicada_cae_a_la_anterior():
+    """2.10/2.11 no existen aun en el origen; se comprueba contra 2.7.0.
+
+    Lo unico que se perdona es la cadena de version del propio `$schema`. Se
+    midio sobre 275 archivos reales: nada mas del contenido discrepaba.
+    """
+    doc = visual_valido()
+    doc["$schema"] = VISUAL.replace("2.7.0", "2.11.0")
+    r = pbir_schema.validar(doc)
+    assert r["validated"] is True
+    assert r["degraded"] is True
+    assert r["checked_against"] == VISUAL
+    assert [t["path"] for t in r["tolerated"]] == ["$.$schema"]
+
+
+def test_la_aproximacion_no_perdona_un_error_de_verdad():
+    """Comprobar contra la anterior no puede convertirse en no comprobar."""
+    doc = visual_valido()
+    doc["$schema"] = VISUAL.replace("2.7.0", "2.11.0")
+    del doc["position"]                      # obligatorio en toda version
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(doc)
+    assert any(e["rule"] == "required" for e in exc.value.details["errors"])
 
 
 def test_referencia_remota_no_permitida_se_bloquea():

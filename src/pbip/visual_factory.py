@@ -27,11 +27,11 @@ HTML_CONTENT_TYPE = "htmlContent443BE3AD55E043BF878BED274D3A6865"
 # Nombre amigable -> visualType real de PBIR
 TYPE_MAP = {
     "card": "card",
-    "cardVisual": "cardVisual",
+    "cardvisual": "cardVisual",
     "table": "tableEx",
-    "tableEx": "tableEx",
+    "tableex": "tableEx",
     "matrix": "pivotTable",
-    "pivotTable": "pivotTable",
+    "pivottable": "pivotTable",
     "slicer": "slicer",
     "barchart": "clusteredBarChart",
     "clusteredbarchart": "clusteredBarChart",
@@ -41,7 +41,21 @@ TYPE_MAP = {
     "piechart": "pieChart",
     "htmlcontent": HTML_CONTENT_TYPE,
     HTML_CONTENT_TYPE.lower(): HTML_CONTENT_TYPE,
+    # --- Elementos de composicion: no consultan datos, decoran y navegan. ---
+    "textbox": "textbox",
+    "text": "textbox",
+    "shape": "shape",
+    "rectangle": "shape",
+    "image": "image",
+    "pagenavigator": "pageNavigator",
+    "navigation": "pageNavigator",
+    "actionbutton": "actionButton",
+    "button": "actionButton",
 }
+
+#: Visuales que NO llevan consulta: su contenido vive entero en `objects`.
+#: Pedirles campos es un error del que llama, no algo que se ignore en silencio.
+DECORATIVOS = frozenset({"textbox", "shape", "image", "pageNavigator", "actionButton"})
 
 # Roles logicos -> clave de queryState por tipo real
 ROLE_MAP = {
@@ -163,6 +177,204 @@ def _set_title(vis: Dict[str, Any], title: str) -> None:
         vco["title"] = [{"properties": {"text": {"expr": {"Literal": {"Value": value}}}}}]
 
 
+# ------------------------------------------------------------------ decorativos --
+#: Formas admitidas por el visual `shape` de Power BI.
+FORMAS = ("rectangle", "roundedRectangle", "oval", "line", "arrow", "triangle",
+          "pentagon", "hexagon", "heart")
+#: Iconos de `actionButton`. 'blank' es el boton de texto sin icono.
+ICONOS_BOTON = ("blank", "back", "bookmark", "drillDown", "drillUp", "info",
+                "question", "reset", "resetFilters", "chevronRight", "chevronLeft")
+
+
+def _lit(valor: Any) -> Dict[str, Any]:
+    """Envuelve un valor en la forma `expr.Literal` que usa PBIR.
+
+    Las cadenas van entre comillas simples DENTRO del literal, los numeros con
+    su sufijo de tipo ('D' decimal, 'L' entero) y los booleanos sin comillas.
+    Es la gramatica del motor, no una convencion nuestra.
+    """
+    if isinstance(valor, bool):
+        texto = "true" if valor else "false"
+    elif isinstance(valor, int):
+        texto = f"{valor}L"
+    elif isinstance(valor, float):
+        texto = f"{valor}D"
+    else:
+        texto = "'" + str(valor).replace("'", "''") + "'"
+    return {"expr": {"Literal": {"Value": texto}}}
+
+
+def _props(**kwargs: Any) -> List[Dict[str, Any]]:
+    """Bloque `objects` de una sola entrada con sus propiedades literales."""
+    return [{"properties": {k: _lit(v) for k, v in kwargs.items()
+                            if v is not None}}]
+
+
+def _sin_marco() -> Dict[str, Any]:
+    """Titulo, fondo y borde apagados: lo normal en un elemento de composicion."""
+    return {
+        "title": _props(show=False),
+        "background": _props(show=False),
+        "border": _props(show=False),
+    }
+
+
+def _build_textbox(opciones: Dict[str, Any]) -> Dict[str, Any]:
+    texto = opciones.get("text")
+    if texto is None:
+        raise VisualFactoryError(
+            "Un 'textbox' necesita 'text'. Sin texto no hay nada que escribir.")
+    estilo: Dict[str, Any] = {}
+    if opciones.get("font_size") is not None:
+        estilo["fontSize"] = f"{opciones['font_size']}pt"
+    if opciones.get("color"):
+        estilo["color"] = opciones["color"]
+    if opciones.get("bold"):
+        estilo["fontWeight"] = "bold"
+    if opciones.get("font"):
+        estilo["fontFamily"] = opciones["font"]
+
+    parrafo: Dict[str, Any] = {"textRuns": [{"value": str(texto),
+                                             **({"textStyle": estilo} if estilo else {})}]}
+    if opciones.get("align"):
+        parrafo["horizontalTextAlignment"] = opciones["align"]
+    return {"general": [{"properties": {"paragraphs": [parrafo]}}]}
+
+
+def _build_shape(opciones: Dict[str, Any]) -> Dict[str, Any]:
+    forma = opciones.get("shape", "rectangle")
+    if forma not in FORMAS:
+        raise VisualFactoryError(
+            f"Forma no soportada: '{forma}'. Usa una de {list(FORMAS)}.")
+    objetos: Dict[str, Any] = {
+        "shape": _props(tileShape=forma),
+        "rotation": _props(shapeAngle=int(opciones.get("angle", 0))),
+    }
+    relleno = opciones.get("fill")
+    if relleno:
+        objetos["fill"] = [{
+            "properties": {
+                "fillColor": {"solid": {"color": _lit(relleno)}},
+                "transparency": _lit(float(opciones.get("transparency", 0))),
+            },
+            "selector": {"id": "default"},
+        }]
+    if opciones.get("text"):
+        objetos["text"] = [
+            {"properties": {"show": _lit(True)}},
+            {"properties": {k: v for k, v in {
+                "text": _lit(opciones["text"]),
+                "fontSize": _lit(float(opciones["font_size"]))
+                if opciones.get("font_size") is not None else None,
+                "fontColor": {"solid": {"color": _lit(opciones["text_color"])}}
+                if opciones.get("text_color") else None,
+            }.items() if v is not None},
+             "selector": {"id": "default"}},
+        ]
+    return objetos
+
+
+def _build_image(opciones: Dict[str, Any]) -> Dict[str, Any]:
+    recurso = opciones.get("resource")
+    if not recurso:
+        raise VisualFactoryError(
+            "Un 'image' necesita 'resource': el ItemName del recurso ya "
+            "registrado en RegisteredResources. Registralo antes con "
+            "pbi_add_image_resource.")
+    return {"image": [{"properties": {"sourceFile": {"image": {
+        "name": _lit(opciones.get("name") or recurso),
+        "url": {"expr": {"ResourcePackageItem": {
+            "PackageName": "RegisteredResources",
+            "PackageType": 1,
+            "ItemName": recurso}}},
+        "scaling": _lit(opciones.get("scaling", "Fit")),
+    }}}}]}
+
+
+def _build_page_navigator(opciones: Dict[str, Any]) -> Dict[str, Any]:
+    return {"pages": [
+        {"properties": {"showHiddenPages": _lit(bool(opciones.get("show_hidden", False)))}},
+        {"properties": {"showPage": _lit(bool(opciones.get("show_current", False)))}},
+    ]}
+
+
+def _build_action_button(opciones: Dict[str, Any]) -> Dict[str, Any]:
+    """Boton con accion. Devuelve (objects, visualContainerObjects)."""
+    accion = str(opciones.get("action", "page")).lower()
+    icono = opciones.get("icon", "back" if accion == "back" else "blank")
+    if icono not in ICONOS_BOTON:
+        raise VisualFactoryError(
+            f"Icono de boton no soportado: '{icono}'. Usa uno de {list(ICONOS_BOTON)}.")
+
+    objetos: Dict[str, Any] = {"icon": [{"properties": {"shapeType": _lit(icono)},
+                                         "selector": {"id": "default"}}]}
+    if opciones.get("text"):
+        objetos["text"] = [
+            {"properties": {"show": _lit(True)}},
+            {"properties": {k: v for k, v in {
+                "text": _lit(opciones["text"]),
+                "fontSize": _lit(float(opciones["font_size"]))
+                if opciones.get("font_size") is not None else None,
+                "fontColor": {"solid": {"color": _lit(opciones["text_color"])}}
+                if opciones.get("text_color") else None,
+            }.items() if v is not None},
+             "selector": {"id": "default"}},
+        ]
+    if opciones.get("fill"):
+        objetos["fill"] = [{
+            "properties": {"fillColor": {"solid": {"color": _lit(opciones["fill"])}},
+                           "transparency": _lit(float(opciones.get("transparency", 0)))},
+            "selector": {"id": "default"}}]
+
+    if accion == "back":
+        enlace = {"show": _lit(True), "type": _lit("Back")}
+    elif accion in ("page", "pagenavigation"):
+        destino = opciones.get("target_page")
+        if not destino:
+            raise VisualFactoryError(
+                "Un boton con action='page' necesita 'target_page' con el "
+                "NOMBRE INTERNO de la pagina destino (el id, no el titulo).")
+        enlace = {"show": _lit(True), "type": _lit("PageNavigation"),
+                  "navigationSection": _lit(destino)}
+    elif accion == "bookmark":
+        marcador = opciones.get("bookmark")
+        if not marcador:
+            raise VisualFactoryError(
+                "Un boton con action='bookmark' necesita 'bookmark'.")
+        enlace = {"show": _lit(True), "type": _lit("Bookmark"),
+                  "bookmark": _lit(marcador)}
+    else:
+        raise VisualFactoryError(
+            f"Accion de boton no soportada: '{accion}'. Usa page | back | bookmark.")
+    return objetos, {"visualLink": [{"properties": enlace}]}
+
+
+def _build_decorativo(actual_type: str,
+                      opciones: Dict[str, Any]) -> Dict[str, Any]:
+    """Construye el visual completo de un elemento de composicion."""
+    contenedor = _sin_marco()
+    if actual_type == "textbox":
+        objetos = _build_textbox(opciones)
+    elif actual_type == "shape":
+        objetos = _build_shape(opciones)
+    elif actual_type == "image":
+        objetos = _build_image(opciones)
+    elif actual_type == "pageNavigator":
+        objetos = _build_page_navigator(opciones)
+        contenedor = {}          # el navegador dibuja su propio marco
+    elif actual_type == "actionButton":
+        objetos, extra = _build_action_button(opciones)
+        contenedor.update(extra)
+    else:                                                # pragma: no cover
+        raise VisualFactoryError(f"Tipo decorativo desconocido: {actual_type}")
+
+    vis: Dict[str, Any] = {"visualType": actual_type, "objects": objetos,
+                           "drillFilterOtherVisuals": True}
+    if contenedor:
+        vis["visualContainerObjects"] = contenedor
+    return vis
+
+
 def find_template(active: ActivePbip, actual_type: str) -> Optional[Path]:
     """Busca un visual existente del mismo tipo para usar como plantilla."""
     pdir = pages_dir(active)
@@ -187,11 +399,11 @@ def build_visual(
     position: Dict[str, float],
     title: Optional[str] = None,
     measure_index: Optional[Dict[str, str]] = None,
+    options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Devuelve (visual_dict, meta) donde meta incluye warnings y origen."""
     actual_type = resolve_type(visual_type)
     warnings: List[str] = []
-    query = _build_query(actual_type, fields or {}, measure_index, warnings)
 
     pos = {
         "x": float(position["x"]),
@@ -202,6 +414,24 @@ def build_visual(
         "tabOrder": float(position.get("z", 0)),
     }
 
+    if actual_type in DECORATIVOS:
+        # No consultan datos: no se clonan plantillas (arrastrarian el texto o
+        # el relleno de otro visual) y se construyen enteros desde `options`.
+        if fields:
+            raise VisualFactoryError(
+                f"Un visual '{actual_type}' no lleva campos: su contenido se "
+                "define en 'options' (text, fill, shape, target_page...).")
+        vis = _build_decorativo(actual_type, options or {})
+        if title is not None:
+            # Por defecto van sin titulo; si se pide uno hay que reactivarlo.
+            vis.setdefault("visualContainerObjects", {})["title"] = [
+                {"properties": {"show": _lit(True), "text": _lit(title)}}]
+        return {"visual": {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis},
+                "actual_type": actual_type,
+                "origin": "elemento de composicion",
+                "warnings": warnings}
+
+    query = _build_query(actual_type, fields or {}, measure_index, warnings)
     template = find_template(active, actual_type)
     if template is not None:
         data = copy.deepcopy(read_json(template))

@@ -37,14 +37,7 @@ class UnsupportedSpecFeature(PowerBIMCPError):
 #: Se rechazan en vez de descartarse: un spec con filtros producia una pagina
 #: sin filtros y sin decirlo, y el usuario solo lo descubria abriendo el
 #: informe. Cuando se implemente la serializacion, se quitan de aqui.
-NO_SOPORTADO_AUN = {
-    "filters": ("La serializacion de filtros de pagina a PBIR no esta "
-                "implementada. Aplica los filtros en Power BI Desktop, o "
-                "quita 'filters' del spec para crear la pagina sin ellos."),
-    "interactions": ("La serializacion de interacciones entre visuales a PBIR "
-                     "no esta implementada. Configuralas en Power BI Desktop, "
-                     "o quita 'interactions' del spec."),
-}
+NO_SOPORTADO_AUN: Dict[str, str] = {}
 
 
 def assert_soportado(spec: Dict[str, Any]) -> None:
@@ -341,13 +334,14 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
     for i, (v, pos) in enumerate(zip(spec["visuals"], posiciones)):
         built = visual_factory.build_visual(
             active, v["type"], v.get("fields", {}), pos, v.get("title"),
-            indice_medidas)
+            indice_medidas, options=v.get("options"))
         vid = deterministic_id(seed, "visual", i)
         built["visual"]["name"] = vid
         construidos.append({"visual": built["visual"],
                             "meta": {"type": built["actual_type"],
                                      "title": v.get("title"),
                                      "origin": built["origin"],
+                                     "options": v.get("options"),
                                      "index": i}})
         avisos.extend(built["warnings"])
 
@@ -355,9 +349,25 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
         [{"id": c["visual"]["name"], "type": c["meta"]["type"],
           "position": c["visual"]["position"]} for c in construidos], canvas)
 
+    # Filtros de pagina e interacciones. Los filtros por visual viajan en el
+    # propio visual; los de pagina, en la pagina.
+    from pbip import filter_builder
+
+    for c, v in zip(construidos, spec["visuals"]):
+        propio = filter_builder.build_filter_config(v.get("filters") or [])
+        if propio:
+            c["visual"]["filterConfig"] = propio
+
+    filtros_pagina = filter_builder.build_filter_config(spec.get("filters") or [])
+    interacciones = filter_builder.build_interactions(
+        spec.get("interactions") or [],
+        [c["visual"]["name"] for c in construidos])
+
     return {"page_name": page["name"], "canvas": canvas, "visuals": construidos,
             "positions": posiciones, "warnings": avisos,
             "layout_issues": geometria, "references": refs.get("references", []),
+            "page_filter_config": filtros_pagina,
+            "page_interactions": interacciones,
             "seed": seed}
 
 
@@ -369,7 +379,8 @@ def preview(active: ActivePbip, compilado: Dict[str, Any]) -> str:
         campos = pbir_reader._extract_fields(nodo)      # noqa: SLF001
         visuales.append({"type": c["meta"]["type"], "title": c["meta"]["title"],
                          "position": pos, "measures": campos["measures"],
-                         "columns": campos["columns"]})
+                         "columns": campos["columns"],
+                         "options": c["meta"].get("options")})
     return page_builder.render_html(compilado["page_name"], compilado["canvas"],
                                     visuales, standalone=True)
 

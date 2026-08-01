@@ -17,14 +17,14 @@ claude plugin install horizun-pbi-mcp@horizun
 
 La preparación empieza automáticamente en la primera sesión. Mientras avanza
 verás `pbi_install_runtime` y `pbi_install_status`; tras reiniciar el cliente
-aparecerán las 90 tools. No hay que descargar ni ejecutar nada por separado. El
+aparecerán las 108 tools. No hay que descargar ni ejecutar nada por separado. El
 runtime y las descargas verificadas quedan en datos locales del plugin, fuera
 del repositorio y de tus proyectos.
 
 Python 3.10+ sigue siendo un requisito: es el proceso local que permite hablar
 con Power BI Desktop. Node 20 solo es necesario para el validador PBIR opcional.
 
-Guía reproducible desde cero. Al final, un cliente MCP debe ver 90 tools `pbi_*`.
+Guía reproducible desde cero. Al final, un cliente MCP debe ver 108 tools `pbi_*`.
 
 ---
 
