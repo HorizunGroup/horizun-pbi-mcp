@@ -110,8 +110,11 @@ def sample_pbip(tmp_path):
     sm = proj / "MyReport.SemanticModel"
     tables = sm / "definition" / "tables"
     tables.mkdir(parents=True)
+    # `ref table` no es decorativo: sin esa linea la tabla esta en disco pero
+    # no forma parte del modelo. Un fixture sin ella no representa un .pbip
+    # real y dejaria pasar justo ese fallo.
     (sm / "definition" / "model.tmdl").write_text(
-        "model Model\n\tculture: es-ES\n", encoding="utf-8")
+        "model Model\n\tculture: es-ES\n\nref table Ventas\n", encoding="utf-8")
     (tables / "Ventas.tmdl").write_text(
         "table Ventas\n"
         "\tmeasure Total = SUM(Ventas[Monto])\n"

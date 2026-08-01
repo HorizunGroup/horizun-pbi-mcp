@@ -265,6 +265,45 @@ def register(mcp) -> None:
             description=description, overwrite=overwrite))
 
     @mcp.tool()
+    def pbi_add_table_from_file(path: str, table_name: str = "",
+                                sheet: str = "", culture: str = "",
+                                description: str = "", overwrite: bool = False,
+                                dry_run: bool = False,
+                                request_id: str = "") -> Dict[str, Any]:
+        """Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.
+
+        El mismo recorrido de Power Query —Obtener datos, promover encabezados,
+        cambiar tipos, Cargar— pero escrito directo en el proyecto. Los pasos
+        de la consulta se llaman como los pone Power BI ('Origen',
+        'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y
+        editar en el editor sin que desentone.
+
+        Admite .csv, .txt, .tsv, .xlsx, .xlsm y .json. Sin dependencias
+        nuevas: el .xlsx se lee como lo que es, un zip con XML.
+
+        **La cultura se deduce del archivo**, mirando como escribe los
+        decimales, y se emite SIEMPRE explicita en la consulta. Asumir la del
+        modelo es lo que convierte 10527.52 en diez millones sin que nada
+        falle: un informe que abre, pinta y miente. `culture` permite forzarla.
+
+        Lo escrito se valida antes de darlo por bueno: si el TMDL generado no
+        pasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que
+        no abre.
+
+        `dry_run=true` devuelve el TMDL y la M sin escribir nada.
+        `sheet`: hoja del libro; si se omite, la primera.
+
+        Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
+        """
+        from pbip import table_from_file
+
+        return guard_mutation(lambda: table_from_file.agregar_tabla(
+            _proyecto_activo(), path, table_name=table_name,
+            sheet=sheet or None, culture=culture or None,
+            description=description or None, overwrite=overwrite,
+            dry_run=dry_run))
+
+    @mcp.tool()
     def pbi_set_storage_mode(table: str, mode: str,
                              request_id: str = "") -> Dict[str, Any]:
         """Cambia el modo de almacenamiento de una tabla: import | directQuery | dual.

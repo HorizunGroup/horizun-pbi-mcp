@@ -173,5 +173,40 @@ def validate_project(session: Session) -> Dict[str, Any]:
         warnings.append("Sin TMDL: no se pueden editar medidas por archivo (modo pbip).")
 
     valid = checks["pbip_exists"] and checks["report_dir_exists"]
+
+    # El TMDL se valida de verdad, no solo se comprueba que exista. Antes esta
+    # funcion devolvia valid:true sobre modelos que Power BI Desktop se negaba
+    # a abrir, y Desktop acababa siendo el unico detector de errores.
+    tmdl: Dict[str, Any] = {"checked": False, "reason": "el proyecto no tiene TMDL"}
+    if checks["has_tmdl"] and active.semantic_model_dir:
+        from services import tmdl_validate  # perezoso: evita un ciclo de import
+
+        definition = Path(active.semantic_model_dir) / "definition"
+        try:
+            resultado = tmdl_validate.validate(definition)
+            tmdl = {
+                "checked": True,
+                "valid": resultado["valid"],
+                "error_count": resultado["error_count"],
+                "warning_count": resultado["warning_count"],
+                "parsed": resultado["parsed"],
+                "parse_checked": resultado["parse_checked"],
+                "findings": resultado["findings"],
+            }
+            # Solo se invalida cuando SE PUDO comprobar y salio mal. Si no se
+            # pudo mirar, se dice, pero no se acusa.
+            if not resultado["valid"]:
+                valid = False
+            for hallazgo in resultado["findings"]:
+                if hallazgo["severity"] == "error":
+                    warnings.append(
+                        f"TMDL: {hallazgo['rule']} - "
+                        f"{hallazgo['evidence']}")
+        except Exception as exc:  # noqa: BLE001
+            tmdl = {"checked": False, "reason": str(exc)}
+            warnings.append(f"No se pudo validar el TMDL: {exc}")
+
+    checks["tmdl_valid"] = tmdl.get("valid") if tmdl.get("checked") else None
+
     return {"valid": bool(valid), "checks": checks, "warnings": warnings,
-            "project": active.to_dict()}
+            "tmdl": tmdl, "project": active.to_dict()}

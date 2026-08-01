@@ -137,9 +137,23 @@ THEME_TOOLS = [
     "pbi_delete_bookmark",
 ]
 
+#: Verificacion antes de entregar: comprobar que el proyecto ABRE, en vez de
+#: descubrirlo cuando el usuario lo abre.
+VERIFICACION_TOOLS = [
+    "pbi_validate_tmdl",
+    "pbi_open_in_desktop",
+]
+
+#: Carga de datos: abrir el archivo, transformarlo y cargarlo, como en la UI.
+CARGA_TOOLS = [
+    "pbi_add_table_from_file",
+    "pbi_create_pbip_project",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
-                + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS)
+                + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
+                + VERIFICACION_TOOLS + CARGA_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

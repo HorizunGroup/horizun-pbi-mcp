@@ -5,6 +5,149 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [No publicado]
+
+**112 tools, 1153 pruebas**, contrato congelado (todo lo nuevo es aditivo).
+
+### Corregido — una tabla que se creaba y no existía
+
+**`pbi_create_calculated_table` escribía el archivo de la tabla pero no la
+declaraba en `model.tmdl`.** Sin la línea `ref table <nombre>`, la tabla está en
+disco y **no forma parte del modelo**: el `.tmdl` se ve perfecto, el proyecto
+abre sin quejarse, y todo lo que la use —una medida, un visual— aparece roto sin
+decir por qué.
+
+Se detectó al escribir la prueba de extremo a extremo del punto anterior, no
+usando la tool: precisamente el tipo de fallo que no se manifiesta hasta que
+alguien abre el informe y ve una página vacía.
+
+Arreglado en tres sitios, porque uno solo no basta:
+
+- `pbi_create_calculated_table` y `pbi_add_table_from_file` declaran la tabla al
+  crearla, en la misma operación.
+- El validador gana dos reglas: **`tmdl_table_not_referenced`** (hay archivo y
+  no hay declaración) y **`tmdl_ref_table_missing`** (hay declaración y no hay
+  archivo). Las dos son errores, no avisos.
+- El fixture `sample_pbip` no declaraba su tabla, así que no representaba un
+  `.pbip` real y dejaba pasar justo este fallo. Ahora sí.
+
+### Añadido
+
+- **`pbi_create_pbip_project`**: crea un proyecto `.pbip` vacío pero válido y lo
+  deja activo. Es lo que faltaba para armar un tablero **solo con rutas de
+  archivos**: crear el proyecto, cargarle los datos y componer las páginas sin
+  abrir Power BI Desktop hasta el final. Escribe el mínimo que Power BI acepta,
+  con la referencia entre informe y modelo en ruta **relativa** —una absoluta
+  ataría el proyecto a la máquina donde se creó— y con una página, porque un
+  informe sin ninguna no abre.
+
+  No declara `sourceQueryCulture` a propósito: la cultura se fija en cada
+  consulta, que es lo único que no obliga a suponer cómo escribe los decimales
+  cada origen.
+
+- **`pbi_add_table_from_file`**: carga un archivo al modelo recorriendo los
+  mismos pasos que una persona en Power Query —abrir, promover encabezados,
+  cambiar tipos, cargar— y con los nombres de paso que pone Power BI en
+  español (`Origen`, `Encabezados promovidos`, `Tipo cambiado`), para que la
+  consulta se pueda abrir y editar en el editor sin desentonar. Admite `.csv`,
+  `.txt`, `.tsv`, `.xlsx`, `.xlsm` y `.json` **sin dependencias nuevas**: un
+  `.xlsx` se lee como lo que es, un zip con XML.
+
+  Tres decisiones que evitan por construcción los fallos de escribir la M a
+  mano:
+
+  - **La cultura se deduce del archivo**, mirando cómo escribe los decimales, y
+    se emite siempre explícita. Contra el CSV real que motivó todo esto acierta
+    a la primera (`.` → `en-US`); a mano costó un refresh fallido y un contraste
+    contra el origen para descubrirlo.
+  - **Las fechas de Excel se detectan por su formato**, no por su valor. Excel
+    guarda `45715` y aparte un `numFmt` que dice que es una fecha; sin mirarlo,
+    una fecha se declara como entero y la carga revienta.
+  - **Lo escrito se valida antes de confirmarse.** Si el TMDL generado no pasara
+    `pbi_validate_tmdl`, se aborta. Automatizar el error sería peor que
+    cometerlo a mano.
+
+  Sobre el cronograma real de 20 columnas acierta las 20, incluidas dos que
+  parecen fechas y no lo son porque mezclan texto (`NOD`): las deja como texto
+  en vez de forzarlas.
+
+- **`pbi_validate_tmdl`**: comprueba si un modelo TMDL abrirá, sin abrir Power
+  BI Desktop. Dos capas: un lint estático en Python puro —funciona sin las DLL
+  de Analysis Services— y, si están disponibles, un parseo con
+  `TmdlSerializer`, **el mismo serializador que usa Power BI para abrir el
+  proyecto**. Cada hallazgo trae regla, severidad, archivo y línea.
+- **`pbi_open_in_desktop`**: abre un `.pbip` o `.pbix`, espera a que el motor
+  local sirva el modelo, identifica cuál de las instancias le corresponde —el
+  puerto es dinámico— y lo deja como modelo activo. Reutiliza la sesión si el
+  archivo ya estaba abierto y nunca cierra una ventana del usuario. Cierra el
+  ciclo de trabajo: ahora se puede comprobar que un proyecto **abre de verdad**
+  sin pedírselo a nadie.
+
+### Corregido
+
+- **`pbi_validate_pbip_project` decía `valid: true` sobre proyectos que Power
+  BI Desktop se negaba a abrir.** Solo comprobaba que los archivos existieran;
+  nunca miraba dentro del TMDL. En una sesión real devolvió `valid: true` cinco
+  veces seguidas mientras Desktop abortaba la carga, así que Desktop acabó
+  siendo el único detector de errores disponible: caro y tarde. Ahora incorpora
+  la validación real y añade el bloque `tmdl` a la respuesta. Solo invalida
+  cuando **pudo** comprobarlo y salió mal: si no se pudo mirar, se dice.
+
+### Las cinco trampas que ahora se detectan
+
+Salieron de romper un proyecto real cinco veces seguidas:
+
+1. **Propiedad de tabla después de sus hijos.** TMDL exige que las propiedades
+   del objeto vayan antes que sus medidas y columnas. Insertar medidas justo
+   debajo de `table X` deja huérfano lo que venía detrás. Power BI aborta con
+   «se detectó una sangría no válida».
+2. **Comentario `///` sobre una relación.** Se serializa como `description`, y
+   `SingleColumnRelationship` no tiene esa propiedad.
+3. **Medida con el mismo nombre que una columna de su tabla.** El parser lo
+   acepta; el motor lo rechaza al crear la base. Solo se ve al abrir.
+4. **Nombre de medida duplicado entre tablas.** En un modelo tabular el nombre
+   de medida es global, no por tabla.
+5. **`Table.TransformColumnTypes` sin cultura explícita** sobre un origen de
+   texto, con `sourceQueryCulture` no invariante. Es el más peligroso porque
+   **no da ningún error**: un CSV con punto decimal se lee como separador de
+   miles y los totales salen inflados. El informe abre, pinta y miente.
+
+El aviso 5 solo se emite cuando el origen entrega texto (`Csv.Document`,
+`Json.Document`…). Excel y las bases de datos devuelven valores ya tipados: ahí
+la cultura no cambia nada y avisar sería ruido.
+
+### Encontrado al pasar el validador por los 23 proyectos del equipo
+
+Tres clases de proyecto que el validador trataba mal, y una que ya venía rota:
+
+- **`.pbip` de solo informe** (conexión en vivo a un dataset publicado, o
+  convertido con `include_model=false`). Es legítimo y no tiene TMDL que
+  validar. Antes salía como ruta rota; ahora se explica como lo que es
+  (`tmdl_report_only_project`), que no es lo mismo que un fallo.
+- **Modelos en formato `model.bim`** (TMSL/JSON): es el formato por defecto de
+  un `.pbip` sin el preview de TMDL, o sea **la mayoría**. Se quedaban sin
+  evaluar. Ahora se normalizan a la misma forma y se les aplican los chequeos
+  semánticos, que no dependen del formato. Los estructurales no aplican: en un
+  JSON no hay sangría que romper.
+- **`create_calculated_table` perdía el tipo de columna en silencio.** Leía
+  solo `data_type`; con `dataType` —como se llama la propiedad en TMDL y en el
+  esquema JSON de la tool— caía al defecto `string`. Una columna numérica se
+  escribía como texto y las agregaciones dejaban de funcionar sin que nada
+  fallara. Ahora se aceptan las dos grafías y **una clave desconocida se
+  rechaza** en vez de degradar el tipo: un typo no puede costar una tabla.
+
+Resultado del barrido: 23 de 23 proyectos evaluados, **cero errores**, un único
+aviso repetido (`tmdl_transform_without_culture` en `PowerBIMTemplate`, que lee
+de `Json.Document` bajo `sourceQueryCulture: es-CO`).
+
+### Lo que sigue sin poder comprobarse estáticamente
+
+Documentado en la propia respuesta (`limitations`), no escondido: un blanco o un
+duplicado en la columna del lado «uno» de una relación depende de los datos, no
+del TMDL, y solo aparece al refrescar. Para eso está `pbi_refresh_model`.
+
+---
+
 ## [1.0.0-rc.5] — 2026-07-31
 
 **108 tools, 1097 pruebas**, contrato congelado. Integra tres correcciones que

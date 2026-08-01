@@ -210,6 +210,43 @@ def test_tipo_de_columna_invalido_se_rechaza(proyecto):
             proyecto, "T", "ROW(1)", columns=[{"name": "a", "data_type": "vector"}])
 
 
+def test_el_tipo_en_camelCase_tambien_vale(proyecto):
+    """`dataType` es como se llama la propiedad en TMDL y en el esquema JSON.
+
+    Antes solo se leia `data_type` y cualquier otra grafia caia al defecto
+    'string' SIN avisar: una columna numerica se escribia como texto y las
+    agregaciones dejaban de funcionar en silencio. Un tipo que se pierde sin
+    ruido es peor que un error.
+    """
+    from pathlib import Path
+
+    r = model_author.create_calculated_table(
+        proyecto, "Modulos", 'ROW("n", 1)',
+        columns=[{"name": "orden", "dataType": "int64"},
+                 {"name": "puntaje", "type": "double"}])
+    texto = Path(r["file"]).read_text(encoding="utf-8-sig")
+
+    assert "dataType: int64" in texto
+    assert "dataType: double" in texto
+    assert "dataType: string" not in texto
+
+
+def test_una_columna_sin_nombre_se_rechaza(proyecto):
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_calculated_table(
+            proyecto, "T", "ROW(1)", columns=[{"dataType": "int64"}])
+    assert "name" in str(exc.value)
+
+
+def test_una_clave_desconocida_en_la_columna_se_rechaza(proyecto):
+    """Un typo no puede degradar el tipo a texto sin que nadie se entere."""
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_calculated_table(
+            proyecto, "T", "ROW(1)",
+            columns=[{"name": "a", "datatipo": "int64"}])
+    assert "datatipo" in str(exc.value)
+
+
 def test_el_nombre_del_archivo_se_sanea(proyecto):
     """Un nombre con caracteres de ruta no puede decidir donde se escribe."""
     from pathlib import Path

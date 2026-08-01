@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 108,
+  "tool_count": 112,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -47,6 +47,63 @@
           "type": "string"
         },
         "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_add_table_from_file",
+      "description": "Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.\n\nEl mismo recorrido de Power Query —Obtener datos, promover encabezados,\ncambiar tipos, Cargar— pero escrito directo en el proyecto. Los pasos\nde la consulta se llaman como los pone Power BI ('Origen',\n'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y\neditar en el editor sin que desentone.\n\nAdmite .csv, .txt, .tsv, .xlsx, .xlsm y .json. Sin dependencias\nnuevas: el .xlsx se lee como lo que es, un zip con XML.\n\n**La cultura se deduce del archivo**, mirando como escribe los\ndecimales, y se emite SIEMPRE explicita en la consulta. Asumir la del\nmodelo es lo que convierte 10527.52 en diez millones sin que nada\nfalle: un informe que abre, pinta y miente. `culture` permite forzarla.\n\nLo escrito se valida antes de darlo por bueno: si el TMDL generado no\npasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que\nno abre.\n\n`dry_run=true` devuelve el TMDL y la M sin escribir nada.\n`sheet`: hoja del libro; si se omite, la primera.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "culture": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "description": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "sheet": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table_name": {
           "required": false,
           "type": "string",
           "default": ""
@@ -1090,6 +1147,68 @@
       },
       "required": [
         "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_pbip_project",
+      "description": "Crea un proyecto .pbip vacio pero valido, y lo deja activo.\n\nEs el punto de partida para armar un tablero solo con rutas de\narchivos: crear el proyecto, cargarle los datos con\npbi_add_table_from_file y componer las paginas, sin abrir Power BI\nDesktop hasta el final.\n\nEscribe el minimo que Power BI acepta —informe y modelo semantico\napuntandose entre si— con la referencia en ruta RELATIVA: una absoluta\nataria el proyecto a esta maquina. Incluye una pagina, porque un\ninforme sin ninguna no abre.\n\nNo declara `sourceQueryCulture` a proposito: la cultura se fija en cada\nconsulta, que es lo unico que no obliga a suponer como escribe los\ndecimales cada origen.",
+      "params": {
+        "culture": {
+          "required": false,
+          "type": "string",
+          "default": "es-ES"
+        },
+        "height": {
+          "required": false,
+          "type": "integer",
+          "default": 1080
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "open_project": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "out_dir": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page_name": {
+          "required": false,
+          "type": "string",
+          "default": "Pagina 1"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "width": {
+          "required": false,
+          "type": "integer",
+          "default": 1280
+        }
+      },
+      "required": [
+        "name",
+        "out_dir"
       ],
       "output_shape": {
         "type": "object",
@@ -2334,6 +2453,43 @@
       }
     },
     {
+      "name": "pbi_open_in_desktop",
+      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "select": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
       "name": "pbi_open_pbip_project",
       "description": "Abre un proyecto .pbip y lo marca como proyecto activo.\n\nDetecta carpetas .SemanticModel (TMDL) y .Report (PBIR) y devuelve un\nresumen con advertencias (p.ej. si el informe no usa PBIR).\n`path`: ruta al archivo .pbip o a su carpeta.",
       "params": {
@@ -3357,6 +3513,32 @@
       "name": "pbi_validate_pbip_project",
       "description": "Valida a fondo el proyecto .pbip activo (estructura, PBIR, TMDL).",
       "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_tmdl",
+      "description": "Comprueba si un modelo TMDL abrira, sin abrir Power BI Desktop.\n\nDos capas. Un lint estatico que caza las trampas que solo se veian al\nabrir (una propiedad de tabla colocada despues de sus hijos, un\ncomentario '///' sobre una relacion, una medida que se llama como una\ncolumna de su tabla, medidas duplicadas, referencias rotas) y, si estan\nlas DLL, un parseo con el MISMO serializador que usa Power BI.\n\nCada hallazgo trae `rule`, `severity`, el archivo y la linea. Si el\nparseo no se pudo ejecutar se dice (`parse_checked: false`) en vez de\ndarlo por bueno.\n\nHay fallos que NINGUN analisis estatico ve porque dependen de los datos\n—un blanco en el lado 'uno' de una relacion, un separador decimal mal\ninterpretado—. Salen en `limitations`: para esos hay que refrescar.\n\n`path`: carpeta `definition` del modelo, la carpeta `.SemanticModel` o\nel `.pbip`. Si se omite, el proyecto activo.\n`use_tom=False`: solo el lint estatico, sin tocar las DLL.",
+      "params": {
+        "path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "use_tom": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        }
+      },
       "required": [],
       "output_shape": {
         "type": "object",

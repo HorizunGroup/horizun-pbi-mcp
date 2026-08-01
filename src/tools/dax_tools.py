@@ -38,6 +38,49 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
+    def pbi_open_in_desktop(path: str, timeout: int = 300,
+                            reuse_open: bool = True,
+                            select: bool = True) -> Dict[str, Any]:
+        """Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.
+
+        Cierra el ciclo de trabajo: despues de editar un proyecto, esto permite
+        comprobar que ABRE de verdad y consultar sus medidas, sin pedirle al
+        usuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.
+
+        Espera a que el motor local aparezca y deje de crecer, identifica cual
+        de las instancias corresponde a este archivo (el puerto es dinamico) y,
+        con `select=true`, lo deja como modelo activo.
+
+        Si el archivo ya estaba abierto se reutiliza esa sesion y no se toca
+        nada (`reuse_open`). Nunca cierra una ventana del usuario.
+
+        Ojo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues
+        con pbi_refresh_model si vas a comprobar valores.
+        """
+        def _impl():
+            from powerbi import desktop_launcher
+
+            abierto = desktop_launcher.open_pbix(
+                path, timeout=timeout, reuse_open=reuse_open)
+            salida: Dict[str, Any] = {
+                "path": abierto.pbix_path,
+                "instance": abierto.instance,
+                "desktop_pid": abierto.desktop_pid,
+                "launched_by_us": abierto.launched_by_us,
+                "reused_open_session": not abierto.launched_by_us,
+                "waited_seconds": abierto.waited_seconds,
+                "selected": False,
+            }
+            if select:
+                session = get_session()
+                model = desktop_discovery.select_model(
+                    session, port=abierto.instance.get("port"))
+                salida["active_model"] = model.to_dict()
+                salida["selected"] = True
+            return salida
+        return guard(_impl)
+
+    @mcp.tool()
     def pbi_run_dax(query: str, max_rows: Optional[int] = None,
                     max_bytes: Optional[int] = None,
                     timeout_seconds: Optional[int] = None,

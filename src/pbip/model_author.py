@@ -203,6 +203,98 @@ def infer_columns(session: Any, expression: str) -> List[Dict[str, str]]:
     return columnas
 
 
+#: Grafias aceptadas para cada propiedad de columna. TMDL usa camelCase y el
+#: resto del codigo snake_case; quien llama no tiene por que saber cual toca.
+_ALIAS_COLUMNA = {
+    "name": "name", "nombre": "name",
+    "data_type": "data_type", "datatype": "data_type", "type": "data_type",
+    "tipo": "data_type",
+    "summarize_by": "summarize_by", "summarizeby": "summarize_by",
+    "format_string": "format_string", "formatstring": "format_string",
+    "display_folder": "display_folder", "displayfolder": "display_folder",
+    "source_column": "source_column", "sourcecolumn": "source_column",
+    "is_hidden": "is_hidden", "ishidden": "is_hidden",
+    "description": "description", "descripcion": "description",
+}
+
+
+def registrar_tabla_en_modelo(active: ActivePbip, nombre: str,
+                              herramienta: str) -> Dict[str, Any]:
+    """Declara `ref table <nombre>` en model.tmdl si aun no esta.
+
+    Escribir el archivo de la tabla NO la mete en el modelo: hace falta esta
+    linea. Sin ella el .tmdl se ve perfecto en disco, el proyecto abre sin
+    quejarse y la tabla simplemente no existe, asi que cualquier medida o
+    visual que la use aparece roto sin ninguna explicacion.
+    """
+    from utils.validation import tmdl_quote_name
+
+    modelo = _definition(active) / "model.tmdl"
+    if not modelo.exists():
+        raise ModelAuthorError(
+            "El modelo no tiene model.tmdl, asi que no se puede declarar la "
+            "tabla. El proyecto esta incompleto.",
+            details={"expected": str(modelo)})
+
+    lineas = modelo.read_text(encoding="utf-8-sig").splitlines()
+    ya_esta = any(
+        l.strip().startswith("ref table ")
+        and _unquote_tmdl(l.strip()[len("ref table "):].strip()).casefold()
+        == nombre.casefold()
+        for l in lineas)
+    if ya_esta:
+        return {"model_tmdl": str(modelo), "ref_added": False}
+
+    # Detras de la ultima `ref table`, o al final si no hay ninguna; nunca
+    # antes de las propiedades del modelo.
+    ultimos = [i for i, l in enumerate(lineas)
+               if l.strip().startswith("ref table ")]
+    destino = (ultimos[-1] + 1) if ultimos else len(lineas)
+    lineas.insert(destino, f"ref table {tmdl_quote_name(nombre)}")
+
+    _escribir(active, modelo, lineas, herramienta)
+    log.info("Tabla '%s' declarada en model.tmdl", nombre)
+    return {"model_tmdl": str(modelo), "ref_added": True}
+
+
+def _unquote_tmdl(nombre: str) -> str:
+    nombre = nombre.strip()
+    if nombre.startswith("'") and nombre.endswith("'") and len(nombre) >= 2:
+        return nombre[1:-1].replace("''", "'")
+    return nombre
+
+
+def _normalizar_columnas(columns: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Unifica las grafias y RECHAZA lo que no reconoce.
+
+    Antes se leia solo `data_type` y cualquier otra grafia caia al defecto
+    'string' sin avisar: una columna numerica quedaba escrita como texto y las
+    agregaciones dejaban de funcionar sin que nada fallara. Un tipo que se
+    pierde en silencio es peor que un error, asi que un nombre de propiedad
+    desconocido ahora se rechaza en vez de ignorarse.
+    """
+    normalizadas: List[Dict[str, str]] = []
+    for indice, columna in enumerate(columns):
+        if not isinstance(columna, dict):
+            raise ModelAuthorError(
+                f"La columna {indice} no es un objeto: {columna!r}.")
+        salida: Dict[str, str] = {}
+        for clave, valor in columna.items():
+            destino = _ALIAS_COLUMNA.get(str(clave).replace("_", "").lower())
+            if destino is None:
+                raise ModelAuthorError(
+                    f"Propiedad de columna desconocida: '{clave}'. Admitidas: "
+                    f"{', '.join(sorted(set(_ALIAS_COLUMNA.values())))}.",
+                    details={"column_index": indice, "unknown_key": clave})
+            salida[destino] = valor
+        if not str(salida.get("name", "")).strip():
+            raise ModelAuthorError(
+                f"La columna {indice} no tiene 'name'.",
+                details={"column_index": indice, "column": columna})
+        normalizadas.append(salida)
+    return normalizadas
+
+
 def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
                             columns: Optional[List[Dict[str, str]]] = None,
                             session: Any = None,
@@ -233,6 +325,7 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
                 "'columns' o abre el modelo en Power BI Desktop para deducirlas "
                 "ejecutando la expresion.")
         columns = infer_columns(session, expression)
+    columns = _normalizar_columnas(columns)
 
     lineas: List[str] = []
     if description:
@@ -261,10 +354,12 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
     lineas.append("")
 
     salida = _escribir(active, ruta, lineas, "pbi_create_calculated_table")
+    registro = registrar_tabla_en_modelo(active, name, "pbi_create_calculated_table")
     log.info("Tabla calculada '%s' con %s columnas", name, len(columns))
     return {"table": name, "columns": columns, "column_count": len(columns),
             "expression": expression,
-            "action": "replaced" if overwrite else "created", **salida}
+            "action": "replaced" if overwrite else "created",
+            **registro, **salida}
 
 
 #: Modos de almacenamiento de una particion.
