@@ -24,7 +24,23 @@ from powerbi.errors import PowerBIMCPError
 log = get_logger("filter_builder")
 
 #: Como interactua un visual con otro cuando se selecciona algo en el.
-INTERACCIONES = ("NoFilter", "Filter", "Highlight")
+#:
+#: Son los cuatro valores de `VisualInteractionFilterType` en el esquema
+#: oficial de `page/2.1.0`, ni uno mas. Antes aqui ponia
+#: `("NoFilter", "Filter", "Highlight")`: dos de los tres NO existen en PBIR y
+#: producian una pagina que el esquema rechaza. Nadie lo habia notado porque no
+#: habia forma de escribir una interaccion desde un page spec —los ids de los
+#: visuales los genera el compilador— y todos los generadores del repositorio
+#: pasaban una lista vacia.
+INTERACCIONES = ("Default", "DataFilter", "HighlightFilter", "NoFilter")
+
+#: Los nombres antiguos y los naturales, hacia el valor que PBIR entiende.
+_ALIAS_INTERACCION = {
+    "filter": "DataFilter", "datafilter": "DataFilter",
+    "highlight": "HighlightFilter", "highlightfilter": "HighlightFilter",
+    "none": "NoFilter", "nofilter": "NoFilter", "off": "NoFilter",
+    "default": "Default", "auto": "Default",
+}
 #: Tipos de filtro que este servidor sabe CONSTRUIR. Otros se pueden pasar
 #: tal cual con `raw`, pero no se generan a partir de valores.
 TIPOS = ("Categorical", "Advanced", "TopN", "Range", "RelativeDate", "Passthrough")
@@ -154,12 +170,25 @@ def build_interactions(specs: List[Dict[str, Any]],
             continue
         origen, destino = s.get("source"), s.get("target")
         tipo = s.get("type", "NoFilter")
-        if not origen or not destino:
+        # `in (None, "")` y no `not origen`: un id que se evalue como falso
+        # —el indice 0 antes de resolverse, por ejemplo— es una referencia
+        # legitima, y rechazarla aqui es muy dificil de ver desde fuera.
+        if origen in (None, "") or destino in (None, ""):
             raise FilterBuildError(
-                "Una interaccion necesita 'source' y 'target' (ids de visual).")
-        if tipo not in INTERACCIONES:
+                "Una interaccion necesita 'source' y 'target'. Desde un page "
+                "spec puedes senalar cada visual por su posicion, su 'id' o su "
+                "titulo; en una pagina existente, por su id.")
+        # PBIR escribe el tipo en PascalCase; se acepta como venga y se emite
+        # como toca. Que 'filter' y 'Filter' sean cosas distintas es una trampa
+        # sin ninguna ventaja.
+        canonico = _ALIAS_INTERACCION.get(str(tipo).strip().casefold())
+        if canonico is None:
             raise FilterBuildError(
-                f"Interaccion no soportada: '{tipo}'. Usa una de {list(INTERACCIONES)}.")
+                f"Interaccion no soportada: '{tipo}'. Usa una de "
+                f"{list(INTERACCIONES)}.",
+                details={"valid": list(INTERACCIONES),
+                         "aliases": sorted(_ALIAS_INTERACCION)})
+        tipo = canonico
         if conocidos:
             faltan = [v for v in (origen, destino) if v not in conocidos]
             if faltan:

@@ -224,20 +224,38 @@ def resolve_references(spec: Dict[str, Any],
 
     for i, v in enumerate(spec.get("visuals") or []):
         campos = v.get("fields") or {}
+        # El rol se comprueba AQUI ademas de en el generador, para poder decir
+        # en que punto del spec esta el fallo. Un rol que no existe se acusa;
+        # antes se descartaba en silencio y el visual salia vacio.
+        try:
+            validos = visual_factory.roles_de(visual_factory.resolve_type(v.get("type")))
+        except Exception:                        # tipo invalido: ya lo acusa el esquema
+            validos = None
         for rol, refs in campos.items():
+            if validos is not None and str(rol).strip().lower() not in validos:
+                errores.append(_err(
+                    f"$.visuals[{i}].fields.{rol}",
+                    f"El visual '{v.get('type')}' no tiene un rol '{rol}'.",
+                    f"Roles validos: {sorted(set(validos))}."))
+                continue
             lista = refs if isinstance(refs, list) else [refs]
             for j, ref in enumerate(lista):
                 path = f"$.visuals[{i}].fields.{rol}[{j}]"
-                if not isinstance(ref, str) or not ref.strip():
+                try:
+                    # Acepta tanto 'Tabla[Campo]' como el objeto que devuelve
+                    # el lector de paginas.
+                    limpio = visual_factory.normalizar_referencia(ref)
+                except Exception:
+                    limpio = ""
+                if not limpio:
                     errores.append(_err(path, "Referencia vacia."))
                     continue
-                limpio = ref.strip()
                 r = model_explorer.resolve_reference(limpio.strip("[]") if
                                                      limpio.startswith("[") else limpio,
                                                      indice)
                 if not r["exists"]:
                     errores.append(_err(
-                        path, f"'{ref}' no existe en el modelo.",
+                        path, f"'{limpio}' no existe en el modelo.",
                         "Usa 'Tabla[Columna]' o '[Medida]'. Consulta los campos "
                         "disponibles con pbi_page_building_blocks."))
                     continue
@@ -246,11 +264,11 @@ def resolve_references(spec: Dict[str, Any],
                                      if c.endswith(f"[{limpio}]")]
                     if len(coincidencias) > 1:
                         errores.append(_err(
-                            path, f"'{ref}' es ambiguo: existe en {coincidencias}.",
+                            path, f"'{limpio}' es ambiguo: existe en {coincidencias}.",
                             "Cualifica la referencia con su tabla."))
                         continue
-                    avisos.append(f"{path}: '{ref}' se resolvio como {r['ref']}.")
-                resueltos.append({"path": path, "ref": ref, "resolved": r["ref"],
+                    avisos.append(f"{path}: '{limpio}' se resolvio como {r['ref']}.")
+                resueltos.append({"path": path, "ref": limpio, "resolved": r["ref"],
                                   "kind": r["kind"]})
 
     return {"resolved": not errores, "errors": errores, "warnings": avisos,
@@ -291,6 +309,79 @@ def deterministic_id(seed: str, kind: str, index: int) -> str:
         return pbir_writer.new_id()
     material = f"{seed}|{kind}|{index}".encode("utf-8")
     return hashlib.sha256(material).hexdigest()[:20]
+
+
+def _resolver_interacciones(specs: List[Dict[str, Any]],
+                            construidos: List[Dict[str, Any]]
+                            ) -> List[Dict[str, Any]]:
+    """Traduce como el spec nombra un visual al id que se acaba de generar.
+
+    `visualInteractions` referencia visuales por su id, y esos ids los inventa
+    aqui `deterministic_id`: quien escribe el spec no puede conocerlos. La
+    clave `interactions` estaba por tanto declarada, validada... e inservible
+    —todos los generadores del repositorio le pasaban una lista vacia—.
+
+    Se admiten tres formas de senalar un visual, y ninguna obliga a adivinar:
+    su posicion en `visuals` (0, 1, 2...), el `id` que el propio spec le haya
+    puesto, o su `title`. El id real tambien vale, para no romper a quien ya lo
+    estuviera pasando.
+    """
+    if not specs:
+        return []
+
+    por_indice = {i: c["visual"]["name"] for i, c in enumerate(construidos)}
+    por_nombre: Dict[str, str] = {}
+    for c in construidos:
+        real = c["visual"]["name"]
+        por_nombre[real] = real
+        for etiqueta in (c["meta"].get("spec_id"), c["meta"].get("title")):
+            if etiqueta:
+                # Un titulo repetido no puede desempatar: se descarta en vez de
+                # elegir uno, o la interaccion apuntaria al visual equivocado.
+                por_nombre[str(etiqueta)] = (
+                    "" if str(etiqueta) in por_nombre and
+                    por_nombre[str(etiqueta)] != real else real)
+
+    def uno(valor: Any, lado: str, i: int) -> Any:
+        if isinstance(valor, bool):                       # True no es un indice
+            valor = str(valor)
+        if isinstance(valor, int):
+            if valor not in por_indice:
+                raise SpecValidationError(
+                    f"$.interactions[{i}].{lado}: no hay ningun visual en la "
+                    f"posicion {valor}; el spec tiene {len(construidos)}.",
+                    details={"errors": [_err(f"$.interactions[{i}].{lado}",
+                                             f"indice fuera de rango: {valor}")]})
+            return por_indice[valor]
+        clave = str(valor)
+        destino = por_nombre.get(clave)
+        if destino == "":
+            raise SpecValidationError(
+                f"$.interactions[{i}].{lado}: '{clave}' identifica a mas de un "
+                "visual. Ponles un 'id' distinto en el spec.",
+                details={"errors": [_err(f"$.interactions[{i}].{lado}",
+                                         f"referencia ambigua: {clave}")]})
+        if destino is None:
+            conocidos = sorted(k for k, v in por_nombre.items() if v)
+            raise SpecValidationError(
+                f"$.interactions[{i}].{lado}: no hay ningun visual '{clave}'. "
+                f"Usa su posicion (0..{len(construidos) - 1}), su 'id' o su "
+                "titulo.",
+                details={"errors": [_err(f"$.interactions[{i}].{lado}",
+                                         f"visual desconocido: {clave}")],
+                         "known": conocidos})
+        return destino
+
+    salida = []
+    for i, s in enumerate(specs):
+        if not isinstance(s, dict):
+            continue
+        copia = dict(s)
+        for lado in ("source", "target"):
+            if lado in copia and copia[lado] is not None:
+                copia[lado] = uno(copia[lado], lado, i)
+        salida.append(copia)
+    return salida
 
 
 # ----------------------------------------------------------------- proceso ---
@@ -342,6 +433,7 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
                                      "title": v.get("title"),
                                      "origin": built["origin"],
                                      "options": v.get("options"),
+                                     "spec_id": v.get("id"),
                                      "index": i}})
         avisos.extend(built["warnings"])
 
@@ -360,7 +452,7 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
 
     filtros_pagina = filter_builder.build_filter_config(spec.get("filters") or [])
     interacciones = filter_builder.build_interactions(
-        spec.get("interactions") or [],
+        _resolver_interacciones(spec.get("interactions") or [], construidos),
         [c["visual"]["name"] for c in construidos])
 
     return {"page_name": page["name"], "canvas": canvas, "visuals": construidos,

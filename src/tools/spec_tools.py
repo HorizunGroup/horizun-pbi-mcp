@@ -187,6 +187,13 @@ def register(mcp) -> None:
         ausentes. El defecto es conservador para que un spec parcial no pueda
         vaciar una pagina por omision.
 
+        `interactions`: que le hace un visual a otro al seleccionar en el.
+        Cada visual del spec se puede senalar por su POSICION en `visuals`
+        (0, 1, 2...), por el `id` que se le ponga en el spec, o por su titulo;
+        no hace falta conocer los ids finales, que se generan aqui. Tipos:
+        `Default`, `DataFilter`, `HighlightFilter`, `NoFilter` (tambien valen
+        `filter`, `highlight` y `none`).
+
         `dry_run=true` devuelve un plan con `plan_token` y no escribe nada;
         aplicalo despues con pbi_apply_plan.
         """

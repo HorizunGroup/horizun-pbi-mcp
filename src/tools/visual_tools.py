@@ -114,8 +114,18 @@ def register(mcp) -> None:
         """Crea un visual PBIR en una pagina.
 
         `visual_type`: card|table|matrix|slicer|barChart|columnChart|lineChart|pieChart.
-        `fields`: roles logicos -> campos, p.ej. {"category":"Tabla[Col]",
+        `fields`: rol -> campos, p.ej. {"category":"Tabla[Col]",
                   "values":["[Medida]"], "legend":"Tabla[Col]"}.
+
+        El rol se reconoce escrito como sea: el logico (`values`), el nombre
+        que usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,
+        `Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede
+        ser `"Tabla[Campo]"` o el objeto que devuelve `pbi_list_visuals`, para
+        poder leer una pagina y rehacerla sin traducir nada.
+
+        Un rol que ese tipo de visual no tiene se RECHAZA con la lista de los
+        validos. Antes se descartaba en silencio y el visual salia sin datos.
+
         `position`: {x, y, width, height} (z opcional).
         Clona un visual del mismo tipo como plantilla si existe. Hace backup.
         """

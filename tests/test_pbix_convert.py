@@ -521,8 +521,16 @@ def test_export_tmdl_live(tmp_path):
     from config import ActiveModel
     from powerbi import desktop_discovery, tmdl_export
 
-    instancia = next(i for i in desktop_discovery.discover_instances()
-                     if i.get("status") == "ok" and (i.get("table_count") or 0) > 0)
+    # La condicion de `skipif` se evalua al RECOLECTAR y este cuerpo vuelve a
+    # buscar: si Desktop se cierra entre las dos cosas —en una suite de varios
+    # minutos, pasa— un `next()` sin defecto revienta con un StopIteration
+    # pelado que no explica nada. La precondicion se comprueba donde se usa.
+    instancia = next((i for i in desktop_discovery.discover_instances()
+                      if i.get("status") == "ok" and (i.get("table_count") or 0) > 0),
+                     None)
+    if instancia is None:
+        pytest.skip("Power BI Desktop dejo de servir el modelo despues de la "
+                    "recoleccion de la suite.")
     modelo = ActiveModel(host=instancia["host"], port=instancia["port"],
                          connection_string=instancia["connection_string"],
                          catalog=instancia.get("catalog"))

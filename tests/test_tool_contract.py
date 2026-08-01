@@ -150,10 +150,22 @@ CARGA_TOOLS = [
     "pbi_create_pbip_project",
 ]
 
+#: Capa de diseno y punto de entrada. Cierran dos huecos del mismo tipo: tener
+#: las piezas no es lo mismo que saber usarlas. El sistema de diseno posee a la
+#: vez el color y la rejilla —antes eran dos mitades que no se hablaban— y
+#: `pbi_start_here` responde "¿y ahora que?" mirando el estado real, que es lo
+#: que un catalogo de 112 tools no puede contestar.
+DISENO_TOOLS = [
+    "pbi_start_here",
+    "pbi_list_design_systems",
+    "pbi_apply_design_system",
+    "pbi_compose_page",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
-                + VERIFICACION_TOOLS + CARGA_TOOLS)
+                + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 
@@ -381,3 +393,39 @@ def test_el_golden_no_tiene_sangria_residual():
         assert not all(l.startswith("        ") for l in cuerpo), (
             f"{nombre}: el golden conserva la sangria del docstring; se genero "
             "con un Python anterior a 3.13 y sin normalizar")
+
+
+# ------------------------------------------------------------- catalogo -------
+def test_el_catalogo_declara_el_numero_real_de_tools():
+    """El catalogo se escribia a mano y se quedo atras.
+
+    Llego a anunciar 101 tools con 112 registradas, y su tabla de bloques
+    sumaba una tercera cifra distinta. Un catalogo que miente sobre su propio
+    tamano no invita a fiarse del resto de lo que dice.
+    """
+    import re
+
+    from pathlib import Path
+
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "TOOL_CATALOG.md"
+           ).read_text(encoding="utf-8")
+
+    cabecera = re.search(r"# Cat[aá]logo de tools\s*[—-]\s*(\d+)", doc)
+    assert cabecera, "el catalogo no declara un numero en su titulo"
+    assert int(cabecera.group(1)) == EXPECTED_COUNT, (
+        f"el catalogo dice {cabecera.group(1)} y hay {EXPECTED_COUNT}")
+
+    total = re.search(r"\|\s*\*\*Total\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|", doc)
+    assert total, "la tabla de bloques no tiene fila de total"
+    assert int(total.group(1)) == EXPECTED_COUNT, (
+        f"la tabla suma {total.group(1)} y hay {EXPECTED_COUNT}")
+
+
+def test_el_catalogo_menciona_las_tools_del_bloque_de_diseno():
+    """El bloque nuevo tiene que estar documentado, no solo contado."""
+    from pathlib import Path
+
+    doc = (Path(__file__).resolve().parents[1] / "docs" / "TOOL_CATALOG.md"
+           ).read_text(encoding="utf-8")
+    faltan = [t for t in DISENO_TOOLS if f"`{t}`" not in doc]
+    assert not faltan, f"sin documentar en el catalogo: {faltan}"

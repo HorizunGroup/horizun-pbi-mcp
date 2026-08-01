@@ -1,22 +1,32 @@
-# Catálogo de tools — 101
+# Catálogo de tools — 116
 
 Generado sobre el contrato congelado en `tests/golden/tools_v1.json`.
 Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma de respuesta desde la versión 0.1.0.
+
+> ¿No sabes por dónde empezar? Llama a **`pbi_start_here`**: mira el estado real
+> del proyecto y responde con los tres o cuatro pasos que tocan ahora, cada uno
+> con el motivo. Este catálogo es la referencia; esa tool es el camino.
+
+Los recuentos salen de `tests/test_tool_contract.py`, que es lo que la suite
+verifica. Antes se escribían a mano y la cabecera llegó a decir 101 con 112
+tools registradas.
 
 | Bloque | N.º |
 |---|---|
 | Baseline original | 34 |
 | A — plataforma | 7 |
-| B — modelo semántico | 11 |
-| C — autoría PBIR | 16 |
-| D — spec declarativo | 7 |
-| E — auditoría integral | 5 |
+| B — modelo semántico | 16 |
+| C — autoría PBIR | 17 |
+| D — spec declarativo | 8 |
+| E — auditoría integral | 6 |
 | F — workflows | 8 |
+| F R5 — atomicidad | 2 |
 | G — conversión `.pbix` | 3 |
 | H — composición, tema y marcadores | 7 |
-| I — autoría de modelo | 3 |
-| J — propuestas y perfilado | 2 |
-| K — formato condicional | 1 |
+| I — verificación antes de entregar | 2 |
+| J — carga de datos | 2 |
+| L — diseño y punto de entrada | 4 |
+| **Total** | **116** |
 
 ---
 
@@ -152,6 +162,17 @@ Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma d
 > Todos los workflows vienen en `dry_run=true` por defecto.
 
 ---
+
+## Diseño y punto de entrada
+
+Cierran dos huecos del mismo tipo: tener las piezas no es lo mismo que saber usarlas.
+
+| Tool | Qué hace |
+|---|---|
+| `pbi_start_here` | Mira el estado real y dice los siguientes pasos, con el motivo de cada uno |
+| `pbi_list_design_systems` | Sistemas disponibles: cada uno decide tema, lienzo, rejilla y escala de texto a la vez |
+| `pbi_apply_design_system` | Aplica el sistema y devuelve la rejilla, para colocar a mano sobre las mismas guías |
+| `pbi_compose_page` | Compone una página entera sobre la rejilla a partir de la intención |
 
 ## Clases de riesgo
 

@@ -31,6 +31,12 @@ def pytest_configure(config):
         "destructiva. Se omite sola si no hay ninguna instancia sirviendo un "
         "modelo. Para ejecutarla: abre un .pbix o .pbip en Desktop y lanza "
         "`python -m pytest -m live`.")
+    config.addinivalue_line(
+        "markers",
+        "abre: pregunta a los DOS oraculos reales —TmdlSerializer de Microsoft "
+        "y el CLI oficial de PBIR— si lo que generamos abriria de verdad. "
+        "Necesita las DLL de Analysis Services y Node con el CLI instalado; se "
+        "omite sola si falta alguno. Ejecutar con: python -m pytest -m abre.")
 
 
 def make_settings(tmp_path) -> Settings:

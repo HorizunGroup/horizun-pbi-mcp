@@ -73,11 +73,22 @@ TYPE_MAP.update({alias.lower(): real for alias, real in ALIASES.items()})
 #: Pedirles campos es un error del que llama, no algo que se ignore en silencio.
 DECORATIVOS = frozenset({"textbox", "shape", "image", "pageNavigator", "actionButton"})
 
-# Roles logicos -> clave de queryState por tipo real
+# Roles logicos -> clave de queryState por tipo real.
+#
+# Las claves de la derecha son las que PBIR exige de verdad, y no se deducen:
+# se comprobaron una a una contra el validador oficial de Microsoft escribiendo
+# un visual por cada (tipo, rol) y leyendo que devolvia PBIR_ROLE_UNKNOWN. De
+# ahi salio que `cardVisual` no usa `Values` como los demas sino `Data`: con
+# `Values` el informe entero queda invalido, y el tipo estaba anunciado como
+# soportado. `tests/test_generadores_abren.py` mantiene esa comprobacion viva.
 ROLE_MAP = {
     "card": {"values": "Values"},
-    "cardVisual": {"values": "Values"},
-    "tableEx": {"values": "Values"},
+    "cardVisual": {"values": "Data"},
+    # Una tabla no distingue dimension de medida: todo va a `Values`, en el
+    # orden en que se pide. Se acepta `category` como en el segmentador porque
+    # el destino no es ambiguo —y descartarlo, que es lo que se hacia antes,
+    # borraba una columna que alguien habia pedido sin decirlo.
+    "tableEx": {"values": "Values", "category": "Values"},
     "pivotTable": {"rows": "Rows", "columns": "Columns", "values": "Values"},
     "slicer": {"values": "Values", "category": "Values"},
     "clusteredBarChart": {"category": "Category", "values": "Y", "legend": "Series"},
@@ -87,6 +98,40 @@ ROLE_MAP = {
     # HTML Content: una sola medida (que devuelve HTML/SVG) en el rol 'content'.
     HTML_CONTENT_TYPE: {"values": "content", "content": "content"},
 }
+
+#: Otros nombres con los que la gente llama al mismo rol. Se aceptan solo si el
+#: tipo tiene ese rol logico: en un `card` no hay leyenda que valga.
+#:
+#: Aqui solo entra lo que significa lo MISMO, no lo que se le parece. `details`
+#: es un rol propio en la interfaz de Power BI, asi que mandarlo a `category`
+#: seria colocar un campo donde nadie lo pidio —el mismo defecto que este mapa
+#: existe para cerrar—. Un rol que no este aqui se rechaza y se dice.
+_SINONIMOS_DE_ROL = {
+    "value": "values", "measure": "values", "measures": "values",
+    "axis": "category", "categories": "category",
+    "row": "rows", "column": "columns", "series": "legend",
+}
+
+
+def roles_de(actual_type: str) -> Dict[str, str]:
+    """Nombre de rol aceptado (en minusculas) -> clave de queryState.
+
+    Se admiten TRES formas del mismo rol, porque las tres circulan de verdad:
+    el rol logico (`values`), el nombre PBIR (`Y`, `Data`, `Category`) —que es
+    justo lo que devuelve `pbir_reader` al leer una pagina y lo que se ve en el
+    propio visual.json— y un puñado de sinonimos naturales (`measure`, `axis`).
+    """
+    role_map = ROLE_MAP.get(actual_type, {"values": "Values"})
+    alias: Dict[str, str] = {}
+    for logico, clave in role_map.items():
+        alias[logico.lower()] = clave
+    for clave in role_map.values():
+        alias.setdefault(clave.lower(), clave)
+    for sinonimo, logico in _SINONIMOS_DE_ROL.items():
+        if logico in role_map:
+            alias.setdefault(sinonimo, role_map[logico])
+    return alias
+
 
 # Lo que sale aqui lo acepta `resolve_type`, y al reves: misma fuente.
 SUPPORTED = sorted(REAL_TYPES + tuple(ALIASES), key=str.lower)
@@ -99,6 +144,30 @@ def resolve_type(visual_type: str) -> str:
             f"Tipo de visual no soportado: '{visual_type}'. "
             f"Soportados: {SUPPORTED}.")
     return TYPE_MAP[key]
+
+
+def normalizar_referencia(ref: Any) -> str:
+    """Deja cualquier forma de referencia de campo en `Tabla[Campo]`.
+
+    `pbir_reader.read_visual_file` devuelve cada campo como un diccionario
+    (`{"kind", "entity", "property", "ref"}`) y el generador espera una cadena.
+    Sin esto, leer una pagina y reutilizar sus campos —el flujo mas natural que
+    hay, "hazme otra parecida a esta"— no funcionaba: el lector y el escritor
+    del mismo servidor no se entendian.
+    """
+    if isinstance(ref, str):
+        return ref.strip()
+    if isinstance(ref, dict):
+        texto = ref.get("ref")
+        if isinstance(texto, str) and texto.strip():
+            return texto.strip()
+        entidad, propiedad = ref.get("entity"), ref.get("property")
+        if propiedad:
+            return f"{entidad}[{propiedad}]" if entidad else f"[{propiedad}]"
+    raise VisualFactoryError(
+        f"Referencia de campo invalida: {ref!r}. Usa 'Tabla[Campo]', "
+        "'[Medida]', o el objeto que devuelve pbi_list_visuals.",
+        details={"reference": repr(ref)})
 
 
 def _parse_ref(ref: str) -> Dict[str, Optional[str]]:
@@ -148,26 +217,73 @@ def _field_node(ref: str, kind: str, measure_index: Optional[Dict[str, str]],
     }
 
 
+def _normalizar_roles(actual_type: str,
+                      fields: Dict[str, Any]) -> Dict[str, List[Any]]:
+    """Lo que pide quien llama -> claves de queryState. Acusa lo que no existe.
+
+    Se recorren los roles PEDIDOS, no los conocidos. La version anterior hacia
+    lo contrario (`fields.get(rol)` por cada rol del mapa) y eso tenia dos
+    consecuencias mudas: `{"Values": [...]}` no casaba con la clave `values` y
+    el visual salia SIN datos, y un rol mal escrito junto a uno bueno se perdia
+    sin ni siquiera un aviso. En los dos casos el informe abre y pinta un
+    visual vacio, que es peor que no abrir: nadie va a buscar un error.
+    """
+    alias = roles_de(actual_type)
+    normalizado: Dict[str, List[Any]] = {}
+    for rol_pedido, refs in (fields or {}).items():
+        clave = alias.get(str(rol_pedido).strip().lower())
+        if clave is None:
+            raise VisualFactoryError(
+                f"El visual '{actual_type}' no tiene un rol '{rol_pedido}'. "
+                f"Roles validos para este tipo: {sorted(set(alias))}.",
+                details={"visual_type": actual_type, "role": rol_pedido,
+                         "valid_roles": sorted(set(alias))})
+        if not refs:
+            continue
+        if isinstance(refs, (str, dict)):
+            lista = [refs]
+        elif isinstance(refs, (list, tuple)):
+            lista = list(refs)
+        else:
+            # `list(5)` seria un TypeError crudo en mitad del generador; el que
+            # llama merece un error del servidor que diga que se esperaba.
+            raise VisualFactoryError(
+                f"El rol '{rol_pedido}' espera un campo o una lista de campos; "
+                f"se recibio {type(refs).__name__}.",
+                details={"visual_type": actual_type, "role": rol_pedido})
+        normalizado.setdefault(clave, []).extend(
+            normalizar_referencia(r) for r in lista)
+    return normalizado
+
+
 def _build_query(actual_type: str, fields: Dict[str, Any],
                  measure_index: Optional[Dict[str, str]],
                  warnings: List[str]) -> Dict[str, Any]:
     role_map = ROLE_MAP.get(actual_type, {"values": "Values"})
+    normalizado = _normalizar_roles(actual_type, fields)
+
+    # Se emite en el orden del mapa, no en el que llegaron los roles: dos specs
+    # equivalentes tienen que producir el MISMO visual.json byte a byte, o el
+    # diff de `page_update` vera cambios donde no los hay.
+    orden: List[str] = []
+    for clave in role_map.values():
+        if clave not in orden:
+            orden.append(clave)
+    for clave in normalizado:
+        if clave not in orden:                              # pragma: no cover
+            orden.append(clave)
+
     query_state: Dict[str, Any] = {}
-    for logical_role, role_key in role_map.items():
-        refs = fields.get(logical_role)
+    for clave in orden:
+        refs = normalizado.get(clave)
         if not refs:
             continue
-        if isinstance(refs, str):
-            refs = [refs]
         projections = []
         for ref in refs:
             kind = _infer_kind(ref, measure_index)
             projections.append(_field_node(ref, kind, measure_index, warnings))
-        # si el rol ya tenia proyecciones (p.ej. slicer values+category), extiende
-        if role_key in query_state:
-            query_state[role_key]["projections"].extend(projections)
-        else:
-            query_state[role_key] = {"projections": projections}
+        query_state[clave] = {"projections": projections}
+
     if not query_state:
         warnings.append("El visual no recibio campos; quedara vacio.")
     return {"queryState": query_state}

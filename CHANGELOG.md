@@ -5,6 +5,119 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.9] — 2026-08-01
+
+**116 tools, 1233 pruebas.**
+
+Seis defectos que ningún validador propio veía, y los dos huecos que quedaban
+entre tener las piezas y saber usarlas.
+
+### Añadido
+
+- **Capa de diseño** (`pbi_list_design_systems`, `pbi_apply_design_system`,
+  `pbi_compose_page`). Había dos mitades que no se hablaban: el tema sabía de
+  color y de tipografía y nada de dónde va cada cosa; el motor de layout
+  colocaba con `ceil(sqrt(n))` sin saber de qué color era el fondo. Entre las
+  dos no había rejilla, ni márgenes constantes, ni banda de título. El
+  resultado se notaba: páginas correctas y sin criterio.
+
+  Un **sistema de diseño** posee las dos mitades: de qué tema saca el color
+  —de los que ya estaban verificados contra daltonismo, no de una paleta
+  nueva—, sobre qué rejilla de 12 columnas se coloca todo, qué alturas tienen
+  las bandas y qué tamaño tiene cada nivel de texto. Tres sistemas, y cada uno
+  resuelve un escenario distinto: `sala` (1920×1080, se lee a cuatro metros),
+  `informe` (1280×720, se exporta a PDF) y `foco` (el color saturado reservado
+  al semáforo).
+
+  `pbi_compose_page` traduce la intención —«un título, cuatro indicadores, un
+  gráfico protagonista y dos de apoyo»— en una página colocada. La composición
+  es rígida a propósito: la coherencia entre páginas sale de que ninguna pueda
+  inventarse su propio orden. Y si algo no cabe **se dice con la cuenta
+  hecha**, en vez de encogerlo hasta que no se lea.
+
+- **`pbi_start_here`** — un punto de entrada para 116 tools. Ciento dieciséis
+  tools con buen nombre siguen siendo ciento dieciséis tools: el catálogo
+  estaba completo y el camino no existía. Esta mira el estado real —si hay
+  proyecto, si tiene modelo o solo informe, si está vacío, si Power BI Desktop
+  lo tiene abierto e impide escribir el TMDL— y responde con tres o cuatro
+  pasos concretos, cada uno con **por qué** toca ahora. Un paso sin motivo es
+  una orden, y una orden no se puede saltar con criterio.
+
+  Cuenta visuales, no solo páginas: un proyecto recién creado trae una página
+  vacía, y responderle «ya tienes una» a quien todavía no tiene nada es la
+  clase de respuesta que hace desconfiar del resto.
+
+- **`tests/test_generadores_abren.py`** — la prueba que faltaba, y la que
+  encontró todo lo anterior. Construye un `.pbip` con los generadores **de
+  verdad** (esqueleto, tablas desde archivo, medidas, tema, los nueve tipos de
+  visual con datos, filtros, interacciones y marcadores) y le pregunta a los dos
+  oráculos reales si eso abre.
+
+  Se verificó por mutación: al revertir cada arreglo, la prueba falla y **nombra
+  la línea culpable** (`ROLE_MAP['cardVisual']['values'] = 'Values'`).
+
+  Las que necesitan las DLL y Node se marcan `abre` y se omiten solas; el
+  contrato de roles, el de tipos de interacción —anclado al esquema oficial
+  cacheado— y el viaje de ida y vuelta no necesitan nada y corren en CI.
+
+### Corregido
+
+- **El catálogo de tools mentía sobre su propio tamaño.** Anunciaba 101 con 112
+  registradas, y su tabla de bloques sumaba una tercera cifra. Ahora los
+  recuentos salen de las constantes que la suite verifica, y hay una prueba que
+  lo mantiene sincronizado.
+
+Y seis defectos del mismo linaje: el servidor escribía algo, se lo enseñaba a un
+validador **propio**, y el validador propio decía que sí. Ninguno de los 1169
+tests los veía, porque la forma correcta la definía el mismo código que se
+estaba probando. Se encontraron preguntándole a los dos únicos jueces que no son
+nuestros: `TmdlSerializer` (el código con el que Power BI lee el modelo) y el
+CLI oficial `@microsoft/powerbi-report-authoring-cli`.
+
+- **Los campos de un visual se descartaban en silencio si el rol no coincidía
+  en mayúsculas.** El rol se buscaba con `fields.get(rol)`, exacto. Escribir
+  `{"Values": [...]}` —que es el nombre que aparece **en el propio
+  `visual.json`** y el que devuelve `pbi_list_visuals`— no casaba con la clave
+  `values`, y el visual se escribía sin ningún dato. Sin error. El informe abre
+  y pinta una tarjeta en blanco, que es peor que no abrir: nadie va a buscar un
+  fallo que nunca se dio. Ahora el rol se reconoce escrito como sea.
+
+- **Un rol mal escrito junto a uno bueno desaparecía sin ni siquiera un aviso.**
+  `{"category": [...], "valeus": [...]}` producía un gráfico con eje y sin
+  barras. Ahora un rol que ese tipo de visual no tiene se **rechaza**, con la
+  lista de los válidos.
+
+- **`cardVisual` declaraba el rol `Values`; PBIR exige `Data`.** El tipo estaba
+  anunciado como soportado y **siempre** generaba un informe inválido
+  (`PBIR_ROLE_UNKNOWN` más `PBIR_ROLE_REQUIRED_MISSING`). El mapa de roles
+  completo se comprobó uno a uno contra el validador oficial en vez de deducirlo.
+
+- **El lector y el escritor del mismo servidor no se entendían.**
+  `pbi_list_visuals` devuelve los roles con el nombre PBIR (`Category`, `Y`) y
+  cada campo como un objeto; el generador esperaba roles lógicos y cadenas. Leer
+  una página para hacer otra parecida —el flujo más natural que hay— fallaba, y
+  si alguien extraía el `ref` a mano, el visual salía vacío. Ahora se aceptan
+  las dos formas.
+
+- **`interactions` estaba declarado, validado y era inservible.** Referencia
+  visuales por id, y los ids los genera el compilador: quien escribe el spec no
+  puede conocerlos. Todos los generadores del repositorio le pasaban `[]`, y por
+  eso nadie descubrió el defecto siguiente. Ahora cada visual se puede señalar
+  por su posición, por un `id` propio del spec o por su título.
+
+- **Dos de los tres tipos de interacción no existían en PBIR.** `INTERACCIONES`
+  decía `("NoFilter", "Filter", "Highlight")`. El esquema oficial de
+  `page/2.1.0` dice `Default`, `DataFilter`, `HighlightFilter` y `NoFilter`.
+  `Filter` y `Highlight` producían una página que el esquema rechaza, y
+  `Default` no se ofrecía. Los nombres antiguos siguen valiendo como alias.
+
+- **Una prueba `live` reventaba en vez de omitirse.** La condición de `skipif`
+  se evalúa al recolectar y el cuerpo volvía a buscar la instancia: si Power BI
+  Desktop se cerraba entre las dos cosas —en una suite de cuatro minutos,
+  pasa— salía un `StopIteration` pelado.
+
+---
+
 ## [1.0.0-rc.8] — 2026-08-01
 
 **112 tools, 1169 pruebas.**
