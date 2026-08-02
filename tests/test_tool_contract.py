@@ -435,7 +435,8 @@ def test_el_catalogo_declara_el_numero_real_de_tools():
     doc = (Path(__file__).resolve().parents[1] / "docs" / "TOOL_CATALOG.md"
            ).read_text(encoding="utf-8")
 
-    cabecera = re.search(r"# Cat[aá]logo de tools\s*[—-]\s*(\d+)", doc)
+    cabecera = re.search(
+        r"# (?:Cat[aá]logo de tools|Tool catalog)\s*[—-]\s*(\d+)", doc)
     assert cabecera, "el catalogo no declara un numero en su titulo"
     assert int(cabecera.group(1)) == EXPECTED_COUNT, (
         f"el catalogo dice {cabecera.group(1)} y hay {EXPECTED_COUNT}")
