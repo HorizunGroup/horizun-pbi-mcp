@@ -315,13 +315,30 @@ def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
     datos = read_json(ruta)
 
     avisos: List[str] = []
-    nodo = visual_factory._field_node(                       # noqa: SLF001
-        field_ref, visual_factory._infer_kind(field_ref, measure_index),  # noqa: SLF001
-        measure_index, avisos)["field"]
+    # El visual es la fuente autoritativa del nodo de campo. Reconstruirlo
+    # desde ``Tabla[Campo]`` perdia Aggregation.Function en columnas numericas
+    # importadas. Una medida que no se muestra SI se puede resolver sin
+    # adivinar gracias al indice del modelo; una columna ausente no, porque se
+    # desconoce si Desktop debe usar Sum, Avg, Min u otra agregacion.
+    try:
+        proyeccion = conditional_format.resolve_projection(datos, field_ref)
+    except conditional_format.ConditionalFormatError as exc:
+        if exc.details.get("rule") != "format_field_not_projected":
+            raise
+        parsed = visual_factory._parse_ref(field_ref)         # noqa: SLF001
+        tabla_medida = (measure_index or {}).get(parsed["field"])
+        tabla_pedida = parsed["table"]
+        if not tabla_medida or (tabla_pedida and
+                                tabla_pedida.casefold() != tabla_medida.casefold()):
+            raise
+        proyeccion = visual_factory._field_node(              # noqa: SLF001
+            field_ref, "measure", measure_index, avisos)
+    nodo = proyeccion["field"]
 
     detalle = conditional_format.apply_to_visual(
         datos, nodo, min_color, max_color, target=target,
-        mid_color=mid_color, null_strategy=null_strategy)
+        mid_color=mid_color, null_strategy=null_strategy,
+        projection_query_ref=proyeccion.get("queryRef"))
     avisos.extend(conditional_format.contrast_warnings(
         min_color, max_color, target=target,
         theme_data=theme.current_theme(active)))

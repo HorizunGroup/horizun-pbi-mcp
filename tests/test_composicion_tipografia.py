@@ -181,6 +181,43 @@ def test_cardVisual_usa_los_grupos_value_y_label_del_catalogo(proyecto):
     assert objetos["value"][0]["properties"]["fontSize"]["expr"]["Literal"]["Value"] == "32D"
 
 
+def test_cardVisual_usa_fontColor_y_no_el_color_de_la_tarjeta_clasica(proyecto):
+    salida = visual_factory.build_visual(
+        proyecto, "cardVisual", {"values": ["[TotalAmount]"]}, POS,
+        options={"value_color": "#123456"})
+
+    props = salida["visual"]["visual"]["objects"]["value"][0]["properties"]
+    assert "fontColor" in props
+    assert "color" not in props
+
+
+@pytest.mark.parametrize("pedido,pbir", [
+    ("roundedRectangle", "rectangleRounded"),
+    ("triangle", "triangleIsoc"),
+])
+def test_formas_amigables_se_serializan_como_enum_oficial(proyecto, pedido, pbir):
+    salida = visual_factory.build_visual(
+        proyecto, "shape", {}, POS, options={"shape": pedido})
+    valor = (salida["visual"]["visual"]["objects"]["shape"][0]["properties"]
+             ["tileShape"]["expr"]["Literal"]["Value"])
+    assert valor == f"'{pbir}'"
+
+
+@pytest.mark.parametrize("pedido,pbir", [
+    ("bookmark", "bookmarks"), ("info", "information"),
+    ("question", "help"), ("resetFilters", "clearAllSlicers"),
+    ("chevronRight", "rightArrow"), ("chevronLeft", "leftArrow"),
+])
+def test_iconos_amigables_se_serializan_como_enum_oficial(
+        proyecto, pedido, pbir):
+    salida = visual_factory.build_visual(
+        proyecto, "actionButton", {}, POS,
+        options={"action": "back", "icon": pedido})
+    valor = (salida["visual"]["visual"]["objects"]["icon"][0]["properties"]
+             ["shapeType"]["expr"]["Literal"]["Value"])
+    assert valor == f"'{pbir}'"
+
+
 @pytest.mark.parametrize("tipo", ["barChart", "columnChart"])
 def test_el_visualType_es_exactamente_el_tipo_oficial_solicitado(proyecto, tipo):
     salida = visual_factory.build_visual(

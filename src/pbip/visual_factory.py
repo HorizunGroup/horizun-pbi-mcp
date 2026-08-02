@@ -620,12 +620,26 @@ def _normalizar_posicion(position: Dict[str, float]) -> Dict[str, float]:
 
 
 # ------------------------------------------------------------------ decorativos --
-#: Formas admitidas por el visual `shape` de Power BI.
+#: Alias publicos -> enum exacto del catalogo oficial. La API conserva nombres
+#: amistosos ya publicados, pero el visual.json nunca escribe un enum inventado.
 FORMAS = ("rectangle", "roundedRectangle", "oval", "line", "arrow", "triangle",
           "pentagon", "hexagon", "heart")
-#: Iconos de `actionButton`. 'blank' es el boton de texto sin icono.
+_FORMA_PBIR = {
+    "rectangle": "rectangle", "roundedRectangle": "rectangleRounded",
+    "oval": "oval", "line": "line", "arrow": "arrow",
+    "triangle": "triangleIsoc", "pentagon": "pentagon",
+    "hexagon": "hexagon", "heart": "heart",
+}
+#: `shapeType` exactos, mas alias historicos que se traducen antes de escribir.
 ICONOS_BOTON = ("blank", "back", "bookmark", "drillDown", "drillUp", "info",
                 "question", "reset", "resetFilters", "chevronRight", "chevronLeft")
+_ICONO_PBIR = {
+    "blank": "blank", "back": "back", "bookmark": "bookmarks",
+    "drillDown": "rightArrow", "drillUp": "leftArrow",
+    "info": "information", "question": "help", "reset": "reset",
+    "resetFilters": "clearAllSlicers", "chevronRight": "rightArrow",
+    "chevronLeft": "leftArrow",
+}
 
 
 def _lit(valor: Any) -> Dict[str, Any]:
@@ -733,10 +747,12 @@ def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any], actual_type: str,
     # produce JSON valido de esquema que Desktop simplemente no aplica.
     if actual_type == "cardVisual":
         etiqueta, valor = "label", "value"
+        propiedad_color = "fontColor"
         objetos.pop("categoryLabels", None)
         objetos.pop("labels", None)
     else:
         etiqueta, valor = "categoryLabels", "labels"
+        propiedad_color = "color"
 
     if opciones.get("show_category_label") is False:
         objetos[etiqueta] = [{"properties": {"show": _lit(False)}}]
@@ -750,7 +766,8 @@ def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any], actual_type: str,
     if opciones.get("bold_value"):
         props["bold"] = _lit(True)
     if opciones.get("value_color"):
-        props["color"] = {"solid": {"color": _lit(opciones["value_color"])}}
+        props[propiedad_color] = {
+            "solid": {"color": _lit(opciones["value_color"])}}
     if props:
         objetos[valor] = [{"properties": props}]
     if not objetos:
@@ -763,7 +780,7 @@ def _build_shape(opciones: Dict[str, Any]) -> Dict[str, Any]:
         raise VisualFactoryError(
             f"Forma no soportada: '{forma}'. Usa una de {list(FORMAS)}.")
     objetos: Dict[str, Any] = {
-        "shape": _props(tileShape=forma),
+        "shape": _props(tileShape=_FORMA_PBIR[forma]),
         "rotation": _props(shapeAngle=int(opciones.get("angle", 0))),
     }
     relleno = opciones.get("fill")
@@ -822,7 +839,8 @@ def _build_action_button(opciones: Dict[str, Any]) -> Dict[str, Any]:
         raise VisualFactoryError(
             f"Icono de boton no soportado: '{icono}'. Usa uno de {list(ICONOS_BOTON)}.")
 
-    objetos: Dict[str, Any] = {"icon": [{"properties": {"shapeType": _lit(icono)},
+    objetos: Dict[str, Any] = {"icon": [{"properties": {
+        "shapeType": _lit(_ICONO_PBIR[icono])},
                                          "selector": {"id": "default"}}]}
     if opciones.get("text"):
         objetos["text"] = [
@@ -891,6 +909,51 @@ def _build_decorativo(actual_type: str,
     return vis
 
 
+def _rutas_formato_generadas(vis: Dict[str, Any], *, completas: bool,
+                             actual_type: str, title: Optional[str],
+                             opciones: Dict[str, Any]) -> List[tuple[str, str, str]]:
+    """Rutas que acabamos de escribir y que el oraculo debe reconocer."""
+    if completas:
+        return [
+            (scope, grupo, propiedad)
+            for scope in ("objects", "visualContainerObjects")
+            for grupo, bloques in (vis.get(scope) or {}).items()
+            for bloque in bloques if isinstance(bloque, dict)
+            for propiedad in (bloque.get("properties") or {})
+        ]
+
+    rutas: List[tuple[str, str, str]] = []
+    if title is not None:
+        rutas.extend([("visualContainerObjects", "title", "text"),
+                      ("visualContainerObjects", "title", "show")])
+    if actual_type in ("card", "cardVisual"):
+        etiqueta = "label" if actual_type == "cardVisual" else "categoryLabels"
+        valor = "value" if actual_type == "cardVisual" else "labels"
+        if opciones.get("show_category_label") is False:
+            rutas.append(("objects", etiqueta, "show"))
+        if opciones.get("value_font_size") is not None:
+            rutas.append(("objects", valor, "fontSize"))
+        if opciones.get("bold_value"):
+            rutas.append(("objects", valor, "bold"))
+        if opciones.get("value_color"):
+            propiedad = "fontColor" if actual_type == "cardVisual" else "color"
+            rutas.append(("objects", valor, propiedad))
+    return rutas
+
+
+def _comprobar_formato_generado(documento: Dict[str, Any], *, completas: bool,
+                                actual_type: str, title: Optional[str],
+                                opciones: Dict[str, Any]) -> None:
+    """Falla pronto si el catalogo oficial no reconoce lo que generamos."""
+    from services import format_oracle
+
+    rutas = _rutas_formato_generadas(
+        documento.get("visual") or {}, completas=completas,
+        actual_type=actual_type, title=title, opciones=opciones)
+    if rutas:
+        format_oracle.assert_managed_paths(documento, rutas)
+
+
 def find_template(active: ActivePbip, actual_type: str) -> Optional[Path]:
     """Busca un visual existente del mismo tipo para usar como plantilla."""
     pdir = pages_dir(active)
@@ -941,7 +1004,12 @@ def build_visual(
                 {"properties": {"show": _lit(True), "text": _lit(title)}}]
         if actual_type == "textbox":
             _ajustar_alto_de_texto(pos, opciones, warnings)
-        return {"visual": {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis},
+        documento = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
+        _comprobar_formato_generado(
+            documento, completas=True, actual_type=actual_type,
+            title=title if opciones.get("show_title") else None,
+            opciones=opciones)
+        return {"visual": documento,
                 "actual_type": actual_type,
                 "origin": "elemento de composicion",
                 "warnings": warnings}
@@ -983,4 +1051,7 @@ def build_visual(
             "No habia un visual de este tipo para clonar; se genero una plantilla "
             "minima. Verifica el resultado en Power BI Desktop.")
 
+    _comprobar_formato_generado(
+        data, completas=False, actual_type=actual_type, title=title,
+        opciones=options or {})
     return {"visual": data, "actual_type": actual_type, "origin": origin, "warnings": warnings}

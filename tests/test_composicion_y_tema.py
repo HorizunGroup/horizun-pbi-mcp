@@ -547,7 +547,78 @@ def test_barras_escribe_en_data_point_de_un_grafico_compatible():
 
     vis = {"visual": {"visualType": "clusteredColumnChart"}}
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
-    assert "fill" in vis["visual"]["objects"]["dataPoint"][0]["properties"]
+    bloque = vis["visual"]["objects"]["dataPoint"][0]
+    assert "fill" in bloque["properties"]
+    # Es la forma que exporta Desktop para dataPoint.fill. metadata sirve para
+    # acotar columnas de una tabla, pero aqui cambia el alcance de la serie.
+    assert bloque["selector"] == {
+        "data": [{"dataViewWildcard": {"matchingOption": 1}}]}
+
+
+def test_aggregation_conserva_la_columna_interior_en_el_fill_rule():
+    """Una columna resumida no se puede degradar como columna sin resumir."""
+    from pbip import conditional_format as cf
+
+    campo = {"Aggregation": {
+        "Expression": {"Column": {
+            "Expression": {"SourceRef": {"Entity": "T"}},
+            "Property": "Importe"}},
+        "Function": 0,
+    }}
+    vis = {"visual": {"visualType": "pieChart"}}
+    cf.apply_to_visual(vis, campo, "#D03B3B", "#0CA30C", target="bars",
+                       projection_query_ref="Sum(T.Importe)")
+
+    bloque = vis["visual"]["objects"]["dataPoint"][0]
+    input_node = (bloque["properties"]["fill"]["solid"]["color"]["expr"]
+                  ["FillRule"]["Input"])
+    assert input_node == campo
+    assert "metadata" not in bloque["selector"]
+
+
+def test_reaplicar_dataPoint_reemplaza_la_regla_del_mismo_campo():
+    from pbip import conditional_format as cf
+
+    campo = {"Aggregation": {
+        "Expression": {"Column": {
+            "Expression": {"SourceRef": {"Entity": "T"}},
+            "Property": "Importe"}},
+        "Function": 0}}
+    vis = {"visual": {"visualType": "pieChart"}}
+    cf.apply_to_visual(vis, campo, "#000000", "#111111", target="bars")
+    result = cf.apply_to_visual(vis, campo, "#D03B3B", "#0CA30C",
+                                target="bars")
+
+    assert result["replaced"] is True
+    bloques = vis["visual"]["objects"]["dataPoint"]
+    assert len(bloques) == 1
+    assert bloques[0]["selector"] == {
+        "data": [{"dataViewWildcard": {"matchingOption": 1}}]}
+
+
+def test_resolver_proyeccion_reutiliza_aggregation_y_queryref():
+    from pbip import conditional_format as cf
+
+    campo = {"Aggregation": {
+        "Expression": {"Column": {
+            "Expression": {"SourceRef": {"Entity": "T"}},
+            "Property": "Importe"}},
+        "Function": 0}}
+    visual = {"visual": {"query": {"queryState": {"Y": {"projections": [{
+        "field": campo, "queryRef": "Sum(T.Importe)"}]}}}}}
+
+    proyeccion = cf.resolve_projection(visual, "T[Importe]")
+    assert proyeccion["field"] == campo
+    assert proyeccion["queryRef"] == "Sum(T.Importe)"
+
+
+def test_resolver_proyeccion_rechaza_un_campo_que_el_visual_no_usa():
+    from pbip import conditional_format as cf
+
+    visual = {"visual": {"query": {"queryState": {}}}}
+    with pytest.raises(cf.ConditionalFormatError) as exc:
+        cf.resolve_projection(visual, "T[Ausente]")
+    assert exc.value.details["rule"] == "format_field_not_projected"
 
 
 def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
@@ -560,6 +631,17 @@ def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
     with pytest.raises(cf.ConditionalFormatError) as exc:
         cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
     assert exc.value.details["visual_type"] == "pivotTable"
+    assert "objects" not in vis["visual"]
+
+
+def test_fontColor_no_se_ofrece_en_la_matrix_clasica():
+    """El grupo existe, la propiedad no: el catalogo distingue ambas cosas."""
+    from pbip import conditional_format as cf
+
+    vis = {"visual": {"visualType": "matrix"}}
+    with pytest.raises(cf.ConditionalFormatError):
+        cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C",
+                           target="font")
     assert "objects" not in vis["visual"]
 
 

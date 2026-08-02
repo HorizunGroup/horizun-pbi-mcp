@@ -171,11 +171,39 @@ def test_formato_condicional_devuelve_aviso_de_contraste_del_tema(
         lambda _active: {"background": "#1A1A19", "foreground": "#FFFFFF"})
 
     resultado = pbir_edit.set_conditional_format(
-        active, P, COL, "Fact[Amount]", "#1A1A19", "#FFFFFF",
+        active, P, COL, "Fact[TotalAmount]", "#1A1A19", "#FFFFFF",
         target="bars")
 
     assert any("extremo min" in aviso and "1.00:1" in aviso
                for aviso in resultado["warnings"])
+
+
+def test_formato_condicional_admite_medida_no_proyectada_si_modelo_la_confirma(
+        proyecto):
+    active, _p, _s = proyecto
+    resultado = pbir_edit.set_conditional_format(
+        active, P, COL, "Fact[Ratio Pct]", "#000000", "#FFFFFF",
+        target="bars", measure_index={"Ratio Pct": "Fact"})
+
+    assert resultado["field_ref"] == "Fact.Ratio Pct"
+
+
+def test_reaplicar_formato_a_campo_proyectado_es_idempotente(proyecto):
+    active, _p, _s = proyecto
+    primero = pbir_edit.set_conditional_format(
+        active, P, COL, "Fact[TotalAmount]", "#000000", "#FFFFFF",
+        target="bars")
+    segundo = pbir_edit.set_conditional_format(
+        active, P, COL, "Fact[TotalAmount]", "#111111", "#EEEEEE",
+        target="bars")
+
+    assert primero["replaced"] is False
+    assert segundo["replaced"] is True
+    ruta = pbir_edit._visual_file(active, P, COL)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    reglas = [b for b in datos["visual"]["objects"]["dataPoint"]
+              if "fill" in b.get("properties", {})]
+    assert len(reglas) == 1
 
 
 def test_orden_z(proyecto):

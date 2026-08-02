@@ -38,17 +38,30 @@ DESTINOS = {
 # escribir un grupo bien formado: si el grupo no existe para ESE visual,
 # Desktop lo ignora. Esta tabla sale del catalogo oficial del CLI de Microsoft
 # (`catalog describe <visualType>`), campo `formattingObjects`.
-_TIPOS_POR_GRUPO = {
-    "values": frozenset({"table", "tableEx", "matrix", "pivotTable"}),
-    "dataPoint": frozenset({
+# La compatibilidad es por PROPIEDAD, no solo por grupo. El catalogo oficial
+# enumera ``values`` para ``matrix`` y ``table``, pero esos visuales clasicos no
+# tienen ``values.fontColor`` (usan propiedades distintas para filas pares e
+# impares). Aceptarlos producia un JSON que el esquema abierto toleraba y que
+# Desktop ignoraba. La tabla contiene solo visualTypes observados en el
+# catalogo 0.1.4 y/o en visual.json exportados por Desktop.
+_TIPOS_POR_DESTINO = {
+    "background": frozenset({"table", "tableEx", "matrix", "pivotTable"}),
+    "font": frozenset({"tableEx", "pivotTable"}),
+    "bars": frozenset({
         "areaChart", "stackedAreaChart", "hundredPercentStackedAreaChart",
-        "barChart", "clusteredBarChart", "stackedBarChart",
-        "hundredPercentStackedBarChart", "columnChart",
-        "clusteredColumnChart", "stackedColumnChart",
-        "hundredPercentStackedColumnChart", "lineChart", "pieChart",
-        "donutChart", "scatterChart", "treemap", "funnel", "gauge",
-        "ribbonChart", "lineClusteredColumnComboChart",
-        "lineStackedColumnComboChart",
+        "barChart", "clusteredBarChart", "hundredPercentStackedBarChart",
+        "columnChart", "clusteredColumnChart",
+        "hundredPercentStackedColumnChart", "lineChart", "pieChart", "donutChart",
+        "scatterChart", "treemap", "funnel", "gauge", "ribbonChart",
+        "lineClusteredColumnComboChart", "lineStackedColumnComboChart",
+    }),
+    "datapoint": frozenset({
+        "areaChart", "stackedAreaChart", "hundredPercentStackedAreaChart",
+        "barChart", "clusteredBarChart", "hundredPercentStackedBarChart",
+        "columnChart", "clusteredColumnChart",
+        "hundredPercentStackedColumnChart", "lineChart", "pieChart", "donutChart",
+        "scatterChart", "treemap", "funnel", "gauge", "ribbonChart",
+        "lineClusteredColumnComboChart", "lineStackedColumnComboChart",
     }),
 }
 #: Que hacer con los vacios. 'asZero' los pinta como cero; 'specificColor'
@@ -153,7 +166,16 @@ def query_ref(field: Dict[str, Any]) -> Optional[str]:
     Es la misma forma que escribe `visual_factory` en `queryRef`, y tiene que
     serlo: es lo que empareja la regla de color con su columna del visual.
     """
-    for clase in ("Measure", "Column", "Aggregation", "HierarchyLevel"):
+    # Una columna agregada no tiene ``Property`` en el propio Aggregation: la
+    # expresion interior es otro nodo Column. Antes devolviamos None y el
+    # selector quedaba sin alcance aun cuando la proyeccion tenia queryRef.
+    agregacion = field.get("Aggregation")
+    if isinstance(agregacion, dict):
+        expresion = agregacion.get("Expression")
+        if isinstance(expresion, dict):
+            return query_ref(expresion)
+
+    for clase in ("Measure", "Column", "HierarchyLevel"):
         nodo = field.get(clase)
         if not isinstance(nodo, dict):
             continue
@@ -163,6 +185,135 @@ def query_ref(field: Dict[str, Any]) -> Optional[str]:
         entidad = ((nodo.get("Expression") or {}).get("SourceRef") or {}).get("Entity")
         return f"{entidad}.{propiedad}" if entidad else str(propiedad)
     return None
+
+
+def _field_identity(field: Any) -> Optional[tuple[str, str]]:
+    """Identidad (tabla, propiedad) de un nodo de campo PBIR.
+
+    Conserva por separado la estructura original: esta funcion solo sirve
+    para encontrar la proyeccion solicitada. Una vez encontrada se reutiliza
+    su nodo completo, incluida ``Aggregation.Function``.
+    """
+    if not isinstance(field, dict):
+        return None
+    agregacion = field.get("Aggregation")
+    if isinstance(agregacion, dict):
+        return _field_identity(agregacion.get("Expression"))
+    for clase in ("Measure", "Column", "HierarchyLevel"):
+        nodo = field.get(clase)
+        if not isinstance(nodo, dict):
+            continue
+        propiedad = nodo.get("Property")
+        if not isinstance(propiedad, str) or not propiedad:
+            continue
+        entidad = ((nodo.get("Expression") or {}).get("SourceRef") or {}).get("Entity")
+        return str(entidad or ""), propiedad
+    return None
+
+
+def _field_signature(field: Any) -> Any:
+    """Firma semantica que distingue Sum(columna) de Avg(columna)."""
+    if not isinstance(field, dict):
+        return None
+    agregacion = field.get("Aggregation")
+    if isinstance(agregacion, dict):
+        return ("Aggregation", agregacion.get("Function"),
+                _field_signature(agregacion.get("Expression")))
+    for clase in ("Measure", "Column", "HierarchyLevel"):
+        nodo = field.get(clase)
+        identidad = _field_identity({clase: nodo}) if isinstance(nodo, dict) else None
+        if identidad is not None:
+            return (clase, *identidad)
+    return None
+
+
+def _fill_rule_input(value: Any) -> Optional[Dict[str, Any]]:
+    try:
+        entrada = value["solid"]["color"]["expr"]["FillRule"]["Input"]
+    except (KeyError, TypeError):
+        return None
+    return entrada if isinstance(entrada, dict) else None
+
+
+def resolve_projection(visual: Dict[str, Any], field_ref: str) -> Dict[str, Any]:
+    """Encuentra el campo *ya usado* por el visual y devuelve su proyeccion.
+
+    Un FillRule no debe reconstruir el campo desde una cadena. En particular,
+    Desktop representa una columna numerica agregada como
+    ``Aggregation(Expression=Column, Function=N)``. Convertirla otra vez en
+    ``Column`` cambia la semantica del color. Tambien se reutiliza el Input de
+    una regla existente cuando Desktop colorea por un campo que no se muestra.
+    """
+    if not isinstance(field_ref, str) or not field_ref.strip():
+        raise ConditionalFormatError("La referencia del campo esta vacia.")
+    texto = field_ref.strip()
+    if "[" in texto and texto.endswith("]"):
+        tabla_pedida = texto[:texto.index("[")].strip()
+        propiedad_pedida = texto[texto.index("[") + 1:-1].strip()
+    else:
+        tabla_pedida = ""
+        propiedad_pedida = texto.strip("[] ")
+    if not propiedad_pedida:
+        raise ConditionalFormatError(
+            f"Referencia de campo invalida: {field_ref!r}.")
+
+    nodo_visual = visual.get("visual")
+    estados = (((nodo_visual or {}).get("query") or {}).get("queryState") or {})
+    candidatos: List[Dict[str, Any]] = []
+    for estado in estados.values():
+        for proyeccion in (estado or {}).get("projections", []) or []:
+            if not isinstance(proyeccion, dict):
+                continue
+            identidad = _field_identity(proyeccion.get("field"))
+            if identidad is None:
+                continue
+            tabla, propiedad = identidad
+            if propiedad.casefold() != propiedad_pedida.casefold():
+                continue
+            if tabla_pedida and tabla.casefold() != tabla_pedida.casefold():
+                continue
+            candidatos.append(proyeccion)
+
+    # Desktop permite basar un color en un campo que no se muestra en el
+    # visual. En ese caso no hay proyeccion, pero al editar una regla existente
+    # su FillRule.Input conserva la estructura autoritativa (incluida la
+    # agregacion). Reutilizarla es seguro; adivinarla desde el nombre, no.
+    for bloques in ((nodo_visual or {}).get("objects") or {}).values():
+        for bloque in bloques if isinstance(bloques, list) else []:
+            for valor in (bloque.get("properties") or {}).values():
+                entrada = _fill_rule_input(valor)
+                if entrada is None:
+                    continue
+                identidad = _field_identity(entrada)
+                if identidad is None:
+                    continue
+                tabla, propiedad = identidad
+                if propiedad.casefold() != propiedad_pedida.casefold():
+                    continue
+                if tabla_pedida and tabla.casefold() != tabla_pedida.casefold():
+                    continue
+                candidatos.append({"field": entrada})
+
+    if not candidatos:
+        raise ConditionalFormatError(
+            f"El campo {field_ref!r} no esta en la consulta ni en una regla "
+            "existente del visual; no se puede deducir con seguridad su "
+            "agregacion para el formato condicional.",
+            details={"field": field_ref, "rule": "format_field_not_projected"})
+    if len(candidatos) > 1:
+        firmas = {_field_signature(c.get("field")) for c in candidatos}
+        if len(firmas) > 1:
+            raise ConditionalFormatError(
+                f"El campo {field_ref!r} aparece en varias proyecciones; usa "
+                "una referencia que identifique de forma unica la regla.",
+                details={"field": field_ref,
+                         "rule": "format_field_projection_ambiguous",
+                         "matches": len(candidatos)})
+    # Si la misma estructura aparece en queryState y en el FillRule existente,
+    # se prefiere la proyeccion: conserva el queryRef exacto que Desktop usa
+    # para selectors de tablas.
+    elegido = next((c for c in candidatos if c.get("queryRef")), candidatos[0])
+    return copy.deepcopy(elegido)
 
 
 def _propiedad_de_color(regla: Dict[str, Any]) -> Dict[str, Any]:
@@ -197,7 +348,8 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
                     min_color: str, max_color: str, *,
                     target: str = "background",
                     mid_color: Optional[str] = None,
-                    null_strategy: str = "asZero") -> Dict[str, Any]:
+                    null_strategy: str = "asZero",
+                    projection_query_ref: Optional[str] = None) -> Dict[str, Any]:
     """Añade la regla al visual (se modifica en el sitio) y describe el cambio.
 
     Se sustituye la regla del MISMO campo, y solo esa. Antes se reemplazaba
@@ -223,7 +375,7 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
         raise ConditionalFormatError("El visual no tiene nodo 'visual'.")
 
     tipo = nodo.get("visualType")
-    permitidos = _TIPOS_POR_GRUPO[grupo]
+    permitidos = _TIPOS_POR_DESTINO[clave]
     if tipo not in permitidos:
         raise ConditionalFormatError(
             f"El destino '{clave}' escribe el grupo '{grupo}', que no existe "
@@ -236,8 +388,12 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
     objetos = nodo.setdefault("objects", {})
     bloques: List[Dict[str, Any]] = objetos.setdefault(grupo, [])
 
-    referencia = query_ref(field)
-    selector = _selector(referencia)
+    referencia = projection_query_ref or query_ref(field)
+    # Los visual.json exportados por Desktop acotan ``values`` a la columna
+    # con selector.metadata, lo que permite una regla por medida. Para
+    # ``dataPoint.fill`` escriben solo el wildcard de datos: añadir metadata
+    # cambia el alcance y puede dejar barras/sectores sin pintar.
+    selector = _selector(referencia if grupo == "values" else None)
     reemplazado = False
     for bloque in bloques:
         props = bloque.get("properties") or {}
@@ -246,8 +402,13 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
         # El campo al que apunta el bloque es lo que decide si esto es la misma
         # regla o una distinta. Sin esta comparacion, colorear una medida
         # borraba el degradado de la anterior.
-        if (bloque.get("selector") or {}).get("metadata") != referencia:
-            continue
+        if grupo == "values":
+            if (bloque.get("selector") or {}).get("metadata") != referencia:
+                continue
+        else:
+            existente = _fill_rule_input(props.get(propiedad))
+            if _field_signature(existente) != _field_signature(field):
+                continue
         props[propiedad] = _propiedad_de_color(regla)
         bloque["selector"] = selector
         reemplazado = True
@@ -255,6 +416,15 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
     if not reemplazado:
         bloques.append({"properties": {propiedad: _propiedad_de_color(regla)},
                         "selector": selector})
+
+    # El JSON Schema no sabe si ``values.backColor`` o ``dataPoint.fill``
+    # existen para este visual. El catalogo oficial si; se consulta antes de
+    # que el documento llegue a una transaccion. Si el runtime no tiene el
+    # oraculo, la barrera estructural local sigue actuando y el resultado lo
+    # comprobaran los validadores de informe disponibles.
+    from services import format_oracle
+    format_oracle.assert_managed_paths(
+        visual, [("objects", grupo, propiedad)])
 
     log.info("Formato condicional en %s.%s sobre %s (%s)", grupo, propiedad,
              referencia or "campo sin referencia",
