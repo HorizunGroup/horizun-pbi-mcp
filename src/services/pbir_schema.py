@@ -640,6 +640,22 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
                      "error_count": len(errores_formato),
                      "rule": "format_objects"})
 
+    # El esquema oficial deja también abiertas las claves de grupo/propiedad.
+    # Cuando está instalado el CLI de Microsoft, comprobamos el visual entero,
+    # no solo la propiedad que acaba de tocar el escritor. Sin ese runtime se
+    # conserva el comportamiento offline y no se inventa un catálogo parcial.
+    from services import format_oracle
+    equivalencia = format_oracle.compare_all_managed_objects(datos)
+    if equivalencia.get("equivalence_checked") and equivalencia.get("errors"):
+        raise SchemaValidationFailed(
+            "El visual contiene propiedades de formato que Desktop no reconoce.",
+            details={"file": str(archivo) if archivo else None,
+                     "errors": equivalencia["errors"][:20],
+                     "error_count": len(equivalencia["errors"]),
+                     "visual_type": equivalencia.get("visual_type"),
+                     "catalog_version": equivalencia.get("catalog_version"),
+                     "rule": "format_oracle"})
+
     salida = {"validated": True, "schema": url, "draft": esquema.get("$schema"),
               "validator": Validador.__name__}
     if degradado:

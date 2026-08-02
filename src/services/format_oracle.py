@@ -291,3 +291,53 @@ def assert_managed_paths(document: Dict[str, Any], paths: Iterable[PathSpec],
             details={"visual_type": result.get("visual_type"),
                      "errors": result["errors"], "rule": "format_oracle"})
     return result
+
+
+def all_object_paths(document: Dict[str, Any]) -> List[PathSpec]:
+    """Enumera todas las propiedades presentes en ``objects`` de un visual.
+
+    El esquema PBIR deja esas claves abiertas. Esta enumeración permite hacer
+    una comprobación de equivalencia completa cuando el catálogo oficial está
+    instalado, sin inventar propiedades ni inspeccionar valores del informe.
+    """
+    visual = document.get("visual") if isinstance(document, dict) else None
+    if not isinstance(visual, dict):
+        return []
+    rutas: List[PathSpec] = []
+    for scope in ("objects", "visualContainerObjects"):
+        grupos = visual.get(scope)
+        if not isinstance(grupos, dict):
+            continue
+        for grupo, bloques in grupos.items():
+            if not isinstance(bloques, list):
+                continue
+            for bloque in bloques:
+                if not isinstance(bloque, dict):
+                    continue
+                propiedades = bloque.get("properties")
+                if not isinstance(propiedades, dict):
+                    continue
+                rutas.extend((scope, str(grupo), str(propiedad))
+                             for propiedad in propiedades)
+    return rutas
+
+
+def compare_all_managed_objects(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Compara todas las rutas del visual contra el catálogo de Desktop.
+
+    Solo se considera evidencia de equivalencia cuando procede del CLI oficial
+    (`source=official_cli`). El snapshot offline sigue siendo una barrera para
+    las rutas administradas, pero no pretende describir cada propiedad que un
+    informe real puede conservar.
+    """
+    rutas = all_object_paths(document)
+    if not rutas:
+        return {"available": False, "source": "none", "errors": []}
+    resultado = compare_managed_paths(document, rutas)
+    if resultado.get("source") != "official_cli":
+        resultado = dict(resultado)
+        resultado["errors"] = []
+        resultado["equivalence_checked"] = False
+    else:
+        resultado["equivalence_checked"] = True
+    return resultado

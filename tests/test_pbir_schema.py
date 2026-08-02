@@ -253,6 +253,26 @@ def test_un_color_solido_sin_nivel_color_se_bloquea_aunque_el_schema_lo_acepte()
     }]
 
 
+def test_el_oraculo_completo_bloquea_propiedad_desconocida(monkeypatch):
+    """El esquema acepta ``objects`` abierto, Desktop no debe hacerlo."""
+    from services import format_oracle
+
+    documento = visual_valido()
+    documento["visual"]["objects"] = {
+        "values": [{"properties": {"propiedadInventada": _campo_de_prueba()}}]
+    }
+    monkeypatch.setattr(
+        format_oracle, "compare_all_managed_objects",
+        lambda _doc: {"equivalence_checked": True,
+                      "errors": [{"path": "$.visual.objects.values[0].properties.propiedadInventada",
+                                   "rule": "format_property_unknown"}],
+                      "visual_type": "card"})
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(documento)
+    assert exc.value.details["rule"] == "format_oracle"
+    assert exc.value.details["errors"][0]["rule"] == "format_property_unknown"
+
+
 def test_regla_oficial_pattern_o_enum_en_page():
     """`page.json` restringe `displayOption` a un conjunto."""
     doc = {"$schema": PAGE, "name": "p1", "displayName": "P",

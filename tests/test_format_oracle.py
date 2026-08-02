@@ -116,6 +116,17 @@ def test_assert_oracle_falla_con_diagnostico_sin_copiar_valores():
     assert "#ABCDEF" not in str(exc.value.details)
 
 
+def test_oraculo_puede_comprobar_todas_las_propiedades_del_visual(monkeypatch):
+    monkeypatch.setattr(format_oracle, "_load_catalog", lambda _vt: CATALOGO)
+    doc = _visual({"value": [{"properties": {
+        "fontColor": {"solid": {"color": _lit("'#123456'")}},
+        "propiedadInventada": _lit("'x'"),
+    }}]})
+    result = format_oracle.compare_all_managed_objects(doc)
+    assert result["equivalence_checked"] is True
+    assert [e["rule"] for e in result["errors"]] == ["format_property_unknown"]
+
+
 @pytest.mark.live_validator
 def test_snapshot_administrado_es_subconjunto_del_catalogo_oficial():
     """Impide que el fallback offline se separe silenciosamente de Desktop."""
