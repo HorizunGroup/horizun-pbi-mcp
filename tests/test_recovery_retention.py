@@ -173,6 +173,114 @@ def test_un_journal_de_otro_proyecto_se_rechaza(proyecto, tmp_path):
     assert "otro proyecto" in exc.value.message
 
 
+def test_source_root_del_manifiesto_no_puede_redirigir_la_restauracion(
+        proyecto, tmp_path):
+    active, _raiz, _s = proyecto
+    journal = una_edicion(active)
+    fuera = tmp_path / "destino_ajeno"
+    fuera.mkdir()
+    victima = fuera / "victima.json"
+    victima.write_bytes(b"NO TOCAR")
+
+    manifiesto = journal / "manifest.json"
+    datos = json.loads(manifiesto.read_text(encoding="utf-8"))
+    datos["source_root"] = str(fuera)
+    manifiesto.write_text(json.dumps(datos), encoding="utf-8")
+
+    with pytest.raises(RecoveryError) as exc:
+        recovery.preview(active, journal)
+    assert exc.value.details["state"] == recovery.CORRUPTED
+    assert victima.read_bytes() == b"NO TOCAR"
+
+
+def test_ruta_relativa_del_manifiesto_no_puede_escapar_del_proyecto(
+        proyecto, tmp_path):
+    active, _raiz, _s = proyecto
+    journal = una_edicion(active)
+    fuera = Path(active.project_dir).parent / "fuera_recuperacion"
+    fuera.mkdir()
+    victima = fuera / "victima.json"
+    victima.write_bytes(b"CAMBIO EXTERNO")
+
+    manifiesto = journal / "manifest.json"
+    datos = json.loads(manifiesto.read_text(encoding="utf-8"))
+    entrada = next(f for f in datos["files"] if f.get("state") == "present")
+    respaldo_original = journal / "files" / Path(entrada["path"])
+    respaldo_escapado = journal / "fuera_recuperacion" / "victima.json"
+    respaldo_escapado.parent.mkdir()
+    respaldo_escapado.write_bytes(respaldo_original.read_bytes())
+    entrada["path"] = "../fuera_recuperacion/victima.json"
+    entrada["written_sha256"] = hashlib.sha256(victima.read_bytes()).hexdigest()
+    datos["files"] = [entrada]
+    manifiesto.write_text(json.dumps(datos), encoding="utf-8")
+
+    with pytest.raises(RecoveryError) as exc:
+        recovery.recover(active, journal, confirm=True)
+    assert exc.value.details["state"] == recovery.CORRUPTED
+    assert victima.read_bytes() == b"CAMBIO EXTERNO"
+
+
+def test_respaldo_con_hash_incorrecto_se_rechaza_antes_de_tocar_el_proyecto(
+        proyecto):
+    active, _raiz, _s = proyecto
+    journal = una_edicion(active)
+    datos = json.loads((journal / "manifest.json").read_text(encoding="utf-8"))
+    entrada = next(f for f in datos["files"] if f.get("state") == "present")
+    destino = Path(active.project_dir) / Path(entrada["path"])
+    antes = destino.read_bytes()
+    respaldo = journal / "files" / Path(entrada["path"])
+    respaldo.write_bytes(b"RESPALDO CORRUPTO")
+
+    plan = recovery.preview(active, journal)
+    assert plan["state"] == recovery.CORRUPTED
+    assert entrada["path"] in plan["corrupt_backups"]
+    with pytest.raises(RecoveryError):
+        recovery.recover(active, journal, confirm=True)
+    assert destino.read_bytes() == antes
+
+
+def test_un_respaldo_enlace_se_rechaza_aunque_apunte_a_bytes_validos(
+        proyecto, tmp_path):
+    active, _raiz, _s = proyecto
+    journal = una_edicion(active)
+    datos = json.loads((journal / "manifest.json").read_text(encoding="utf-8"))
+    entrada = next(f for f in datos["files"] if f.get("state") == "present")
+    respaldo = journal / "files" / Path(entrada["path"])
+    externo = tmp_path / "respaldo_externo.bin"
+    externo.write_bytes(respaldo.read_bytes())
+    respaldo.unlink()
+    try:
+        respaldo.symlink_to(externo)
+    except OSError as exc:
+        pytest.skip(f"el equipo no permite crear symlinks: {exc}")
+
+    with pytest.raises(RecoveryError) as exc:
+        recovery.preview(active, journal)
+    assert exc.value.details["state"] == recovery.CORRUPTED
+    assert externo.exists()
+
+
+def test_un_destino_enlace_no_permite_escribir_fuera_del_proyecto(
+        proyecto, tmp_path):
+    active, _raiz, _s = proyecto
+    journal = una_edicion(active)
+    datos = json.loads((journal / "manifest.json").read_text(encoding="utf-8"))
+    entrada = next(f for f in datos["files"] if f.get("state") == "present")
+    destino = Path(active.project_dir) / Path(entrada["path"])
+    externo = tmp_path / "victima_externa.json"
+    externo.write_bytes(b"NO TOCAR")
+    destino.unlink()
+    try:
+        destino.symlink_to(externo)
+    except OSError as exc:
+        pytest.skip(f"el equipo no permite crear symlinks: {exc}")
+
+    with pytest.raises(RecoveryError) as exc:
+        recovery.recover(active, journal, confirm=True, force_conflict=True)
+    assert exc.value.details["state"] == recovery.CORRUPTED
+    assert externo.read_bytes() == b"NO TOCAR"
+
+
 def test_un_journal_fuera_de_la_raiz_se_rechaza(proyecto, tmp_path):
     active, _raiz, _s = proyecto
     ajeno = tmp_path / "ajeno"

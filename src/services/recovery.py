@@ -40,16 +40,16 @@ Fail-closed en todo:
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
+import stat
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
-from powerbi.errors import PowerBIMCPError
+from powerbi.errors import PathSecurityError, PowerBIMCPError
 from services import paths as safe_paths
 
 log = get_logger("recovery")
@@ -82,56 +82,162 @@ class UnsafePurgeRoot(PowerBIMCPError):
 
 
 # ============================================================ recuperacion ====
+def _corrupto(mensaje: str, **details: Any) -> "NoReturn":  # type: ignore[valid-type]
+    raise RecoveryError(
+        mensaje, details={"state": CORRUPTED, **details})
+
+
+def _es_enlace_o_reparse(ruta: Path) -> bool:
+    """Detecta enlaces, junctions y otros reparse points sin seguirlos."""
+    try:
+        if ruta.is_symlink() or os.path.islink(ruta):
+            return True
+        atributos = getattr(os.stat(ruta, follow_symlinks=False),
+                            "st_file_attributes", 0)
+        return bool(atributos & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        _corrupto("No se pudo inspeccionar una ruta del journal.",
+                  path=str(ruta), reason=str(exc))
+
+
+def _sin_enlaces_desde(raiz: Path, destino: Path, *, kind: str) -> None:
+    """Rechaza cualquier componente enlazado por debajo de una raiz confiable."""
+    base = Path(raiz).resolve()
+    # ``absolute`` conserva los componentes lexicos: ``resolve`` borraria justo
+    # el enlace que necesitamos detectar.
+    candidato = Path(os.path.abspath(destino))
+    try:
+        relativa = candidato.relative_to(base)
+    except ValueError:
+        _corrupto(f"{kind} escapa de su raiz autorizada.",
+                  root=str(base), path=str(candidato))
+    actual = base
+    for parte in relativa.parts:
+        actual = actual / parte
+        if _es_enlace_o_reparse(actual):
+            _corrupto(f"{kind} contiene un enlace o punto de reanalisis.",
+                      root=str(base), path=str(actual))
+
+
+def _resolver_ruta_manifest(raiz: Path, relativa: Any, *, kind: str) -> Path:
+    """Convierte una ruta NO confiable del manifiesto en un destino contenido."""
+    if not isinstance(relativa, str) or not relativa.strip():
+        _corrupto(f"{kind} no es una ruta relativa valida.", value=repr(relativa))
+
+    # Los journals son portables y guardan '/'. Se admite '\\' de versiones
+    # antiguas, pero cada componente debe seguir siendo un nombre simple.
+    partes = relativa.replace("\\", "/").split("/")
+    if any(p in ("", ".", "..") for p in partes):
+        _corrupto(f"{kind} contiene componentes relativos o vacios.",
+                  path=relativa)
+    try:
+        for parte in partes:
+            safe_paths.safe_identifier(parte, kind=kind)
+        candidato = Path(raiz).joinpath(*partes)
+        resuelto = safe_paths.ensure_contained(raiz, candidato, kind=kind)
+    except PathSecurityError as exc:
+        _corrupto(f"{kind} escapa de su raiz autorizada.",
+                  path=relativa, reason=exc.message)
+    _sin_enlaces_desde(Path(raiz), candidato, kind=kind)
+    return resuelto
+
+
 def _leer_manifiesto(jdir: Path) -> Dict[str, Any]:
     f = jdir / "manifest.json"
     if not f.exists():
         raise RecoveryError(f"El journal {jdir} no tiene manifest.json.",
                             details={"journal": str(jdir), "state": CORRUPTED})
     try:
-        return json.loads(f.read_text(encoding="utf-8"))
+        datos = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise RecoveryError(f"Manifiesto ilegible en {jdir}: {exc}",
                             details={"journal": str(jdir),
                                      "state": CORRUPTED}) from exc
+    if not isinstance(datos, dict):
+        raise RecoveryError(
+            f"El manifiesto de {jdir} no es un objeto JSON.",
+            details={"journal": str(jdir), "state": CORRUPTED})
+    return datos
 
 
 def preview(active, journal_dir: Path) -> Dict[str, Any]:
     """Que se restauraria, y si se puede. NO escribe nada."""
     from services import txn as txn_service
 
-    jdir = Path(journal_dir).resolve()
+    jdir_sin_resolver = Path(journal_dir).expanduser().absolute()
     root = txn_service.project_backup_root(active).resolve()
-    if not safe_paths.is_inside(root, jdir) and jdir != root:
+    try:
+        jdir = safe_paths.ensure_contained(
+            root, jdir_sin_resolver, kind="directorio de journal")
+    except PathSecurityError as exc:
         raise RecoveryError(
             "Ese journal no pertenece al proyecto activo.",
-            details={"journal": str(jdir), "backup_root": str(root),
-                     "state": CORRUPTED})
+            details={"journal": str(jdir_sin_resolver),
+                     "backup_root": str(root), "state": CORRUPTED}) from exc
+    _sin_enlaces_desde(root, jdir_sin_resolver, kind="directorio de journal")
 
     datos = _leer_manifiesto(jdir)
 
+    proyecto = Path(active.project_dir).resolve()
     esperado = txn_service.project_id(Path(active.project_dir))
-    if datos.get("project_id") and datos["project_id"] != esperado:
+    if datos.get("project_id") != esperado:
         raise RecoveryError(
             "El journal es de otro proyecto. Restaurarlo sobreescribiria "
             "archivos ajenos con contenido que no les corresponde.",
-            details={"journal": str(jdir), "journal_project": datos["project_id"],
+            details={"journal": str(jdir),
+                     "journal_project": datos.get("project_id"),
                      "active_project": esperado, "state": CORRUPTED})
 
-    origen = Path(datos.get("source_root", active.project_dir))
-    archivos, conflictos, faltantes = [], [], []
-    for entrada in datos.get("files", []):
-        rel = entrada["path"]
-        destino = origen / rel
-        respaldo = jdir / "files" / rel
+    try:
+        origen_declarado = Path(str(datos.get("source_root", ""))).resolve()
+    except (OSError, ValueError):
+        _corrupto("El source_root del journal no es una ruta valida.",
+                  journal=str(jdir))
+    if origen_declarado != proyecto:
+        _corrupto(
+            "El source_root del journal no coincide con el proyecto activo.",
+            journal=str(jdir), declared_root=str(origen_declarado),
+            authorized_root=str(proyecto))
+
+    entradas = datos.get("files")
+    if not isinstance(entradas, list):
+        _corrupto("La lista de archivos del journal no es valida.",
+                  journal=str(jdir))
+
+    files_root = jdir / "files"
+    _sin_enlaces_desde(jdir, files_root, kind="carpeta de respaldos")
+    archivos, conflictos, faltantes, corruptos = [], [], [], []
+    vistos = set()
+    for entrada in entradas:
+        if not isinstance(entrada, dict):
+            _corrupto("Una entrada de archivo del journal no es un objeto.",
+                      journal=str(jdir))
+        rel_bruta = entrada.get("path")
+        destino = _resolver_ruta_manifest(
+            proyecto, rel_bruta, kind="destino de recuperacion")
+        respaldo = _resolver_ruta_manifest(
+            files_root, rel_bruta, kind="respaldo del journal")
+        rel = safe_paths.relative_key(proyecto, destino)
+        if rel in vistos:
+            _corrupto("El journal repite un mismo archivo.", path=rel)
+        vistos.add(rel)
         original = txn_service.Fingerprint(
             entrada.get("state", "present"), entrada.get("sha256"),
             entrada.get("size"))
         actual = txn_service.fingerprint(destino)
         escrito = entrada.get("written_sha256")
 
-        hay_respaldo = respaldo.exists() or original.state == "absent"
+        hay_respaldo = respaldo.is_file() or original.state == "absent"
+        respaldo_verificado = original.state == "absent"
         if not hay_respaldo:
             faltantes.append(rel)
+        elif original.state == "present":
+            huella_respaldo = txn_service.fingerprint(respaldo)
+            respaldo_verificado = huella_respaldo.matches(original)
+            if not respaldo_verificado:
+                corruptos.append(rel)
 
         # Conflicto: lo que hay ahora no es ni el original ni lo que nosotros
         # escribimos. Alguien mas lo toco.
@@ -147,10 +253,11 @@ def preview(active, journal_dir: Path) -> Dict[str, Any]:
             "current": actual.to_dict(),
             "already_original": actual.matches(original),
             "backup_available": hay_respaldo,
+            "backup_verified": respaldo_verificado,
             "externally_modified": ajeno,
         })
 
-    if faltantes:
+    if faltantes or corruptos:
         estado = CORRUPTED
     elif conflictos:
         estado = CONFLICT
@@ -163,11 +270,14 @@ def preview(active, journal_dir: Path) -> Dict[str, Any]:
         "journal": str(jdir), "state": estado,
         "tool": datos.get("tool"), "created": datos.get("created"),
         "status": datos.get("status"),
-        "source_root": str(origen),
+        # Se informa la raiz AUTORIZADA, no la cadena no confiable que venia en
+        # el manifiesto.
+        "source_root": str(proyecto),
         "files": archivos,
         "file_count": len(archivos),
         "to_restore": sum(1 for f in archivos if not f["already_original"]),
         "conflicts": conflictos, "missing_backups": faltantes,
+        "corrupt_backups": corruptos,
         "already_recovered": bool(datos.get("recovery")),
         "note": ("Nada se ha restaurado. Llama con confirm=true para aplicarlo."
                  if estado == RECOVERABLE else ""),
@@ -186,10 +296,11 @@ def recover(active, journal_dir: Path, *, confirm: bool = False,
 
     if plan["state"] == CORRUPTED:
         raise RecoveryError(
-            "El journal no esta completo: faltan respaldos. No se restaura a "
-            "medias.",
+            "El journal no esta completo o algun respaldo no coincide con su "
+            "hash. No se restaura a medias.",
             details={"journal": plan["journal"], "state": CORRUPTED,
-                     "missing_backups": plan["missing_backups"]})
+                     "missing_backups": plan["missing_backups"],
+                     "corrupt_backups": plan["corrupt_backups"]})
 
     if plan["state"] == RECOVERED and not force_conflict:
         raise RecoveryConflict(
@@ -204,28 +315,45 @@ def recover(active, journal_dir: Path, *, confirm: bool = False,
             details={"journal": plan["journal"], "state": CONFLICT,
                      "conflicts": plan["conflicts"]})
 
+    # Restaurar tambien es una escritura sobre el PBIP: Desktop no puede estar
+    # abierto, porque su siguiente guardado volveria a pisar la recuperacion.
+    from services import project_state
+
+    project_state.assert_writable(active, operation="Recuperar desde un journal")
+
     jdir = Path(plan["journal"])
-    origen = Path(plan["source_root"])
+    origen = Path(active.project_dir).resolve()
+    files_root = jdir / "files"
     restaurados, fallidos = [], []
 
     for f in plan["files"]:
-        destino = origen / f["path"]
         try:
+            # Revalidacion anti-TOCTOU: ni el destino ni el respaldo pueden
+            # haberse convertido en un enlace desde que se genero el preview.
+            destino = _resolver_ruta_manifest(
+                origen, f["path"], kind="destino de recuperacion")
             if f["action"] == "delete":
                 # El original no existia: restaurar es volver a no existir.
                 destino.unlink(missing_ok=True)
                 restaurados.append(f["path"])
                 continue
 
-            # F2: el directorio padre pudo eliminarse dentro de la propia
-            # transaccion (al borrar el ultimo visual de una carpeta).
-            destino.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(jdir / "files" / f["path"], destino)
-
-            comprobado = txn_service.fingerprint(destino)
             esperado = txn_service.Fingerprint(
                 f["original"]["state"], f["original"].get("sha256"),
                 f["original"].get("size"))
+            respaldo = _resolver_ruta_manifest(
+                files_root, f["path"], kind="respaldo del journal")
+            if not respaldo.is_file():
+                raise OSError("falta el respaldo del journal")
+            if not txn_service.fingerprint(respaldo).matches(esperado):
+                raise OSError("el respaldo cambio o no coincide con su hash")
+            contenido = respaldo.read_bytes()
+            if not txn_service.fingerprint_bytes(contenido).matches(esperado):
+                raise OSError("el respaldo cambio mientras se estaba leyendo")
+
+            # Escritura atomica: copy2 podia truncar el destino y fallar a mitad.
+            txn_service.durable_write(destino, contenido)
+            comprobado = txn_service.fingerprint(destino)
             if comprobado.matches(esperado):
                 restaurados.append(f["path"])
             else:
