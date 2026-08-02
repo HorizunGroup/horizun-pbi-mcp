@@ -54,6 +54,30 @@ def _find_measure_anywhere(mdl, name: str):
     return None, None
 
 
+def _find_measure_in_table(mdl, table_obj, name: str):
+    """Localiza una medida solo dentro de la tabla solicitada.
+
+    Los nombres de medida son globales en TOM, pero ``table`` sigue siendo
+    parte del contrato de update/delete. Buscar globalmente convertia un
+    error de tabla en una escritura sobre otra tabla.
+    """
+    measure = table_obj.Measures.Find(name)
+    if measure is not None:
+        return measure
+
+    owner, _other = _find_measure_anywhere(mdl, name)
+    details = {
+        "table": table_obj.Name,
+        "available": [m.Name for m in table_obj.Measures],
+    }
+    if owner is not None:
+        details["existing_table"] = owner.Name
+    raise MeasureNotFoundError(
+        f"La medida '{name}' no existe en la tabla '{table_obj.Name}'.",
+        details=details,
+    )
+
+
 def _snapshot(measure) -> Dict[str, Any]:
     return {
         "name": measure.Name,
@@ -135,12 +159,8 @@ def update_measure(
         expression = validate_measure_expression(expression)
     model = session.require_active_model()
     with connect(model) as (_server, db, mdl):
-        _find_table(mdl, table)  # valida existencia de tabla
-        owner, measure = _find_measure_anywhere(mdl, name)
-        if measure is None:
-            raise MeasureNotFoundError(
-                f"La medida '{name}' no existe en el modelo.",
-            )
+        owner = _find_table(mdl, table)
+        measure = _find_measure_in_table(mdl, owner, name)
         before = _snapshot(measure)
         if expression is not None:
             measure.Expression = expression
@@ -299,10 +319,8 @@ def set_relationship_crossfilter(session: Session, from_table: str, to_table: st
 def delete_measure(session: Session, table: str, name: str) -> Dict[str, Any]:
     model = session.require_active_model()
     with connect(model) as (_server, db, mdl):
-        _find_table(mdl, table)
-        owner, measure = _find_measure_anywhere(mdl, name)
-        if measure is None:
-            raise MeasureNotFoundError(f"La medida '{name}' no existe en el modelo.")
+        owner = _find_table(mdl, table)
+        measure = _find_measure_in_table(mdl, owner, name)
         before = _snapshot(measure)
         owner.Measures.Remove(measure)
         mdl.SaveChanges()
