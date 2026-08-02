@@ -5,6 +5,48 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [Unreleased]
+
+Cinco huecos encontrados usando el servidor en un caso real (armar un tablero
+de presupuestos de obra desde cero, con datos de un ERP externo), no
+inventados: cada uno costó tiempo real de sesión antes de resolverse a mano,
+y esta entrega evita que el próximo caso pague el mismo precio.
+
+### Añadido
+
+- **`options` en `pbi_create_visual`**: la tool no exponía el parámetro
+  aunque `visual_factory.build_visual` ya lo soportaba para forma/tarjeta;
+  ahora `pbi_apply_page_spec` y `pbi_create_visual` comparten la misma
+  capacidad.
+- **Marco de color en cualquier visual** (`background_color`, `border_color`,
+  `border_radius`, `background_transparency` dentro de `options`): antes solo
+  existía para apagar el marco (`show=False`) en elementos de composición;
+  no había forma de pedir un fondo/borde de color en una tarjeta, un gráfico
+  o una tabla sin escribir `visualContainerObjects` a mano. Verificado contra
+  formas reales de Power BI Desktop (`tests/fixtures/synthetic/format_objects_corpus.json`),
+  no solo contra el esquema.
+- **`references` en `pbi_validate_pbip_project`**: cruza cada `Measure`/
+  `Column` que un `visual.json` o su `filterConfig` citan contra el TMDL
+  real. El validador oficial certifica la FORMA del JSON; no sabía si
+  «Presupuesto Toal» (con la o y la a invertidas) existe. Un informe podía
+  pasar con 0 errores y abrir en Desktop con una tarjeta muda.
+- **`pbi_set_visual_filter`**: filtra un visual YA ESCRITO sin tocar
+  `filterConfig` a mano. `pbip.filter_builder` (alias del filtro, valores
+  tipados, nombre estable) llevaba tiempo existiendo sin ninguna tool que lo
+  expusiera para un visual existente, solo para specs nuevos.
+- **`pbi_add_table_from_file` lee HTML disfrazado de `.xls`**: el patrón
+  típico de un ERP (`Excel.Workbook` falla en seco sobre estos archivos). La
+  extensión `.xls` ya no se toma por su palabra: se mira la firma real
+  (OLE2 se rechaza con mensaje claro; ZIP se lee como `.xlsx`; el resto se
+  perfila como tabla HTML). Repite el valor de una celda `colspan` en cada
+  columna que abarca, detecta la codificación declarada
+  (`<meta charset>`), solo promueve encabezados si la tabla usa `<th>`, y
+  fija los nombres de columna por posición en la M (`Table.FromRows` +
+  `Table.ToRows`) en vez de confiar en cómo `Web.Page` los nombre en tiempo
+  de refresco —no es predecible desde Python cuando no hay `<th>`—.
+
+---
+
 ## [1.0.0] — 2026-08-02
 
 Primera versión estable del repositorio oficial. **117 tools, 1542 pruebas

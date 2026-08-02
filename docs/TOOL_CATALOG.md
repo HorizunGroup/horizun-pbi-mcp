@@ -1,4 +1,4 @@
-# Catálogo de tools — 117
+# Catálogo de tools — 118
 
 Generado sobre el contrato congelado en `tests/golden/tools_v1.json`.
 Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma de respuesta desde la versión 0.1.0.
@@ -16,7 +16,7 @@ tools registradas.
 | Baseline original | 34 |
 | A — plataforma | 7 |
 | B — modelo semántico | 16 |
-| C — autoría PBIR | 17 |
+| C — autoría PBIR | 18 |
 | D — spec declarativo | 8 |
 | E — auditoría integral | 6 |
 | F — workflows | 8 |
@@ -26,7 +26,7 @@ tools registradas.
 | I — verificación antes de entregar | 3 |
 | J — carga de datos | 2 |
 | L — diseño y punto de entrada | 4 |
-| **Total** | **117** |
+| **Total** | **118** |
 
 ---
 
@@ -120,7 +120,7 @@ tools registradas.
 | `pbi_report_capabilities` · `pbi_get_visual` · `pbi_list_report_pages` · `pbi_list_visuals` | No |
 | `pbi_create_visual` · `pbi_duplicate_visual` · `pbi_create_html_visual` · `pbi_add_custom_visual` | No |
 | `pbi_delete_visual` | **Sí** (`confirm`) |
-| `pbi_set_visual_title` · `pbi_set_visual_z_order` · `pbi_replace_visual_field` · `pbi_copy_visual_format` · `pbi_update_visual_position` | No |
+| `pbi_set_visual_title` · `pbi_set_visual_z_order` · `pbi_replace_visual_field` · `pbi_copy_visual_format` · `pbi_update_visual_position` · `pbi_set_visual_filter` | No |
 | `pbi_duplicate_page` · `pbi_rename_page` · `pbi_reorder_pages` | No |
 | `pbi_delete_page` | **Sí** (`confirm`) |
 | `pbi_detect_layout_issues` · `pbi_align_visuals` · `pbi_distribute_visuals` · `pbi_normalize_page_layout` · `pbi_arrange_visuals` | No |

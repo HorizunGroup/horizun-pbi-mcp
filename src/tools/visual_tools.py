@@ -114,6 +114,7 @@ def register(mcp) -> None:
         fields: Dict[str, Any],
         position: Dict[str, float],
         title: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
     request_id: str = "") -> Dict[str, Any]:
         """Crea un visual PBIR en una pagina.
 
@@ -143,6 +144,18 @@ def register(mcp) -> None:
         Un rol que ese tipo de visual no tiene se RECHAZA con la lista de los
         validos. Antes se descartaba en silencio y el visual salia sin datos.
 
+        `options`: formato adicional. Llaves reconocidas (una clave no
+        reconocida se ignora, no se rechaza; ver `pbi_get_visual` para
+        comprobar que quedo escrito):
+        - `background_color`, `border_color` ('#RRGGBB'), `background_transparency`
+          (0-100), `border_radius` (px): el marco de CUALQUIER visual (panel
+          General > Efectos de Desktop). Sin `background_color`/`border_color`
+          no se toca el marco.
+        - `card`/`cardVisual`: `show_category_label`, `value_font_size`,
+          `bold_value`, `value_color`.
+        - `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.
+        - `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.
+
         `position`: {x, y, width, height} (z opcional).
         Clona un visual del mismo tipo como plantilla si existe. Hace backup.
         """
@@ -150,7 +163,8 @@ def register(mcp) -> None:
             active = get_session().require_active_pbip()
             pos = validate_position(position)
             mi = _measure_index(_model_data())
-            built = visual_factory.build_visual(active, visual_type, fields or {}, pos, title, mi)
+            built = visual_factory.build_visual(
+                active, visual_type, fields or {}, pos, title, mi, options=options)
             res = pbir_writer.write_visual(active, page, built["visual"])
             return {
                 "visual_id": res["visual_id"],
@@ -223,6 +237,41 @@ def register(mcp) -> None:
             active = get_session().require_active_pbip()
             res = pbir_writer.update_visual_position(
                 active, page, visual_id, x, y, width, height, z)
+            res["reload_hint"] = RELOAD_HINT
+            return res
+        return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_set_visual_filter(
+        page: str,
+        visual_id: str,
+        filters: List[Dict[str, Any]],
+    request_id: str = "") -> Dict[str, Any]:
+        """Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.
+
+        `filters`: lista de specs, cada uno
+        `{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |
+        'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',
+        exclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,
+        display_name?: str}`. Con `values` se arma un filtro de lista
+        (Categorical); sin `values` ni `raw` el campo queda declarado pero
+        SIN acotar, como el panel de filtros vacio. `raw` pasa una consulta
+        semantica ya construida, para lo que este constructor no cubre.
+
+        `field` va con el NOMBRE real de la tabla. La mitad interna de la
+        consulta usa un ALIAS (`SourceRef.Source`) que esta tool resuelve
+        sola: escribirlo a mano ahi es el error mas comun al construir un
+        filtro de visual, y Power BI lo ignora sin decir por que.
+
+        Una lista vacia QUITA todos los filtros del visual (no los deja
+        declarados sin valor). No comprueba `field` contra el modelo: un
+        campo que no existe se escribe igual y Power BI lo resuelve en
+        silencio a nada, igual que si se escribiera a mano.
+        """
+        def _impl():
+            active = get_session().require_active_pbip()
+            res = pbir_writer.update_visual_filters(
+                active, page, visual_id, filters or [])
             res["reload_hint"] = RELOAD_HINT
             return res
         return guard_mutation(_impl)
