@@ -18,6 +18,7 @@ no solo a una.
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
@@ -35,6 +36,7 @@ DESTINOS = {
 #: Que hacer con los vacios. 'asZero' los pinta como cero; 'specificColor'
 #: exige un color aparte; 'none' los deja sin pintar.
 ESTRATEGIAS_NULOS = ("asZero", "none", "specificColor")
+_HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{3}(?:[0-9A-Fa-f]{3})?$")
 
 
 class ConditionalFormatError(PowerBIMCPError):
@@ -46,9 +48,10 @@ def _color(valor: str) -> Dict[str, Any]:
 
 
 def _validar_color(valor: str, etiqueta: str) -> str:
-    if not (isinstance(valor, str) and valor.startswith("#") and len(valor) in (4, 7)):
+    if not (isinstance(valor, str) and _HEX_COLOR.fullmatch(valor)):
         raise ConditionalFormatError(
-            f"{etiqueta} debe ser un color #RRGGBB; se recibio {valor!r}.")
+            f"{etiqueta} debe ser un color hexadecimal #RGB o #RRGGBB; "
+            f"se recibio {valor!r}.")
     return valor
 
 

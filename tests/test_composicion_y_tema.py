@@ -447,6 +447,8 @@ def test_destino_y_colores_se_validan():
         cf.build_fill_rule(_campo(), "rojo", "#000000")
     with pytest.raises(cf.ConditionalFormatError):
         cf.build_fill_rule(_campo(), "#FFFFFF", "#000000", null_strategy="inventada")
+    with pytest.raises(cf.ConditionalFormatError):
+        cf.build_fill_rule(_campo(), "#GGGGGG", "#000000")
 
 
 def _campo_de(propiedad, entidad="qa"):
