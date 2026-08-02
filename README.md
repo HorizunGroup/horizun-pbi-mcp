@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.10** — 116 tools, 1255 pruebas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.11** — 116 tools, 1262 pruebas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -26,6 +26,7 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Por qué `mode="both"` está bloqueado (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | Las dos capas de validación PBIR y sus límites |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Qué se comprueba antes de publicar |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | Lo que queda abierto, con evidencia y cómo comprobarlo |
 | [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | De la instalación a un dashboard, paso a paso |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Modelo de amenazas, garantías y lo que **no** promete |
 | [`docs/RECOVERY.md`](docs/RECOVERY.md) | Qué hacer cuando algo queda a medias |
@@ -342,7 +343,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**1255 pruebas, 3 omitidas.** La omisión es de entorno y dice cómo ejecutarla:
+**1262 pruebas, 3 omitidas.** La omisión es de entorno y dice cómo ejecutarla:
 
 | Omitida | Condición |
 |---|---|

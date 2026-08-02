@@ -148,6 +148,10 @@ def render_measure_change(
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)
+    if loc is None:
+        # Solo al CREAR: reemplazar una medida que ya existe con ese nombre no
+        # puede chocar con nada nuevo.
+        _assert_nombre_libre(active, table, name)
     action = "created"
     if loc is not None:
         if not overwrite:
@@ -172,6 +176,66 @@ def render_measure_change(
     return _render(new_lines), file_path, action
 
 
+def _assert_nombre_libre(active: ActivePbip, table: str, name: str) -> None:
+    """Rechaza un nombre de medida que el MOTOR no va a aceptar.
+
+    Dos reglas que el parser TMDL se traga sin rechistar y que solo revientan
+    al cargar el modelo:
+
+    1. Una medida no puede llamarse como una columna de su tabla.
+    2. El nombre de una medida es unico en TODO el modelo, no por tabla.
+
+    Escribirlas dejaba un proyecto que Power BI abre como ventana "Sin titulo"
+    con el modelo vacio y un cartel —«No se puede crear la medida 'X' porque ya
+    existe una columna con el mismo nombre»—. El lint sabia la regla desde
+    siempre; el escritor no la consultaba, asi que el fallo solo aparecia al
+    abrir. Se comprobo abriendolo.
+
+    La comparacion es sin distinguir mayusculas, como la hace el motor.
+    """
+    from services import tmdl_validate
+
+    clave = name.casefold()
+    try:
+        definicion = tmdl_validate.resolve_definition_dir(active.semantic_model_dir)
+        tablas_dir = definicion / "tables"
+        archivos = sorted(tablas_dir.glob("*.tmdl")) if tablas_dir.is_dir() else []
+    except Exception as exc:                                 # noqa: BLE001
+        # Sin modelo legible no se inventa un veredicto: lo que no se pudo
+        # mirar no puede reportarse como comprobado.
+        log.info("No se pudo comprobar el nombre '%s': %s", name, exc)
+        return
+
+    for archivo in archivos:
+        try:
+            leida = parse_table_file(archivo)
+        except Exception:                                    # noqa: BLE001
+            continue
+        propia = leida["name"] == table
+        if propia:
+            choque = next((c["name"] for c in leida["columns"]
+                           if c["name"].casefold() == clave), None)
+            if choque is not None:
+                raise MeasureExistsError(
+                    f"En '{table}' ya hay una COLUMNA '{choque}': una medida no "
+                    "puede llamarse igual. Power BI no abriria el proyecto "
+                    f"—diria que no puede crear la medida '{name}'—. Renombra "
+                    f"la medida (p.ej. '{name} Total').",
+                    details={"table": table, "measure": name,
+                             "column": choque, "rule": "measure_column_collision"})
+            continue
+        gemela = next((m["name"] for m in leida["measures"]
+                       if m["name"].casefold() == clave), None)
+        if gemela is not None:
+            raise MeasureExistsError(
+                f"Ya existe una medida '{gemela}' en la tabla "
+                f"'{leida['name']}'. El nombre de una medida es unico en TODO "
+                "el modelo, no por tabla, asi que el motor rechazaria las dos.",
+                details={"table": table, "measure": name,
+                         "existing_table": leida["name"],
+                         "rule": "duplicate_measure_name"})
+
+
 def create_measure_pbip(
     active: ActivePbip,
     table: str,
@@ -190,6 +254,12 @@ def create_measure_pbip(
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)
+    if loc is None:
+        # Va en las DOS mitades porque `create_measure_pbip` no reutiliza
+        # `render_measure_change`: duplica la logica. Guardar solo una dejaria
+        # que el planificador prometiera una medida que la escritura rechaza,
+        # o al reves.
+        _assert_nombre_libre(active, table, name)
     action = "created"
     before = None
     if loc is not None:

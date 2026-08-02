@@ -557,3 +557,63 @@ def test_una_interaccion_a_un_visual_que_no_existe_se_acusa(proyecto_real):
     with pytest.raises(page_spec.SpecValidationError):
         page_spec.compile_spec(active, _spec_con_interaccion(
             [{"source": 0, "target": 7}]), md)
+
+
+# ============================ nombres que el MOTOR rechaza (sin oraculo) ======
+# El parser TMDL se los traga; el motor los rechaza al cargar. O sea: el
+# proyecto "valida" y luego Power BI abre una ventana Sin titulo con el modelo
+# vacio. El lint conocia las dos reglas desde siempre; el escritor no las
+# consultaba, asi que solo aparecian al abrir.
+
+def test_una_medida_no_puede_llamarse_como_una_columna_de_su_tabla(proyecto_real):
+    """Power BI: «No se puede crear la medida 'X' porque ya existe una columna
+    con el mismo nombre». Se comprobo abriendolo: el modelo queda vacio."""
+    from powerbi.errors import MeasureExistsError
+
+    active, _ = proyecto_real
+    with pytest.raises(MeasureExistsError) as exc:
+        tmdl_writer.create_measure_pbip(
+            active, "Ventas", "Importe", "SUM(Ventas[Importe])")
+
+    assert exc.value.details["rule"] == "measure_column_collision"
+    assert "Importe" in exc.value.message
+
+
+def test_el_nombre_de_una_medida_es_unico_en_todo_el_modelo(proyecto_real):
+    """No por tabla: el motor rechaza las dos si se repiten en tablas distintas."""
+    from powerbi.errors import MeasureExistsError
+
+    active, _ = proyecto_real
+    with pytest.raises(MeasureExistsError) as exc:
+        tmdl_writer.create_measure_pbip(
+            active, "Regiones", "Importe Total", "SUM(Regiones[Meta])")
+
+    assert exc.value.details["rule"] == "duplicate_measure_name"
+    assert "Ventas" in exc.value.message
+
+
+def test_reemplazar_una_medida_existente_sigue_funcionando(proyecto_real):
+    """El guardia es solo para nombres NUEVOS; `overwrite` no puede romperse."""
+    active, _ = proyecto_real
+    r = tmdl_writer.create_measure_pbip(
+        active, "Ventas", "Importe Total", "SUM(Ventas[Importe]) * 2",
+        overwrite=True)
+    assert r["action"] == "updated"
+
+
+@pytest.mark.abre
+@requiere_oraculos
+def test_el_modelo_sigue_abriendo_tras_rechazar_un_nombre_invalido(proyecto_real):
+    """Rechazar no puede dejar el TMDL a medias."""
+    from powerbi.errors import MeasureExistsError
+
+    active, _ = proyecto_real
+    with pytest.raises(MeasureExistsError):
+        tmdl_writer.create_measure_pbip(
+            active, "Ventas", "Importe", "SUM(Ventas[Importe])")
+
+    v = tmdl_validate.validate(
+        Path(active.semantic_model_dir) / "definition", use_tom=True)
+    assert v["parsed"] is True
+    assert v["valid"] is True, [f["rule"] for f in v["findings"]
+                                if f["severity"] == "error"]

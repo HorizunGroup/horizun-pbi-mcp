@@ -86,7 +86,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 ## 8. Documentación coherente
 
 - Conteo de tools y de pruebas tomados de la **ejecución final**, no estimados.
-- Limitaciones descritas como son: esquemas no publicados upstream, `both` bloqueado, `filters`/`interactions` rechazados.
+- Limitaciones descritas como son: esquemas no publicados upstream, `both` bloqueado, el bloque `objects` sin validar.
 - Ningún ejemplo con rutas personales.
 
 ---
@@ -98,7 +98,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 | `visualContainer/2.10.0` y `bookmarks/2.0.0` sin publicar | 404 en el origen oficial; el CLI de Microsoft tampoco los valida |
 | **G10** parcialmente cerrado | Consecuencia directa de lo anterior |
 | **R15** abierto, `both` bloqueado | Precondiciones mutuamente excluyentes ([`DUAL_MODE.md`](DUAL_MODE.md)) |
-| `filters`/`interactions` rechazados | Serialización PBIR pendiente; se rechazan, no se ignoran |
+| **El bloque `objects` de un visual no lo valida nadie** | El esquema oficial lo declara `additionalProperties: {}`. Ahí viven formato condicional, tipografías y colores: el único detector es abrir y mirar |
 | Errores preexistentes del informe del usuario | No se corrigen automáticamente, nunca |
 | Dos pruebas omitidas | Requieren Desktop abierto o una precondición del modelo |
 
@@ -106,9 +106,25 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ## Etiquetado
 
-Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.10`**.
+Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.11`**.
 
 La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir con el tag **antes** de etiquetar. Instalar desde un tag y obtener un paquete que reporta otra versión es exactamente lo que estas comprobaciones existen para evitar.
+
+> **La instalación limpia no es una formalidad.** La primera vez que se
+> ejecutaron estas cinco etapas, sobre `v1.0.0-rc.11`, aparecieron dos defectos
+> que ninguna de las 1255 pruebas veía —porque todas corrían sobre el entorno
+> de desarrollo, que ya estaba bien—:
+>
+> - `requirements.txt` había divergido de `pyproject.toml` en las **seis**
+>   dependencias. Sin tope, `mcp>=1.10` instalaba la 2.0.0 —donde
+>   `mcp.server.fastmcp` ya no existe— y el servidor no llegaba ni a importar.
+>   `jsonschema` y `referencing` faltaban del todo.
+> - `doctor.py` comprobaba tres dependencias de las seis, así que una
+>   instalación incompleta reportaba «Dependencias de Python: OK».
+>
+> Las dos quedaron cubiertas por pruebas en `tests/test_packaging.py`, pero la
+> lección es la etapa, no el arreglo: **lo que solo se ejecuta en la máquina
+> del que programa, solo funciona ahí**.
 
 `v1.0.0` estable solo después de:
 

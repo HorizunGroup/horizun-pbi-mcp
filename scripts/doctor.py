@@ -169,10 +169,27 @@ def check_platform(rep: Report) -> None:
                 hint="La capa EN DISCO (.pbip / TMDL / PBIR) si funciona en cualquier SO.")
 
 
+#: Modulo importable -> paquete de `project.dependencies`. `pythonnet` va
+#: aparte porque solo hace falta para la capa EN VIVO.
+#:
+#: La lista se escribe a mano para poder nombrar el modulo, que no siempre se
+#: llama como el paquete (`dotenv` / `python-dotenv`), pero
+#: `tests/test_packaging.py` comprueba que las cubre TODAS. Antes solo miraba
+#: tres: una instalacion sin `jsonschema` reportaba "Dependencias: OK" y luego
+#: fallaba cada escritura PBIR con `schema_unavailable`.
+DEPENDENCIAS = (
+    ("mcp", "mcp"),
+    ("psutil", "psutil"),
+    ("dotenv", "python-dotenv"),
+    ("jsonschema", "jsonschema"),
+    ("referencing", "referencing"),
+)
+
+
 def check_dependencies(rep: Report) -> None:
     import importlib.util
     missing, present = [], {}
-    for mod, pkg in (("mcp", "mcp"), ("psutil", "psutil"), ("dotenv", "python-dotenv")):
+    for mod, pkg in DEPENDENCIAS:
         if importlib.util.find_spec(mod) is None:
             missing.append(pkg)
         else:

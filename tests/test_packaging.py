@@ -293,3 +293,98 @@ def test_el_sdist_se_instala_y_arranca(sdist, tmp_path_factory):
     datos = json.loads(res.stdout.strip().splitlines()[-1])
     assert datos["n"] == TOOLS_ESPERADAS
     assert datos["version"] == _branding.VERSION
+
+
+# --------------------------------------------------- dependencias declaradas --
+def _normalizar_requisito(linea: str) -> str:
+    """Nombre del paquete, sin el especificador de version."""
+    import re
+
+    return re.split(r"[<>=!~\[]", linea, maxsplit=1)[0].strip()
+
+
+def _dependencias_declaradas() -> dict:
+    """`project.dependencies` de pyproject.toml -> {paquete: requisito}."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:                              # pragma: no cover
+        import tomli as tomllib                              # Python 3.10
+
+    raiz = Path(__file__).resolve().parents[1]
+    datos = tomllib.loads((raiz / "pyproject.toml").read_text(encoding="utf-8"))
+    return {_normalizar_requisito(d): d.strip()
+            for d in datos["project"]["dependencies"]}
+
+
+def _requirements_txt() -> dict:
+    raiz = Path(__file__).resolve().parents[1]
+    salida = {}
+    for linea in (raiz / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        limpia = linea.split("#")[0].strip()
+        if limpia:
+            salida[_normalizar_requisito(limpia)] = limpia
+    return salida
+
+
+def test_requirements_declara_lo_mismo_que_pyproject():
+    """Los dos archivos describen la MISMA instalacion, topes incluidos.
+
+    El README ofrece `pip install -r requirements.txt` como primera opcion, asi
+    que si divergen hay dos instalaciones distintas y una de ellas no se prueba
+    nunca. Es lo que paso: `requirements.txt` se quedo atras en las seis
+    dependencias. `mcp>=1.10` sin tope instalaba la 2.0.0 —donde
+    `mcp.server.fastmcp` ya no existe— y el servidor no llegaba ni a importar;
+    `jsonschema` y `referencing` faltaban del todo. Ninguna prueba lo veia
+    porque todas corren sobre el entorno de desarrollo, que ya estaba bien.
+    """
+    pyproject, requirements = _dependencias_declaradas(), _requirements_txt()
+
+    faltan = sorted(set(pyproject) - set(requirements))
+    assert not faltan, (
+        f"declaradas en pyproject y ausentes de requirements.txt: {faltan}")
+
+    sobran = sorted(set(requirements) - set(pyproject))
+    assert not sobran, (
+        f"en requirements.txt y no en pyproject: {sobran}")
+
+    distintas = {n: (pyproject[n], requirements[n]) for n in pyproject
+                 if pyproject[n] != requirements[n]}
+    assert not distintas, f"mismo paquete, distinta restriccion: {distintas}"
+
+
+def test_toda_dependencia_de_runtime_tiene_tope_de_version():
+    """Sin tope, un salto mayor entra solo y rompe una instalacion nueva.
+
+    No es hipotetico: paso con `mcp` 2.0.0 el mismo dia que se escribio esta
+    prueba, y solo se vio instalando en una maquina limpia.
+    """
+    sin_tope = [d for d in _dependencias_declaradas().values()
+                if "<" not in d]
+    assert not sin_tope, (
+        f"dependencias sin tope superior: {sin_tope}. Acotalas: una version "
+        "mayor puede retirar la API de la que dependemos.")
+
+
+def test_el_doctor_comprueba_todas_las_dependencias_de_runtime():
+    """Un diagnostico que no mira lo que importa es peor que no tenerlo.
+
+    `doctor.py` llevaba una lista escrita a mano de tres modulos y las
+    dependencias eran seis. Una instalacion sin `jsonschema` reportaba
+    "Dependencias de Python: OK" y despues fallaba cada escritura PBIR con
+    `schema_unavailable`.
+    """
+    import importlib.util
+
+    raiz = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "doctor_bajo_prueba", raiz / "scripts" / "doctor.py")
+    doctor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(doctor)
+
+    comprobados = {pkg for _mod, pkg in doctor.DEPENDENCIAS}
+    declaradas = set(_dependencias_declaradas())
+    # `pythonnet` se comprueba aparte: solo hace falta para la capa en vivo.
+    faltan = declaradas - comprobados - {"pythonnet"}
+
+    assert not faltan, (
+        f"doctor.py no comprueba estas dependencias: {sorted(faltan)}")

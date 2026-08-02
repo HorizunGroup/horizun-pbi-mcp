@@ -5,6 +5,49 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0-rc.11] — 2026-08-01
+
+**116 tools, 1262 pruebas.**
+
+Tres defectos encontrados corriendo **por primera vez** el checklist de release
+de las cinco etapas sobre el tag publicado, más una segunda pasada de «abrir y
+mirar».
+
+### Corregido
+
+- **`requirements.txt` había divergido de `pyproject.toml` en las seis
+  dependencias.** El README ofrece `pip install -r requirements.txt` como
+  primera opción, y ese archivo decía `mcp>=1.10` **sin tope**: una instalación
+  limpia traía `mcp` 2.0.0 —donde `mcp.server.fastmcp` ya no existe— y **el
+  servidor no llegaba ni a importar**. `jsonschema` y `referencing` faltaban del
+  todo, así que toda escritura PBIR habría fallado con `schema_unavailable`.
+
+  Ninguna de las 1255 pruebas lo veía, porque todas corren sobre el entorno de
+  desarrollo, que ya estaba bien.
+
+- **`doctor.py` comprobaba tres dependencias de las seis.** Una instalación sin
+  `jsonschema` reportaba «Dependencias de Python: OK» y luego fallaba cada
+  escritura. Un diagnóstico que no mira lo que importa es peor que no tenerlo.
+
+- **`pbi_create_measure` dejaba escribir medidas que impiden abrir el
+  proyecto.** Una medida no puede llamarse como una columna de su tabla, y su
+  nombre es único en **todo** el modelo, no por tabla. El parser TMDL se traga
+  las dos; el motor las rechaza al cargar. Comprobado abriéndolo: Power BI deja
+  una ventana **«Sin título» con el modelo vacío** y dice que no puede crear la
+  medida. El lint conocía las dos reglas desde siempre; el escritor no las
+  consultaba.
+
+### Documentación
+
+- El checklist declaraba una excepción **obsoleta** —`filters`/`interactions`
+  rechazados, cuando funcionan desde rc.9— y **no declaraba la que sí existe**:
+  el bloque `objects` de un visual no lo valida ningún esquema
+  (`additionalProperties: {}`), así que el único detector es abrir y mirar.
+- **`docs/BACKLOG.md`** — lo que queda abierto, con evidencia y cómo se
+  comprueba. Ocho puntos, ordenados por lo que más duele.
+
+---
+
 ## [1.0.0-rc.10] — 2026-08-01
 
 **116 tools, 1255 pruebas.**
