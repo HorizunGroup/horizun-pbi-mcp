@@ -1,25 +1,25 @@
 # Horizun PBI MCP v1.0.0
 
-Primera versión estable del repositorio oficial de Horizun PBI MCP.
+First stable release of the official Horizun PBI MCP repository.
 
-- 117 tools MCP y contrato compatible con las 34 tools originales.
-- 1542 pruebas aprobadas; 3 omitidas únicamente por condiciones externas
-  documentadas.
-- Validación TMDL/TOM antes de abrir Power BI Desktop, evitando el Frown de
-  proyectos con colisiones de nombres.
-- Preflight de modelos vacíos: devuelve un diagnóstico accionable en vez de
-  esperar un timeout de Desktop sin motor servido.
-- Validación PBIR contra esquemas y CLI oficiales cuando están publicados,
-  oráculo estructural para `objects`, transacciones atómicas, journals,
-  backups y rollback.
-- Distribución para Codex y Claude mediante runtime aislado; no se redistribuyen
-  DLL de Microsoft ni esquemas de terceros.
+- 117 MCP tools and a contract compatible with the original 34 tools.
+- 1542 tests passed; 3 skipped solely due to documented external
+  conditions.
+- TMDL/TOM validation before opening Power BI Desktop, avoiding the Frown for
+  projects with name collisions.
+- Preflight for empty models: returns an actionable diagnosis instead of
+  waiting for a Desktop timeout with no engine served.
+- PBIR validation against official schemas and CLI when published,
+  structural oracle for `objects`, atomic transactions, journals,
+  backups and rollback.
+- Distribution for Codex and Claude via an isolated runtime; no Microsoft
+  DLLs or third-party schemas are redistributed.
 
-## Límites conocidos
+## Known limits
 
-- La equivalencia visual completa del bloque `objects` requiere inspección
-  renderizada para combinaciones no cubiertas por el oráculo.
-- `mode="both"` está bloqueado por diseño: Desktop abierto y escritura PBIP
-  segura son precondiciones incompatibles.
-- Dos esquemas PBIR que Microsoft aún no publica siguen siendo una limitación
-  upstream y se bloquean de forma explícita.
+- Full visual equivalence of the `objects` block requires rendered
+  inspection for combinations not covered by the oracle.
+- `mode="both"` is blocked by design: open Desktop and safe PBIP writing
+  are incompatible preconditions.
+- Two PBIR schemas Microsoft has not yet published remain an upstream
+  limitation and are explicitly blocked.

@@ -1,10 +1,10 @@
-# Tutorial: de la instalación a un dashboard
+# Tutorial: from installation to a dashboard
 
-Recorrido completo sobre el **fixture sintético** del repositorio. No necesitas Power BI Desktop para los pasos 1–7.
+A full walkthrough using the repository's **synthetic fixture**. You don't need Power BI Desktop for steps 1–7.
 
 ---
 
-## 1. Instalar
+## 1. Install
 
 ```bash
 python -m pip install -r requirements.txt
@@ -18,39 +18,39 @@ python scripts/fetch_libs.py
 python scripts/doctor.py
 ```
 
-Debe terminar en `RESULTADO: instalacion operativa` con código **0**.
+Must end with `RESULTADO: instalacion operativa` and exit code **0**.
 
 ---
 
-## 2. Registrar en tu cliente
+## 2. Register with your client
 
 ```bash
 python scripts/make_mcp_config.py --client all
 ```
 
-Imprime el fragmento para Claude Code, Claude Desktop, Codex y stdio genérico, con rutas absolutas ya resueltas. Detalle en [`INSTALL.md`](INSTALL.md).
+Prints the snippet for Claude Code, Claude Desktop, Codex and generic stdio, with already-resolved absolute paths. Detail in [`INSTALL.md`](INSTALL.md).
 
 ---
 
-## 3. Orientarse
+## 3. Get your bearings
 
-> Comprueba el estado del servidor y dime qué puedo hacer ahora mismo.
+> Check the server's status and tell me what I can do right now.
 
-`pbi_health_check` y `pbi_capabilities`. La segunda dice qué está disponible **y qué no, con el motivo** — incluido que `mode="both"` está deshabilitado y por qué.
-
----
-
-## 4. Abrir el proyecto
-
-> Abre el proyecto `tests/fixtures/synthetic/minimal/Demo.pbip` y hazme un resumen del modelo.
-
-`pbi_open_pbip_project` → `pbi_model_summary`. Verás 2 tablas, 6 columnas, 2 medidas, 1 relación.
+`pbi_health_check` and `pbi_capabilities`. The second one says what's available **and what isn't, with the reason** — including that `mode="both"` is disabled and why.
 
 ---
 
-## 5. Entender antes de tocar
+## 4. Open the project
 
-> ¿De qué depende la medida `Ratio Pct` y quién la usa?
+> Open the project `tests/fixtures/synthetic/minimal/Demo.pbip` and give me a model summary.
+
+`pbi_open_pbip_project` → `pbi_model_summary`. You'll see 2 tables, 6 columns, 2 measures, 1 relationship.
+
+---
+
+## 5. Understand before touching
+
+> What does the measure `Ratio Pct` depend on, and who uses it?
 
 ```
 depends_on.measures : ['TotalAmount']
@@ -58,109 +58,109 @@ used_by             : []
 is_unused           : True
 ```
 
-> ¿Qué se rompe si oculto `Fact[Amount]`?
+> What breaks if I hide `Fact[Amount]`?
 
-`pbi_column_dependencies` → la usa `TotalAmount`.
-
----
-
-## 6. Auditar
-
-> Audita el proyecto entero y genera el informe en HTML.
-
-`pbi_audit_project(formats=["html"])`. Devuelve puntaje global y por dominio, resumen ejecutivo y hallazgos priorizados con evidencia. El HTML queda en `outputs/`.
+`pbi_column_dependencies` → `TotalAmount` uses it.
 
 ---
 
-## 7. Construir un dashboard
+## 6. Audit
 
-> Construye una página ejecutiva con `TotalAmount` y `Ratio Pct`, por `Calendar[Year]`. Enséñame el preview antes de aplicar.
+> Audit the whole project and generate the report in HTML.
+
+`pbi_audit_project(formats=["html"])`. Returns an overall score and per-domain scores, an executive summary and prioritized findings with evidence. The HTML ends up in `outputs/`.
+
+---
+
+## 7. Build a dashboard
+
+> Build an executive page with `TotalAmount` and `Ratio Pct`, by `Calendar[Year]`. Show me the preview before applying.
 
 ```
-pbi_build_executive_page(measures=[...], category="Calendar[Year]")   # dry_run por defecto
+pbi_build_executive_page(measures=[...], category="Calendar[Year]")   # dry_run by default
 ```
 
-Devuelve las etapas `analisis → plan → preview`. Revisa el HTML del preview: **las posiciones son las definitivas**.
+Returns the `analysis → plan → preview` stages. Review the preview's HTML: **the positions are final**.
 
-> Aplícalo.
+> Apply it.
 
 ```
 pbi_build_executive_page(..., dry_run=false)
 ```
 
-Añade `apply` y `verificacion`. Comprueba `valid: true` y `broken_references: []`.
+Adds `apply` and `verification`. Check `valid: true` and `broken_references: []`.
 
 ---
 
-## 8. Iterar con seguridad
+## 8. Iterate safely
 
-> Duplica la tarjeta de `TotalAmount` y ponle de título "Importe acumulado".
+> Duplicate the `TotalAmount` card and title it "Accumulated amount".
 
-`pbi_duplicate_visual` conserva campos y formato; solo regenera el id.
+`pbi_duplicate_visual` keeps fields and format; only regenerates the id.
 
-> ¿Hay problemas de layout en esa página?
+> Are there layout issues on that page?
 
-`pbi_detect_layout_issues` — solapamientos con área exacta, fuera de lienzo, tamaños, orden Z.
+`pbi_detect_layout_issues` — overlaps with exact area, off-canvas, sizes, Z order.
 
-> Normalízalo.
+> Normalize it.
 
-`pbi_normalize_page_layout(dry_run=true)` primero: corrige **solo** lo que está mal.
-
----
-
-## 9. Deshacer
-
-> Enséñame los journals de este proyecto.
-
-`pbi_list_pending_journals(only_pending=false)` → uno por operación lógica.
-
-> Inspecciona el último.
-
-`pbi_inspect_journal` dice, por archivo, si sigue como el original y si hay respaldo. Para restaurar, [`RECOVERY.md`](RECOVERY.md).
+`pbi_normalize_page_layout(dry_run=true)` first: it fixes **only** what's wrong.
 
 ---
 
-## 10. Preparar la entrega
+## 9. Undo
 
-> ¿Está listo para entregar?
+> Show me this project's journals.
 
-`pbi_prepare_delivery` devuelve un checklist con bloqueantes y el plan de correcciones disponibles.
+`pbi_list_pending_journals(only_pending=false)` → one per logical operation.
 
-> Aplica solo las correcciones de títulos ausentes.
+> Inspect the last one.
+
+`pbi_inspect_journal` tells you, per file, whether it still matches the original and whether there's a backup. To restore, see [`RECOVERY.md`](RECOVERY.md).
+
+---
+
+## 10. Prepare the delivery
+
+> Is it ready to deliver?
+
+`pbi_prepare_delivery` returns a checklist with blockers and the available fix plan.
+
+> Apply only the fixes for missing titles.
 
 ```
 pbi_plan_audit_fixes(rules=["report_visual_without_title"])
 pbi_apply_audit_fixes(actions=[...], confirm=true)
 ```
 
-No existe "arreglar todo": hay que nombrar las reglas.
+There's no "fix everything": rules must be named.
 
-> Genera la documentación técnica.
+> Generate the technical documentation.
 
-`pbi_generate_technical_documentation` → Markdown con modelo, dependencias, informe página a página y auditoría.
-
----
-
-## 11. Con Power BI Desktop abierto
-
-Solo la capa **en vivo**:
-
-> Lista los modelos abiertos, selecciona el único y ejecuta `EVALUATE ROW("ok", 1)`.
-
-Recuerda:
-
-- `mode="live"` no persiste hasta que guardas con **Ctrl+S**.
-- Con Desktop abierto, la escritura **PBIR está bloqueada** a propósito.
-- `pbi_compare_live_to_pbip` te dice si hay cambios en memoria sin guardar.
+`pbi_generate_technical_documentation` → Markdown with the model, dependencies, page-by-page report and audit.
 
 ---
 
-## Errores que verás, y qué significan
+## 11. With Power BI Desktop open
 
-| Error | Qué hacer |
+Only the **live** layer:
+
+> List the open models, select the only one, and run `EVALUATE ROW("ok", 1)`.
+
+Remember:
+
+- `mode="live"` doesn't persist until you save with **Ctrl+S**.
+- With Desktop open, **PBIR writes are blocked** on purpose.
+- `pbi_compare_live_to_pbip` tells you if there are unsaved in-memory changes.
+
+---
+
+## Errors you'll see, and what they mean
+
+| Error | What to do |
 |---|---|
-| `project_open_in_desktop` | Cierra Desktop. Es intencionado |
-| `dual_mode_not_safely_available` | Elige `live` o `pbip` |
-| `dax_not_read_only` | Solo `EVALUATE`, `DEFINE…EVALUATE` y DMVs |
-| `plan_token_stale` | El proyecto cambió: regenera el plan |
-| `page_spec_invalid` | Mira `details.errors`: traen el JSON path exacto |
+| `project_open_in_desktop` | Close Desktop. It's intentional |
+| `dual_mode_not_safely_available` | Choose `live` or `pbip` |
+| `dax_not_read_only` | Only `EVALUATE`, `DEFINE…EVALUATE` and DMVs |
+| `plan_token_stale` | The project changed: regenerate the plan |
+| `page_spec_invalid` | Check `details.errors`: they carry the exact JSON path |

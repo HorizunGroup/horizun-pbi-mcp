@@ -1,49 +1,49 @@
-# Reglas del repositorio para agentes
+# Repository rules for agents
 
-Instrucciones operativas para cualquier agente (o persona) que modifique Horizun PBI MCP.
-Tienen prioridad sobre cualquier costumbre general.
+Operating instructions for any agent (or person) modifying Horizun PBI MCP.
+They take priority over any general convention.
 
 ---
 
-## 1. Antes de tocar nada
+## 1. Before touching anything
 
 ```bash
-python -m pytest -q                    # debe pasar en verde
-python scripts/doctor.py               # debe salir con codigo 0
+python -m pytest -q                    # must pass green
+python scripts/doctor.py               # must exit with code 0
 ```
 
-Si el baseline ya está roto, **arréglalo o repórtalo antes** de añadir nada. No se construye sobre rojo.
+If the baseline is already broken, **fix it or report it first**. Don't build on red.
 
 ---
 
-## 2. El contrato MCP es intocable
+## 2. The MCP contract is untouchable
 
-Las **34 tools** del baseline están congeladas en `tests/golden/tools_v1.json`.
+The **34** baseline tools are frozen in `tests/golden/tools_v1.json`.
 
-**Prohibido sin aprobación explícita:**
-- eliminar una tool
-- renombrar una tool
-- eliminar un parámetro
-- añadir un parámetro **obligatorio**
-- cambiar el tipo de un parámetro
-- cambiar un valor por defecto
-- cambiar la forma de la respuesta
+**Forbidden without explicit approval:**
+- removing a tool
+- renaming a tool
+- removing a parameter
+- adding a **required** parameter
+- changing a parameter's type
+- changing a default value
+- changing the response shape
 
-**Permitido:**
-- añadir tools nuevas
-- añadir parámetros **opcionales con default**
-- añadir campos nuevos al dict de respuesta
-- mejorar descripciones
+**Allowed:**
+- adding new tools
+- adding **optional parameters with a default**
+- adding new fields to the response dict
+- improving descriptions
 
-Comprobar en cualquier momento:
+Check at any time:
 
 ```bash
 python -m tests.contract_utils
 ```
 
-Devuelve 0 si no hay rupturas, 1 si las hay, con un informe que dice **qué** cambió y **si rompe compatibilidad** — no un volcado de dos JSON.
+Returns 0 if there are no breaks, 1 if there are, with a report stating **what** changed and **whether it breaks compatibility** — not a dump of two JSONs.
 
-Tras un cambio deliberado y aprobado:
+After a deliberate, approved change:
 
 ```bash
 python -m tests.contract_utils --write
@@ -51,59 +51,59 @@ python -m tests.contract_utils --write
 
 ---
 
-## 3. Invariantes que ninguna fase puede romper
+## 3. Invariants no phase can break
 
-1. **stdout es el canal JSON-RPC.** Todo log va a stderr o a fichero. Un `print()` de depuración rompe la conexión del cliente.
-2. **Nunca sobrescribir un JSON que no parsea.** Si no se puede leer, se aborta.
-3. **Toda escritura sobre el proyecto del usuario:** backup antes, relectura después.
-4. **Ninguna ruta de escritura sale del proyecto activo.** Usa `ensure_within_base()`.
-5. **No se inventan campos** que no existan en el modelo. Si un campo no existe, se informa; no se adivina.
-6. **Las tools destructivas exigen `confirm=true`.**
-7. **Preferir clonar una plantilla real** antes que construir JSON de visual a mano.
+1. **stdout is the JSON-RPC channel.** All logging goes to stderr or a file. A debug `print()` breaks the client connection.
+2. **Never overwrite JSON that doesn't parse.** If it can't be read, abort.
+3. **Every write to the user's project:** backup before, re-read after.
+4. **No write path leaves the active project.** Use `ensure_within_base()`.
+5. **No fields are invented** that don't exist in the model. If a field doesn't exist, report it; don't guess.
+6. **Destructive tools require `confirm=true`.**
+7. **Prefer cloning a real template** over hand-building visual JSON.
 
 ---
 
-## 4. Datos reales: nunca entran a git
+## 4. Real data: never enters git
 
-| Nunca versionar | Sí versionar |
+| Never version | Do version |
 |---|---|
-| `.pbix`, `.pbip` reales, `.Report/`, `.SemanticModel/` | `tests/fixtures/synthetic/**` |
+| Real `.pbix`, `.pbip`, `.Report/`, `.SemanticModel/` | `tests/fixtures/synthetic/**` |
 | `libs/` (DLLs) | `scripts/fetch_libs.py` |
-| `outputs/`, `backups/`, `*.log` | plantillas `*.example.*` |
-| `.env`, `.mcp.json`, credenciales | `.env.example`, `.mcp.json.example` |
+| `outputs/`, `backups/`, `*.log` | `*.example.*` templates |
+| `.env`, `.mcp.json`, credentials | `.env.example`, `.mcp.json.example` |
 | `tests/fixtures/local/` | `docs/`, `tests/` |
 
-Antes de cualquier commit:
+Before any commit:
 
 ```bash
 git status --short --ignored
 ```
 
-Los fixtures sintéticos **no contienen** nombres comerciales, datos ni información de ningún proyecto real. Si necesitas estructura PBIR real, usa el fixture local ignorado (`scripts/setup_local_fixture.py`) y **jamás lo promuevas a `synthetic/` sin anonimizar y sin revisión**.
+Synthetic fixtures **contain no** commercial names, data or information from any real project. If you need real PBIR structure, use the ignored local fixture (`scripts/setup_local_fixture.py`) and **never promote it to `synthetic/` without anonymizing it and without review**.
 
 ---
 
-## 5. Pruebas
+## 5. Tests
 
-| Nivel | Dónde | Regla |
+| Level | Where | Rule |
 |---|---|---|
-| Unitarias | `tests/test_*.py` | Sin E/S real fuera de `tmp_path` |
-| Fixtures sintéticos | `tests/fixtures/synthetic/` | Usar `materialize(tmp_path)`. **Nunca** escribir sobre el fixture versionado |
-| Contrato MCP | `tests/test_tool_contract.py` | Debe pasar siempre |
-| En vivo | marcadas `@pytest.mark.skip` o `live` | No se ejecutan solas. Nunca destructivas sobre un modelo real |
-| Fixture local | marcadas `local_fixture` | Sólo lectura. Se omiten si la carpeta no existe |
+| Unit | `tests/test_*.py` | No real I/O outside `tmp_path` |
+| Synthetic fixtures | `tests/fixtures/synthetic/` | Use `materialize(tmp_path)`. **Never** write over the versioned fixture |
+| MCP contract | `tests/test_tool_contract.py` | Must always pass |
+| Live | marked `@pytest.mark.skip` or `live` | Not run on their own. Never destructive against a real model |
+| Local fixture | marked `local_fixture` | Read-only. Skipped if the folder doesn't exist |
 
-**Pruebas de path traversal:** el "afuera" debe crearse **dentro del `tmp_path` de pytest** (`synthetic.outside_marker_dir()`). Jamás apuntar a una ruta real del equipo, ni siquiera para demostrar un fallo.
+**Path traversal tests:** the "outside" must be created **inside pytest's `tmp_path`** (`synthetic.outside_marker_dir()`). Never point at a real machine path, not even to demonstrate a failure.
 
 ---
 
-## 6. Git y contribuciones
+## 6. Git and contributions
 
-Este es el repositorio **público**. Se contribuye por **ramas y pull requests**.
+This is the **public** repository. Contributions go through **branches and pull requests**.
 
-- **Nunca `force-push` a `main`.** Rehacer la historia publicada rompe cualquier clon y cualquier referencia a un commit.
-- Una rama por cambio, con un nombre que diga qué hace.
-- **Antes de abrir un PR**, los tres en verde:
+- **Never `force-push` to `main`.** Rewriting published history breaks any clone and any reference to a commit.
+- One branch per change, with a name that says what it does.
+- **Before opening a PR**, all three green:
 
   ```bash
   python -m pytest -q
@@ -111,125 +111,125 @@ Este es el repositorio **público**. Se contribuye por **ramas y pull requests**
   python -m tests.contract_utils
   ```
 
-  El CI los repite en `windows-latest` con Python 3.10 y 3.13. Un PR en rojo no se revisa.
+  CI repeats them on `windows-latest` with Python 3.10 and 3.13. A red PR is not reviewed.
 
-- **El contrato MCP está congelado.** Ver la sección 2: añadir es libre, cambiar o quitar no.
-- **Nunca se versionan datos reales**: ni `.pbix`, ni `.pbip` de nadie, ni DLLs, ni `outputs/`, ni `backups/`, ni `.env`, ni `.mcp.json`. Ver la sección 4.
-- Un commit por cambio lógico. El mensaje explica **qué estaba mal**, no solo qué se tocó.
-- No se publica en PyPI desde este repositorio.
+- **The MCP contract is frozen.** See section 2: adding is free, changing or removing is not.
+- **Real data is never versioned**: no one's `.pbix`, no one's `.pbip`, no DLLs, no `outputs/`, no `backups/`, no `.env`, no `.mcp.json`. See section 4.
+- One commit per logical change. The message explains **what was wrong**, not just what was touched.
+- Nothing is published to PyPI from this repository.
 
-Guía extendida para contribuir: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Extended contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
-## 7. Estado de los riesgos
+## 7. Risk status
 
-Tres estados, y solo tres: **cerrado**, **parcialmente cerrado**, **pendiente**.
-Detalle en `docs/PHASE_1A_DESIGN.md`.
+Three states, and only three: **closed**, **partially closed**, **open**.
+Detail in `docs/PHASE_1A_DESIGN.md`.
 
-| Id | Riesgo | Estado |
+| Id | Risk | Status |
 |---|---|---|
-| R2 | Corromper un `.pbip`: sin detección de Desktop, sin verificación posterior | **Cerrado** (1A) |
-| R3 | Traversal de escritura en PBIR | **Cerrado** (1A) |
-| R5 | Backups sin ubicación validada ni retención | **Cerrado** (F/R5) — ubicación validada, identificación por hash, manifiesto, y purga con `pbi_purge_backups`: dry-run por defecto, raíz validada, solo journals reconocibles, enlaces simbólicos no seguidos, y se conservan siempre el más reciente y todos los pendientes |
-| R6 | `session.json` apuntando a un puerto muerto o reutilizado | **Cerrado** (1A) |
-| R7 | `pbi_run_dax` sin validación de solo lectura | **Cerrado** (1A) |
-| R11 | Residuo `.tmp` dentro del `.pbip` al fallar `os.replace` | **Cerrado** (1A) |
-| R12 | Rollback dejaba directorios de página vacíos y huérfanos | **Cerrado** (1A.1) |
-| R13 | **Atomicidad de flujos PBIR multiarchivo** | **Parcialmente cerrado** — ver abajo |
-| R14 | Empaquetado incompleto (`services*`, `reporting`) | **Cerrado** (1A.1), con prueba de wheel instalado |
+| R2 | Corrupting a `.pbip`: no Desktop detection, no post-write verification | **Closed** (1A) |
+| R3 | Write traversal in PBIR | **Closed** (1A) |
+| R5 | Backups without validated location or retention | **Closed** (F/R5) — validated location, hash identification, manifest, and purge via `pbi_purge_backups`: dry-run by default, validated root, only recognizable journals, symlinks not followed, and the most recent one plus all pending ones are always kept |
+| R6 | `session.json` pointing to a dead or reused port | **Closed** (1A) |
+| R7 | `pbi_run_dax` without read-only validation | **Closed** (1A) |
+| R11 | `.tmp` leftover inside the `.pbip` when `os.replace` fails | **Closed** (1A) |
+| R12 | Rollback left empty, orphaned page directories | **Closed** (1A.1) |
+| R13 | **Multi-file PBIR flow atomicity** | **Partially closed** — see below |
+| R14 | Incomplete packaging (`services*`, `reporting`) | **Closed** (1A.1), with an installed-wheel test |
 
-### R13 — atomicidad multiarchivo, en detalle
+### R13 — multi-file atomicity, in detail
 
-**No marques este riesgo como cerrado mientras quede un solo flujo sin cubrir.**
+**Don't mark this risk closed while a single flow remains uncovered.**
 
-| Flujo | Archivos | Estado |
+| Flow | Files | Status |
 |---|---|---|
-| `pbi_create_page_from_spec` | page.json + pages.json + N visual.json | ✅ una transacción |
-| `pbi_arrange_visuals` | N visual.json | ✅ una transacción |
-| `pbi_generate_report_page` | page.json + pages.json + N visual.json | ✅ una transacción |
-| `pbi_create_html_visual` | report.json + visual.json | ✅ una transacción |
-| `pbir_writer.create_page` | page.json + pages.json | ✅ una transacción |
-| `pbi_hide_columns` (`pbip`) | N archivos TMDL | ✅ una transacción (1A.2) |
-| `pbi_hide_columns` (`live`) | N columnas TOM | ✅ un solo `SaveChanges` (1A.2) |
+| `pbi_create_page_from_spec` | page.json + pages.json + N visual.json | ✅ one transaction |
+| `pbi_arrange_visuals` | N visual.json | ✅ one transaction |
+| `pbi_generate_report_page` | page.json + pages.json + N visual.json | ✅ one transaction |
+| `pbi_create_html_visual` | report.json + visual.json | ✅ one transaction |
+| `pbir_writer.create_page` | page.json + pages.json | ✅ one transaction |
+| `pbi_hide_columns` (`pbip`) | N TMDL files | ✅ one transaction (1A.2) |
+| `pbi_hide_columns` (`live`) | N TOM columns | ✅ a single `SaveChanges` (1A.2) |
 
-#### Ampliación del inventario (Fase D) — flujos que faltaban
+#### Inventory expansion (Phase D) — flows that were missing
 
-El inventario de arriba se hizo con búsquedas **léxicas** (`grep` de `project_transaction` dentro de un `for`). Ese método tiene un punto ciego: **la transacción se abre dentro de la función llamada, no dentro del bucle**. Dos workflows de alto nivel caían justo ahí y no aparecían:
+The inventory above was built with **lexical** searches (`grep` for `project_transaction` inside a `for`). That method has a blind spot: **the transaction opens inside the called function, not inside the loop**. Two high-level workflows fell right into that gap and didn't show up:
 
-| Flujo | Qué hacía | Evidencia |
+| Flow | What it did | Evidence |
 |---|---|---|
-| `pbi_repair_broken_references` | Una transacción **por visual**, dentro de un `for`, con `except Exception` que **seguía adelante**. Si fallaba el quinto, los cuatro anteriores quedaban confirmados y la tool devolvía `ok:true` con una lista de fallidos. | `workflows.py:222` (antes) |
-| `pbi_normalize_report` | Una transacción **por página**. Atómico dentro de cada una, pero si fallaba la tercera, las dos primeras quedaban reacomodadas. | `workflows.py:273` (antes) |
+| `pbi_repair_broken_references` | One transaction **per visual**, inside a `for`, with `except Exception` that **kept going**. If the fifth one failed, the previous four stayed committed and the tool returned `ok:true` with a list of failures. | `workflows.py:222` (before) |
+| `pbi_normalize_report` | One transaction **per page**. Atomic within each one, but if the third failed, the first two were left rearranged. | `workflows.py:273` (before) |
 
-Y un tercer defecto, en la frontera del **commit**:
+And a third defect, at the **commit** boundary:
 
-| Flujo | Qué hacía |
+| Flow | What it did |
 |---|---|
-| `txn._ProjectTransactionCM.__exit__` | Llamaba a `commit()` sin protección. Si el commit fallaba por sí mismo (manifiesto, disco, permisos), la excepción salía **sin revertir**: los archivos quedaban escritos y la operación parecía fallida. |
+| `txn._ProjectTransactionCM.__exit__` | Called `commit()` unprotected. If the commit itself failed (manifest, disk, permissions), the exception escaped **without rolling back**: the files stayed written and the operation looked failed. |
 
-**Corregido en la Fase D**: se factorizaron `pbir_writer.plan_visuals_bulk()` y `pbir_edit.plan_replace_visual_field()` (puros, sin escribir), los dos workflows compilan todo y escriben en **una** transacción, y `__exit__` revierte si el commit falla.
+**Fixed in Phase D**: `pbir_writer.plan_visuals_bulk()` and `pbir_edit.plan_replace_visual_field()` were factored out (pure, no writes), the two workflows now compile everything and write in **one** transaction, and `__exit__` rolls back if the commit fails.
 
-`tests/test_workflow_atomicity.py` inyecta fallos en primera / intermedia / última escritura, validación previa, commit y compensación, y exige restauración byte a byte y cero directorios huérfanos. **Seis de esas pruebas fallan contra el commit anterior.**
+`tests/test_workflow_atomicity.py` injects failures on first / middle / last write, prior validation, commit and compensation, and requires byte-for-byte restoration and zero orphaned directories. **Six of those tests fail against the previous commit.**
 
-Incluye además dos chequeos estáticos: uno léxico (transacción dentro de un `for`) y **uno que cubre el punto ciego**: un bucle que llama a una función que abre su propia transacción.
+It also includes two static checks: a lexical one (transaction inside a `for`) and **one that covers the blind spot**: a loop that calls a function that opens its own transaction.
 
-**Verificado también**: exactamente **1 `SaveChanges` por función**, 7 en total, contando nodos `Call` del AST y no ocurrencias de texto —un `grep` cuenta 6 en `set_columns_hidden_bulk` porque los menciona la docstring—. La afirmación original de R13 se sostiene.
+**Also verified**: exactly **1 `SaveChanges` per function**, 7 in total, counting AST `Call` nodes and not text occurrences — a `grep` counts 6 in `set_columns_hidden_bulk` because the docstring mentions it. The original R13 claim holds.
 
-**R13 (atomicidad de un solo destino): cerrado.** Todos los flujos de un mismo destino son transacciones únicas o un solo `SaveChanges`.
+**R13 (single-destination atomicity): closed.** All flows targeting the same destination are single transactions or a single `SaveChanges`.
 
 ---
 
-## 7 bis. R15 — consistencia dual: **ABIERTO**
+## 7 bis. R15 — dual consistency: **OPEN**
 
-Este riesgo **no está cerrado y no se cerrará en la Fase 1A.** Es un límite del sistema.
+This risk **is not closed and will not be closed in Phase 1A.** It's a system limit.
 
-| Modo | Requisito | Estado |
+| Mode | Requirement | Status |
 |---|---|---|
-| `live` | Power BI Desktop **abierto** y sesión válida | ✅ Disponible |
-| `pbip` | Proyecto **cerrado** o verificablemente seguro | ✅ Disponible |
-| `both` | **Requisitos mutuamente incompatibles** | 🚫 **Bloqueado en 1A** |
+| `live` | Power BI Desktop **open** and valid session | ✅ Available |
+| `pbip` | Project **closed** or verifiably safe | ✅ Available |
+| `both` | **Mutually incompatible requirements** | 🚫 **Blocked in 1A** |
 
-`live` habla con `msmdsrv.exe`, que solo existe si Desktop está abierto. `pbip` escribe archivos que Desktop sobrescribe al guardar, así que la política estricta lo bloquea si Desktop está `open` o `unknown`. **No hay ningún estado del sistema en el que ambos destinos puedan escribirse con seguridad en una sola llamada.**
+`live` talks to `msmdsrv.exe`, which only exists if Desktop is open. `pbip` writes files that Desktop overwrites on save, so the strict policy blocks it if Desktop is `open` or `unknown`. **There is no system state in which both destinations can be safely written in a single call.**
 
-Lo que hacía antes: aplicaba `live` primero, `pbip` después. Con Desktop abierto — el único estado en que `live` es posible — el resultado era un **estado parcial determinista**: 1 `SaveChanges` ejecutado, columna oculta en memoria, disco intacto, `consistent: False`.
+What it used to do: apply `live` first, then `pbip`. With Desktop open — the only state in which `live` is possible — the result was a **deterministic partial state**: 1 `SaveChanges` executed, column hidden in memory, disk untouched, `consistent: False`.
 
-**Ahora:** las seis tools duales rechazan `mode="both"` con `dual_mode_not_safely_available` **antes de cualquier efecto** — antes de conectar a TOM, de validar contra el motor, de crear journal, de leer para planificar o de tocar un archivo. Sin bypass por variable de entorno.
+**Now:** the six dual tools reject `mode="both"` with `dual_mode_not_safely_available` **before any effect** — before connecting to TOM, validating against the engine, creating a journal, reading to plan, or touching a file. No environment-variable bypass.
 
-Las seis: `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure`, `pbi_set_column_visibility`, `pbi_hide_columns`, `pbi_set_relationship_direction`.
+The six: `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure`, `pbi_set_column_visibility`, `pbi_hide_columns`, `pbi_set_relationship_direction`.
 
-### El coordinador compensado sigue ahí, como mecanismo interno
+### The compensated coordinator is still there, as an internal mechanism
 
-`_apply_both_compensated()` en `tools/model_edit_tools.py` implementa disco→memoria con compensación. **No es alcanzable desde la tool pública** y no justifica que `both` se acepte. Se conserva con pruebas unitarias directas porque la Fase 1B tendrá que decidir entre: workflow en dos etapas, persistir solo por TOM y dejar que el usuario guarde, abandonar `both`, u otra coordinación segura.
+`_apply_both_compensated()` in `tools/model_edit_tools.py` implements disk→memory with compensation. **It's not reachable from the public tool** and doesn't justify accepting `both`. It's kept with direct unit tests because Phase 1B will have to decide between: a two-stage workflow, persisting only via TOM and letting the user save, abandoning `both`, or another safe coordination.
 
-### Taxonomía de errores del coordinador
+### Coordinator error taxonomy
 
-| Código | Cuándo | Requiere intervención |
+| Code | When | Requires intervention |
 |---|---|---|
-| `bulk_apply_failed` | Falló y la compensación dejó **todo** como estaba | No |
-| `bulk_partially_applied` | La compensación quedó incompleta o en conflicto | **Sí**, con el journal |
+| `bulk_apply_failed` | It failed and compensation left **everything** as it was | No |
+| `bulk_partially_applied` | Compensation was left incomplete or in conflict | **Yes**, with the journal |
 
-No se informa "parcial" cuando la restauración fue completa.
+"Partial" is never reported when the restoration was complete.
 
-### Cómo auditar esto tú mismo
+### How to audit this yourself
 
-No te fíes de la lista de arriba. Los cinco patrones a buscar:
+Don't trust the list above. The five patterns to search for:
 
 ```bash
-# 1. Una tool decorada llamando a otra tool decorada
+# 1. A decorated tool calling another decorated tool
 grep -rn "@mcp.tool" -A40 src/tools/ | grep -E "pbi_[a-z_]+\("
-# 2. Escrituras dentro de bucles
+# 2. Writes inside loops
 grep -rnE "for |while " -A6 src/ | grep -E "write_|SaveChanges|create_page"
-# 3. Transacciones abiertas dentro de bucles  ← el patrón malo
+# 3. Transactions opened inside loops  ← the bad pattern
 grep -rn "project_transaction\|with transaction" src/
-# 4. Varios SaveChanges en una misma función
+# 4. Multiple SaveChanges in the same function
 grep -rn "SaveChanges" src/powerbi/
-# 5. backup_before_edit (no restaura; solo para rutas no migradas)
+# 5. backup_before_edit (doesn't restore; only for unmigrated paths)
 grep -rn "backup_before_edit" src/
 ```
 
-Un `for` **dentro** de una transacción es correcto. Una transacción **dentro** de un `for` no lo es.
+A `for` **inside** a transaction is correct. A transaction **inside** a `for` is not.
 
-**Nunca hagas que una tool llame a otra tool decorada.** `guard()` convierte los errores en datos: el bucle continúa, el resultado exterior dice `ok:true` y los fallos quedan enterrados en la lista. Extrae un servicio sin decorar y que ambas tools lo envuelvan.
+**Never make a tool call another decorated tool.** `guard()` turns errors into data: the loop continues, the outer result says `ok:true` and the failures stay buried in the list. Extract an undecorated service and have both tools wrap it.
 
-No marques ningún riesgo como cerrado sin una prueba de regresión que **falle antes** del arreglo y pase después.
+Don't mark any risk as closed without a regression test that **fails before** the fix and passes after.

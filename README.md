@@ -1,80 +1,80 @@
 # Horizun PBI MCP
 
-Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
+**MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.0.1** — 117 tools, 1547 pruebas aprobadas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
+**v1.0.1** — 117 tools, 1547 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
 
-| Capa | Para qué | Cómo |
+| Layer | For what | How |
 |---|---|---|
-| **En vivo** (Power BI Desktop abierto en `localhost:<puerto>`) | Consultar datos (DAX), documentar el modelo, crear/editar medidas, refrescar | ADOMD.NET + TOM vía `pythonnet` |
-| **En disco** (proyecto `.pbip`) | Generar/acomodar visuales, editar el modelo de forma durable | TMDL (modelo) + PBIR (informe), editando archivos |
+| **Live** (Power BI Desktop open on `localhost:<port>`) | Query data (DAX), document the model, create/edit measures, refresh | ADOMD.NET + TOM via `pythonnet` |
+| **On disk** (`.pbip` project) | Generate/arrange visuals, edit the model durably | TMDL (model) + PBIR (report), editing files |
 
-> **Regla clave:** el endpoint local **solo expone la capa de DATOS** (modelo semántico). Los **visuales/páginas/layout NO** están en ese endpoint ni en ninguna API en vivo — se editan por archivos PBIR. Este MCP respeta esa separación: no intenta mover visuales "en vivo".
+> **Key rule:** the local endpoint **only exposes the DATA layer** (semantic model). **Visuals/pages/layout are NOT** in that endpoint or in any live API — they're edited via PBIR files. This MCP respects that separation: it doesn't try to move visuals "live".
 
 ---
 
-## Documentación
+## Documentation
 
-| Documento | Para qué |
+| Document | For what |
 |---|---|
-| [`docs/INSTALL.md`](docs/INSTALL.md) | Instalar y registrar el servidor en Claude Code, Claude Desktop, Codex o un cliente stdio |
-| [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md) | Las 34 tools del baseline: dominio, clase de riesgo, precondiciones |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura actual, deuda estructural e invariantes |
-| [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Convivencia con otros MCP de Power BI, con niveles de verificación |
-| [`AGENTS.md`](AGENTS.md) | Reglas para modificar este repositorio sin romper el contrato |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 117 tools por bloque, con su clase de riesgo |
-| [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Por qué `mode="both"` está bloqueado (R15) |
-| [`docs/VALIDATION.md`](docs/VALIDATION.md) | Las dos capas de validación PBIR y sus límites |
-| [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Qué se comprueba antes de publicar |
-| [`docs/BACKLOG.md`](docs/BACKLOG.md) | Lo que queda abierto, con evidencia y cómo comprobarlo |
-| [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | De la instalación a un dashboard, paso a paso |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Modelo de amenazas, garantías y lo que **no** promete |
-| [`docs/RECOVERY.md`](docs/RECOVERY.md) | Qué hacer cuando algo queda a medias |
-| [`docs/PHASE_1A_DESIGN.md`](docs/PHASE_1A_DESIGN.md) | Diseño de la capa de seguridad |
-| [`CHANGELOG.md`](CHANGELOG.md) | Historial de versiones |
-| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Estrategia de fixtures: sintéticos versionados + copia local ignorada |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | Install and register the server in Claude Code, Claude Desktop, Codex or a stdio client |
+| [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md) | The 34 baseline tools: domain, risk class, preconditions |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
+| [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
+| [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 117 tools by block, with their risk class |
+| [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
+| [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
+| [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
+| [`docs/BACKLOG.md`](docs/BACKLOG.md) | What remains open, with evidence and how to check it |
+| [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | From installation to a dashboard, step by step |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, guarantees and what it does **not** promise |
+| [`docs/RECOVERY.md`](docs/RECOVERY.md) | What to do when something is left half-done |
+| [`docs/PHASE_1A_DESIGN.md`](docs/PHASE_1A_DESIGN.md) | Design of the security layer |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version history |
+| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Fixture strategy: versioned synthetic + ignored local copy |
 
 ---
 
-## Qué hace
+## What it does
 
-- **DAX en vivo:** ejecuta consultas contra el modelo abierto y devuelve columnas/filas con tiempos.
-- **Documentación:** tablas, columnas, medidas, relaciones, jerarquías, roles (RLS) y análisis de calidad → Markdown.
-- **Medidas:** crear/editar/borrar medidas DAX en el modelo abierto (`live`), en el archivo TMDL (`pbip`) o en ambos (`both`).
-- **Refresh local:** refresca el modelo abierto en Desktop (no el Service).
-- **PBIP:** abrir/validar proyectos, backups automáticos.
-- **Conversión `.pbix` → `.pbip`:** informe a PBIR (copiado si el `.pbix` ya lo trae, traducido si guarda el formato heredado) y modelo a TMDL, archivo suelto o carpeta en lote.
-- **Visuales PBIR:** listar/documentar visuales, crear visuales (clonando plantillas reales del informe), mover/redimensionar y acomodar por layouts.
+- **Live DAX:** runs queries against the open model and returns columns/rows with timings.
+- **Documentation:** tables, columns, measures, relationships, hierarchies, roles (RLS) and quality analysis → Markdown.
+- **Measures:** create/edit/delete DAX measures in the open model (`live`), in the TMDL file (`pbip`) or in both (`both`).
+- **Local refresh:** refreshes the open model in Desktop (not the Service).
+- **PBIP:** open/validate projects, automatic backups.
+- **`.pbix` → `.pbip` conversion:** report to PBIR (copied if the `.pbix` already carries it, translated if it keeps the legacy format) and model to TMDL, single file or batch folder.
+- **PBIR visuals:** list/document visuals, create visuals (cloning real templates from the report), move/resize and arrange by layouts.
 
-## Qué NO hace
+## What it does NOT do
 
-- No mueve ni crea visuales "en vivo" en el lienzo abierto (Power BI Desktop no expone API para eso). Los visuales se editan por archivos PBIR con el proyecto `.pbip`.
-- No refresca ni publica en el **Power BI Service** (solo local).
-- No extrae el modelo de un `.pbix` sin Power BI Desktop: el stream `DataModel` es un backup comprimido con XPress9 que solo el motor de Analysis Services sabe leer. Al convertir, el `.pbix` se abre en Desktop para serializar el modelo.
-- No traduce los marcadores del formato **heredado** a PBIR: su modelo de estado es distinto y la conversión los reporta como pendientes (`dropped`) en vez de perderlos en silencio. Crear marcadores nuevos sí se puede (`pbi_create_bookmark`).
-- No inventa campos ni medidas inexistentes al generar páginas.
-
----
-
-## Requisitos
-
-- **Windows** (Power BI Desktop es Windows-only) con **Power BI Desktop** instalado.
-- **Python 3.10+** (probado en 3.14).
-- **.NET Framework 4.x** (viene con Windows) — lo usa `pythonnet`.
-- Dependencias Python: `mcp` (incluye FastMCP), `pythonnet`, `psutil`, `python-dotenv`.
-- **DLLs de ADOMD.NET + TOM** (Analysis Services). Se descargan sin admin con `scripts/fetch_libs.py` (no requieren instalarse en el GAC).
-- Para editar/crear **visuales**: el informe guardado como **`.pbip` con PBIR** activado.
-- *(Opcional)* Tabular Editor **no es necesario** — ver [Decisiones técnicas](#decisiones-técnicas).
+- It doesn't move or create visuals "live" on the open canvas (Power BI Desktop doesn't expose an API for that). Visuals are edited via PBIR files with the `.pbip` project.
+- It doesn't refresh or publish to the **Power BI Service** (local only).
+- It doesn't extract the model from a `.pbix` without Power BI Desktop: the `DataModel` stream is a backup compressed with XPress9 that only the Analysis Services engine knows how to read. When converting, the `.pbix` is opened in Desktop to serialize the model.
+- It doesn't translate **legacy** format bookmarks to PBIR: their state model is different and the conversion reports them as pending (`dropped`) instead of losing them silently. Creating new bookmarks is possible (`pbi_create_bookmark`).
+- It doesn't invent fields or nonexistent measures when generating pages.
 
 ---
 
-## Instalación
+## Requirements
 
-### Directa desde Codex o Claude (recomendada)
+- **Windows** (Power BI Desktop is Windows-only) with **Power BI Desktop** installed.
+- **Python 3.10+** (tested on 3.14).
+- **.NET Framework 4.x** (comes with Windows) — used by `pythonnet`.
+- Python dependencies: `mcp` (includes FastMCP), `pythonnet`, `psutil`, `python-dotenv`.
+- **ADOMD.NET + TOM DLLs** (Analysis Services). Downloaded without admin rights via `scripts/fetch_libs.py` (no need to install in the GAC).
+- To edit/create **visuals**: the report saved as **`.pbip` with PBIR** enabled.
+- *(Optional)* Tabular Editor **is not required** — see [Technical decisions](#technical-decisions).
 
-No necesitas descargar ni registrar un `.exe`, crear `.mcp.json` ni localizar
-manualmente este repositorio. El plugin prepara un entorno Python aislado en la
-carpeta de datos del cliente y verifica todas las descargas.
+---
+
+## Installation
+
+### Direct from Codex or Claude (recommended)
+
+You don't need to download or register a `.exe`, create `.mcp.json` or manually
+locate this repository. The plugin sets up an isolated Python environment in
+the client's data folder and verifies every download.
 
 **Codex:**
 
@@ -90,55 +90,55 @@ claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
 claude plugin install horizun-pbi-mcp@horizun
 ```
 
-Al abrir la primera sesión, el plugin ejecuta toda la preparación en segundo
-plano automáticamente. Consulta `pbi_install_status`; cuando termine, reinicia
-el cliente y quedarán disponibles las 117 tools `pbi_*`. No hay descargas ni
-scripts adicionales que el usuario deba ejecutar manualmente.
+When the first session opens, the plugin runs the full setup automatically in
+the background. Check `pbi_install_status`; once it finishes, restart the
+client and the 117 `pbi_*` tools will be available. There are no downloads or
+additional scripts the user needs to run manually.
 
-> **Límite técnico honesto:** no hay ejecutable propio, pero sí necesitas
-> Windows, Power BI Desktop y Python 3.10+. El servidor debe correr localmente:
-> un MCP remoto no puede acceder al motor local de Desktop ni a tus `.pbip`.
+> **Honest technical limit:** there's no dedicated executable, but you do need
+> Windows, Power BI Desktop and Python 3.10+. The server must run locally:
+> a remote MCP cannot access Desktop's local engine or your `.pbip` files.
 
-### Instalación manual para desarrollo
+### Manual installation for development
 
 ```bash
 cd horizun-pbi-mcp
 
-# 1) Dependencias Python
+# 1) Python dependencies
 python -m pip install -r requirements.txt
-#   o:  python -m pip install -e .
+#   or:  python -m pip install -e .
 
-# 2) DLLs de Analysis Services (ADOMD.NET + TOM) -> carpeta libs/
-#    Versión fijada (19.84.1) y verificada por SHA-256 antes de instalar.
+# 2) Analysis Services DLLs (ADOMD.NET + TOM) -> libs/ folder
+#    Pinned version (19.84.1) and SHA-256 verified before installing.
 python scripts/fetch_libs.py
 
-# 3) Esquemas oficiales del PBIR (necesarios para ESCRIBIR)
-#    Sin ellos, toda escritura PBIR falla con schema_unavailable.
+# 3) Official PBIR schemas (needed to WRITE)
+#    Without them, every PBIR write fails with schema_unavailable.
 python scripts/fetch_pbir_schemas.py
 
-# 4) (opcional, recomendado) validador PBIR oficial de Microsoft
-#    Requiere Node >= 20. Añade validación semántica del informe completo.
+# 4) (optional, recommended) Microsoft's official PBIR validator
+#    Requires Node >= 20. Adds semantic validation of the full report.
 python scripts/fetch_report_validator.py
 
-# 5) (opcional) configuración
-copy .env.example .env    # y edítalo
+# 5) (optional) configuration
+copy .env.example .env    # and edit it
 ```
 
-Comprueba el resultado en cualquier momento:
+Check the result at any time:
 
 ```bash
 python scripts/doctor.py
 ```
 
-### Verificar
+### Verify
 
-Con **Power BI Desktop abierto** en un informe:
+With **Power BI Desktop open** on a report:
 
 ```bash
-python src/server.py     # arranca el servidor MCP (stdio); Ctrl+C para salir
+python src/server.py     # starts the MCP server (stdio); Ctrl+C to exit
 ```
 
-Para una prueba rápida sin MCP, en Python:
+For a quick test without MCP, in Python:
 
 ```python
 import sys; sys.path.insert(0, "src")
@@ -152,234 +152,236 @@ print(dax_runner.run_dax(s, 'EVALUATE ROW("ok", 1)'))
 
 ---
 
-## Registro en un cliente MCP
+## Registering with an MCP client
 
-Guía completa para **Claude Code, Claude Desktop, Codex y clientes stdio genéricos**: [`docs/INSTALL.md`](docs/INSTALL.md).
+Full guide for **Claude Code, Claude Desktop, Codex and generic stdio clients**: [`docs/INSTALL.md`](docs/INSTALL.md).
 
-Cada cliente resuelve las variables de entorno, el directorio de trabajo y el intérprete de Python de forma distinta, así que en vez de una plantilla con `${VAR}` que falla en la mitad de ellos, hay un generador que resuelve las rutas absolutas de tu máquina:
+Each client resolves environment variables, the working directory and the Python interpreter differently, so instead of a `${VAR}` template that fails on half of them, there's a generator that resolves the absolute paths on your machine:
 
 ```bash
 python scripts/make_mcp_config.py --client all
 ```
 
-Sólo imprime. Para crear el `.mcp.json` local de este repositorio (que está en `.gitignore`):
+It only prints. To create this repository's local `.mcp.json` (which is in `.gitignore`):
 
 ```bash
 python scripts/make_mcp_config.py --client claude-code --write
 ```
 
-Antes de registrar nada, comprueba la instalación:
+Before registering anything, check the installation:
 
 ```bash
 python scripts/doctor.py
 ```
 
-Sale con código **0** si todo lo obligatorio está bien. Distingue dependencia faltante, DLL faltante, servidor que no arranca, contrato MCP inesperado, Desktop cerrado, sesión obsoleta y múltiples instancias. Que Power BI Desktop esté cerrado **no** hace fallar el diagnóstico base (usa `--require-desktop` si quieres exigirlo).
+Exits with code **0** if everything mandatory is fine. It distinguishes missing dependency, missing DLL, server that won't start, unexpected MCP contract, Desktop closed, stale session and multiple instances. Power BI Desktop being closed does **not** fail the base diagnostic (use `--require-desktop` if you want to require it).
 
-### Variables de entorno (todas opcionales)
+### Environment variables (all optional)
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |---|---|---|
-| `HORIZUN_PBI_MCP_LIBS_DIR` | `./libs` | Carpeta con las DLLs de ADOMD.NET/TOM |
-| `HORIZUN_PBI_MCP_DOTNET_RUNTIME` | `netfx` | Runtime de pythonnet (`netfx` o `coreclr`) |
-| `HORIZUN_PBI_MCP_MAX_ROWS` | `1000` | Límite de filas por defecto en DAX |
-| `HORIZUN_PBI_MCP_OUTPUTS_DIR` | `./outputs` | Documentación y `change_log.md` |
-| `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | Backups de `.pbip` |
+| `HORIZUN_PBI_MCP_LIBS_DIR` | `./libs` | Folder with the ADOMD.NET/TOM DLLs |
+| `HORIZUN_PBI_MCP_DOTNET_RUNTIME` | `netfx` | pythonnet runtime (`netfx` or `coreclr`) |
+| `HORIZUN_PBI_MCP_MAX_ROWS` | `1000` | Default row limit in DAX |
+| `HORIZUN_PBI_MCP_OUTPUTS_DIR` | `./outputs` | Documentation and `change_log.md` |
+| `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | `.pbip` backups |
 | `HORIZUN_PBI_MCP_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
-| `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` a abrir al iniciar |
+| `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` to open on startup |
 
 ---
 
-## Tools disponibles (117)
+## Available tools (117)
 
-> Catálogo completo por bloque: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
-> Inventario del baseline con clase de riesgo y precondiciones: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
-> Los nombres y firmas están congelados en `tests/golden/tools_v1.json` y verificados por `tests/test_tool_contract.py`.
+> Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
+> Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
+> Names and signatures are frozen in `tests/golden/tools_v1.json` and verified by `tests/test_tool_contract.py`.
 
-**Conexión / DAX**
-- `pbi_list_desktop_models` — lista modelos abiertos (puerto, connection string, catálogo, nº tablas).
-- `pbi_select_model` — fija el modelo activo (por `port` si hay varios).
-- `pbi_run_dax` — ejecuta DAX (`query`, `max_rows`).
-- `pbi_test_connection` — valida la conexión activa.
-- `pbi_validate_measures` — valida DAX de medidas SIN modificar el modelo (dry-run con `DEFINE MEASURE`); útil antes de crearlas.
-- `pbi_validate_desktop_render` — abre un `.pbix`/`.pbip`, captura la ventana exacta por PID sin depender del foco y solo cierra Desktop si lo abrió la propia tool.
+**Connection / DAX**
+- `pbi_list_desktop_models` — lists open models (port, connection string, catalog, number of tables).
+- `pbi_select_model` — sets the active model (by `port` if there are several).
+- `pbi_run_dax` — runs DAX (`query`, `max_rows`).
+- `pbi_test_connection` — validates the active connection.
+- `pbi_validate_measures` — validates measure DAX WITHOUT modifying the model (dry-run with `DEFINE MEASURE`); useful before creating them.
+- `pbi_validate_desktop_render` — opens a `.pbix`/`.pbip`, captures the exact window by PID without depending on focus and only closes Desktop if the tool itself opened it.
 
-**Documentación (Fase 3)**
-- `pbi_list_tables`, `pbi_list_measures`, `pbi_list_relationships` — con `source: live|pbip`.
-- `pbi_analyze_model_quality` — problemas típicos del modelo.
-- `pbi_document_model` — documentación completa en Markdown a `outputs/`.
+**Documentation (Phase 3)**
+- `pbi_list_tables`, `pbi_list_measures`, `pbi_list_relationships` — with `source: live|pbip`.
+- `pbi_analyze_model_quality` — typical model issues.
+- `pbi_document_model` — complete documentation in Markdown to `outputs/`.
 
-**Medidas (Fase 4)** — `mode: live|pbip|both`, `overwrite`
-- `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructiva: `confirm=true`).
+**Measures (Phase 4)** — `mode: live|pbip|both`, `overwrite`
+- `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructive: `confirm=true`).
 
-**Refresh (Fase 5)**
-- `pbi_refresh_model` — `type: full|calculate|clear_values`, `tables` opcional (local).
+**Refresh (Phase 5)**
+- `pbi_refresh_model` — `type: full|calculate|clear_values`, `tables` optional (local).
 
-**Proyecto PBIP (Fase 6)**
+**PBIP project (Phase 6)**
 - `pbi_open_pbip_project` (`path`), `pbi_validate_pbip_project`, `pbi_backup_pbip_project` (`mode: folder|zip`, `scope: report|model|both`).
 
-**Conversión `.pbix` → `.pbip`**
-- `pbi_inspect_pbix` — radiografía del archivo sin convertirlo ni abrir Desktop: formato del informe, si lleva modelo propio, páginas y recursos.
-- `pbi_list_convertible_pbix` — vista previa de una carpeta: qué se copiaría, qué habría que traducir y cuáles necesitan Desktop.
-- `pbi_convert_pbix_to_pbip` — genera el proyecto. Acepta un `.pbix` o una carpeta (`recursive`), y devuelve por archivo lo escrito, los avisos y lo que quedó fuera (`dropped`).
+**`.pbix` → `.pbip` conversion**
+- `pbi_inspect_pbix` — X-ray of the file without converting it or opening Desktop: report format, whether it carries its own model, pages and resources.
+- `pbi_list_convertible_pbix` — preview of a folder: what would be copied, what would need translating and which ones need Desktop.
+- `pbi_convert_pbix_to_pbip` — generates the project. Accepts a `.pbix` or a folder (`recursive`), and returns per file what was written, the warnings and what was left out (`dropped`).
 
-> El informe se traduce sin Desktop, pero el **modelo** obliga a abrir cada `.pbix` en Power BI Desktop (se reutiliza la sesión si ya está abierto, y se cierra si la abrió la tool). Con `include_model=false` se genera solo la mitad del informe, al instante. El `.pbix` original nunca se modifica.
+> The report is translated without Desktop, but the **model** requires opening each `.pbix` in Power BI Desktop (the session is reused if it's already open, and closed if the tool opened it). With `include_model=false` only the report half is generated, instantly. The original `.pbix` is never modified.
 >
-> Power BI Desktop **no abre un `.pbip` con rutas de 260 caracteres o más**: elige un `out_dir` corto (`C:\pbip`). La tool lo comprueba antes de escribir y aborta con el detalle en vez de dejar un proyecto que no abre.
+> Power BI Desktop **does not open a `.pbip` with paths of 260 characters or more**: pick a short `out_dir` (`C:\pbip`). The tool checks this before writing and aborts with the detail instead of leaving a project that won't open.
 
-**Edición de modelo**
-- `pbi_set_column_visibility` / `pbi_hide_columns` — ocultar/mostrar columnas (p.ej. IDs). `mode: live|pbip|both`.
-- `pbi_set_relationship_direction` — filtro cruzado `single|both` de una relación. `mode: live|pbip|both`.
-- `pbi_disable_auto_date_time` — activa/desactiva "Auto fecha y hora" (solo `pbip`).
+**Model editing**
+- `pbi_set_column_visibility` / `pbi_hide_columns` — hide/show columns (e.g. IDs). `mode: live|pbip|both`.
+- `pbi_set_relationship_direction` — cross filter `single|both` of a relationship. `mode: live|pbip|both`.
+- `pbi_disable_auto_date_time` — enables/disables "Auto date/time" (`pbip` only).
 
-**Informe PBIR (Fases 7–10)**
+**PBIR Report (Phases 7–10)**
 - `pbi_list_report_pages`, `pbi_list_visuals` (`page`), `pbi_document_report_layout`.
-- `pbi_create_visual` — `page`, `visual_type`, `fields`, `position`, `title` (clona un visual existente como plantilla).
+- `pbi_create_visual` — `page`, `visual_type`, `fields`, `position`, `title` (clones an existing visual as a template).
 - `pbi_update_visual_position`, `pbi_arrange_visuals` (`layout: grid|dashboard|executive_summary|custom`).
-- `pbi_generate_report_page` — página asistida a partir del modelo.
+- `pbi_generate_report_page` — assisted page generation from the model.
 
-**HTML dentro de Power BI**
-- `pbi_add_custom_visual` — registra un custom visual de AppSource en el informe (por defecto **HTML Content**, que renderiza HTML/SVG desde una medida DAX).
-- `pbi_create_html_visual` — crea un visual HTML Content enlazado a una medida que devuelve HTML (`html_measure`).
-- `pbi_create_measure` con `data_category: "ImageUrl"` — medidas que devuelven un data-URI **SVG** y se renderizan como imagen en tablas/matrices nativas.
+**HTML inside Power BI**
+- `pbi_add_custom_visual` — registers an AppSource custom visual in the report (defaults to **HTML Content**, which renders HTML/SVG from a DAX measure).
+- `pbi_create_html_visual` — creates an HTML Content visual bound to a measure that returns HTML (`html_measure`).
+- `pbi_create_measure` with `data_category: "ImageUrl"` — measures that return an **SVG** data-URI and render as an image in native tables/matrices.
 
-**Generación de hojas por lenguaje natural**
-- `pbi_page_building_blocks` — inventario del contenido (modelo + catálogo de visuales existentes + canvas) para diseñar una hoja.
-- `pbi_preview_spec_html` — maqueta **HTML** de una hoja propuesta (revisar antes de escribir).
-- `pbi_create_page_from_spec` — materializa una hoja PBIR completa desde un `spec` (clona visuales existentes por estilo).
-- `pbi_export_page_html` — exporta una página existente a maqueta HTML.
+**Natural-language sheet generation**
+- `pbi_page_building_blocks` — content inventory (model + catalog of existing visuals + canvas) to design a sheet.
+- `pbi_preview_spec_html` — **HTML** mockup of a proposed sheet (review before writing).
+- `pbi_create_page_from_spec` — materializes a full PBIR sheet from a `spec` (clones existing visuals by style).
+- `pbi_export_page_html` — exports an existing page to an HTML mockup.
 
-Toda tool devuelve `{"ok": true/false, ...}`; en error incluye `error` (código) y `message` (mensaje original del motor, sin ocultar).
+Every tool returns `{"ok": true/false, ...}`; on error it includes `error` (code) and `message` (the engine's original message, never hidden).
 
-> **Flujo de generación de hojas:** `pbi_page_building_blocks` → (Claude interpreta tu instrucción y arma un `spec`) → `pbi_preview_spec_html` (revisas el HTML) → `pbi_create_page_from_spec` (se escribe el PBIR).
+> **Sheet generation flow:** `pbi_page_building_blocks` → (Claude interprets your instruction and builds a `spec`) → `pbi_preview_spec_html` (you review the HTML) → `pbi_create_page_from_spec` (the PBIR gets written).
 
 ---
 
-## Ejemplos de uso (en lenguaje natural con Claude)
+## Usage examples (in natural language with Claude)
 
-- **Correr DAX:** *"Lista los modelos abiertos, selecciona el único, y corre `EVALUATE TOPN(10, Ventas)`."*
-- **Documentar:** *"Documenta el modelo activo y analiza su calidad."* → genera `outputs/model_documentation_*.md`.
-- **Crear medida:** *"Crea la medida `Margen % = DIVIDE([Utilidad],[Ventas])` en la tabla Ventas, formato `0.0%`, modo both."*
-- **Listar visuales:** *"Abre el `.pbip` en C:/…/Informe.pbip y lista los visuales de la página 'Resumen'."*
-- **Crear visual:** ver [`examples/sample_visual_specs.json`](examples/sample_visual_specs.json).
-- **Acomodar página:** *"Acomoda la página 'Resumen' con layout executive_summary."*
+- **Run DAX:** *"List the open models, select the only one, and run `EVALUATE TOPN(10, Sales)`."*
+- **Document:** *"Document the active model and analyze its quality."* → generates `outputs/model_documentation_*.md`.
+- **Create measure:** *"Create the measure `Margin % = DIVIDE([Profit],[Sales])` in the Sales table, format `0.0%`, mode both."*
+- **List visuals:** *"Open the `.pbip` at C:/…/Report.pbip and list the visuals on the 'Summary' page."*
+- **Create visual:** see [`examples/sample_visual_specs.json`](examples/sample_visual_specs.json).
+- **Arrange page:** *"Arrange the 'Summary' page with executive_summary layout."*
 
-Más DAX en [`examples/sample_queries.md`](examples/sample_queries.md).
+More DAX in [`examples/sample_queries.md`](examples/sample_queries.md).
 
-> ⚠️ **Edición de PBIR y estado de Desktop:** las ediciones de **informe** (visuales/layout) se hacen en archivos; conviene hacerlas con **Power BI Desktop cerrado** y reabrir para verlas (si Desktop está abierto y guardas, sobrescribe los cambios en disco). Las ediciones de **modelo en vivo** (medidas `live`) requieren Desktop **abierto** y se persisten al guardar (Ctrl+S).
+> ⚠️ **PBIR editing and Desktop state:** **report** edits (visuals/layout) are made to files; it's best to make them with **Power BI Desktop closed** and reopen it to see them (if Desktop is open and you save, it overwrites the changes on disk). **Live model** edits (`live` measures) require Desktop **open** and are persisted on save (Ctrl+S).
 
 ---
 
 ## Troubleshooting
 
-- **No detecta el puerto / "No se detecto ningun modelo":** abre el informe en Power BI Desktop; el puerto cambia en cada arranque (el MCP lo descubre solo). Si usas la versión de Microsoft Store, igual se detecta por proceso.
-- **`adomd_not_installed` / `tom_not_installed`:** ejecuta `python scripts/fetch_libs.py`. Verifica que `libs/Microsoft.AnalysisServices.AdomdClient.dll` exista.
-- **`clr_not_available`:** falta .NET; prueba `PBI_MCP_DOTNET_RUNTIME=coreclr`.
-- **Error DAX:** el mensaje del motor se devuelve tal cual en `message`. Revisa la sintaxis (EVALUATE, comillas).
-- **`pbir_not_enabled`:** el informe no está en PBIR. Guarda como `.pbip` y activa *Formato de reporte mejorado (PBIR)* en Opciones → Características de vista previa (si aplica en tu versión) antes de guardar.
-- **Power BI no recarga los cambios de visuales:** ciérralo y reábrelo; PBIR se carga al abrir, no en caliente.
-- **Permisos/OneDrive:** si el `.pbip` está en OneDrive, cierra Desktop antes de editar archivos y espera a que OneDrive termine de sincronizar; los backups se guardan en `backups/`.
+- **Doesn't detect the port / "No se detecto ningun modelo":** open the report in Power BI Desktop; the port changes on every startup (the MCP discovers it on its own). If you use the Microsoft Store version, it's still detected by process.
+- **`adomd_not_installed` / `tom_not_installed`:** run `python scripts/fetch_libs.py`. Check that `libs/Microsoft.AnalysisServices.AdomdClient.dll` exists.
+- **`clr_not_available`:** .NET is missing; try `PBI_MCP_DOTNET_RUNTIME=coreclr`.
+- **DAX error:** the engine's message is returned as-is in `message`. Check the syntax (EVALUATE, quotes).
+- **`pbir_not_enabled`:** the report isn't in PBIR. Save as `.pbip` and enable *Power BI Project (PBIR) format* under Options → Preview Features (if applicable to your version) before saving.
+- **Power BI doesn't reload visual changes:** close it and reopen it; PBIR loads on open, not live.
+- **Permissions/OneDrive:** if the `.pbip` is in OneDrive, close Desktop before editing files and wait for OneDrive to finish syncing; backups are saved in `backups/`.
 
 ---
 
-## Decisiones técnicas
+## Technical decisions
 
-- **TOM vía `pythonnet` (no Tabular Editor CLI).** Se evaluaron: (1) Tabular Editor 2 CLI, (2) `pythonnet` cargando TOM, (3) editar TMDL directo. Como `pythonnet` funciona en Python 3.14 y las DLLs de ADOMD.NET/TOM se pueden **vendorizar en `libs/` sin admin ni GAC**, se eligió cargarlas directamente con `pythonnet` (runtime `netfx`). Es más estable, sin dependencias externas de instalación, y da control total (crear/editar medidas y refrescar como lo hace Tabular Editor). La edición **durable** sigue disponible por **TMDL** en `.pbip`.
-- **Visuales por clonación.** `pbi_create_visual` clona un visual existente del mismo tipo como plantilla (conserva el andamiaje de formato/tema) y solo cae a una plantilla mínima si no hay ninguno, avisando que debe validarse en Desktop.
-- **Seguridad (Fase 11):** backup automático antes de cada escritura en `.pbip`; JSON atómico (no deja archivos corruptos); no sobrescribe JSON ilegible; validación de rutas; `change_log.md` en `outputs/`; operaciones destructivas requieren `confirm=true`.
+- **TOM via `pythonnet` (not the Tabular Editor CLI).** Evaluated: (1) Tabular Editor 2 CLI, (2) `pythonnet` loading TOM, (3) editing TMDL directly. Since `pythonnet` works on Python 3.14 and the ADOMD.NET/TOM DLLs can be **vendored into `libs/` without admin or GAC**, loading them directly with `pythonnet` (runtime `netfx`) was chosen. It's more stable, has no external installation dependencies, and gives full control (create/edit measures and refresh, just like Tabular Editor). **Durable** editing is still available via **TMDL** in `.pbip`.
+- **Visuals by cloning.** `pbi_create_visual` clones an existing visual of the same type as a template (preserving the format/theme scaffolding) and only falls back to a minimal template if none exists, warning that it must be validated in Desktop.
+- **Security (Phase 11):** automatic backup before every `.pbip` write; atomic JSON (never leaves corrupted files); doesn't overwrite unreadable JSON; path validation; `change_log.md` in `outputs/`; destructive operations require `confirm=true`.
 
-## Limitaciones / riesgos abiertos
+## Limitations / open risks
 
-Ninguna de estas es un defecto que se pueda corregir desde aquí. Están documentadas porque afectan a lo que el servidor puede prometer.
+None of these is a defect that can be fixed from here. They're documented because they affect what the server can promise.
 
-### Esquemas que Microsoft no publica
+### Schemas Microsoft doesn't publish
 
-Power BI Desktop escribe `visualContainer/2.10.0` y `2.11.0` en informes
-recientes, y esas URLs devuelven **404** en el origen oficial. Lo mismo ocurre
-con `bookmarks/2.0.0`. **El CLI oficial de Microsoft tampoco puede validarlos**:
-emite `PBIR_SCHEMA_UNREACHABLE` y se salta la validación de esos archivos.
+Power BI Desktop writes `visualContainer/2.10.0` and `2.11.0` in recent
+reports, and those URLs return **404** at the official source. The same
+happens with `bookmarks/2.0.0`. **Microsoft's own official CLI can't validate
+them either**: it emits `PBIR_SCHEMA_UNREACHABLE` and skips validation of
+those files.
 
-Para `visualContainer`, 2.10/2.11 se comparan con 2.7 porque esa degradación
-se midió sobre 275 archivos reales y solo difiere lo que una versión posterior
-puede añadir. `bookmarks/2.0.0` se **bloquea** con `schema_unavailable` porque no
-existe una versión anterior de la misma familia contra la cual comprobarlo.
+For `visualContainer`, 2.10/2.11 are compared against 2.7 because that
+downgrade was measured against 275 real files and only differs in what a
+later version might add. `bookmarks/2.0.0` is **blocked** with
+`schema_unavailable` because there's no earlier version of the same family to
+check it against.
 
-Medido sobre un informe real de 443 documentos: 176 se validan, 240 quedan bloqueados por esta causa.
+Measured on a real 443-document report: 176 validate, 240 remain blocked for this reason.
 
-**G10 queda como excepción de release documentada.**
+**G10 remains a documented release exception.**
 
-### `mode="both"` bloqueado
+### `mode="both"` blocked
 
-`live` exige Power BI Desktop abierto; `pbip` lo exige cerrado. No hay ningún estado del sistema en que ambos destinos puedan escribirse con seguridad en una llamada. Ver [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md). **R15 abierto.**
+`live` requires Power BI Desktop open; `pbip` requires it closed. There's no system state in which both destinations can be safely written in a single call. See [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md). **R15 open.**
 
-### `filters` e `interactions` del page spec
+### `filters` and `interactions` in the page spec
 
-Se **rechazan** con `unsupported_feature` indicando la ruta JSON exacta. No se descartan en silencio. Su serialización a PBIR está pendiente.
+They are **rejected** with `unsupported_feature` indicating the exact JSON path. They aren't silently dropped. Their serialization to PBIR is pending.
 
-### Otras
+### Others
 
-- **PBIR** debe estar activado en el `.pbip`; `pbi_validate_pbip_project` lo comprueba.
-- El **nombre amigable** del informe abierto no siempre es legible desde el motor (se reporta puerto + catálogo).
-- El **parser TMDL** en disco es pragmático (tablas, columnas, medidas, relaciones); para metadatos ricos, usa la ruta `live`.
-- `pbi_generate_report_page` es una **composición heurística**; no inventa campos y avisa lo que ignora.
-- El servidor **arranca sin Node**; lo que queda bloqueado son las escrituras que necesiten el validador oficial.
+- **PBIR** must be enabled in the `.pbip`; `pbi_validate_pbip_project` checks this.
+- The **friendly name** of the open report isn't always readable from the engine (port + catalog are reported instead).
+- The on-disk **TMDL parser** is pragmatic (tables, columns, measures, relationships); for rich metadata, use the `live` path.
+- `pbi_generate_report_page` is a **heuristic composition**; it doesn't invent fields and warns about what it ignores.
+- The server **starts without Node**; what gets blocked are the writes that need the official validator.
 
 ---
 
-## Estructura del proyecto
+## Project structure
 
 ```
 horizun-pbi-mcp/
 ├─ src/
-│  ├─ server.py            # FastMCP + registro de tools
-│  ├─ config.py            # settings + sesión (modelo/pbip activos)
+│  ├─ server.py            # FastMCP + tool registration
+│  ├─ config.py            # settings + session (active model/pbip)
 │  ├─ logging_config.py
-│  ├─ reporting.py         # documentación Markdown + calidad
-│  ├─ powerbi/             # capa en vivo (ADOMD/TOM)
-│  ├─ pbip/                # capa en disco (TMDL/PBIR)
-│  ├─ tools/               # tools MCP por área
-│  └─ utils/               # JSON, archivos, validación, change_log
-├─ scripts/fetch_libs.py   # descarga DLLs de Analysis Services
+│  ├─ reporting.py         # Markdown documentation + quality
+│  ├─ powerbi/             # live layer (ADOMD/TOM)
+│  ├─ pbip/                # on-disk layer (TMDL/PBIR)
+│  ├─ tools/               # MCP tools by area
+│  └─ utils/               # JSON, files, validation, change_log
+├─ scripts/fetch_libs.py   # downloads Analysis Services DLLs
 ├─ examples/  tests/  outputs/  libs/
 ├─ README.md  PLAN.md  pyproject.toml  requirements.txt  .env.example
 ```
 
-## Pruebas
+## Tests
 
 ```bash
 python -m pytest -q
 ```
 
-**1262 pruebas, 3 omitidas.** La omisión es de entorno y dice cómo ejecutarla:
+**1262 tests, 3 skipped.** The skip is environmental and says how to run it:
 
-| Omitida | Condición |
+| Skipped | Condition |
 |---|---|
-| `test_run_dax_live` | Requiere una instancia de Power BI Desktop sirviendo un modelo. `python -m pytest -m live` |
-| `test_no_llega_a_cero_por_acumular_infos` | Requiere que el modelo sintético dispare solo reglas informativas |
+| `test_run_dax_live` | Requires a Power BI Desktop instance serving a model. `python -m pytest -m live` |
+| `test_no_llega_a_cero_por_acumular_infos` | Requires the synthetic model to trigger only informational rules |
 
-Marcadores disponibles:
+Available markers:
 
 ```bash
-python -m pytest -m "not packaging"     # rápido: omite wheel y sdist
-python -m pytest -m live                # contra Power BI Desktop abierto
-python -m pytest -m live_validator      # contra el CLI oficial de Microsoft
+python -m pytest -m "not packaging"     # fast: skips wheel and sdist
+python -m pytest -m live                # against an open Power BI Desktop
+python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verificar el contrato MCP (las 117 tools están congeladas):
+Verify the MCP contract (the 117 tools are frozen):
 
 ```bash
 python -m tests.contract_utils
 ```
 
-Devuelve 0 si no hay rupturas, 1 si las hay, con un informe que dice **qué** cambió y **si rompe compatibilidad**.
+Returns 0 if there are no breaks, 1 if there are, with a report stating **what** changed and **whether it breaks compatibility**.
 
-Diagnóstico de la instalación:
+Installation diagnostics:
 
 ```bash
 python scripts/doctor.py
 ```
 
-## Licencia
+## License
 
-Código abierto bajo la licencia [Apache License 2.0](LICENSE). Consulta también
-[NOTICE](NOTICE) para atribuciones y marcas de terceros.
+Open source under the [Apache License 2.0](LICENSE). Also see
+[NOTICE](NOTICE) for third-party attributions and trademarks.

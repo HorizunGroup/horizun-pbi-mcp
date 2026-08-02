@@ -1,30 +1,36 @@
-# Publicación: cómo se hizo y cómo repetirlo
+# Publishing: how it was done and how to repeat it
 
-Este documento describe la publicación oficial: el repositorio histórico se
-conserva como legacy privado y la versión pública se exporta con historia nueva
-desde un árbol verificado.
+This document describes the official publication: the historical repository
+is kept as a private legacy, and the public version is exported with fresh
+history from a verified tree.
 
-Repositorio público: **https://github.com/HorizunGroup/horizun-pbi-mcp**
-
----
-
-## El problema que había que resolver
-
-El árbol versionado estaba limpio. El **historial no**: dos blobs de los dos commits más antiguos contenían rutas personales (`C:/Users/<usuario>/...`) como valor de ejemplo en `.env.example` y `examples/mcp-config.example.json`. Ya no están en el árbol actual, pero seguían siendo alcanzables desde el historial.
-
-Y `AGENTS.md` establece que **`a304e33` no se reescribe**.
-
-## La decisión
-
-**No se filtra ni se reescribe el repositorio de desarrollo.** Se exporta una copia saneada a otro directorio y se publica esa, con **historia nueva de un solo commit**.
-
-Los commits de desarrollo quedan únicamente en el repositorio local, que **no tiene remoto** y no lo tendrá.
+Public repository: **https://github.com/HorizunGroup/horizun-pbi-mcp**
 
 ---
 
-## Procedimiento
+## The problem that had to be solved
 
-### 1. Exportar el árbol versionado
+The versioned tree was clean. The **history wasn't**: two blobs from the two
+oldest commits contained personal paths (`C:/Users/<user>/...`) as an example
+value in `.env.example` and `examples/mcp-config.example.json`. They're no
+longer in the current tree, but they were still reachable from history.
+
+And `AGENTS.md` states that **`a304e33` is not rewritten**.
+
+## The decision
+
+**The development repository is neither filtered nor rewritten.** A sanitized
+copy is exported to another directory and that one is published, with
+**fresh single-commit history**.
+
+The development commits stay only in the local repository, which **has no
+remote** and won't get one.
+
+---
+
+## Procedure
+
+### 1. Export the versioned tree
 
 ```bash
 mkdir C:\tmp\horizun-publish
@@ -34,11 +40,15 @@ mkdir C:\tmp\horizun-publish
 git archive --format=tar HEAD | tar -x -C C:\tmp\horizun-publish
 ```
 
-`git archive` exporta exactamente lo que `git ls-files` lista, y nada más. `libs/`, `outputs/`, `backups/`, `schemas_cache/`, `validator_cache/`, `build/`, `.mcp.json` y `.env` quedan fuera **por construcción**, no por acordarse de excluirlos.
+`git archive` exports exactly what `git ls-files` lists, and nothing more.
+`libs/`, `outputs/`, `backups/`, `schemas_cache/`, `validator_cache/`,
+`build/`, `.mcp.json` and `.env` are left out **by construction**, not
+because someone remembered to exclude them.
 
-### 2. Verificar la copia antes de tocar nada externo
+### 2. Verify the copy before touching anything external
 
-Comparar el inventario contra `git ls-files`, y escanear en busca de rutas personales, credenciales y datos reales. Luego, la instalación completa **desde la copia**:
+Compare the inventory against `git ls-files`, and scan for personal paths,
+credentials and real data. Then, a full installation **from the copy**:
 
 ```bash
 python -m pip install -e .
@@ -50,9 +60,9 @@ python scripts/doctor.py
 python -m tests.contract_utils
 ```
 
-Los tres últimos en verde, y el handshake stdio contra el paquete instalado.
+The last three green, and the stdio handshake against the installed package.
 
-### 3. Historia nueva
+### 3. Fresh history
 
 ```bash
 git init -b main
@@ -60,13 +70,16 @@ git add -A
 git commit -m "Horizun PBI MCP v1.0.0"
 ```
 
-**Antes de etiquetar**, comprobar que `branding.VERSION` y `pyproject.toml` declaran esa misma versión. Etiquetar un commit que declara otra produce un paquete que miente sobre lo que es — pasó con `rc.2` y hubo que corregirlo.
+**Before tagging**, check that `branding.VERSION` and `pyproject.toml`
+declare that same version. Tagging a commit that declares another one
+produces a package that lies about what it is — it happened with `rc.2` and
+had to be fixed.
 
 ```bash
 git tag -a v1.0.0 -m "Horizun PBI MCP v1.0.0"
 ```
 
-### 4. Publicar
+### 4. Publish
 
 ```bash
 gh repo create horizun-pbi-mcp --public --source=. --remote=origin
@@ -75,11 +88,11 @@ git push origin v1.0.0
 gh release create v1.0.0 --notes-file RELEASE_NOTES_1.0.0.md --verify-tag
 ```
 
-### 5. Esperar al CI
+### 5. Wait for CI
 
-**No se declara terminado hasta que la matriz está completa en verde.** Las
-compuertas corren en máquinas limpias de GitHub; la validación local usa un
-entorno virtual sin paquetes del repositorio como evidencia reproducible.
+**Not declared done until the matrix is fully green.** The gates run on
+clean GitHub machines; local validation uses a virtual environment with no
+repository packages as reproducible evidence.
 
 ```bash
 gh run list --repo HorizunGroup/horizun-pbi-mcp
@@ -88,40 +101,46 @@ gh run view <RUN_ID> --repo HorizunGroup/horizun-pbi-mcp
 
 ---
 
-## Actualizaciones posteriores
+## Subsequent updates
 
-La copia saneada conserva su `.git` y su remoto. Para publicar un cambio:
+The sanitized copy keeps its `.git` and its remote. To publish a change:
 
 ```bash
 cd C:\tmp\horizun-publish
 git fetch origin && git reset --hard origin/main
 ```
 
-Se re-exporta el árbol desde el repositorio de desarrollo, se sincroniza sobre la copia, y se hace **un commit nuevo** sobre `main`. **Nunca se reescribe un commit ya publicado.**
+The tree is re-exported from the development repository, synced onto the
+copy, and **a new commit** is made on `main`. **An already-published commit
+is never rewritten.**
 
 ---
 
-## Lo que se publicó
+## What was published
 
-| Directorio | Archivos |
+| Directory | Files |
 |---|---|
 | `src/` | 73 |
 | `tests/` | 61 |
 | `docs/` | 13 |
-| raíz | 12 |
+| root | 12 |
 | `scripts/` | 7 |
 | `examples/` | 4 |
 | `.github/` | 1 |
 | **Total** | **171** |
 
-Las tres dependencias externas —DLL de Analysis Services, esquemas PBIR y CLI oficial de Microsoft— **no se redistribuyen**: se instalan con sus scripts, con versión fijada y hash verificado.
+The three external dependencies —Analysis Services DLL, PBIR schemas and
+Microsoft's official CLI— **are not redistributed**: they're installed with
+their own scripts, with a pinned version and verified hash.
 
-## Configuración del repositorio
+## Repository configuration
 
-| Ajuste | Valor |
+| Setting | Value |
 |---|---|
-| Rama principal | `main` |
-| CI | `windows-latest`, Python 3.10 y 3.13 |
-| Releases | `v1.0.0` estable, con CI en máquinas limpias y validación local aislada |
+| Main branch | `main` |
+| CI | `windows-latest`, Python 3.10 and 3.13 |
+| Releases | stable `v1.0.0`, with CI on clean machines and isolated local validation |
 
-**Pendiente de configurar a mano** (necesita permisos que el token de CLI no tiene): protección de rama sobre `main` — requerir PR, requerir CI en verde, prohibir force-push. Se hace en *Settings → Branches → Add rule*.
+**Pending manual configuration** (needs permissions the CLI token doesn't
+have): branch protection on `main` — require PR, require green CI, prohibit
+force-push. Done in *Settings → Branches → Add rule*.

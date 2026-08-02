@@ -1,322 +1,322 @@
-# Fase 1A — contención de riesgos críticos
+# Phase 1A — critical risk containment
 
-_Implementada sobre el commit de Fase 0 `82bc6c9`. Sin cambios en el contrato de las 34 tools._
+_Implemented on top of the Phase 0 commit `82bc6c9`. No changes to the contract of the 34 tools._
 
-Esta fase no añade funcionalidad. Cierra cinco riesgos que permitían escribir fuera del proyecto, pisar cambios concurrentes, dejar un `.pbip` a medias o ejecutar DAX arbitrario.
+This phase adds no functionality. It closes five risks that allowed writing outside the project, overwriting concurrent changes, leaving a `.pbip` half-done, or running arbitrary DAX.
 
 ---
 
-## 1. Módulos nuevos
+## 1. New modules
 
-| Módulo | Responsabilidad única |
+| Module | Single responsibility |
 |---|---|
-| `src/services/paths.py` | Ninguna ruta de lectura/escritura sale del proyecto activo |
-| `src/services/dax_guard.py` | Solo se ejecutan consultas reconocidas como de solo lectura |
-| `src/services/project_state.py` | No se escribe PBIR si Desktop puede tener el proyecto abierto |
-| `src/services/txn.py` | Transacción compensada: journal, verificación y rollback |
+| `src/services/paths.py` | No read/write path leaves the active project |
+| `src/services/dax_guard.py` | Only queries recognized as read-only are run |
+| `src/services/project_state.py` | No PBIR write happens if Desktop might have the project open |
+| `src/services/txn.py` | Compensated transaction: journal, verification and rollback |
 
 ---
 
-## 2. Rutas (`paths.py`)
+## 2. Paths (`paths.py`)
 
-Dos problemas, dos funciones:
+Two problems, two functions:
 
-- **`safe_identifier()`** — un id de página o de visual es un *identificador*, no una ruta. Rechaza, **antes de tocar el disco**: separadores, `.`/`..`, rutas absolutas, sintaxis de unidad (`C:\x` y `C:x`), UNC (`\\srv\r`), extendidas (`\\?\`), de dispositivo (`\\.\`), ADS de NTFS (`archivo.json:stream`), nombres reservados (`CON`, `NUL`, `AUX`, `COM1`…), componentes vacíos y componentes con punto o espacio final.
-- **`assert_not_path_syntax()`** — más permisiva, para nombres visibles: admite `"Resumen ejecutivo 2026"` pero rechaza cualquier sintaxis de ruta.
-- **`ensure_contained()`** — resuelve enlaces (junctions y reparse points) en ambos extremos y compara con `os.path.normcase`, porque NTFS no distingue mayúsculas. Detecta cambio de unidad.
-- **`assert_still_contained()`** — misma comprobación, con nombre propio, para llamarla **justo antes de escribir**: un junction puede cambiar de destino entre la validación y la escritura.
+- **`safe_identifier()`** — a page or visual id is an *identifier*, not a path. It rejects, **before touching disk**: separators, `.`/`..`, absolute paths, drive syntax (`C:\x` and `C:x`), UNC (`\\srv\r`), extended (`\\?\`), device (`\\.\`), NTFS ADS (`file.json:stream`), reserved names (`CON`, `NUL`, `AUX`, `COM1`…), empty components and components with a trailing dot or space.
+- **`assert_not_path_syntax()`** — more permissive, for display names: allows `"Executive Summary 2026"` but rejects any path syntax.
+- **`ensure_contained()`** — resolves links (junctions and reparse points) on both ends and compares with `os.path.normcase`, because NTFS is case-insensitive. Detects a drive change.
+- **`assert_still_contained()`** — the same check, under its own name, to be called **right before writing**: a junction can change target between validation and write.
 
-> `Path('base') / 'C:/otro'` devuelve `C:/otro`. Ese es el motivo de validar cada componente antes de unirlo, y no solo normalizar la cadena resultante.
+> `Path('base') / 'C:/other'` returns `C:/other`. That's why each component must be validated before joining, not just the normalized resulting string.
 
 ---
 
-## 3. Clasificador DAX (`dax_guard.py`)
+## 3. DAX classifier (`dax_guard.py`)
 
-**No es un parser de DAX.** Es un clasificador léxico deliberadamente estrecho, `fail-closed`.
+**It's not a DAX parser.** It's a deliberately narrow lexical classifier, `fail-closed`.
 
-**Paso 1 — escaneo léxico.** Se recorre el texto reconociendo comentarios (`//`, `--`, `/* */` sin anidar), cadenas (`"…"`, escape `""`), identificadores citados (`'…'`, escape `''`) y entre corchetes (`[…]`, escape `]]`). Su contenido se sustituye por un centinela opaco. Un delimitador sin cerrar → rechazo.
+**Step 1 — lexical scan.** The text is scanned recognizing comments (`//`, `--`, non-nesting `/* */`), strings (`"…"`, escape `""`), quoted identifiers (`'…'`, escape `''`) and bracketed ones (`[…]`, escape `]]`). Their content is replaced with an opaque sentinel. An unclosed delimiter → rejection.
 
-**Paso 2 — clasificación**, solo sobre el residuo. La consulta se permite si su **estructura completa** encaja en una forma reconocida:
+**Step 2 — classification**, only on the residue. The query is allowed if its **entire structure** fits a recognized shape:
 
-| Forma | Ejemplo |
+| Shape | Example |
 |---|---|
-| `evaluate` | `EVALUATE TOPN(10, Ventas)` |
+| `evaluate` | `EVALUATE TOPN(10, Sales)` |
 | `define_evaluate` | `DEFINE MEASURE T[M] = 1 EVALUATE ROW("v", T[M])` |
 | `dmv_select` | `SELECT [Name] FROM $SYSTEM.TMSCHEMA_TABLES` |
 
-Se rechaza: XMLA (`<`), palabras de modificación como token suelto, `;` (podría encadenar sentencias), `DEFINE` sin `EVALUATE`, `SELECT` cuyo `FROM` no sea exactamente `$SYSTEM.<rowset>`, mezclas `EVALUATE`+`SELECT`, tokens concatenados (`EVALUATEX`) y **todo lo ambiguo**.
+Rejected: XMLA (`<`), DDL keywords as a standalone token, `;` (could chain statements), `DEFINE` without `EVALUATE`, `SELECT` whose `FROM` isn't exactly `$SYSTEM.<rowset>`, `EVALUATE`+`SELECT` mixes, concatenated tokens (`EVALUATEX`), and **everything ambiguous**.
 
-Como los literales se neutralizan primero, `EVALUATE ROW("DROP TABLE", 1)` sigue siendo lectura, y `SELECTCOLUMNS` no se confunde con `SELECT`.
+Since literals are neutralized first, `EVALUATE ROW("DROP TABLE", 1)` is still read-only, and `SELECTCOLUMNS` isn't confused with `SELECT`.
 
-**No hay escape.** No existe ninguna variable de entorno que relaje la política; hay una prueba que lo verifica.
+**No escape hatch.** There's no environment variable that relaxes the policy; there's a test that verifies it.
 
 ---
 
-## 4. Proyecto abierto (`project_state.py`)
+## 4. Open project (`project_state.py`)
 
-**Límite honesto:** esto **no impide** que Power BI Desktop sobrescriba el informe después. Desktop tiene su copia en memoria y al guardar escribe encima. Lo único que se consigue es no escribir *nosotros* cuando hay indicios de que está abierto. El mensaje de error lo dice explícitamente.
+**Honest limit:** this **doesn't prevent** Power BI Desktop from overwriting the report afterward. Desktop has its own in-memory copy and overwrites on save. All this achieves is not writing *ourselves* when there are signs it's open. The error message says so explicitly.
 
-**Señales, todas de solo lectura.** No se renombra, no se escribe un temporal, no se intenta un `os.replace` de prueba sobre archivos reales:
+**Signals, all read-only.** Nothing is renamed, no temp file is written, no test `os.replace` is attempted on real files:
 
-| Situación | Estado |
+| Situation | State |
 |---|---|
-| Ni `PBIDesktop.exe` ni `msmdsrv.exe` | `closed` (alta) |
-| `msmdsrv` sin `PBIDesktop` atribuible | `unknown` |
-| `PBIDesktop` con el proyecto en `cmdline()` o en `open_files()` | `open` (alta) |
-| `PBIDesktop` presente pero el sistema deniega la inspección | `unknown` |
-| `PBIDesktop` inspeccionable y ninguno referencia el proyecto | `closed` (media) |
+| Neither `PBIDesktop.exe` nor `msmdsrv.exe` | `closed` (high) |
+| `msmdsrv` with no attributable `PBIDesktop` | `unknown` |
+| `PBIDesktop` with the project in `cmdline()` or `open_files()` | `open` (high) |
+| `PBIDesktop` present but the system denies inspection | `unknown` |
+| `PBIDesktop` inspectable and none reference the project | `closed` (medium) |
 
-**Política (estricta, no desactivable):** solo `closed` permite escribir. `open` y `unknown` bloquean. El modo `warn` y la confirmación por llamada quedan para 1B.
+**Policy (strict, cannot be disabled):** only `closed` allows writing. `open` and `unknown` block. `warn` mode and per-call confirmation are left for 1B.
 
-Hay una caché de **1 segundo** sobre el escaneo de procesos: enumerar procesos cuesta ~150 ms y una página con cinco visuales pagaría cinco escaneos. La ventana es mínima y la transacción revalida el fingerprint de cada archivo de todos modos.
+There's a **1-second** cache over the process scan: enumerating processes costs ~150 ms and a page with five visuals would pay for five scans. The window is minimal and the transaction re-validates each file's fingerprint anyway.
 
 ---
 
-## 5. Transacción compensada (`txn.py`)
+## 5. Compensated transaction (`txn.py`)
 
-El sistema de archivos **no ofrece atomicidad multiarchivo**. Esto es una transacción *compensada*: entre el primer y el último `os.replace` existe una ventana en la que el proyecto está a medias. Lo que se garantiza es que la ventana es corta, que el journal permite volver atrás y que **nunca se reporta éxito si el rollback no fue limpio**.
+The file system **offers no multi-file atomicity**. This is a *compensated* transaction: between the first and last `os.replace` there's a window in which the project is half-done. What's guaranteed is that the window is short, that the journal allows going back, and that **success is never reported if the rollback wasn't clean**.
 
 ```
-PLAN      fingerprint (sha256 + tamaño, o "absent") de cada objetivo
-SNAPSHOT  copiar los objetivos al journal + manifiesto (status: open)
-PRE-CHECK re-verificar el fingerprint justo antes de cada reemplazo
-WRITE     temporal → flush → fsync → validar → os.replace → limpiar en finally
-POST      releer del disco y comparar con lo que se pretendía escribir
-COMMIT    cerrar el manifiesto   |   FALLO → ROLLBACK
+PLAN      fingerprint (sha256 + size, or "absent") of each target
+SNAPSHOT  copy the targets to the journal + manifest (status: open)
+PRE-CHECK re-verify the fingerprint right before each replacement
+WRITE     temp file → flush → fsync → validate → os.replace → clean up in finally
+POST      re-read from disk and compare against what was meant to be written
+COMMIT    close the manifest   |   FAILURE → ROLLBACK
 ```
 
-El fingerprint se verifica **tres veces**. Nunca se usan marcas de tiempo. `absent` es un estado de primera clase: si un archivo que planeábamos crear apareció entre medias, es una colisión.
+The fingerprint is checked **three times**. Timestamps are never used. `absent` is a first-class state: if a file we planned to create appeared in the meantime, it's a collision.
 
-### Rollback consciente de concurrencia
+### Concurrency-aware rollback
 
-Un archivo solo se toca si su contenido actual **sigue siendo el que escribimos nosotros**:
+A file is only touched if its current content **still matches what we wrote**:
 
-| Situación | Resultado |
+| Situation | Result |
 |---|---|
-| Preexistente, sin cambios externos | `restored` (byte a byte, verificado) |
-| Creado por la transacción, sin cambios externos | `restored` (se elimina) |
-| Cambió después de nuestra escritura | `rollback_conflict` — **no se toca** |
-| Nunca se llegó a escribir | `unchanged` |
-| Se intentó restaurar y falló | `rollback_failed` |
+| Pre-existing, no external change | `restored` (byte for byte, verified) |
+| Created by the transaction, no external change | `restored` (removed) |
+| Changed after our write | `rollback_conflict` — **not touched** |
+| Never actually written | `unchanged` |
+| Restore attempted and failed | `rollback_failed` |
 
-Si algún archivo queda en `rollback_conflict` o `rollback_failed`, el error propagado es `RollbackIncompleteError`, con el journal y el detalle por archivo — no un fallo normal.
+If any file ends up in `rollback_conflict` or `rollback_failed`, the propagated error is `RollbackIncompleteError`, with the journal and per-file detail — not a normal failure.
 
-### Destino de backups
+### Backup destination
 
-`resolve_backup_root()` **falla de forma accionable antes de tocar el proyecto** si:
+`resolve_backup_root()` **fails actionably before touching the project** if:
 
-- no hay `PBI_MCP_BACKUPS_DIR` configurado (no se elige un destino por defecto en silencio);
-- el destino cae dentro del `.pbip`, del `.Report` o del `.SemanticModel`;
-- el proyecto está dentro de la carpeta de backups (recursión);
-- el destino no es escribible.
+- there's no `PBI_MCP_BACKUPS_DIR` configured (no default destination is silently chosen);
+- the destination falls inside the `.pbip`, the `.Report` or the `.SemanticModel`;
+- the project is inside the backups folder (recursion);
+- the destination isn't writable.
 
-Cada proyecto usa un subdirectorio `<nombre>_<hash12>` donde el hash es `sha256` de su ruta absoluta normalizada: **dos `Demo.pbip` en carpetas distintas nunca comparten backups**.
+Each project uses a `<name>_<hash12>` subdirectory where the hash is `sha256` of its normalized absolute path: **two `Demo.pbip` in different folders never share backups**.
 
-**No hay purga automática en 1A**, y nunca se borran backups preexistentes del usuario.
+**No automatic purge in 1A**, and pre-existing user backups are never deleted.
 
 ---
 
-## 6. Sesiones (`desktop_discovery.py`, `config.py`)
+## 6. Sessions (`desktop_discovery.py`, `config.py`)
 
-Que el puerto vuelva a estar abierto no prueba nada: Desktop asigna un puerto nuevo en cada arranque y el sistema reutiliza puertos y PIDs.
+That the port is open again proves nothing: Desktop assigns a new port on every startup and the system reuses ports and PIDs.
 
-`ActiveModel` guarda ahora la **identidad** de la sesión: `pid`, `process_started`, `workspace` y `session_fingerprint` (hash de puerto + pid + hora de arranque + catálogo).
+`ActiveModel` now stores the session's **identity**: `pid`, `process_started`, `workspace` and `session_fingerprint` (hash of port + pid + start time + catalog).
 
-`verify_model()` devuelve:
+`verify_model()` returns:
 
-| Estado | Cuándo |
+| State | When |
 |---|---|
-| `ok` | todo coincide |
-| `stale` | el puerto ya no existe o no responde |
-| `mismatch` | el puerto lo ocupa otro proceso, el PID se reutilizó, o sirve otro catálogo |
+| `ok` | everything matches |
+| `stale` | the port no longer exists or doesn't respond |
+| `mismatch` | the port is held by another process, the PID was reused, or it serves another catalog |
 
-`require_active_model()` lo comprueba y lanza `StaleSessionError` con un mensaje accionable. Una sesión recargada de `session.json` arranca **sin verificar**: no se confía en lo guardado.
+`require_active_model()` checks this and raises `StaleSessionError` with an actionable message. A session reloaded from `session.json` starts **unverified**: what's saved is not trusted.
 
-Además, el descubrimiento hace un **pre-chequeo TCP de 0,5 s** antes de intentar ADOMD. Sin él, los archivos `msmdsrv.port.txt` huérfanos (había **5** en este equipo) provocaban una conexión completa con timeout largo contra cada puerto muerto. **No se borra ninguno**: solo se marcan `unreachable`.
-
----
-
-## 7. Durabilidad y residuos
-
-`durable_write()` centraliza la escritura: temporal en el mismo directorio → `flush` → `fsync` → validar el temporal → `os.replace` → **limpiar el temporal en `finally`**.
-
-Esto corrige un fallo real: en Windows `os.replace` falla con `WinError 5` si otro proceso tiene el destino abierto —justo el escenario de Desktop abierto— y antes dejaba un `visual.json.tmp` huérfano **dentro del `.pbip` del usuario**. El original siempre quedaba intacto; el problema era la basura.
-
-No se hace `fsync` del directorio: Windows no lo admite.
+Discovery also does a **0.5s TCP pre-check** before attempting ADOMD. Without it, orphaned `msmdsrv.port.txt` files (there were **5** on this machine) triggered a full connection with a long timeout against each dead port. **None are deleted**: they're just marked `unreachable`.
 
 ---
 
-## 7 bis. Composición bulk (Fase 1A.1)
+## 7. Durability and leftovers
 
-La Fase 1A dejó los escritores individuales seguros, pero los flujos que escriben **varios** archivos seguían encadenando N transacciones de un archivo. Una página de 5 visuales que fallaba en el 3.º dejaba 2 escritos y una página a medias.
+`durable_write()` centralizes writing: temp file in the same directory → `flush` → `fsync` → validate the temp file → `os.replace` → **clean up the temp file in `finally`**.
 
-### API bulk, en la capa PBIR
+This fixes a real bug: on Windows, `os.replace` fails with `WinError 5` if another process has the destination open —exactly the open-Desktop scenario— and it used to leave an orphaned `visual.json.tmp` **inside the user's `.pbip`**. The original was always left intact; the problem was the garbage.
 
-Ninguna tool coordina temporales, journals ni rollback: esa responsabilidad vive en `pbip/pbir_writer.py` y `services/txn.py`.
+No `fsync` on the directory is done: Windows doesn't support it.
 
-| Función | Archivos que abarca |
+---
+
+## 7 bis. Bulk composition (Phase 1A.1)
+
+Phase 1A left the individual writers safe, but flows writing **several** files still chained N single-file transactions. A page with 5 visuals that failed on the 3rd left 2 written and a half-done page.
+
+### Bulk API, at the PBIR layer
+
+No tool coordinates temp files, journals or rollback: that responsibility lives in `pbip/pbir_writer.py` and `services/txn.py`.
+
+| Function | Files it covers |
 |---|---|
 | `create_page_with_visuals(...)` | `page.json` + `pages.json` + N × `visual.json` |
 | `update_visuals_bulk(...)` | N × `visual.json` |
 | `write_visual_with_registration(...)` | `report.json` + `visual.json` |
 
-Todas reciben contenido **ya validado y construido**, y ejecutan **una sola transacción**. Las APIs individuales (`write_visual`, `update_visual_position`, `create_page`, `add_public_custom_visual`) siguen existiendo para las tools de un solo objeto.
+All receive content **already validated and built**, and run in **a single transaction**. The individual APIs (`write_visual`, `update_visual_position`, `create_page`, `add_public_custom_visual`) still exist for single-object tools.
 
-### Orden obligatorio en los flujos
+### Mandatory order in the flows
 
 ```
-1. validar el spec completo
-2. resolver posiciones FINALES
-3. construir TODOS los visuales en memoria   ← aquí falla si algo no se puede armar
-4. calcular todos los archivos destino
-5. abrir UNA transacción
-6. escribir el conjunto
-7. verificar
-8. rollback completo ante cualquier fallo
+1. validate the full spec
+2. resolve FINAL positions
+3. build ALL visuals in memory   ← fails here if something can't be assembled
+4. compute all target files
+5. open ONE transaction
+6. write the set
+7. verify
+8. full rollback on any failure
 ```
 
-El paso 3 es el que garantiza que **un fallo construyendo el visual N no produce ninguna escritura**: la página no llega a crearse. Y en `pbi_generate_report_page` los visuales se construyen ya con su posición final, en vez de escribirlos con una provisional para reposicionarlos después.
+Step 3 is what guarantees that **a failure building visual N produces no write at all**: the page never gets created. And in `pbi_generate_report_page` the visuals are built already with their final position, instead of being written with a provisional one to be repositioned later.
 
-### Límites reales de atomicidad
+### Real atomicity limits
 
-- **No hay atomicidad de sistema de archivos.** Entre el primer y el último `os.replace` el proyecto está a medias. Lo que hay es compensación por journal.
-- Una operación lógica produce **un solo journal**, no N backups completos. El journal conoce **todos** los archivos afectados.
-- El rollback cubre archivos **modificados, creados y eliminados**, y además retira los **directorios** que la transacción creó y quedaron vacíos (antes dejaba un `<pageId>/` huérfano sin `page.json`, que el propio lector de páginas interpretaba mal).
+- **There's no file-system atomicity.** Between the first and last `os.replace` the project is half-done. What exists is journal-based compensation.
+- One logical operation produces **a single journal**, not N full backups. The journal knows **all** affected files.
+- The rollback covers **modified, created and deleted** files, and also removes the **directories** the transaction created that ended up empty (previously it left an orphaned `<pageId>/` without `page.json`, which the page reader itself misinterpreted).
 
-### Comportamiento ante conflicto
+### Behavior on conflict
 
-Si alguien modifica externamente un archivo:
+If someone externally modifies a file:
 
-| Momento | Resultado |
+| Moment | Result |
 |---|---|
-| Antes de que lo escribamos | La transacción **aborta** en el pre-chequeo; se conserva el cambio externo |
-| Después de escribirlo, antes de verificar | La verificación posterior lo detecta; el archivo queda marcado `rollback_conflict` |
-| Durante el rollback | **No se pisa**; se marca `rollback_conflict` y se conserva el journal |
+| Before we write it | The transaction **aborts** at the pre-check; the external change is preserved |
+| After writing it, before verifying | Post-verification detects it; the file is marked `rollback_conflict` |
+| During rollback | **Not overwritten**; marked `rollback_conflict` and the journal is kept |
 
-En todos esos casos la operación termina en `RollbackIncompleteError`, **nunca en éxito**.
+In all those cases the operation ends in `RollbackIncompleteError`, **never in success**.
 
-### Empaquetado
+### Packaging
 
-`pyproject.toml` omitía `services*` en `packages.find.include` **y** `reporting` en `py-modules`. Un `pip install -e .` no lo revelaba, porque resuelve todo desde `src/`. La prueba de `tests/test_packaging.py` construye un wheel real, lo instala en un venv y verifica el arranque con 34 tools fuera del repositorio.
+`pyproject.toml` omitted `services*` from `packages.find.include` **and** `reporting` from `py-modules`. A `pip install -e .` didn't reveal it, because it resolves everything from `src/`. The `tests/test_packaging.py` test builds a real wheel, installs it in a venv and verifies startup with 34 tools outside the repository.
 
 ---
 
-## 8. Estado de los riesgos
+## 8. Risk status
 
-| Id | Riesgo | Estado |
+| Id | Risk | Status |
 |---|---|---|
-| R2 | Corromper un `.pbip`: sin lock, sin `expected_state`, sin detectar Desktop | **Cerrado** en 1A |
-| R3 | Traversal de escritura en PBIR | **Cerrado** en 1A |
-| R5 | Backups sin retención ni ubicación validada | **Parcialmente cerrado**: ubicación validada y manifiesto; la purga queda fuera a propósito |
-| R6 | `session.json` apuntando a un puerto muerto | **Cerrado** en 1A |
-| R7 | `pbi_run_dax` sin validación de solo lectura | **Cerrado** en 1A |
-| R11 | Residuo `.tmp` dentro del `.pbip` | **Cerrado** en 1A |
-| R12 | Directorio de página vacío tras un rollback | **Cerrado** en 1A.1 |
-| R13 | Atomicidad de flujos PBIR multiarchivo | **Parcialmente cerrado**: los 5 flujos PBIR son transacciones únicas; `pbi_hide_columns` (TMDL) sigue pendiente |
-| R14 | Empaquetado incompleto | **Cerrado** en 1A.1, con prueba de wheel instalado |
+| R2 | Corrupting a `.pbip`: no lock, no `expected_state`, no Desktop detection | **Closed** in 1A |
+| R3 | PBIR write traversal | **Closed** in 1A |
+| R5 | Backups without retention or validated location | **Partially closed**: validated location and manifest; purge is left out on purpose |
+| R6 | `session.json` pointing to a dead port | **Closed** in 1A |
+| R7 | `pbi_run_dax` without read-only validation | **Closed** in 1A |
+| R11 | `.tmp` leftover inside the `.pbip` | **Closed** in 1A |
+| R12 | Empty page directory after a rollback | **Closed** in 1A.1 |
+| R13 | Multi-file PBIR flow atomicity | **Partially closed**: the 5 PBIR flows are single transactions; `pbi_hide_columns` (TMDL) is still pending |
+| R14 | Incomplete packaging | **Closed** in 1A.1, with an installed-wheel test |
 
-## 7 ter. `pbi_hide_columns` (Fase 1A.2)
+## 7 ter. `pbi_hide_columns` (Phase 1A.2)
 
-Era el último flujo multiarchivo no atómico, y tenía un defecto más grave que el recuento de transacciones: **llamaba a otra tool decorada con `guard()`**. Los errores se convertían en datos, el bucle seguía, y el lote devolvía `ok:true` con los fallos enterrados en `results`.
+It was the last non-atomic multi-file flow, and had a more serious defect than the transaction count: **it called another tool decorated with `guard()`**. Errors turned into data, the loop kept going, and the batch returned `ok:true` with the failures buried in `results`.
 
-### Corrección
+### Fix
 
-- **`hide_columns_service()`**, sin decorar, en `tools/model_edit_tools.py`. Las tools envuelven servicios; nunca a otras tools.
-- **Validación completa antes de escribir**: tipo de `columns`, cada `table` y `column` no vacíos, nombres válidos, duplicados detectados. Un fallo indica **índice, tabla y columna**, y no se escribe nada, no se llama a `SaveChanges` y no se crea journal.
-- **Lote TMDL**: cada `.tmdl` se localiza y se lee **una vez**, los cambios se agrupan por archivo, se mutan en memoria y se escriben en **una sola transacción**.
-- **Lote TOM**: una sola conexión, validación de todas las tablas y columnas, captura de `before_hidden`, y **un único `SaveChanges`** independientemente de N.
-- **Duplicados exactos**: se aplican una vez, pero se reportan en todas sus posiciones. La operación es idempotente.
-- **Lista vacía**: se conserva el comportamiento previo (no es un error).
+- **`hide_columns_service()`**, undecorated, in `tools/model_edit_tools.py`. Tools wrap services; never other tools.
+- **Full validation before writing**: `columns` type, each `table` and `column` non-empty, valid names, duplicates detected. A failure indicates **index, table and column**, and nothing is written, `SaveChanges` is never called and no journal is created.
+- **TMDL batch**: each `.tmdl` is located and read **once**, changes are grouped by file, mutated in memory and written in **a single transaction**.
+- **TOM batch**: one connection, validation of every table and column, capture of `before_hidden`, and **a single `SaveChanges`** regardless of N.
+- **Exact duplicates**: applied once, but reported at every position. The operation is idempotent.
+- **Empty list**: previous behavior preserved (not an error).
 
-### Semántica de `count`
+### Semantics of `count`
 
-`count` sigue siendo el **número de entradas solicitadas**, duplicados incluidos — igual que antes, cuando era `len(results)` con un resultado por iteración. `results` mantiene una entrada por solicitud, en el mismo orden, aunque internamente se agrupe por archivo. La lista de duplicados descartados va en `duplicates_ignored`, un campo **añadido**, no un cambio de significado.
+`count` is still the **number of entries requested**, duplicates included — same as before, when it was `len(results)` with one result per iteration. `results` keeps one entry per request, in the same order, even though it's internally grouped by file. Discarded duplicates go in `duplicates_ignored`, a field that's **added**, not a change of meaning.
 
-### Qué garantiza TOM, y qué no
+### What TOM guarantees, and what it doesn't
 
-`SaveChanges()` envía el lote en una sola operación, pero **no es una transacción distribuida**. Si el motor rechaza el lote, los objetos en memoria pueden quedar modificados hasta que Power BI Desktop se recargue. Lo que sí se garantiza: no hay escrituras parciales por nuestra parte, y una validación fallida no persiste nada (`SaveChanges` se llama **cero** veces).
+`SaveChanges()` sends the batch in a single operation, but **it's not a distributed transaction**. If the engine rejects the batch, the in-memory objects may stay modified until Power BI Desktop reloads. What is guaranteed: no partial writes on our part, and a failed validation persists nothing (`SaveChanges` is called **zero** times).
 
-### `mode="both"`: compensado
+### `mode="both"`: compensated
 
 ```
-1. validar AMBOS destinos            ← si lo vivo no valida, el disco ni se toca
-2. escribir el lote TMDL (journal restaurable)
-3. aplicar el lote en vivo (1 SaveChanges)
-4. si falla → compensar el disco desde el journal
-5. verificar la compensación
-6. reportar el conflicto sin ocultarlo
+1. validate BOTH destinations         ← if the live side doesn't validate, disk isn't touched
+2. write the TMDL batch (restorable journal)
+3. apply the batch live (1 SaveChanges)
+4. on failure → compensate disk from the journal
+5. verify the compensation
+6. report the conflict without hiding it
 ```
 
-Un detalle que costó encontrar: `SaveChanges` puede lanzar una **excepción .NET cruda**. Si escapaba sin envolver, la compensación no se ejecutaba y el disco quedaba modificado con el modelo en vivo intacto. Ahora se envuelve como `live_write_failed`, y el coordinador captura `Exception`, no solo `PowerBIMCPError`.
+One detail that was costly to find: `SaveChanges` can throw a **raw .NET exception**. If it escaped unwrapped, compensation didn't run and the disk stayed modified with the live model intact. Now it's wrapped as `live_write_failed`, and the coordinator catches `Exception`, not just `PowerBIMCPError`.
 
-Un fallo total llega al `guard()` exterior como excepción de dominio (`bulk_partially_applied`), no como una lista de éxitos y errores.
+A total failure reaches the outer `guard()` as a domain exception (`bulk_partially_applied`), not as a list of successes and errors.
 
 ---
 
-## 7 quater. `mode="both"` bloqueado (Fase 1A.3)
+## 7 quater. `mode="both"` blocked (Phase 1A.3)
 
-Al probar el flujo público apareció una contradicción que las pruebas con dobles no revelaban:
-
-```
-live → necesita Power BI Desktop ABIERTO   (TOM habla con msmdsrv.exe)
-pbip → necesita Desktop CERRADO            (política estricta de 1A)
-```
-
-**No existe ningún estado del sistema en el que ambos puedan escribirse con seguridad en una sola llamada.** Y como la implementación dual aplicaba `live` primero y `pbip` después, con Desktop abierto el resultado era un **estado parcial determinista**. Verificado sobre el código de `7adb725`:
+When testing the public flow, a contradiction appeared that tests with doubles didn't reveal:
 
 ```
-resultado de _dual:  live aplicado: True | pbip aplicado: False
+live → needs Power BI Desktop OPEN   (TOM talks to msmdsrv.exe)
+pbip → needs Desktop CLOSED          (strict 1A policy)
+```
+
+**There is no system state in which both can be safely written in a single call.** And since the dual implementation applied `live` first and `pbip` after, with Desktop open the result was a **deterministic partial state**. Verified on the code at `7adb725`:
+
+```
+_dual result:        live applied: True | pbip applied: False
                      pbip_error: project_open_in_desktop | consistent: False
-efectos reales:      SaveChanges: 1 | columna oculta en TOM: True | TMDL: sin cambios
+real effects:        SaveChanges: 1 | column hidden in TOM: True | TMDL: unchanged
 ```
 
-### Matriz real de modos
+### Real mode matrix
 
-| Modo | Requisito | Estado |
+| Mode | Requirement | Status |
 |---|---|---|
-| `live` | Desktop abierto y sesión válida | **Disponible** |
-| `pbip` | Proyecto cerrado o verificablemente seguro | **Disponible** |
-| `both` | Requisitos mutuamente incompatibles | **Bloqueado en 1A** |
+| `live` | Desktop open and valid session | **Available** |
+| `pbip` | Project closed or verifiably safe | **Available** |
+| `both` | Mutually incompatible requirements | **Blocked in 1A** |
 
-### Precondición central
+### Central precondition
 
-`services/dual_mode.py` expone `assert_mode_is_safely_executable(mode)`, que se ejecuta **lo primero** en cada tool dual: antes de abrir una conexión TOM, de validar objetos contra el motor, de crear un journal, de leer para planificar o de tocar un archivo. La decisión vive en un solo sitio; ninguna tool la duplica.
+`services/dual_mode.py` exposes `assert_mode_is_safely_executable(mode)`, run **first** in every dual tool: before opening a TOM connection, validating objects against the engine, creating a journal, reading to plan, or touching a file. The decision lives in one place; no tool duplicates it.
 
-También centraliza `normalize_mode()` y `run_dual()`, que estaban duplicados en `measure_tools` y `model_edit_tools` (deuda A2 de la auditoría). `run_dual` ya no ejecuta los dos lados aislando errores: propaga la excepción, en vez de convertirla en un `consistent: False` con la mitad del trabajo hecho.
+It also centralizes `normalize_mode()` and `run_dual()`, which were duplicated in `measure_tools` and `model_edit_tools` (audit debt A2). `run_dual` no longer runs both sides isolating errors: it propagates the exception, instead of turning it into a `consistent: False` with half the work done.
 
-**No hay bypass por variable de entorno.**
+**No environment-variable bypass.**
 
-### El coordinador compensado, como mecanismo interno
+### The compensated coordinator, as an internal mechanism
 
-`_apply_both_compensated()` se conserva y se prueba de forma directa, pero **no es alcanzable desde la tool pública** y no justifica aceptar `both`. La Fase 1B decidirá entre workflow en dos etapas, persistir solo por TOM, abandonar `both`, u otra coordinación.
+`_apply_both_compensated()` is kept and tested directly, but **it's not reachable from the public tool** and doesn't justify accepting `both`. Phase 1B will decide between a two-stage workflow, persisting only via TOM, abandoning `both`, or another coordination.
 
-### Taxonomía de errores corregida
+### Corrected error taxonomy
 
-| Código | Cuándo | Intervención |
+| Code | When | Intervention |
 |---|---|---|
-| `bulk_apply_failed` | Falló y la compensación dejó **todo** como estaba (`applied_to: "ninguno"`) | No |
-| `bulk_partially_applied` | Compensación incompleta o en conflicto | **Sí** |
+| `bulk_apply_failed` | It failed and compensation left **everything** as it was (`applied_to: "none"`) | No |
+| `bulk_partially_applied` | Compensation incomplete or in conflict | **Yes** |
 
-Antes, una compensación limpia terminaba como `BulkPartialError` con `applied_to: "ninguno"` — semánticamente contradictorio: inducía a buscar a mano algo que no existía.
+Previously, a clean compensation ended up as a `BulkPartialError` with `applied_to: "none"` — semantically contradictory: it prompted a manual search for something that didn't exist.
 
 ---
 
-### Riesgos residuales
+### Residual risks
 
-1. **`mode="both"` está bloqueado, no resuelto.** Límite del sistema, no del código. Es el riesgo **R15**, y sigue **abierto**: hoy no hay forma de aplicar un cambio a los dos destinos en una sola operación. El usuario debe elegir `live` (y guardar con Ctrl+S) o `pbip` (con Desktop cerrado).
-2. **La ventana entre `os.replace`** del primer y el último archivo no es atómica a nivel de sistema de archivos. Si el proceso muere ahí, el journal permite recuperación **manual**; no hay reanudación automática al arrancar.
-3. **La caché de 1 s** del estado del proyecto: para colarse, Desktop tendría que abrir el proyecto dentro de esa ventana.
-4. **Sin purga de journals.** Se acumulan en la carpeta de backups hasta que se defina la política.
-5. **`backup_before_edit`** sigue existiendo para rutas que no han migrado a transacción. No sabe restaurar.
+1. **`mode="both"` is blocked, not solved.** A system limit, not a code one. It's risk **R15**, and it remains **open**: today there's no way to apply a change to both destinations in a single operation. The user must choose `live` (and save with Ctrl+S) or `pbip` (with Desktop closed).
+2. **The window between the first and last `os.replace`** isn't atomic at the file-system level. If the process dies there, the journal allows **manual** recovery; there's no automatic resume on startup.
+3. **The 1s cache** of project state: to slip through, Desktop would have to open the project within that window.
+4. **No journal purging.** They pile up in the backups folder until a policy is defined.
+5. **`backup_before_edit`** still exists for routes that haven't migrated to a transaction. It doesn't know how to restore.
 
 ---
 
-## 9. Pendiente para 1B
+## 9. Pending for 1B
 
-- Envelope uniforme (`status/target/before/after/validation/backup/warnings`).
-- `request_id` y `dry_run` expuestos como parámetros.
-- `expected_state` suministrado por el cliente (concurrencia **entre** llamadas; en 1A es interno a cada operación).
-- Modo `warn` y confirmación por llamada para la política de proyecto abierto.
-- Enums en `mode`, `source`, `layout`, `direction`, `type`, `scope` — **con la categoría `CONTRATO RESTRINGIDO`** en el comparador: estrechar `string`→`enum` no es compatible por defecto.
-- Logging estructurado general.
-- Transacción única para las operaciones por lote de `page_builder.py` y `visual_tools.py` (hoy hacen N transacciones de un archivo).
+- Uniform envelope (`status/target/before/after/validation/backup/warnings`).
+- `request_id` and `dry_run` exposed as parameters.
+- `expected_state` supplied by the client (concurrency **between** calls; in 1A it's internal to each operation).
+- `warn` mode and per-call confirmation for the open-project policy.
+- Enums in `mode`, `source`, `layout`, `direction`, `type`, `scope` — **with the `RESTRICTED CONTRACT` category** in the comparator: narrowing `string`→`enum` is not compatible by default.
+- General structured logging.
+- A single transaction for the batch operations in `page_builder.py` and `visual_tools.py` (today they do N single-file transactions).

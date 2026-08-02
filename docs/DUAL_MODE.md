@@ -1,76 +1,76 @@
-# `mode="both"` — por qué está bloqueado (R15)
+# `mode="both"` — why it's blocked (R15)
 
-**Estado: ABIERTO por diseño. `both` no se habilita en la v1.0.0.**
+**Status: OPEN by design. `both` is not enabled in v1.0.0.**
 
-Este documento explica por qué, qué se conserva mientras tanto, y cómo tendría que diseñarse si algún día se implementa. **No describe nada que exista hoy.**
+This document explains why, what's kept in the meantime, and how it would have to be designed if it's ever implemented. **It doesn't describe anything that exists today.**
 
 ---
 
-## El problema, en una frase
+## The problem, in one sentence
 
-`live` y `pbip` escriben en **dos recursos distintos** que no comparten transacción, y sus precondiciones son **mutuamente excluyentes**.
+`live` and `pbip` write to **two different resources** that don't share a transaction, and their preconditions are **mutually exclusive**.
 
-| Modo | Escribe en | Requiere |
+| Mode | Writes to | Requires |
 |---|---|---|
-| `live` | modelo en memoria de `msmdsrv.exe` | Power BI Desktop **abierto** |
-| `pbip` | archivos TMDL/PBIR en disco | Power BI Desktop **cerrado** |
+| `live` | `msmdsrv.exe`'s in-memory model | Power BI Desktop **open** |
+| `pbip` | TMDL/PBIR files on disk | Power BI Desktop **closed** |
 
-`live` solo es posible si Desktop está abierto, porque el motor únicamente existe mientras lo está. `pbip` escribe archivos que Desktop sobrescribe al guardar, así que la política estricta lo bloquea cuando Desktop está `open` o `unknown`.
+`live` is only possible if Desktop is open, because the engine only exists while it is. `pbip` writes files that Desktop overwrites on save, so the strict policy blocks it when Desktop is `open` or `unknown`.
 
-**No existe ningún estado del sistema en el que ambos destinos puedan escribirse con seguridad en una sola llamada.**
+**There is no system state in which both destinations can be safely written in a single call.**
 
-## Qué pasaba antes
+## What used to happen
 
-`both` aplicaba `live` primero y `pbip` después. Con Desktop abierto —el único estado en que `live` funciona— el resultado era un **estado parcial determinista**: un `SaveChanges` ejecutado, el cambio vivo en memoria, el disco intacto, y `consistent: False` en la respuesta.
+`both` applied `live` first and `pbip` after. With Desktop open —the only state in which `live` works— the result was a **deterministic partial state**: one `SaveChanges` executed, the change live in memory, the disk untouched, and `consistent: False` in the response.
 
-Medido, no supuesto: la columna quedaba oculta en el modelo en memoria y el TMDL sin tocar.
+Measured, not assumed: the column ended up hidden in the in-memory model and the TMDL untouched.
 
-## Qué hace hoy
+## What it does today
 
-Las seis tools duales rechazan `mode="both"` con `dual_mode_not_safely_available` **antes de cualquier efecto**: antes de conectar a TOM, de validar contra el motor, de leer para planificar, de crear un journal, de hacer backup o de tocar un archivo.
+The six dual tools reject `mode="both"` with `dual_mode_not_safely_available` **before any effect**: before connecting to TOM, validating against the engine, reading to plan, creating a journal, making a backup, or touching a file.
 
 `pbi_create_measure` · `pbi_update_measure` · `pbi_delete_measure` · `pbi_set_column_visibility` · `pbi_hide_columns` · `pbi_set_relationship_direction`
 
-Sin bypass por variable de entorno. `tests/test_dual_mode_guard.py` lo verifica tool por tool comprobando que no hubo conexión, ni `SaveChanges`, ni escritura, ni entrada en el change log, ni journal, y que la huella del proyecto no cambió.
+No environment-variable bypass. `tests/test_dual_mode_guard.py` verifies this tool by tool, checking there was no connection, no `SaveChanges`, no write, no change-log entry, no journal, and that the project's fingerprint didn't change.
 
-`_apply_both_compensated()` sigue en `tools/model_edit_tools.py` como **mecanismo interno**, con pruebas unitarias directas. No es alcanzable desde la tool pública y no justifica aceptar `both`.
+`_apply_both_compensated()` remains in `tools/model_edit_tools.py` as an **internal mechanism**, with direct unit tests. It's not reachable from the public tool and doesn't justify accepting `both`.
 
 ---
 
-## Diseño futuro: saga de dos etapas — NO IMPLEMENTADO
+## Future design: two-stage saga — NOT IMPLEMENTED
 
-Si se retoma, `both` **no puede** presentarse como una transacción. No hay transacción distribuida entre Analysis Services y el sistema de archivos, y simularla sería mentir sobre la garantía.
+If this is revisited, `both` **cannot** be presented as a transaction. There's no distributed transaction between Analysis Services and the file system, and faking one would misrepresent the guarantee.
 
-La forma honesta es una **saga**: dos etapas con compensación explícita, y un resultado que diga si la compensación fue completa.
+The honest form is a **saga**: two stages with explicit compensation, and a result stating whether the compensation was complete.
 
 ```
-1. preflight live      ¿hay sesión? ¿el objeto existe? ¿el cambio es válido?
-2. preflight PBIR      ¿Desktop cerrado? ¿versión soportada? ¿esquema válido?
-3. snapshot            estado previo de AMBOS destinos, con huellas
-4. plan compuesto      qué cambia en cada lado, en memoria
-5. confirmación        el usuario aprueba el plan compuesto
-6. etapa 1             aplicar en un destino
-7. verificación 1      releer y comprobar
-8. etapa 2             aplicar en el otro
-9. verificación 2      releer y comprobar
-10. compensación       si la 2 falla, deshacer la 1
-11. resultado          applied | compensated | partial_failure
+1. live preflight       is there a session? does the object exist? is the change valid?
+2. PBIR preflight       is Desktop closed? supported version? valid schema?
+3. snapshot             prior state of BOTH destinations, with fingerprints
+4. combined plan        what changes on each side, in memory
+5. confirmation         the user approves the combined plan
+6. stage 1              apply to one destination
+7. verification 1       re-read and check
+8. stage 2              apply to the other
+9. verification 2       re-read and check
+10. compensation        if stage 2 fails, undo stage 1
+11. result              applied | compensated | partial_failure
 ```
 
-**El paso 10 es el que decide si esto puede existir.** Compensar `live` significa revertir en memoria con otro `SaveChanges`, que puede fallar por su cuenta. Compensar `pbip` es un rollback de archivos, que ya sabemos hacer. Un fallo en la compensación deja `partial_failure`, que **no es éxito** y exige intervención manual.
+**Step 10 is the one that decides whether this can exist.** Compensating `live` means reverting in memory with another `SaveChanges`, which can fail on its own. Compensating `pbip` is a file rollback, which we already know how to do. A failure in the compensation leaves `partial_failure`, which **is not success** and requires manual intervention.
 
-Y queda el problema de fondo: los pasos 6–9 exigen que Desktop esté abierto para `live` y cerrado para `pbip`. Cualquier saga real tendría que pedir al usuario que cierre Desktop entre las dos etapas, lo que la convierte en un **workflow guiado**, no en una operación atómica.
+And the underlying problem remains: steps 6–9 require Desktop to be open for `live` and closed for `pbip`. Any real saga would have to ask the user to close Desktop between the two stages, which turns it into a **guided workflow**, not an atomic operation.
 
-### Condiciones para habilitarlo
+### Conditions to enable it
 
-No antes de tener, todas:
+Not before having, all of them:
 
-1. pruebas de fallo en **cada** frontera (6, 7, 8, 9) con compensación verificada;
-2. prueba de fallo **de la compensación**, con `partial_failure` correctamente reportado;
-3. una respuesta que distinga `applied`, `compensated` y `partial_failure` sin ambigüedad;
-4. una decisión explícita sobre el conflicto abierto/cerrado de Desktop.
+1. failure tests at **every** boundary (6, 7, 8, 9) with verified compensation;
+2. a test of the compensation **itself** failing, with `partial_failure` correctly reported;
+3. a response that unambiguously distinguishes `applied`, `compensated` and `partial_failure`;
+4. an explicit decision on the open/closed Desktop conflict.
 
-**R15 no se cierra hasta entonces.** Mientras tanto, la recomendación es elegir un destino:
+**R15 doesn't close until then.** In the meantime, the recommendation is to pick one destination:
 
-- **`live`** para iterar rápido con Desktop abierto, sabiendo que se pierde al cerrar sin guardar;
-- **`pbip`** para cambios duraderos y versionables, con Desktop cerrado.
+- **`live`** to iterate quickly with Desktop open, knowing it's lost if you close without saving;
+- **`pbip`** for durable, versionable changes, with Desktop closed.

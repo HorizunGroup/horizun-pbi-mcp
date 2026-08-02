@@ -1,811 +1,844 @@
 # Changelog
 
-Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.1.0/).
-Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.**
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
 ## [1.0.1] — 2026-08-02
 
-### Corregido
+### Fixed
 
-- El oráculo oficial comprueba también visuales que solo contienen
-  `visualContainerObjects`; ya no cae al snapshot parcial en ese caso.
-- Las expresiones de formato vacías (`expr: {}`) se rechazan antes de escribir.
-- La degradación a un esquema PBIR anterior se limita a versiones que el
-  manifiesto identifica expresamente como no publicadas por Microsoft.
-- Una sesión PBIP ya abierta puede reutilizarse sin validar primero una copia
-  distinta o incompleta del modelo guardado en disco.
+- The official oracle now also checks visuals that only contain
+  `visualContainerObjects`; it no longer falls back to the partial snapshot in that case.
+- Empty format expressions (`expr: {}`) are rejected before writing.
+- Downgrading to an earlier PBIR schema is limited to versions the
+  manifest expressly identifies as not published by Microsoft.
+- An already-open PBIP session can be reused without first validating a
+  different or incomplete copy of the model saved on disk.
 
 ---
 
 ## [1.0.0] — 2026-08-02
 
-Primera versión estable del repositorio oficial. **117 tools, 1542 pruebas
-aprobadas y 3 omitidas por condiciones externas documentadas.**
+First stable release of the official repository. **117 tools, 1542 tests
+passed and 3 skipped due to documented external conditions.**
 
-### Incluye
+### Includes
 
-- Validación previa de TMDL/TOM antes de abrir Power BI Desktop, que bloquea
-  colisiones de nombres y evita el Frown genérico de proyectos inválidos.
-- Oráculo estructural para las propiedades administradas de `objects`,
-  validación de roles y tipos contra el catálogo oficial y captura segura de
-  la ventana exacta de Desktop.
-- Transacciones atómicas, backups, journals, rollback y contrato MCP
-  compatible con las 34 tools originales.
+- Pre-validation of TMDL/TOM before opening Power BI Desktop, which blocks
+  name collisions and avoids the generic Frown for invalid projects.
+- Structural oracle for the managed properties of `objects`,
+  role and type validation against the official catalog, and safe capture of
+  Desktop's exact window.
+- Atomic transactions, backups, journals, rollback, and an MCP contract
+  compatible with the original 34 tools.
 
-### Límites publicados
+### Published limits
 
-- La equivalencia visual completa de `objects` aún requiere inspección
-  renderizada para combinaciones no cubiertas por el oráculo.
-- `mode="both"` permanece bloqueado por incompatibilidad entre Desktop abierto
-  y escritura PBIP segura; los dos esquemas Microsoft no publicados siguen
-  siendo una limitación upstream.
+- Full visual equivalence of `objects` still requires rendered
+  inspection for combinations not covered by the oracle.
+- `mode="both"` remains blocked due to the incompatibility between open
+  Desktop and safe PBIP writing; the two unpublished Microsoft schemas
+  remain an upstream limitation.
 
 ---
 
 ## [1.0.0-rc.11] — 2026-08-01
 
-**116 tools, 1262 pruebas.**
+**116 tools, 1262 tests.**
 
-Tres defectos encontrados corriendo **por primera vez** el checklist de release
-de las cinco etapas sobre el tag publicado, más una segunda pasada de «abrir y
-mirar».
+Three defects found running the five-stage release checklist for the
+**first time** on the published tag, plus a second pass of "open and look."
 
-### Corregido
+### Fixed
 
-- **`requirements.txt` había divergido de `pyproject.toml` en las seis
-  dependencias.** El README ofrece `pip install -r requirements.txt` como
-  primera opción, y ese archivo decía `mcp>=1.10` **sin tope**: una instalación
-  limpia traía `mcp` 2.0.0 —donde `mcp.server.fastmcp` ya no existe— y **el
-  servidor no llegaba ni a importar**. `jsonschema` y `referencing` faltaban del
-  todo, así que toda escritura PBIR habría fallado con `schema_unavailable`.
+- **`requirements.txt` had diverged from `pyproject.toml` on the six
+  dependencies.** The README offers `pip install -r requirements.txt` as
+  the first option, and that file said `mcp>=1.10` **with no cap**: a clean
+  install pulled in `mcp` 2.0.0 —where `mcp.server.fastmcp` no longer
+  exists— and **the server didn't even get to import**. `jsonschema` and
+  `referencing` were missing entirely, so every PBIR write would have
+  failed with `schema_unavailable`.
 
-  Ninguna de las 1255 pruebas lo veía, porque todas corren sobre el entorno de
-  desarrollo, que ya estaba bien.
+  None of the 1255 tests saw it, because they all run on the development
+  environment, which was already fine.
 
-- **`doctor.py` comprobaba tres dependencias de las seis.** Una instalación sin
-  `jsonschema` reportaba «Dependencias de Python: OK» y luego fallaba cada
-  escritura. Un diagnóstico que no mira lo que importa es peor que no tenerlo.
+- **`doctor.py` checked three of the six dependencies.** An install missing
+  `jsonschema` reported "Python dependencies: OK" and then every write
+  failed. A diagnostic that doesn't look at what matters is worse than not
+  having one.
 
-- **`pbi_create_measure` dejaba escribir medidas que impiden abrir el
-  proyecto.** Una medida no puede llamarse como una columna de su tabla, y su
-  nombre es único en **todo** el modelo, no por tabla. El parser TMDL se traga
-  las dos; el motor las rechaza al cargar. Comprobado abriéndolo: Power BI deja
-  una ventana **«Sin título» con el modelo vacío** y dice que no puede crear la
-  medida. El lint conocía las dos reglas desde siempre; el escritor no las
-  consultaba.
+- **`pbi_create_measure` let through measures that prevent the project from
+  opening.** A measure can't be named the same as a column in its table, and
+  its name is unique across the **entire** model, not per table. The TMDL
+  parser swallows both cases; the engine rejects them on load. Confirmed by
+  opening it: Power BI leaves an **"Untitled" window with an empty model**
+  and says it can't create the measure. The lint had known both rules all
+  along; the writer just wasn't consulting them.
 
-### Documentación
+### Documentation
 
-- El checklist declaraba una excepción **obsoleta** —`filters`/`interactions`
-  rechazados, cuando funcionan desde rc.9— y **no declaraba la que sí existe**:
-  el bloque `objects` de un visual no lo valida ningún esquema
-  (`additionalProperties: {}`), así que el único detector es abrir y mirar.
-- **`docs/BACKLOG.md`** — lo que queda abierto, con evidencia y cómo se
-  comprueba. Ocho puntos, ordenados por lo que más duele.
+- The checklist declared an **obsolete** exception —`filters`/`interactions`
+  rejected, when they've worked since rc.9— and **didn't declare the one
+  that does exist**: no schema validates a visual's `objects` block
+  (`additionalProperties: {}`), so the only detector is opening it and looking.
+- **`docs/BACKLOG.md`** — what remains open, with evidence and how it's
+  checked. Eight points, ordered by what hurts the most.
 
 ---
 
 ## [1.0.0-rc.10] — 2026-08-01
 
-**116 tools, 1255 pruebas.**
+**116 tools, 1255 tests.**
 
-Tres defectos que **no se ven ni abriendo el archivo ni validándolo**: solo
-mirando la pantalla. Los tres pasaban el validador oficial de Microsoft con
-cero errores.
+Three defects that **can't be seen either by opening the file or by
+validating it**: only by looking at the screen. All three passed Microsoft's
+official validator with zero errors.
 
-### Corregido
+### Fixed
 
-- **El formato condicional no pintaba nada.** La regla se escribía como
-  `{"solid": <expresión>}`, sin el nivel `color` que lleva cualquier otro color
-  del PBIR. El esquema oficial declara esa parte como
-  `additionalProperties: {}` —acepta literalmente cualquier cosa—, así que el
-  CLI de Microsoft daba el visto bueno y Power BI simplemente no coloreaba.
-  Se descubrió abriendo el informe y viendo una tabla sin color.
+- **Conditional formatting painted nothing.** The rule was written as
+  `{"solid": <expression>}`, missing the `color` level that every other
+  PBIR color has. The official schema declares that part as
+  `additionalProperties: {}` —accepting literally anything— so
+  Microsoft's CLI gave it the green light and Power BI simply didn't
+  color anything. Discovered by opening the report and seeing an
+  uncolored table.
 
-- **Colorear una segunda medida borraba la primera.** Se reemplazaba cualquier
-  bloque que tuviera esa propiedad, sin mirar a qué campo apuntaba: en una
-  matriz de varias métricas acababa pintada solo la última. Ahora cada regla se
-  acota a su campo con `selector.metadata` —que el esquema describe como
-  *"defines the scope to a specific field"*—, y solo se reemplaza la del mismo
-  campo. El rodeo conocido, dinamizar las métricas a filas, ya no hace falta.
+- **Coloring a second measure erased the first.** Any block with that
+  property was replaced, without checking which field it pointed to: in a
+  matrix with several metrics, only the last one ended up colored. Now each
+  rule is scoped to its field with `selector.metadata` —which the schema
+  describes as *"defines the scope to a specific field"*—, and only the
+  block for the same field gets replaced. The known workaround, making the
+  metrics dynamic on rows, is no longer needed.
 
-- **El título de una página podía quedar invisible.** Un informe admite **un**
-  tema, pero `pbi_compose_page` incrustaba el color del sistema de la página.
-  Componer con `informe` sobre un informe con el tema de `sala` escribía el
-  título en `#0B0B0B` sobre un fondo `#1A1A19`: contraste 1,02:1. El color pasa
-  a salir del tema que el informe tiene puesto; la geometría sigue siendo de la
-  página. Hay una prueba de contraste WCAG que lo caza sin abrir nada.
+- **A page title could end up invisible.** A report allows **one**
+  theme, but `pbi_compose_page` was embedding the page system's own color.
+  Composing with `report` on a report themed with `room` wrote the
+  title in `#0B0B0B` on a `#1A1A19` background: 1.02:1 contrast. Color now
+  comes from whatever theme the report has applied; geometry still comes
+  from the page. There's a WCAG contrast test that catches this without
+  opening anything.
 
-- **El número del indicador era el texto más pequeño de la página.** En `sala`
-  —lienzo de 1920×1080 pensado para leerse a cuatro metros— el KPI salía al
-  tamaño por defecto. Cada sistema declara ahora su tamaño de KPI (44pt en
-  `sala`, 28pt en el resto) y se apaga la etiqueta de categoría, que repetía el
-  título de la tarjeta y salía más grande que el propio dato.
+- **The KPI number was the smallest text on the page.** In `room`
+  —a 1920×1080 canvas meant to be read from four meters away— the KPI
+  came out at the default size. Each system now declares its own KPI size
+  (44pt in `room`, 28pt elsewhere) and the category label is turned off,
+  since it repeated the card's title and came out bigger than the actual
+  data.
 
-### Verificado abriéndolo
+### Verified by opening it
 
-Se generó un proyecto con datos reales, se abrió en Power BI Desktop y se
-miraron las cuatro páginas. Es lo que encontró los cuatro defectos de arriba:
-la suite estaba en verde y el validador oficial también.
+A project was generated with real data, opened in Power BI Desktop, and
+all four pages were reviewed. That's what found the four defects above: the
+suite was green and so was the official validator.
 
 ---
 
 ## [1.0.0-rc.9] — 2026-08-01
 
-**116 tools, 1233 pruebas.**
+**116 tools, 1233 tests.**
 
-Seis defectos que ningún validador propio veía, y los dos huecos que quedaban
-entre tener las piezas y saber usarlas.
+Six defects no validator of our own could see, and the two gaps left
+between having the pieces and knowing how to use them.
 
-### Añadido
+### Added
 
-- **Capa de diseño** (`pbi_list_design_systems`, `pbi_apply_design_system`,
-  `pbi_compose_page`). Había dos mitades que no se hablaban: el tema sabía de
-  color y de tipografía y nada de dónde va cada cosa; el motor de layout
-  colocaba con `ceil(sqrt(n))` sin saber de qué color era el fondo. Entre las
-  dos no había rejilla, ni márgenes constantes, ni banda de título. El
-  resultado se notaba: páginas correctas y sin criterio.
+- **Design layer** (`pbi_list_design_systems`, `pbi_apply_design_system`,
+  `pbi_compose_page`). There were two halves that didn't talk to each other:
+  the theme knew about color and typography and nothing about where each
+  thing goes; the layout engine placed things with `ceil(sqrt(n))` without
+  knowing the background color. Between the two there was no grid, no
+  constant margins, no title band. The result showed: correct pages with no
+  design sense.
 
-  Un **sistema de diseño** posee las dos mitades: de qué tema saca el color
-  —de los que ya estaban verificados contra daltonismo, no de una paleta
-  nueva—, sobre qué rejilla de 12 columnas se coloca todo, qué alturas tienen
-  las bandas y qué tamaño tiene cada nivel de texto. Tres sistemas, y cada uno
-  resuelve un escenario distinto: `sala` (1920×1080, se lee a cuatro metros),
-  `informe` (1280×720, se exporta a PDF) y `foco` (el color saturado reservado
-  al semáforo).
+  A **design system** owns both halves: which theme it draws color from
+  —from the ones already verified against color blindness, not a new
+  palette—, what 12-column grid everything is placed on, what height each
+  band has, and what size each text level is. Three systems, each solving a
+  different scenario: `room` (1920×1080, read from four meters away),
+  `report` (1280×720, exported to PDF) and `focus` (the saturated color
+  reserved for the traffic-light indicator).
 
-  `pbi_compose_page` traduce la intención —«un título, cuatro indicadores, un
-  gráfico protagonista y dos de apoyo»— en una página colocada. La composición
-  es rígida a propósito: la coherencia entre páginas sale de que ninguna pueda
-  inventarse su propio orden. Y si algo no cabe **se dice con la cuenta
-  hecha**, en vez de encogerlo hasta que no se lea.
+  `pbi_compose_page` translates intent —"a title, four indicators, one
+  hero chart and two supporting ones"— into a placed page. The
+  composition is rigid on purpose: consistency between pages comes from
+  none of them being able to invent its own order. And if something doesn't
+  fit **it says so with the math done**, instead of shrinking it until it's
+  unreadable.
 
-- **`pbi_start_here`** — un punto de entrada para 116 tools. Ciento dieciséis
-  tools con buen nombre siguen siendo ciento dieciséis tools: el catálogo
-  estaba completo y el camino no existía. Esta mira el estado real —si hay
-  proyecto, si tiene modelo o solo informe, si está vacío, si Power BI Desktop
-  lo tiene abierto e impide escribir el TMDL— y responde con tres o cuatro
-  pasos concretos, cada uno con **por qué** toca ahora. Un paso sin motivo es
-  una orden, y una orden no se puede saltar con criterio.
+- **`pbi_start_here`** — an entry point for 116 tools. A hundred and
+  sixteen well-named tools are still a hundred and sixteen tools: the
+  catalog was complete and the path wasn't there. This one looks at the real
+  state —whether there's a project, whether it has a model or just a
+  report, whether it's empty, whether Power BI Desktop has it open and is
+  blocking TMDL writes— and answers with three or four concrete steps, each
+  with **why** it matters right now. A step with no reason is an order, and
+  an order can't be skipped with judgment.
 
-  Cuenta visuales, no solo páginas: un proyecto recién creado trae una página
-  vacía, y responderle «ya tienes una» a quien todavía no tiene nada es la
-  clase de respuesta que hace desconfiar del resto.
+  It counts visuals, not just pages: a freshly created project comes with
+  one empty page, and telling someone who has nothing yet "you already have
+  one" is the kind of answer that makes you distrust the rest.
 
-- **`tests/test_generadores_abren.py`** — la prueba que faltaba, y la que
-  encontró todo lo anterior. Construye un `.pbip` con los generadores **de
-  verdad** (esqueleto, tablas desde archivo, medidas, tema, los nueve tipos de
-  visual con datos, filtros, interacciones y marcadores) y le pregunta a los dos
-  oráculos reales si eso abre.
+- **`tests/test_generadores_abren.py`** — the test that was missing, and
+  the one that found everything above. It builds a `.pbip` with the
+  **real** generators (skeleton, tables from file, measures, theme, all nine
+  visual types with data, filters, interactions and bookmarks) and asks the
+  two real oracles whether it opens.
 
-  Se verificó por mutación: al revertir cada arreglo, la prueba falla y **nombra
-  la línea culpable** (`ROLE_MAP['cardVisual']['values'] = 'Values'`).
+  It was verified by mutation: reverting each fix, the test fails and
+  **names the culprit line** (`ROLE_MAP['cardVisual']['values'] = 'Values'`).
 
-  Las que necesitan las DLL y Node se marcan `abre` y se omiten solas; el
-  contrato de roles, el de tipos de interacción —anclado al esquema oficial
-  cacheado— y el viaje de ida y vuelta no necesitan nada y corren en CI.
+  The ones needing the DLLs and Node are marked `abre` and skip themselves;
+  the role contract, the interaction-type one —anchored to the cached
+  official schema— and the round trip need nothing and run in CI.
 
-### Corregido
+### Fixed
 
-- **El catálogo de tools mentía sobre su propio tamaño.** Anunciaba 101 con 112
-  registradas, y su tabla de bloques sumaba una tercera cifra. Ahora los
-  recuentos salen de las constantes que la suite verifica, y hay una prueba que
-  lo mantiene sincronizado.
+- **The tool catalog lied about its own size.** It advertised 101 with 112
+  registered, and its block table added up to a third number. Now the
+  counts come from the constants the suite verifies, and there's a test
+  that keeps it in sync.
 
-Y seis defectos del mismo linaje: el servidor escribía algo, se lo enseñaba a un
-validador **propio**, y el validador propio decía que sí. Ninguno de los 1169
-tests los veía, porque la forma correcta la definía el mismo código que se
-estaba probando. Se encontraron preguntándole a los dos únicos jueces que no son
-nuestros: `TmdlSerializer` (el código con el que Power BI lee el modelo) y el
-CLI oficial `@microsoft/powerbi-report-authoring-cli`.
+And six defects of the same lineage: the server wrote something, showed it
+to a validator **of its own**, and that validator said yes. None of the
+1169 tests saw them, because the correct shape was defined by the same code
+being tested. They were found by asking the only two judges that aren't
+ours: `TmdlSerializer` (the code Power BI uses to read the model) and the
+official CLI `@microsoft/powerbi-report-authoring-cli`.
 
-- **Los campos de un visual se descartaban en silencio si el rol no coincidía
-  en mayúsculas.** El rol se buscaba con `fields.get(rol)`, exacto. Escribir
-  `{"Values": [...]}` —que es el nombre que aparece **en el propio
-  `visual.json`** y el que devuelve `pbi_list_visuals`— no casaba con la clave
-  `values`, y el visual se escribía sin ningún dato. Sin error. El informe abre
-  y pinta una tarjeta en blanco, que es peor que no abrir: nadie va a buscar un
-  fallo que nunca se dio. Ahora el rol se reconoce escrito como sea.
+- **A visual's fields were silently dropped if the role didn't match case.**
+  The role was looked up with `fields.get(role)`, exact. Writing
+  `{"Values": [...]}` —which is the name that appears **in the
+  `visual.json` itself** and what `pbi_list_visuals` returns— didn't match
+  the `values` key, and the visual was written with no data at all. No
+  error. The report opens and paints a blank card, which is worse than not
+  opening: nobody goes looking for a failure that never happened. Now the
+  role is recognized however it's written.
 
-- **Un rol mal escrito junto a uno bueno desaparecía sin ni siquiera un aviso.**
-  `{"category": [...], "valeus": [...]}` producía un gráfico con eje y sin
-  barras. Ahora un rol que ese tipo de visual no tiene se **rechaza**, con la
-  lista de los válidos.
+- **A misspelled role next to a good one disappeared without even a
+  warning.** `{"category": [...], "valeus": [...]}` produced a chart with
+  an axis and no bars. Now a role that visual type doesn't have is
+  **rejected**, with the list of valid ones.
 
-- **`cardVisual` declaraba el rol `Values`; PBIR exige `Data`.** El tipo estaba
-  anunciado como soportado y **siempre** generaba un informe inválido
-  (`PBIR_ROLE_UNKNOWN` más `PBIR_ROLE_REQUIRED_MISSING`). El mapa de roles
-  completo se comprobó uno a uno contra el validador oficial en vez de deducirlo.
+- **`cardVisual` declared the role `Values`; PBIR requires `Data`.** The
+  type was advertised as supported and **always** produced an invalid
+  report (`PBIR_ROLE_UNKNOWN` plus `PBIR_ROLE_REQUIRED_MISSING`). The full
+  role map was checked one by one against the official validator instead of
+  being guessed.
 
-- **El lector y el escritor del mismo servidor no se entendían.**
-  `pbi_list_visuals` devuelve los roles con el nombre PBIR (`Category`, `Y`) y
-  cada campo como un objeto; el generador esperaba roles lógicos y cadenas. Leer
-  una página para hacer otra parecida —el flujo más natural que hay— fallaba, y
-  si alguien extraía el `ref` a mano, el visual salía vacío. Ahora se aceptan
-  las dos formas.
+- **The server's own reader and writer didn't understand each other.**
+  `pbi_list_visuals` returns roles with the PBIR name (`Category`, `Y`) and
+  each field as an object; the generator expected logical roles and
+  strings. Reading a page to make a similar one —the most natural flow
+  there is— failed, and if someone extracted the `ref` by hand, the visual
+  came out empty. Both forms are now accepted.
 
-- **`interactions` estaba declarado, validado y era inservible.** Referencia
-  visuales por id, y los ids los genera el compilador: quien escribe el spec no
-  puede conocerlos. Todos los generadores del repositorio le pasaban `[]`, y por
-  eso nadie descubrió el defecto siguiente. Ahora cada visual se puede señalar
-  por su posición, por un `id` propio del spec o por su título.
+- **`interactions` was declared, validated, and useless.** It references
+  visuals by id, and ids are generated by the compiler: whoever writes the
+  spec can't know them. Every generator in the repository passed it `[]`,
+  which is why nobody found the next defect. Now each visual can be
+  targeted by its position, by a spec-level `id`, or by its title.
 
-- **Dos de los tres tipos de interacción no existían en PBIR.** `INTERACCIONES`
-  decía `("NoFilter", "Filter", "Highlight")`. El esquema oficial de
-  `page/2.1.0` dice `Default`, `DataFilter`, `HighlightFilter` y `NoFilter`.
-  `Filter` y `Highlight` producían una página que el esquema rechaza, y
-  `Default` no se ofrecía. Los nombres antiguos siguen valiendo como alias.
+- **Two of the three interaction types didn't exist in PBIR.**
+  `INTERACCIONES` said `("NoFilter", "Filter", "Highlight")`. The official
+  `page/2.1.0` schema says `Default`, `DataFilter`, `HighlightFilter` and
+  `NoFilter`. `Filter` and `Highlight` produced a page the schema rejects,
+  and `Default` wasn't offered. The old names still work as aliases.
 
-- **Una prueba `live` reventaba en vez de omitirse.** La condición de `skipif`
-  se evalúa al recolectar y el cuerpo volvía a buscar la instancia: si Power BI
-  Desktop se cerraba entre las dos cosas —en una suite de cuatro minutos,
-  pasa— salía un `StopIteration` pelado.
+- **A `live` test crashed instead of skipping.** The `skipif` condition is
+  evaluated at collection time and the body looked up the instance again:
+  if Power BI Desktop closed between the two —in a four-minute suite, it
+  happens— a bare `StopIteration` came out.
 
 ---
 
 ## [1.0.0-rc.8] — 2026-08-01
 
-**112 tools, 1169 pruebas.**
+**112 tools, 1169 tests.**
 
-Tres defectos que solo se ven **abriendo** el informe. Ninguno lo detecta un
-validador de esquema: el JSON es correcto en los tres casos.
+Three defects only visible by **opening** the report. None is detected by a
+schema validator: the JSON is correct in all three cases.
 
-### Corregido
+### Fixed
 
-- **El esqueleto generaba informes que Power BI se negaba a abrir.** Un informe
-  necesita un tema base *resuelto*, y son cuatro cosas que van juntas o no van:
-  la declaración en `themeCollection`, **`reportVersionAtImport` dentro de
-  ella**, la entrada en `resourcePackages` y el archivo en disco. Faltaban
-  todas. Power BI lo dice literalmente —«La propiedad necesaria
-  'reportVersionAtImport' no se incluyó»— pero solo al abrir.
+- **The skeleton generated reports Power BI refused to open.** A report
+  needs a *resolved* base theme, and that's four things that go together or
+  not at all: the `themeCollection` declaration, **`reportVersionAtImport`
+  inside it**, the `resourcePackages` entry, and the file on disk. All were
+  missing. Power BI says so literally —"The required property
+  'reportVersionAtImport' was not included"— but only on open.
 
-  El tema base ahora **lo genera el MCP** (`HorizunBase`) en vez de copiar el de
-  Microsoft: vendorizar `CY26SU05.json` en un repositorio Apache-2.0 no es
-  nuestro para hacerlo. Paleta neutra a propósito; la identidad propia se aplica
-  con `pbi_apply_theme`.
+  The base theme is now **generated by the MCP** (`HorizunBase`) instead of
+  copying Microsoft's: vendoring `CY26SU05.json` in an Apache-2.0
+  repository isn't ours to do. Neutral palette on purpose; the actual
+  brand identity is applied with `pbi_apply_theme`.
 
-- **`title` se imprimía sobre el lienzo.** En un spec, `title` identifica al
-  visual; en un elemento de composición no es una etiqueta que nadie quiera ver.
-  Salía «Titulo» sobre el título de una portada y habría salido «Logo Prodesa»
-  sobre un logo. Ahora los decorativos no lo muestran salvo `show_title: true`.
+- **`title` was being printed on the canvas.** In a spec, `title`
+  identifies the visual; on a composition element it's not a label anyone
+  wants to see. It came out as "Title" over a cover page's own title, and
+  would have come out as "Prodesa Logo" over a logo. Decorative elements
+  now only show it with `show_title: true`.
 
-- **Y al revés: pedir un título en una tarjeta no lo mostraba.** Se escribía el
-  texto pero no `show`, y el defecto de una tarjeta es *oculto*. Se pedía un
-  rótulo, no fallaba nada, y en pantalla no había rótulo.
+- **And the reverse: asking for a title on a card didn't show it.** The
+  text was written but not `show`, and the default for a card is *hidden*.
+  A label was requested, nothing failed, and there was no label on screen.
 
-### Añadido
+### Added
 
-- **Altura mínima automática en los textos.** Por debajo del piso que exige el
-  tamaño de fuente, Power BI mete barra de scroll y corta el texto. Se aplica la
-  fórmula del validador oficial —`max(18, ceil(pt × 25/16)) + relleno`—, se
-  corrige hacia arriba y **se avisa**: quien compone una página no tiene por qué
-  saber la fórmula.
-- **Formato de tarjeta desde el spec**: `value_font_size`, `bold_value`,
-  `value_color` y `show_category_label`, para que el número pese más que su
-  etiqueta y no se repita el mismo texto arriba y abajo. Sin opciones no se
-  toca nada: no se inventa formato que nadie encargó.
+- **Automatic minimum height for text.** Below the floor the font size
+  requires, Power BI adds a scrollbar and cuts off the text. The official
+  validator's formula is applied —`max(18, ceil(pt × 25/16)) + padding`—,
+  corrected upward, and **flagged**: whoever composes a page shouldn't need
+  to know the formula.
+- **Card formatting from the spec**: `value_font_size`, `bold_value`,
+  `value_color` and `show_category_label`, so the number carries more
+  weight than its label and the same text isn't repeated above and below.
+  With no options, nothing is touched: no formatting is invented that
+  nobody asked for.
 
 ---
 
 ## [1.0.0-rc.7] — 2026-08-01
 
-**112 tools, 1157 pruebas.** Corrige un `pbi_create_pbip_project` que generaba
-proyectos que Power BI Desktop no abría.
+**112 tools, 1157 tests.** Fixes a `pbi_create_pbip_project` that generated
+projects Power BI Desktop wouldn't open.
 
-### Corregido
+### Fixed
 
-**Al esqueleto le faltaban `.platform` y `definition/version.json`.** Sin ellos
-el TMDL parsea, el validador propio dice que todo está bien, y Desktop abre una
-ventana «Sin título» con el modelo vacío: ni carga ni explica por qué. Salió al
-abrir el proyecto recién creado, no en las pruebas — el modelo era correcto; lo
-que faltaba era del lado del informe, que `pbi_validate_tmdl` no mira.
+**The skeleton was missing `.platform` and `definition/version.json`.**
+Without them the TMDL parses, the internal validator says everything's
+fine, and Desktop opens an "Untitled" window with an empty model: it
+neither loads nor explains why. It surfaced by opening the freshly created
+project, not in the tests — the model was correct; what was missing was on
+the report side, which `pbi_validate_tmdl` doesn't look at.
 
-Arreglado de raíz, no solo añadiendo los dos archivos: **el generador ahora pasa
-el informe que escribe por el validador oficial de Microsoft** y aborta si hay
-errores. Generar un proyecto que no abre es peor que no generarlo. Si el CLI no
-está instalado se dice (`report_validation.checked: false`) en vez de darlo por
-bueno.
+Fixed at the root, not just by adding the two files: **the generator now
+runs the report it writes through Microsoft's official validator** and
+aborts if there are errors. Generating a project that won't open is worse
+than not generating it. If the CLI isn't installed, it says so
+(`report_validation.checked: false`) instead of assuming it's fine.
 
-Cada artefacto lleva su propio `logicalId`: dos artefactos no pueden compartir
-identidad.
+Each artifact carries its own `logicalId`: two artifacts can't share an
+identity.
 
-### Verificado de extremo a extremo
+### Verified end to end
 
-De dos rutas de archivo a un modelo que abre, sin escribir TMDL a mano:
-`PB5-ERP_COSTOS_REALES.csv` (449 filas, suma **$1.031.062,23**, coincidiendo al
-centavo con un cálculo independiente) y `PB5-EDI-CRONOGRAMA.xlsx` (20 columnas,
-fechas incluidas). TMDL válido, informe **`passed` sin un solo diagnóstico**, y
-abierto en Desktop.
+From two file paths to a model that opens, with no hand-written TMDL:
+`PB5-ERP_COSTOS_REALES.csv` (449 rows, sum **$1,031,062.23**, matching to
+the cent an independent calculation) and `PB5-EDI-CRONOGRAMA.xlsx` (20
+columns, dates included). Valid TMDL, report **`passed` with zero
+diagnostics**, and opened in Desktop.
 
 ---
 
 ## [1.0.0-rc.6] — 2026-08-01
 
-**112 tools, 1155 pruebas**, contrato congelado (todo lo nuevo es aditivo).
+**112 tools, 1155 tests**, contract frozen (everything new is additive).
 
-Esta versión sale de un caso real: construir dos tableros y romper el proyecto
-seis veces seguidas descubriendo a mano lo que el MCP debía haber dicho. El hilo
-que une todo lo de abajo es dejar de usar Power BI Desktop como detector de
-errores — llega al final, cuando ya se entregó.
+This release comes out of a real case: building two dashboards and breaking
+the project six times in a row, discovering by hand what the MCP should have
+said. The thread tying all of this together is no longer using Power BI
+Desktop as the error detector — it arrives at the end, once already
+delivered.
 
-### Corregido — una tabla que se creaba y no existía
+### Fixed — a table that got created and didn't exist
 
-**`pbi_create_calculated_table` escribía el archivo de la tabla pero no la
-declaraba en `model.tmdl`.** Sin la línea `ref table <nombre>`, la tabla está en
-disco y **no forma parte del modelo**: el `.tmdl` se ve perfecto, el proyecto
-abre sin quejarse, y todo lo que la use —una medida, un visual— aparece roto sin
-decir por qué.
+**`pbi_create_calculated_table` wrote the table's file but didn't declare it
+in `model.tmdl`.** Without the `ref table <name>` line, the table is on disk
+and **isn't part of the model**: the `.tmdl` looks perfect, the project opens
+without complaint, and anything using it —a measure, a visual— shows up
+broken without saying why.
 
-Se detectó al escribir la prueba de extremo a extremo del punto anterior, no
-usando la tool: precisamente el tipo de fallo que no se manifiesta hasta que
-alguien abre el informe y ve una página vacía.
+It was detected while writing the end-to-end test from the previous point,
+not by using the tool: exactly the kind of failure that doesn't manifest
+until someone opens the report and sees an empty page.
 
-Arreglado en tres sitios, porque uno solo no basta:
+Fixed in three places, because one alone isn't enough:
 
-- `pbi_create_calculated_table` y `pbi_add_table_from_file` declaran la tabla al
-  crearla, en la misma operación.
-- El validador gana dos reglas: **`tmdl_table_not_referenced`** (hay archivo y
-  no hay declaración) y **`tmdl_ref_table_missing`** (hay declaración y no hay
-  archivo). Las dos son errores, no avisos.
-- El fixture `sample_pbip` no declaraba su tabla, así que no representaba un
-  `.pbip` real y dejaba pasar justo este fallo. Ahora sí.
+- `pbi_create_calculated_table` and `pbi_add_table_from_file` now declare
+  the table when creating it, in the same operation.
+- The validator gains two rules: **`tmdl_table_not_referenced`** (there's a
+  file and no declaration) and **`tmdl_ref_table_missing`** (there's a
+  declaration and no file). Both are errors, not warnings.
+- The `sample_pbip` fixture didn't declare its table, so it didn't
+  represent a real `.pbip` and let exactly this failure slip through. Now
+  it does.
 
-### Añadido
+### Added
 
-- **`pbi_create_pbip_project`**: crea un proyecto `.pbip` vacío pero válido y lo
-  deja activo. Es lo que faltaba para armar un tablero **solo con rutas de
-  archivos**: crear el proyecto, cargarle los datos y componer las páginas sin
-  abrir Power BI Desktop hasta el final. Escribe el mínimo que Power BI acepta,
-  con la referencia entre informe y modelo en ruta **relativa** —una absoluta
-  ataría el proyecto a la máquina donde se creó— y con una página, porque un
-  informe sin ninguna no abre.
+- **`pbi_create_pbip_project`**: creates an empty but valid `.pbip` project
+  and leaves it active. It's what was missing to build a dashboard **from
+  file paths alone**: create the project, load the data into it, and
+  compose the pages without opening Power BI Desktop until the end. It
+  writes the minimum Power BI accepts, with the report↔model reference in a
+  **relative** path —an absolute one would tie the project to the machine
+  where it was created— and with one page, since a report with none won't
+  open.
 
-  No declara `sourceQueryCulture` a propósito: la cultura se fija en cada
-  consulta, que es lo único que no obliga a suponer cómo escribe los decimales
-  cada origen.
+  It doesn't declare `sourceQueryCulture` on purpose: culture is fixed per
+  query, which is the only thing that doesn't force an assumption about how
+  each source writes decimals.
 
-- **`pbi_add_table_from_file`**: carga un archivo al modelo recorriendo los
-  mismos pasos que una persona en Power Query —abrir, promover encabezados,
-  cambiar tipos, cargar— y con los nombres de paso que pone Power BI en
-  español (`Origen`, `Encabezados promovidos`, `Tipo cambiado`), para que la
-  consulta se pueda abrir y editar en el editor sin desentonar. Admite `.csv`,
-  `.txt`, `.tsv`, `.xlsx`, `.xlsm` y `.json` **sin dependencias nuevas**: un
-  `.xlsx` se lee como lo que es, un zip con XML.
+- **`pbi_add_table_from_file`**: loads a file into the model following the
+  same steps a person would in Power Query —open, promote headers, change
+  types, load— and with the step names Power BI uses in Spanish
+  (`Origen`, `Encabezados promovidos`, `Tipo cambiado`), so the query can
+  still be opened and edited in the editor without looking out of place.
+  Accepts `.csv`, `.txt`, `.tsv`, `.xlsx`, `.xlsm` and `.json` **with no new
+  dependencies**: an `.xlsx` is read as what it is, a zip with XML inside.
 
-  Tres decisiones que evitan por construcción los fallos de escribir la M a
-  mano:
+  Three decisions that avoid, by construction, the failures of writing M
+  by hand:
 
-  - **La cultura se deduce del archivo**, mirando cómo escribe los decimales, y
-    se emite siempre explícita. Contra el CSV real que motivó todo esto acierta
-    a la primera (`.` → `en-US`); a mano costó un refresh fallido y un contraste
-    contra el origen para descubrirlo.
-  - **Las fechas de Excel se detectan por su formato**, no por su valor. Excel
-    guarda `45715` y aparte un `numFmt` que dice que es una fecha; sin mirarlo,
-    una fecha se declara como entero y la carga revienta.
-  - **Lo escrito se valida antes de confirmarse.** Si el TMDL generado no pasara
-    `pbi_validate_tmdl`, se aborta. Automatizar el error sería peor que
-    cometerlo a mano.
+  - **Culture is inferred from the file**, looking at how it writes
+    decimals, and always emitted explicitly. Against the real CSV that
+    motivated all of this, it gets it right the first time (`.` → `en-US`);
+    doing it by hand cost a failed refresh and a contrast against the
+    source to figure it out.
+  - **Excel dates are detected by their format**, not their value. Excel
+    stores `45715` and, separately, a `numFmt` saying it's a date; without
+    checking it, a date gets declared as an integer and the load blows up.
+  - **What gets written is validated before it's committed.** If the
+    generated TMDL didn't pass `pbi_validate_tmdl`, it aborts. Automating
+    the mistake would be worse than making it by hand.
 
-  Sobre el cronograma real de 20 columnas acierta las 20, incluidas dos que
-  parecen fechas y no lo son porque mezclan texto (`NOD`): las deja como texto
-  en vez de forzarlas.
+  On the real 20-column schedule it gets all 20 right, including two that
+  look like dates and aren't because they mix in text (`NOD`): it leaves
+  them as text instead of forcing them.
 
-- **`pbi_validate_tmdl`**: comprueba si un modelo TMDL abrirá, sin abrir Power
-  BI Desktop. Dos capas: un lint estático en Python puro —funciona sin las DLL
-  de Analysis Services— y, si están disponibles, un parseo con
-  `TmdlSerializer`, **el mismo serializador que usa Power BI para abrir el
-  proyecto**. Cada hallazgo trae regla, severidad, archivo y línea.
-- **`pbi_open_in_desktop`**: abre un `.pbip` o `.pbix`, espera a que el motor
-  local sirva el modelo, identifica cuál de las instancias le corresponde —el
-  puerto es dinámico— y lo deja como modelo activo. Reutiliza la sesión si el
-  archivo ya estaba abierto y nunca cierra una ventana del usuario. Cierra el
-  ciclo de trabajo: ahora se puede comprobar que un proyecto **abre de verdad**
-  sin pedírselo a nadie.
+- **`pbi_validate_tmdl`**: checks whether a TMDL model will open, without
+  opening Power BI Desktop. Two layers: a static lint in pure Python —works
+  without the Analysis Services DLLs— and, if available, a parse with
+  `TmdlSerializer`, **the same serializer Power BI uses to open the
+  project**. Each finding carries a rule, severity, file and line.
+- **`pbi_open_in_desktop`**: opens a `.pbix` or `.pbip`, waits for the local
+  engine to serve the model, identifies which instance corresponds to it —
+  the port is dynamic— and leaves it as the active model. Reuses the
+  session if the file was already open and never closes a user's window.
+  Closes the work loop: it's now possible to check that a project **really
+  opens** without asking anyone.
 
-### Corregido
+### Fixed
 
-- **`pbi_validate_pbip_project` decía `valid: true` sobre proyectos que Power
-  BI Desktop se negaba a abrir.** Solo comprobaba que los archivos existieran;
-  nunca miraba dentro del TMDL. En una sesión real devolvió `valid: true` cinco
-  veces seguidas mientras Desktop abortaba la carga, así que Desktop acabó
-  siendo el único detector de errores disponible: caro y tarde. Ahora incorpora
-  la validación real y añade el bloque `tmdl` a la respuesta. Solo invalida
-  cuando **pudo** comprobarlo y salió mal: si no se pudo mirar, se dice.
+- **`pbi_validate_pbip_project` said `valid: true` for projects Power BI
+  Desktop refused to open.** It only checked that the files existed; it
+  never looked inside the TMDL. In a real session it returned `valid: true`
+  five times in a row while Desktop aborted loading, so Desktop ended up
+  being the only available error detector: expensive and late. It now
+  incorporates real validation and adds the `tmdl` block to the response.
+  It only invalidates when it **could** check and it came out wrong: if it
+  couldn't be inspected, it says so.
 
-### Las cinco trampas que ahora se detectan
+### The five traps now detected
 
-Salieron de romper un proyecto real cinco veces seguidas:
+They came out of breaking a real project five times in a row:
 
-1. **Propiedad de tabla después de sus hijos.** TMDL exige que las propiedades
-   del objeto vayan antes que sus medidas y columnas. Insertar medidas justo
-   debajo de `table X` deja huérfano lo que venía detrás. Power BI aborta con
-   «se detectó una sangría no válida».
-2. **Comentario `///` sobre una relación.** Se serializa como `description`, y
-   `SingleColumnRelationship` no tiene esa propiedad.
-3. **Medida con el mismo nombre que una columna de su tabla.** El parser lo
-   acepta; el motor lo rechaza al crear la base. Solo se ve al abrir.
-4. **Nombre de medida duplicado entre tablas.** En un modelo tabular el nombre
-   de medida es global, no por tabla.
-5. **`Table.TransformColumnTypes` sin cultura explícita** sobre un origen de
-   texto, con `sourceQueryCulture` no invariante. Es el más peligroso porque
-   **no da ningún error**: un CSV con punto decimal se lee como separador de
-   miles y los totales salen inflados. El informe abre, pinta y miente.
+1. **A table's property after its children.** TMDL requires an object's
+   properties to come before its measures and columns. Inserting measures
+   right below `table X` orphans whatever came after. Power BI aborts with
+   "invalid indentation detected."
+2. **A `///` comment above a relationship.** It gets serialized as
+   `description`, and `SingleColumnRelationship` has no such property.
+3. **A measure with the same name as a column in its table.** The parser
+   accepts it; the engine rejects it when creating the database. Only
+   visible on open.
+4. **A duplicate measure name across tables.** In a tabular model the
+   measure name is global, not per table.
+5. **`Table.TransformColumnTypes` with no explicit culture** over a text
+   source, with a non-invariant `sourceQueryCulture`. It's the most
+   dangerous one because **it produces no error at all**: a CSV with a
+   decimal point gets read as a thousands separator and the totals come out
+   inflated. The report opens, renders, and lies.
 
-El aviso 5 solo se emite cuando el origen entrega texto (`Csv.Document`,
-`Json.Document`…). Excel y las bases de datos devuelven valores ya tipados: ahí
-la cultura no cambia nada y avisar sería ruido.
+Warning 5 is only emitted when the source delivers text (`Csv.Document`,
+`Json.Document`…). Excel and databases return already-typed values: there,
+culture changes nothing, and warning about it would be noise.
 
-### Encontrado al pasar el validador por los 23 proyectos del equipo
+### Found by running the validator over the team's 23 projects
 
-Tres clases de proyecto que el validador trataba mal, y una que ya venía rota:
+Three classes of project the validator handled poorly, and one that was
+already broken:
 
-- **`.pbip` de solo informe** (conexión en vivo a un dataset publicado, o
-  convertido con `include_model=false`). Es legítimo y no tiene TMDL que
-  validar. Antes salía como ruta rota; ahora se explica como lo que es
-  (`tmdl_report_only_project`), que no es lo mismo que un fallo.
-- **Modelos en formato `model.bim`** (TMSL/JSON): es el formato por defecto de
-  un `.pbip` sin el preview de TMDL, o sea **la mayoría**. Se quedaban sin
-  evaluar. Ahora se normalizan a la misma forma y se les aplican los chequeos
-  semánticos, que no dependen del formato. Los estructurales no aplican: en un
-  JSON no hay sangría que romper.
-- **`create_calculated_table` perdía el tipo de columna en silencio.** Leía
-  solo `data_type`; con `dataType` —como se llama la propiedad en TMDL y en el
-  esquema JSON de la tool— caía al defecto `string`. Una columna numérica se
-  escribía como texto y las agregaciones dejaban de funcionar sin que nada
-  fallara. Ahora se aceptan las dos grafías y **una clave desconocida se
-  rechaza** en vez de degradar el tipo: un typo no puede costar una tabla.
+- **Report-only `.pbip`** (live connection to a published dataset, or
+  converted with `include_model=false`). It's legitimate and has no TMDL to
+  validate. It used to come out as a broken path; now it's explained for
+  what it is (`tmdl_report_only_project`), which isn't the same as a
+  failure.
+- **Models in `model.bim` format** (TMSL/JSON): the default format of a
+  `.pbip` without the TMDL preview, i.e. **most of them**. They used to go
+  unevaluated. Now they're normalized to the same shape and the semantic
+  checks apply, since those don't depend on the format. The structural ones
+  don't apply: there's no indentation to break in a JSON.
+- **`create_calculated_table` silently lost the column type.** It only read
+  `data_type`; with `dataType` —which is how the property is named in TMDL
+  and in the tool's JSON schema— it fell back to the default `string`. A
+  numeric column got written as text and aggregations quietly stopped
+  working. Now both spellings are accepted and **an unknown key is
+  rejected** instead of degrading the type: a typo can't cost a table.
 
-Resultado del barrido: 23 de 23 proyectos evaluados, **cero errores**, un único
-aviso repetido (`tmdl_transform_without_culture` en `PowerBIMTemplate`, que lee
-de `Json.Document` bajo `sourceQueryCulture: es-CO`).
+Sweep result: 23 of 23 projects evaluated, **zero errors**, a single
+repeated warning (`tmdl_transform_without_culture` in `PowerBIMTemplate`,
+which reads from `Json.Document` under `sourceQueryCulture: es-CO`).
 
-### Lo que sigue sin poder comprobarse estáticamente
+### What still can't be checked statically
 
-Documentado en la propia respuesta (`limitations`), no escondido: un blanco o un
-duplicado en la columna del lado «uno» de una relación depende de los datos, no
-del TMDL, y solo aparece al refrescar. Para eso está `pbi_refresh_model`.
+Documented in the response itself (`limitations`), not hidden: a blank or
+duplicate in the "one" side column of a relationship depends on the data,
+not the TMDL, and only shows up on refresh. That's what `pbi_refresh_model`
+is for.
 
 ---
 
 ## [1.0.0-rc.5] — 2026-07-31
 
-**108 tools, 1097 pruebas**, contrato congelado. Integra tres correcciones que
-salieron de tareas en segundo plano y refuerza el contrato de tipos de visual.
+**108 tools, 1097 tests**, contract frozen. Integrates three fixes that came
+out of background tasks and strengthens the visual-type contract.
 
-### Corregido
+### Fixed
 
-- **`TYPE_MAP` ahora se DERIVA en minúsculas** (`{real.lower(): real}`) en vez
-  de escribirse a mano. Antes se corrigió bajando las claves una a una, lo que
-  dejaba el defecto a un descuido de distancia: bastaba añadir una clave en
-  camelCase para volver a anunciar un tipo que se rechaza. Ahora es imposible
-  por construcción.
-- **Se anunciaba menos de lo que se acepta**: el mensaje de error del factory,
-  el hint del validador y `pbi_page_building_blocks` listaban solo los
-  `visualType` reales, ocultando los alias cómodos (`matrix`, `barChart`,
-  `button`). Los tres beben ahora de `SUPPORTED`, y hay pruebas que comprueban
-  que no puedan divergir.
-- **La prueba `live` de DAX no se ejecutaba nunca**: importaba nombres que ya no
-  existen dentro de un `except Exception: return False`, así que el ImportError
-  se leía como "no hay Desktop abierto" y salía omitida incluso con un modelo
-  cargado. El import pasa a nivel de módulo: renombrar algo rompe la
-  recolección en vez de disfrazarse de omisión.
-- **La prueba de idempotencia en vuelo era intermitente**: se coordinaba por
-  reloj (`sleep` de 0,15 s contra una espera de 1 s) y bajo la carga de la suite
-  completa ese margen no siempre se cumplía. Ahora los dos hilos se citan por
-  eventos, con dos barreras, y el resultado no depende de lo que tarde nadie.
+- **`TYPE_MAP` is now DERIVED in lowercase** (`{real.lower(): real}`) instead
+  of hand-written. It was previously fixed by lowering the keys one by one,
+  which left the defect one slip away: adding a camelCase key was enough to
+  re-advertise a type that gets rejected. Now it's impossible by
+  construction.
+- **Less was advertised than what's accepted**: the factory's error message,
+  the validator's hint, and `pbi_page_building_blocks` only listed the real
+  `visualType` values, hiding the convenient aliases (`matrix`, `barChart`,
+  `button`). All three now draw from `SUPPORTED`, and there are tests that
+  check they can't drift apart.
+- **The `live` DAX test never actually ran**: it imported names that no
+  longer exist inside an `except Exception: return False`, so the
+  ImportError was read as "no Desktop open" and it came out skipped even
+  with a model loaded. The import now happens at module level: renaming
+  something breaks collection instead of disguising itself as a skip.
+- **The in-flight idempotency test was flaky**: it coordinated by clock
+  (a 0.15s `sleep` against a 1s wait) and under the full suite's load that
+  margin wasn't always met. Now the two threads rendezvous via events, with
+  two barriers, and the result no longer depends on how long anything
+  takes.
 
 ---
 
 ## [1.0.0-rc.4] — 2026-07-31
 
-**108 tools, 1008 pruebas** (2 omitidas), contrato congelado.
+**108 tools, 1008 tests** (2 skipped), contract frozen.
 
-### Añadido
+### Added
 
-- **Elementos de composición**: `textbox`, `shape`, `image`, `actionButton` y
-  `pageNavigator`. Hasta ahora el servidor solo sabía crear visuales de datos,
-  así que no podía hacer una portada ni un menú de navegación. No llevan
-  consulta: su contenido se define en `options` (texto, relleno, forma, página
-  destino), y pedirles campos es un error explícito en vez de un visual vacío.
-  Las estructuras se extrajeron de informes reales, no de la documentación.
-- **Identidad visual**: `pbi_list_themes` y `pbi_apply_theme`, con tres paletas
-  verificadas con el validador de la skill `dataviz` (banda de luminosidad,
-  croma, separación bajo protanopia/deuteranopia/tritanopia y contraste). Los
-  colores de estado son fijos en los tres temas: el semáforo significa lo mismo
-  se pinte donde se pinte, y un color de estado nunca se reutiliza como serie.
-  Aplicar un tema escribe el JSON, lo declara en `themeCollection` y lo registra
-  en `resourcePackages`: sin las tres cosas Desktop lo ignora en silencio.
-- La vista previa HTML dibuja los elementos de composición **con su aspecto**
-  (color, texto, botones) en vez de como cajas de alambre, de modo que se puede
-  juzgar una portada sin abrir Power BI Desktop.
+- **Composition elements**: `textbox`, `shape`, `image`, `actionButton` and
+  `pageNavigator`. Until now the server only knew how to create data
+  visuals, so it couldn't build a cover page or a navigation menu. They
+  carry no query: their content is defined in `options` (text, fill, shape,
+  target page), and asking them for fields is an explicit error instead of
+  an empty visual. The structures were extracted from real reports, not
+  from documentation.
+- **Visual identity**: `pbi_list_themes` and `pbi_apply_theme`, with three
+  palettes verified with the `dataviz` skill's validator (luminosity band,
+  chroma, separation under protanopia/deuteranopia/tritanopia, and
+  contrast). Status colors are fixed across all three themes: the
+  traffic-light means the same wherever it's painted, and a status color is
+  never reused as a series. Applying a theme writes the JSON, declares it in
+  `themeCollection`, and registers it in `resourcePackages`: without all
+  three, Desktop silently ignores it.
+- The HTML preview now draws composition elements **with their actual
+  look** (color, text, buttons) instead of as wireframe boxes, so a cover
+  page can be judged without opening Power BI Desktop.
 
-### Corregido
+### Fixed
 
-- **`TYPE_MAP` declaraba claves en camelCase y la búsqueda las pasaba a
-  minúsculas**: `cardVisual`, `tableEx` y `pivotTable` se anunciaban como
-  soportados y se rechazaban al usarlos, con un mensaje que los listaba como
-  válidos. Ahora hay una prueba que recorre todos los tipos anunciados.
-- **El detector de layout trataba los elementos de composición como gráficos**:
-  una portada normal producía una veintena de avisos falsos —un fondo *debe*
-  estar debajo de todo, y un botón no es "demasiado pequeño para mostrar datos"—
-  y entre ellos se perdía el aviso de verdad. Ahora el solape y el tamaño mínimo
-  solo aplican a los visuales de datos; el orden Z se sigue comprobando en todos.
+- **`TYPE_MAP` declared keys in camelCase and the lookup lowercased them**:
+  `cardVisual`, `tableEx` and `pivotTable` were advertised as supported and
+  rejected when used, with an error message that listed them as valid. Now
+  there's a test that walks every advertised type.
+- **The layout detector treated composition elements as charts**: a normal
+  cover page produced about twenty false warnings —a background *must* be
+  below everything, and a button isn't "too small to show data"— and among
+  them the real warning got lost. Now overlap and minimum size only apply
+  to data visuals; Z-order is still checked on all of them.
 
-### Añadido (conversión)
+### Added (conversion)
 
-- **Conversión `.pbix` → `.pbip`**, en archivo suelto o carpeta en lote:
-  `pbi_convert_pbix_to_pbip`, `pbi_inspect_pbix` y `pbi_list_convertible_pbix`.
-  - **Informe**: si el `.pbix` ya guarda PBIR (Desktop reciente lo hace) se copia
-    byte a byte; si trae el `Report/Layout` heredado se traduce. La traducción
-    resuelve los alias de tabla a nombres de entidad, fusiona `projections` con
-    `prototypeQuery.Select`, convierte los enums numéricos a cadena y pasa
-    `OrderBy` a `sortDefinition`. Las equivalencias se derivaron comparando un
-    informe real guardado por Desktop en los dos formatos.
-  - **Modelo**: el stream `DataModel` es un backup ABF comprimido con XPress9 y
-    no se puede leer sin el motor, así que el `.pbix` se abre en Power BI
-    Desktop y se serializa a TMDL con el `TmdlSerializer` oficial. Se reutiliza
-    la sesión si el informe ya está abierto y solo se cierra lo que abrió la
-    tool. El `.pbix` original nunca se modifica.
-  - La conversión reporta lo que **no** tiene equivalente (`dropped`) en vez de
-    perderlo en silencio: hoy, los marcadores del formato heredado.
-  - Verificado sobre 72 informes heredados reales: 6705 documentos válidos
-    contra los esquemas oficiales, y proyectos que Power BI Desktop abre.
+- **`.pbix` → `.pbip` conversion**, single file or batch folder:
+  `pbi_convert_pbix_to_pbip`, `pbi_inspect_pbix` and `pbi_list_convertible_pbix`.
+  - **Report**: if the `.pbix` already stores PBIR (recent Desktop versions
+    do), it's copied byte for byte; if it carries the legacy `Report/Layout`,
+    it's translated. The translation resolves table aliases to entity
+    names, merges `projections` with `prototypeQuery.Select`, converts
+    numeric enums to strings, and turns `OrderBy` into `sortDefinition`. The
+    equivalences were derived by comparing a real report saved by Desktop in
+    both formats.
+  - **Model**: the `DataModel` stream is an ABF backup compressed with
+    XPress9 and can't be read without the engine, so the `.pbix` is opened
+    in Power BI Desktop and serialized to TMDL with the official
+    `TmdlSerializer`. The session is reused if the report is already open,
+    and only what the tool opened gets closed. The original `.pbix` is
+    never modified.
+  - The conversion reports what has **no** equivalent (`dropped`) instead of
+    silently losing it: today, legacy-format bookmarks.
+  - Verified on 72 real legacy reports: 6705 valid documents against the
+    official schemas, and projects Power BI Desktop opens.
 
-### Corregido
+### Fixed
 
-- El serializador de TMDL corre sobre .NET Framework, que rechaza rutas de 260
-  caracteres o más aunque Windows las admita. Ahora se serializa en un temporal
-  corto y se traslada al destino con Python.
-- Power BI Desktop tampoco abre un `.pbip` con rutas largas
-  (`PBIProjectUtils.EnsureNotLong`). La conversión lo comprueba **antes** de
-  escribir y aborta indicando cuánto sobra, en vez de dejar un proyecto que no
-  abre.
-- El descubrimiento de instancias daba por listo un motor que aún no había
-  cargado el modelo: Desktop crea la base antes de poblarla y había una ventana
-  de varios segundos en la que el TMDL habría salido sin tablas.
+- The TMDL serializer runs on .NET Framework, which rejects paths of 260
+  characters or more even if Windows allows them. Now it serializes to a
+  short temp path and moves it to the destination with Python.
+- Power BI Desktop also won't open a `.pbip` with long paths
+  (`PBIProjectUtils.EnsureNotLong`). The conversion checks this **before**
+  writing and aborts stating how much is over, instead of leaving a project
+  that won't open.
+- Instance discovery considered an engine ready before it had actually
+  loaded the model: Desktop creates the database before populating it, and
+  there was a window of several seconds during which the TMDL would have
+  come out with no tables.
 
-### Desbloqueado — esquemas que Microsoft no publica
+### Unblocked — schemas Microsoft doesn't publish
 
-Power BI escribe versiones de esquema antes de publicarlas: `visualContainer`
-2.10.0 y 2.11.0 dan **404**. Eso bloqueaba **toda** escritura sobre cualquier
-informe guardado con una versión reciente de Desktop, que es casi cualquiera.
+Power BI writes schema versions before publishing them: `visualContainer`
+2.10.0 and 2.11.0 return **404**. That was blocking **every** write on any
+report saved with a recent Desktop version, which is nearly all of them.
 
-Ahora se comprueba contra la versión anterior de la misma familia y se perdona
-solo lo que una versión posterior pudo **añadir** (una propiedad nueva, un valor
-nuevo de enumeración). Un tipo equivocado o un campo obligatorio ausente sigue
-bloqueando. Medido sobre **275 archivos reales** que declaran 2.10 u 2.11: en
-todos, lo único que discrepaba contra 2.7.0 era la cadena de versión del propio
-`$schema`. La aproximación no cruza versiones mayores, y sin ninguna versión
-anterior en caché se mantiene el bloqueo. El único esquema sin publicar que
-queda sin alternativa es `bookmarks/` (plural), que algunos informes declaran
-para el índice de marcadores; los que este servidor escribe —`bookmark/2.1.0`
-y `bookmarksMetadata/1.0.0`— sí están publicados, así que crear marcadores se
-comprueba entero.
+It's now checked against the previous version of the same family, and only
+what a later version could have **added** is forgiven (a new property, a
+new enum value). A wrong type or a missing required field still blocks.
+Measured on **275 real files** declaring 2.10 or 2.11: in all of them, the
+only discrepancy against 2.7.0 was the `$schema` string's own version. The
+approach doesn't cross major versions, and with no earlier version cached,
+the block stays in place. The only unpublished schema left with no
+fallback is `bookmarks/` (plural), which some reports declare for the
+bookmark index; the ones this server writes —`bookmark/2.1.0` and
+`bookmarksMetadata/1.0.0`— are published, so creating bookmarks is checked
+in full.
 
-### Añadido — autoría que faltaba
+### Added — missing authoring
 
-- **Formato condicional** (`pbi_set_conditional_format`): degradado de dos o
-  tres paradas sobre fondo, texto o barras. Es lo que convierte una matriz de
-  números en un mapa de calor. Con selector comodín, o el color solo pintaría
-  la primera fila.
-- **Filtros e interacciones**: antes se rechazaban por no saber serializarlos.
-  La trampa del formato es que el filtro tiene dos mitades con reglas distintas
-  —`field` referencia la tabla por nombre y la consulta interna por alias—, y
-  escribir el nombre en ambas produce un filtro que Power BI ignora sin avisar.
-- **Modelo semántico más allá de las medidas**: `pbi_create_calculated_column`,
-  `pbi_create_relationship` y `pbi_create_hierarchy`.
-- **Recursos**: `pbi_add_image_resource` y `pbi_list_report_resources`. Copiar
-  una imagen sin declararla la deja invisible para Power BI, y declararla sin
-  copiarla deja el visual vacío: los dos casos son mudos al abrir el informe.
-- **`pbi_propose_dashboard`**: clasifica el modelo —qué columna es un estado,
-  cuál una fecha, cuáles forman una familia comparable— y devuelve diseños
-  completos con su porqué y un spec aplicable, en vez de esperar instrucciones.
-- **`pbi_profile_data`**: perfila los VALORES, no la estructura. Detecta
-  porcentajes fuera de 0-100, columnas vacías o de un solo valor. Sobre un
-  modelo real encontró en segundos un `pct_codificado` que valía −800.
-- **Marcadores**: `pbi_create_bookmark`, `pbi_list_bookmarks` y
-  `pbi_delete_bookmark`. Se escribe el archivo Y el índice, porque sin índice
-  Power BI no lo muestra aunque el archivo exista. Dentro de un marcador el
-  filtro usa la clave `expression`, no `field` como en `filterConfig`: son
-  estructuras parecidas con nombres distintos, y usar la de al lado produce un
-  marcador que no restaura nada.
-- **`pbi_set_storage_mode`**: import / directQuery / dual. Devuelve el modo
-  anterior y cuántas particiones cambiaron, porque es un cambio que hay que
-  poder deshacer sabiendo exactamente qué se tocó, y avisa de que DirectQuery
-  exige consultas plegables y desactiva las columnas calculadas.
-- **`pbi_create_calculated_table`**: deduce las columnas EJECUTANDO el DAX
-  contra el modelo abierto, porque TMDL las exige declaradas y no se pueden
-  adivinar leyendo la expresión.
+- **Conditional formatting** (`pbi_set_conditional_format`): a two- or
+  three-stop gradient on background, text or bars. This is what turns a
+  matrix of numbers into a heat map. With a wildcard selector, otherwise the
+  color would only paint the first row.
+- **Filters and interactions**: previously rejected because we didn't know
+  how to serialize them. The catch with the filter is that it has two
+  halves with different rules —`field` references the table by name and
+  the internal query by alias—, and writing the name in both produces a
+  filter Power BI silently ignores.
+- **Semantic model beyond measures**: `pbi_create_calculated_column`,
+  `pbi_create_relationship` and `pbi_create_hierarchy`.
+- **Resources**: `pbi_add_image_resource` and `pbi_list_report_resources`.
+  Copying an image without declaring it leaves it invisible to Power BI, and
+  declaring it without copying it leaves the visual empty: both cases are
+  silent when the report opens.
+- **`pbi_propose_dashboard`**: classifies the model —which column is a
+  status, which one a date, which ones form a comparable family— and
+  returns complete designs with their reasoning and an applicable spec,
+  instead of waiting for instructions.
+- **`pbi_profile_data`**: profiles the VALUES, not the structure. Detects
+  percentages outside 0-100, empty or single-value columns. On a real model
+  it found in seconds a `pct_codificado` valued at −800.
+- **Bookmarks**: `pbi_create_bookmark`, `pbi_list_bookmarks` and
+  `pbi_delete_bookmark`. Both the file AND the index get written, because
+  without the index Power BI won't show it even if the file exists. Inside
+  a bookmark, the filter uses the key `expression`, not `field` as in
+  `filterConfig`: they're similar structures with different names, and
+  using the wrong one produces a bookmark that restores nothing.
+- **`pbi_set_storage_mode`**: import / directQuery / dual. Returns the
+  previous mode and how many partitions changed, because it's a change that
+  must be undoable knowing exactly what was touched, and it warns that
+  DirectQuery requires foldable queries and disables calculated columns.
+- **`pbi_create_calculated_table`**: infers the columns by EXECUTING the DAX
+  against the open model, because TMDL requires them declared and they
+  can't be guessed by reading the expression.
 
-### Corregido — precedencias y dialectos
+### Fixed — precedence and dialects
 
-- **La validación de campos miraba el modelo equivocado**: prefería el modelo
-  en vivo sobre el TMDL del proyecto, así que bastaba tener otro `.pbix` abierto
-  en Desktop para que las medidas recién escritas se dieran por inexistentes.
-- **Dos dialectos de spec incompatibles**: se validaba con
-  `{schema_version, page}` y se aplicaba con `{page_name}`. Un spec que pasaba
-  la validación rebotaba al crearlo, con un error que ni mencionaba que hubiera
-  dos formatos. Ahora `pbi_create_page_from_spec` acepta los dos.
+- **Field validation was looking at the wrong model**: it preferred the
+  live model over the project's TMDL, so having another `.pbix` open in
+  Desktop was enough to make freshly written measures look nonexistent.
+- **Two incompatible spec dialects**: validation used
+  `{schema_version, page}` and applying used `{page_name}`. A spec that
+  passed validation bounced when creating it, with an error that didn't
+  even mention there were two formats. Now `pbi_create_page_from_spec`
+  accepts both.
 
 ---
 
 ## [1.0.0-rc.3] — 2026-07-31
 
-**90 tools, 859 pruebas** (2 omitidas), contrato congelado.
+**90 tools, 859 tests** (2 skipped), contract frozen.
 
-### Añadido
+### Added
 
-- Distribución como plugin local de **Codex** y **Claude Code**, con manifiestos
-  nativos, skill de instalación y preparación automática del runtime aislado.
-- Arranque de instalación por MCP: no exige descargar, registrar ni ejecutar un
-  binario propio. Python sigue siendo necesario para acceder a Power BI Desktop
-  y a archivos locales.
+- Distribution as a local **Codex** and **Claude Code** plugin, with native
+  manifests, an install skill, and automatic setup of the isolated runtime.
+- MCP-driven install bootstrapping: no need to download, register or run a
+  dedicated binary. Python is still needed to access Power BI Desktop and
+  local files.
 
-### Cambiado
+### Changed
 
-- Licencia del proyecto a **Apache License 2.0**, con `NOTICE` y metadatos de
-  paquete coherentes. Los binarios de Microsoft siguen sin redistribuirse.
-- Versión declarada: `1.0.0-rc.3` visible, `1.0.0rc3` en PEP 440.
+- Project license to **Apache License 2.0**, with a consistent `NOTICE` and
+  package metadata. Microsoft binaries are still not redistributed.
+- Declared version: `1.0.0-rc.3` visible, `1.0.0rc3` in PEP 440.
 
 ---
 
 ## [1.0.0-rc.2] — 2026-07-31
 
-Sustituye a `1.0.0-rc.1`, cuya matriz de CI estaba en rojo. **90 tools, 854 pruebas** (2 omitidas), contrato congelado.
+Replaces `1.0.0-rc.1`, whose CI matrix was red. **90 tools, 854 tests** (2 skipped), contract frozen.
 
-### Corregido
+### Fixed
 
-- **El contract check dependía de la versión de Python.** `test_contract_matches_golden` fallaba en 3.10 y pasaba en 3.13, reportando las 90 tools como «descripción modificada» sin que nada del producto hubiera cambiado.
+- **The contract check depended on the Python version.** `test_contract_matches_golden` failed on 3.10 and passed on 3.13, reporting the 90 tools as having a "modified description" with nothing about the product having changed.
 
-  Python 3.13 cambió cómo se guardan los docstrings ([gh-81283](https://github.com/python/cpython/issues/81283)): desde esa versión el compilador les quita la sangría. Las descripciones de las tools **son** sus docstrings, y el golden se generó con 3.14, así que en 3.10 sobraba exactamente la sangría (`pbi_list_tables` 130 → 138 bytes).
+  Python 3.13 changed how docstrings are stored ([gh-81283](https://github.com/python/cpython/issues/81283)): from that version on, the compiler strips their indentation. The tools' descriptions **are** their docstrings, and the golden was generated with 3.14, so on 3.10 there was exactly that extra indentation left over (`pbi_list_tables` 130 → 138 bytes).
 
-  El contrato normaliza ahora con `inspect.cleandoc` antes de congelar y de comparar. El golden no cambia ni un byte: lo que cambia es que 3.10 produzca lo mismo. `requires-python = ">=3.10"` se conserva — el producto sí soporta 3.10; el defecto estaba en cómo se congelaba el contrato.
+  The contract now normalizes with `inspect.cleandoc` before freezing and comparing. The golden doesn't change a single byte: what changes is that 3.10 now produces the same thing. `requires-python = ">=3.10"` is kept — the product does support 3.10; the defect was in how the contract was frozen.
 
-- Las acciones del workflow suben a `checkout@v7`, `setup-python@v7`, `setup-node@v7` y `upload-artifact@v7`: las anteriores corren sobre un runtime Node que el runner marca como obsoleto.
+- Workflow actions bumped to `checkout@v7`, `setup-python@v7`, `setup-node@v7` and `upload-artifact@v7`: the previous ones run on a Node runtime the runner flags as deprecated.
 
-### Cambiado
+### Changed
 
-- Versión declarada: `1.0.0-rc.2` visible, `1.0.0rc2` en PEP 440.
+- Declared version: `1.0.0-rc.2` visible, `1.0.0rc2` in PEP 440.
 
 ---
 
 ## [1.0.0-rc.1] — 2026-07-31
 
-Primera candidata pública. 90 tools, contrato congelado.
+First public candidate. 90 tools, contract frozen.
 
-> **Sustituida por `1.0.0-rc.2`**: se publicó con la matriz de CI en rojo (`test (3.10)` fallaba y `build` quedaba saltado). El tag y su evidencia se conservan.
+> **Replaced by `1.0.0-rc.2`**: it was published with a red CI matrix (`test (3.10)` failed and `build` was skipped). The tag and its evidence are kept.
 
-### Añadido
+### Added
 
-- **Actualización real de páginas** (C2–C4). `apply_page_spec` sobre una página existente no hacía nada y devolvía éxito. Ahora despacha por desenlace explícito —`create`, `update`, `no_change`, `conflict`—, conserva el id de la página y el de cada visual equivalente, y ofrece `sync_mode` (`merge` por defecto, `replace` opcional).
-- **Duplicación segura** (E4). `duplicate_page` copiaba visuales con ids nuevos sin remapear nada: interacciones, grupos y drillthrough seguían apuntando a la página original. Ahora se construye el mapa completo `old_id → new_id` y un id que no se pueda remapear **bloquea** con `unsupported_page_structure`.
-- **Recuperación desde journal** (`pbi_recover_from_journal`) con cinco estados, verificación byte a byte y recreación de directorios padre.
-- **Retención de backups** (`pbi_purge_backups`), que cierra **R5**. Dry-run por defecto, raíz validada, solo journals reconocibles, enlaces simbólicos no seguidos, y siempre se conservan el más reciente y todos los pendientes.
-- **Validador oficial de Microsoft** (E3.2) como segunda capa: `@microsoft/powerbi-report-authoring-cli@0.1.4`, offline, con comparación pre/post de diagnósticos.
-- **Fixture PBIR representativo** (`tests/fixtures/rich.py`): interacciones, marcadores, drillthrough, visual personalizado, referencia rota, CRLF y esquema no publicado. Sintético y anonimizado.
+- **Real page updates** (C2–C4). `apply_page_spec` on an existing page did nothing and reported success. It now dispatches by explicit outcome —`create`, `update`, `no_change`, `conflict`—, keeps the page's id and each equivalent visual's id, and offers `sync_mode` (`merge` by default, `replace` optional).
+- **Safe duplication** (E4). `duplicate_page` copied visuals with new ids without remapping anything: interactions, groups and drillthrough kept pointing at the original page. Now the full `old_id → new_id` map is built, and an id that can't be remapped **blocks** with `unsupported_page_structure`.
+- **Recovery from journal** (`pbi_recover_from_journal`) with five states, byte-for-byte verification and parent directory recreation.
+- **Backup retention** (`pbi_purge_backups`), which closes **R5**. Dry-run by default, validated root, only recognizable journals, symlinks not followed, and the most recent one plus all pending ones are always kept.
+- **Microsoft's official validator** (E3.2) as a second layer: `@microsoft/powerbi-report-authoring-cli@0.1.4`, offline, with pre/post diagnostic comparison.
+- **Representative PBIR fixture** (`tests/fixtures/rich.py`): interactions, bookmarks, drillthrough, custom visual, broken reference, CRLF and an unpublished schema. Synthetic and anonymized.
 - `docs/DUAL_MODE.md`, `docs/VALIDATION.md`, `docs/RELEASE_CHECKLIST.md`, `CONTRIBUTING.md`.
 
-### Corregido
+### Fixed
 
-- **Atomicidad de workflows** (D). `repair_broken_references` abría una transacción por visual **y capturaba la excepción para continuar**; `normalize_report`, una por página. Y `__exit__` llamaba a `commit()` sin protección: si el commit fallaba, la excepción salía **sin revertir**.
-- **Rotación del log** (N). `RotatingFileHandler` escupía un traceback por stderr en mitad de `doctor` y del contract check, que salían con código 0.
-- **Limpieza de directorios tras el commit**: entre la escritura y la limpieza el informe quedaba inválido. Movida dentro de la transacción; el rollback recrea los padres.
-- **`_pages_metadata` propagaba un `pages.json` sin `$schema`** en lugar de garantizarlo.
-- **DLLs sin fijar** (J3). `latest_stable()` se tragaba la última versión sin hash, y extraía sobre `libs/`: un fallo a medias dejaba una mezcla de dos versiones.
+- **Workflow atomicity** (D). `repair_broken_references` opened one transaction per visual **and caught the exception to keep going**; `normalize_report`, one per page. And `__exit__` called `commit()` unprotected: if the commit failed, the exception escaped **without rolling back**.
+- **Log rotation** (N). `RotatingFileHandler` was spewing a traceback to stderr in the middle of `doctor` and the contract check, which exited with code 0 anyway.
+- **Directory cleanup after commit**: between the write and the cleanup, the report was left invalid. Moved inside the transaction; rollback recreates the parents.
+- **`_pages_metadata` was propagating a `pages.json` without `$schema`** instead of guaranteeing it.
+- **Unpinned DLLs** (J3). `latest_stable()` swallowed the latest version with no hash, and extracted onto `libs/`: a partial failure left a mix of two versions.
 
-### Limitaciones conocidas
+### Known limitations
 
-- `visualContainer/2.10.0` y `bookmarks/2.0.0` **no están publicados** por Microsoft (404). Ni el validador interno ni el CLI oficial pueden comprobarlos; las escrituras sobre archivos que los declaren se bloquean. **G10 queda como excepción documentada.**
-- `mode="both"` **bloqueado**; R15 abierto.
-- `filters` e `interactions` del page spec se **rechazan** con `unsupported_feature`.
+- `visualContainer/2.10.0` and `bookmarks/2.0.0` **are not published** by Microsoft (404). Neither the internal validator nor the official CLI can check them; writes on files declaring them are blocked. **G10 remains a documented exception.**
+- `mode="both"` **blocked**; R15 open.
+- `filters` and `interactions` in the page spec are **rejected** with `unsupported_feature`.
 
 ---
 
-## [1.0.0] — 2026-07-30 (interna, no publicada)
+## [1.0.0] — 2026-07-30 (internal, not published)
 
-Endurecimiento previo a la publicación: contrato de planes, idempotencia,
-honestidad de la API, redacción de secretos y empaquetado.
+Hardening before publication: plan contract, idempotency, API honesty,
+secret redaction and packaging.
 
-### Corregido — Planes e idempotencia
+### Fixed — Plans and idempotency
 
-- **Contrato único y versionado de planes** (`services/plan_contract.py`). `pbi_apply_page_spec(dry_run=True)` producía un plan que `pbi_apply_plan` no sabía aplicar: sin `affected_files` (`KeyError: 'files'`) y con una huella de *argumentos* en el campo de la huella de *estado*. El aplicador ahora despacha por `operation` y el sobre describe los bytes exactos que se escribirán. Un sobre de versión desconocida se rechaza con `plan_version_unsupported`.
-- **Idempotencia real** (`services/idempotency.py`). Estaba documentada pero no implementada: nadie llamaba a `comprobar_request`/`guardar_resultado` y `guard()` inventaba un `request_id` en cada llamada. Ahora hay cuatro estados (`in_flight`, `succeeded`, `failed`, `compensated`), registro persistente con escritura atómica, y `request_id` opcional en las 34 tools que mutan.
+- **Single, versioned plan contract** (`services/plan_contract.py`). `pbi_apply_page_spec(dry_run=True)` produced a plan `pbi_apply_plan` didn't know how to apply: no `affected_files` (`KeyError: 'files'`) and with an *argument* fingerprint in the field meant for the *state* fingerprint. The applier now dispatches by `operation`, and the envelope describes the exact bytes that will be written. An envelope with an unknown version is rejected with `plan_version_unsupported`.
+- **Real idempotency** (`services/idempotency.py`). It was documented but not implemented: nobody called `comprobar_request`/`guardar_resultado` and `guard()` made up a `request_id` on every call. There are now four states (`in_flight`, `succeeded`, `failed`, `compensated`), a persistent record with atomic writes, and an optional `request_id` on the 34 tools that mutate.
 
-### Corregido — Honestidad de la API
+### Fixed — API honesty
 
-- `filters` e `interactions` del page spec se aceptaban y se **descartaban en silencio**. Ahora se rechazan con `unsupported_feature` indicando la ruta JSON exacta. La serialización sigue pendiente.
-- `pbi_replace_visual_field` escribía cualquier referencia sin comprobarla, y conservaba el tipo de nodo del campo viejo (una medida podía acabar en un nodo `Column`). Ahora valida contra el modelo y devuelve `field_not_found`.
-- El *capability check* de PBIR era informativo y nadie lo miraba; además declaraba soportado un informe **sin** versión. Ahora bloquea con `pbir_version_unsupported` (fail-closed).
-- La exportación de DAX decía «resultado completo» cuando ya venía truncado por filas y por bytes.
+- `filters` and `interactions` in the page spec were accepted and **silently dropped**. Now they're rejected with `unsupported_feature` stating the exact JSON path. Serialization is still pending.
+- `pbi_replace_visual_field` wrote any reference without checking it, and kept the old field's node type (a measure could end up in a `Column` node). Now it validates against the model and returns `field_not_found`.
+- The PBIR *capability check* was informational and nobody looked at it; it also declared a report **without** a version as supported. Now it blocks with `pbir_version_unsupported` (fail-closed).
+- DAX export said "complete result" when it was already truncated by rows and by bytes.
 
-### Corregido — Seguridad y robustez
+### Fixed — Security and robustness
 
-- `ConnectionFailedError` devolvía la connection string entera y `DaxQueryError` 2000 caracteres de la consulta. `services/redaction.py` deja el destino, la longitud y un prefijo corto.
-- `max_rows`, `max_bytes` y `timeout_seconds` no se validaban: cero, negativos y valores desproporcionados llegaban al motor.
-- El puntaje de auditoría medía el tamaño del informe, no su calidad (el PB4 real sacaba 0). Normalizado por reglas aplicables, objetos evaluados, severidad y tope por regla.
+- `ConnectionFailedError` returned the entire connection string, and `DaxQueryError` 2000 characters of the query. `services/redaction.py` leaves the destination, the length and a short prefix.
+- `max_rows`, `max_bytes` and `timeout_seconds` weren't validated: zero, negative and disproportionate values reached the engine.
+- The audit score measured the report's size, not its quality (the real PB4 scored 0). Normalized by applicable rules, objects evaluated, severity and a per-rule cap.
 
-### Corregido — Calidad y empaquetado
+### Fixed — Quality and packaging
 
-- Tres aserciones que no podían fallar (dos `or True` y un test vacío bajo un *skip* incondicional).
-- `LICENSE` se publicó inicialmente como MIT; desde RC3 el proyecto usa Apache-2.0. `mcp` sigue acotada a `>=1.28.1,<2` con test de compatibilidad, porque el servidor depende del atributo privado `_mcp_server.version`.
-- Se prueba también el **sdist**: construcción e instalación en un entorno limpio.
+- Three assertions that could never fail (two `or True` and one empty test under an unconditional *skip*).
+- `LICENSE` was initially published as MIT; since RC3 the project uses Apache-2.0. `mcp` stays pinned to `>=1.28.1,<2` with a compatibility test, because the server depends on the private attribute `_mcp_server.version`.
+- The **sdist** is also tested: build and install in a clean environment.
 
 ---
 
 ## [1.0.0] — 2026-07-30
 
-Primera versión completa. 88 tools, contrato congelado.
+First complete version. 88 tools, contract frozen.
 
-### Añadido — Plataforma (Macrofase A)
+### Added — Platform (Macro-phase A)
 
-- **Envelope de respuesta uniforme y aditivo**: `status`, `request_id`, `operation`, `duration_ms`, `warnings`, `side_effects`. Conserva `ok` y todos los campos previos.
-- Estados: `success`, `warning`, `planned`, `error`, `conflict`, `rollback_incomplete`.
-- **Logging JSON a stderr** con redacción: de DAX, filas, expresiones y rutas solo se registra su forma, nunca su contenido.
-- **Idempotencia** por `request_id`; reutilizarlo con otros argumentos es `request_id_conflict`.
-- **Planes con `plan_token`** que capturan el estado; si el proyecto cambia, el plan se rechaza (`plan_token_stale`).
+- **Uniform, additive response envelope**: `status`, `request_id`, `operation`, `duration_ms`, `warnings`, `side_effects`. Keeps `ok` and every previous field.
+- States: `success`, `warning`, `planned`, `error`, `conflict`, `rollback_incomplete`.
+- **JSON logging to stderr** with redaction: only the shape of DAX, rows, expressions and paths is logged, never the content.
+- **Idempotency** via `request_id`; reusing it with different arguments is `request_id_conflict`.
+- **Plans with `plan_token`** that capture the state; if the project changes, the plan is rejected (`plan_token_stale`).
 - Tools: `pbi_health_check`, `pbi_capabilities`, `pbi_session_info`, `pbi_list_pending_journals`, `pbi_inspect_journal`, `pbi_plan_change`, `pbi_apply_plan`.
 
-### Añadido — Modelo semántico (Macrofase B)
+### Added — Semantic model (Macro-phase B)
 
-- **Exploración que funciona igual en vivo y sobre TMDL**: resumen, búsqueda (también dentro del DAX), dependencias directas, transitivas e inversas.
-- Extracción de referencias con escáner léxico: una referencia escrita dentro de una cadena o un comentario no cuenta.
-- **Auditoría del modelo** con 13 reglas de identificador estable, evidencia y `auto_fix_available`.
-- **DAX con límites reales**: `max_bytes`, `timeout_seconds`, `export`, tipos por columna y estadísticas que distinguen truncamiento por filas o por tamaño.
+- **Exploration that works the same live and over TMDL**: summary, search (also inside the DAX), direct, transitive and reverse dependencies.
+- Reference extraction with a lexical scanner: a reference written inside a string or a comment doesn't count.
+- **Model audit** with 13 rules, each with a stable identifier, evidence and `auto_fix_available`.
+- **DAX with real limits**: `max_bytes`, `timeout_seconds`, `export`, per-column types, and statistics that distinguish row-based from size-based truncation.
 - Tools: `pbi_model_summary`, `pbi_search_model`, `pbi_get_object`, `pbi_measure_dependencies`, `pbi_column_dependencies`, `pbi_list_hierarchies`, `pbi_list_roles`, `pbi_list_perspectives`, `pbi_list_partitions`, `pbi_audit_model`, `pbi_list_audit_rules`.
 
-### Añadido — Autoría PBIR (Macrofase C)
+### Added — PBIR authoring (Macro-phase C)
 
-- **CRUD completo de visuales**: duplicar (conservando campos, formato y filtros), eliminar, título, orden Z, reemplazar campo, copiar formato.
-- **CRUD de páginas**: duplicar con todos sus visuales, eliminar actualizando orden y página activa, renombrar, reordenar.
-- **Motor de layout determinista**: detecta solapamientos, fuera de lienzo, tamaños mínimos, márgenes, separaciones y orden Z; alinea, distribuye y normaliza.
-- Tools: 16, de `pbi_get_visual` a `pbi_normalize_page_layout`.
+- **Full visual CRUD**: duplicate (keeping fields, format and filters), delete, title, Z-order, replace field, copy format.
+- **Page CRUD**: duplicate with all its visuals, delete while updating order and the active page, rename, reorder.
+- **Deterministic layout engine**: detects overlaps, off-canvas placement, minimum sizes, margins, spacing and Z-order; aligns, distributes and normalizes.
+- Tools: 16, from `pbi_get_visual` to `pbi_normalize_page_layout`.
 
-### Añadido — Spec declarativo (Macrofase D)
+### Added — Declarative spec (Macro-phase D)
 
-- **Schema 1.0 versionado**, con errores que traen **JSON path** (`$.visuals[2].fields.values[0]`).
-- Resolución contra el modelo: una referencia inexistente o **ambigua** se rechaza.
-- **IDs deterministas** con semilla.
-- Flujo completo: building blocks → spec → validar → preview → diff → plan → apply → verificar → rollback.
+- **Versioned Schema 1.0**, with errors carrying a **JSON path** (`$.visuals[2].fields.values[0]`).
+- Resolution against the model: a nonexistent or **ambiguous** reference is rejected.
+- **Deterministic IDs** with a seed.
+- Full flow: building blocks → spec → validate → preview → diff → plan → apply → verify → rollback.
 - 6 presets: `executive`, `financial`, `sales`, `operations`, `evm`, `detail`.
 
-### Añadido — Auditoría integral (Macrofase E)
+### Added — Comprehensive audit (Macro-phase E)
 
-- `pbi_audit_project` combina modelo, informe y layout, con puntaje **por dominio** y resumen ejecutivo.
-- Salidas en JSON, Markdown y HTML (con escapado verificado).
-- **Autofixes seleccionables**: `plan_fixes` exige reglas explícitas. No existe "arreglar todo".
+- `pbi_audit_project` combines model, report and layout, with a score **per domain** and an executive summary.
+- Output in JSON, Markdown and HTML (with verified escaping).
+- **Selectable autofixes**: `plan_fixes` requires explicit rules. There's no "fix everything."
 
-### Añadido — Workflows (Macrofase F)
+### Added — Workflows (Macro-phase F)
 
-- 8 workflows orientados a resultado, que componen servicios internos (nunca tools decoradas, verificado por AST).
-- Cada uno recorre análisis → plan → preview → apply → verificación → reporte, con `dry_run` por defecto.
+- 8 outcome-oriented workflows, composing internal services (never decorated tools, verified via AST).
+- Each one walks through analysis → plan → preview → apply → verification → report, with `dry_run` by default.
 
-### Seguridad (Fase 1A y derivadas)
+### Security (Phase 1A and derivatives)
 
-- **Rutas acotadas** al proyecto, con semántica real de Windows: UNC, `\\?\`, `\\.\`, `C:relativa`, ADS de NTFS, nombres reservados, junctions y revalidación anti-TOCTOU.
-- **DAX de solo lectura**, fail-closed: solo `EVALUATE`, `DEFINE…EVALUATE` y DMVs de `$SYSTEM`. Sin escape.
-- **Política estricta de Power BI Desktop**: `open` y `unknown` bloquean la escritura PBIR.
-- **Transacción compensada** con journal, fingerprints sha256 verificados tres veces y rollback que **no pisa cambios externos**.
-- **Backups** con destino validado (nunca dentro del `.pbip`), identificación por hash y manifiesto verificable.
-- **Sesiones**: se detecta la obsoleta y la que reutilizó el puerto.
+- **Paths bounded** to the project, with real Windows semantics: UNC, `\\?\`, `\\.\`, `C:relative`, NTFS ADS, reserved names, junctions and anti-TOCTOU revalidation.
+- **Read-only DAX**, fail-closed: only `EVALUATE`, `DEFINE…EVALUATE` and `$SYSTEM` DMVs. No escape hatch.
+- **Strict Power BI Desktop policy**: `open` and `unknown` block PBIR writes.
+- **Compensated transaction** with a journal, sha256 fingerprints verified three times, and a rollback that **doesn't overwrite external changes**.
+- **Backups** with a validated destination (never inside the `.pbip`), hash-based identification and a verifiable manifest.
+- **Sessions**: stale ones and ones that reused the port are detected.
 
-### Cambiado
+### Changed
 
-- `mode="both"` **deshabilitado** en las 6 tools duales: `live` necesita Desktop abierto y `pbip` lo necesita cerrado. Antes aplicaba `live` y fallaba en `pbip`, dejando estado parcial.
-- `pbi_run_dax` acepta `max_bytes`, `timeout_seconds` y `export` (opcionales).
+- `mode="both"` **disabled** on the 6 dual tools: `live` needs Desktop open and `pbip` needs it closed. It used to apply `live` and fail on `pbip`, leaving a partial state.
+- `pbi_run_dax` accepts `max_bytes`, `timeout_seconds` and `export` (optional).
 
-### Corregido
+### Fixed
 
-- El rollback dejaba directorios de página vacíos y huérfanos.
-- `os.replace` fallido dejaba un `.tmp` dentro del `.pbip`.
-- `pbi_hide_columns` llamaba a otra tool decorada: los errores se volvían datos y el lote reportaba `ok:true` con fallos dentro.
-- Una excepción .NET cruda de `SaveChanges` escapaba sin compensar el disco.
-- Empaquetado: faltaban `services*` y `reporting` en `pyproject.toml`.
-- `doctor.py` tenía el número de tools codificado a mano.
+- Rollback left empty, orphaned page directories.
+- A failed `os.replace` left a `.tmp` inside the `.pbip`.
+- `pbi_hide_columns` called another decorated tool: errors turned into data and the batch reported `ok:true` with failures buried inside.
+- A raw .NET exception from `SaveChanges` escaped without compensating the disk.
+- Packaging: `services*` and `reporting` were missing from `pyproject.toml`.
+- `doctor.py` had the tool count hardcoded.
 
 ---
 
 ## [0.1.0] — 2026-07-07
 
-Versión inicial: 34 tools, capa en vivo (ADOMD/TOM) y capa en disco (TMDL/PBIR).
+Initial version: 34 tools, live layer (ADOMD/TOM) and disk layer (TMDL/PBIR).
