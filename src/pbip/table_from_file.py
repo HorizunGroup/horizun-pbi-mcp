@@ -474,8 +474,7 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   description: Optional[str] = None, overwrite: bool = False,
                   dry_run: bool = False, muestra: int = 200) -> Dict[str, Any]:
     """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre."""
-    from pbip.model_author import _definition, _escribir
-    from services import tmdl_validate
+    from pbip.model_author import _definition
     from utils.validation import validate_object_name
 
     ruta = Path(path).expanduser()
@@ -484,7 +483,6 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
     definicion = _definition(active)
     carpeta = definicion / "tables"
-    carpeta.mkdir(parents=True, exist_ok=True)
     seguro = re.sub(r'[<>:"/\\|?*]', "_", nombre)
     destino = carpeta / f"{seguro}.tmdl"
     if destino.exists() and not overwrite:
@@ -503,25 +501,23 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
     if dry_run:
         return {**resumen, "dry_run": True, "tmdl": texto, "m": construir_m(perfil, culture)}
 
-    from pbip.model_author import registrar_tabla_en_modelo
+    from pbip.model_author import (ModelAuthorError,
+                                   escribir_tabla_y_registrarla)
 
-    salida = _escribir(active, destino, texto.split("\n"), "pbi_add_table_from_file")
-    registro = registrar_tabla_en_modelo(active, nombre, "pbi_add_table_from_file")
-
-    # Comprobacion final: lo que acabamos de escribir tiene que pasar el mismo
-    # validador que todo lo demas. Generar el error automaticamente seria peor
-    # que cometerlo a mano.
-    revision = tmdl_validate.validate(definicion, use_tom=False)
-    propios = [f for f in revision["findings"]
-               if f["severity"] == "error"
-               and str(f["object"].get("file", "")).endswith(destino.name)]
-    if propios:
+    try:
+        salida = escribir_tabla_y_registrarla(
+            active, destino, texto.split("\n"), nombre,
+            "pbi_add_table_from_file")
+    except ModelAuthorError as exc:
+        # La transaccion ya revirtio tabla + model.tmdl. Se conserva el codigo
+        # de error propio de esta tool y se adjunta la causa precisa.
         raise TableFromFileError(
-            "La tabla generada no pasa la validacion, asi que no se deja en el "
-            "proyecto. Es un fallo del generador, no del archivo.",
-            details={"findings": propios, "file": str(destino)})
+            "La tabla generada no pasa la validacion del modelo y no se dejo "
+            "ningun cambio parcial en el proyecto.",
+            details={"cause": exc.message, **exc.details,
+                     "file": str(destino)}) from exc
 
     log.info("Tabla '%s' cargada desde %s (%s columnas, cultura %s)",
              nombre, ruta.name, len(perfil["columns"]), resumen["culture"])
     return {**resumen, "dry_run": False, "validated": True,
-            **registro, **salida}
+            **salida}

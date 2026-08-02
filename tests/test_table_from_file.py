@@ -190,11 +190,39 @@ def test_la_tabla_escrita_pasa_el_validador(proyecto, tmp_path):
 
     assert r["table"] == "CostosReales"
     assert r["column_count"] == 5
+    objetivos = {Path(f["path"]).name for f in r["transaction"]["files"]}
+    assert objetivos == {"CostosReales.tmdl", "model.tmdl"}
+    assert r["transaction"]["committed"] is True
 
     definition = Path(proyecto.semantic_model_dir) / "definition"
     resultado = tmdl_validate.validate(definition, use_tom=False)
     assert resultado["valid"] is True, resultado["findings"]
     assert resultado["findings"] == []
+
+
+def test_importacion_revierte_tabla_y_ref_si_falla_model_tmdl(
+        proyecto, tmp_path, monkeypatch):
+    from services import txn
+
+    origen = _csv(tmp_path, "costos.csv", CSV_PUNTO)
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    model_file = definition / "model.tmdl"
+    table_file = definition / "tables" / "ImportAtomico.tmdl"
+    model_before = model_file.read_bytes()
+    original = txn.Transaction.write_text
+
+    def falla_en_modelo(self, target, text):
+        if Path(target).name == "model.tmdl":
+            raise OSError("fallo importacion model.tmdl")
+        return original(self, target, text)
+
+    monkeypatch.setattr(txn.Transaction, "write_text", falla_en_modelo)
+    with pytest.raises(OSError, match="fallo importacion"):
+        table_from_file.agregar_tabla(
+            proyecto, origen, table_name="ImportAtomico")
+
+    assert not table_file.exists()
+    assert model_file.read_bytes() == model_before
 
 
 def test_el_nombre_por_defecto_sale_del_archivo(proyecto, tmp_path):

@@ -30,6 +30,11 @@ def _tabla(activo, nombre="Ventas") -> str:
     return find_table_file(activo, nombre).read_text(encoding="utf-8-sig")
 
 
+def _columnas_para_relacion(proyecto):
+    model_author.create_calculated_column(proyecto, "Ventas", "Region", '"N"')
+    model_author.create_calculated_column(proyecto, "Ventas", "Destino", '"D"')
+
+
 # -------------------------------------------------- columna calculada -------
 def test_columna_calculada_se_declara_antes_de_la_particion(proyecto):
     """Una columna despues de `partition` no la lee Power BI."""
@@ -93,27 +98,30 @@ def test_tipo_y_resumen_se_validan(proyecto):
 
 # --------------------------------------------------------- relaciones -------
 def test_relacion_va_en_su_archivo_y_no_en_la_tabla(proyecto):
+    _columnas_para_relacion(proyecto)
     r = model_author.create_relationship(
-        proyecto, "Ventas", "Region", "Ventas", "Total")
+        proyecto, "Ventas", "Region", "Ventas", "Destino")
     archivo = Path(r["file"])
     assert archivo.name == "relationships.tmdl"
     texto = archivo.read_text(encoding="utf-8-sig")
     assert "fromColumn: Ventas.Region" in texto
-    assert "toColumn: Ventas.Total" in texto
+    assert "toColumn: Ventas.Destino" in texto
 
 
 def test_los_valores_por_defecto_no_se_escriben(proyecto):
     """Muchos-a-uno con filtro simple es el defecto del motor: no se repite."""
+    _columnas_para_relacion(proyecto)
     r = model_author.create_relationship(proyecto, "Ventas", "Region",
-                                         "Ventas", "Total")
+                                         "Ventas", "Destino")
     texto = Path(r["file"]).read_text(encoding="utf-8-sig")
     assert "fromCardinality" not in texto
     assert "crossFilteringBehavior" not in texto
 
 
 def test_relacion_bidireccional_si_se_declara(proyecto):
+    _columnas_para_relacion(proyecto)
     r = model_author.create_relationship(
-        proyecto, "Ventas", "Region", "Ventas", "Total",
+        proyecto, "Ventas", "Region", "Ventas", "Destino",
         cross_filtering="bothDirections", is_active=False)
     texto = Path(r["file"]).read_text(encoding="utf-8-sig")
     assert "crossFilteringBehavior: bothDirections" in texto
@@ -121,11 +129,61 @@ def test_relacion_bidireccional_si_se_declara(proyecto):
 
 
 def test_relacion_duplicada_exige_permiso(proyecto):
-    model_author.create_relationship(proyecto, "Ventas", "Region", "Ventas", "Total")
+    _columnas_para_relacion(proyecto)
+    model_author.create_relationship(
+        proyecto, "Ventas", "Region", "Ventas", "Destino")
     with pytest.raises(ModelAuthorError) as exc:
         model_author.create_relationship(proyecto, "Ventas", "Region",
-                                         "Ventas", "Total")
+                                         "Ventas", "Destino")
     assert "Ya existe" in str(exc.value)
+
+
+def test_overwrite_reemplaza_bloque_completo_y_conserva_nombre(proyecto):
+    _columnas_para_relacion(proyecto)
+    primera = model_author.create_relationship(
+        proyecto, "Ventas", "Region", "Ventas", "Destino",
+        name="RegionDestino", cross_filtering="bothDirections")
+
+    segunda = model_author.create_relationship(
+        proyecto, "Ventas", "Region", "Ventas", "Destino",
+        overwrite=True, cross_filtering="oneDirection")
+
+    texto = Path(segunda["file"]).read_text(encoding="utf-8-sig")
+    assert primera["name"] == segunda["name"] == "RegionDestino"
+    assert texto.count("relationship RegionDestino") == 1
+    assert "crossFilteringBehavior" not in texto
+
+
+def test_relacion_rechaza_tabla_o_columna_inexistente_sin_escribir(proyecto):
+    relaciones = (Path(proyecto.semantic_model_dir) / "definition" /
+                  "relationships.tmdl")
+
+    with pytest.raises(ModelAuthorError):
+        model_author.create_relationship(
+            proyecto, "Fantasma", "Id", "Ventas", "Monto")
+    assert not relaciones.exists()
+
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_relationship(
+            proyecto, "Ventas", "Fantasma", "Ventas", "Monto")
+    assert "available" in exc.value.details
+    assert not relaciones.exists()
+
+
+def test_nombre_de_relacion_duplicado_se_rechaza_sin_escribir(proyecto):
+    _columnas_para_relacion(proyecto)
+    model_author.create_calculated_column(proyecto, "Ventas", "Alterna", '"A"')
+    primera = model_author.create_relationship(
+        proyecto, "Ventas", "Region", "Ventas", "Destino", name="Relacion")
+    archivo = Path(primera["file"])
+    before = archivo.read_bytes()
+
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_relationship(
+            proyecto, "Ventas", "Alterna", "Ventas", "Monto", name="relacion")
+
+    assert "unicos" in str(exc.value)
+    assert archivo.read_bytes() == before
 
 
 def test_cardinalidad_invalida_se_rechaza(proyecto):
@@ -186,6 +244,71 @@ def test_tabla_calculada_declara_columnas_y_particion(proyecto):
     assert 'source = ROW("modulo", "x")' in texto
     # las columnas van declaradas ANTES de la particion
     assert texto.index("column modulo") < texto.index("partition")
+    objetivos = {Path(f["path"]).name for f in r["transaction"]["files"]}
+    assert objetivos == {"Modulos.tmdl", "model.tmdl"}
+    assert r["transaction"]["committed"] is True
+
+
+def test_tabla_y_registro_revierten_juntos_si_falla_segunda_escritura(
+        proyecto, monkeypatch):
+    from services import txn
+
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    model_file = definition / "model.tmdl"
+    table_file = definition / "tables" / "Atomica.tmdl"
+    model_before = model_file.read_bytes()
+    original = txn.Transaction.write_text
+
+    def falla_en_modelo(self, target, text):
+        if Path(target).name == "model.tmdl":
+            raise OSError("fallo inyectado en segunda escritura")
+        return original(self, target, text)
+
+    monkeypatch.setattr(txn.Transaction, "write_text", falla_en_modelo)
+    with pytest.raises(OSError, match="segunda escritura"):
+        model_author.create_calculated_table(
+            proyecto, "Atomica", "ROW(1)",
+            columns=[{"name": "a", "data_type": "int64"}])
+
+    assert not table_file.exists()
+    assert model_file.read_bytes() == model_before
+
+
+def test_error_nuevo_de_validacion_revierte_tabla_y_registro(
+        proyecto, monkeypatch):
+    from services import tmdl_validate
+
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    model_file = definition / "model.tmdl"
+    table_file = definition / "tables" / "Invalida.tmdl"
+    model_before = model_file.read_bytes()
+    llamadas = 0
+
+    def valida(_definition, use_tom=True):
+        nonlocal llamadas
+        llamadas += 1
+        if llamadas == 1:
+            return {"valid": True, "findings": [], "parsed": True,
+                    "parse_checked": True}
+        return {
+            "valid": False, "parsed": False, "parse_checked": True,
+            "findings": [{
+                "rule": "tmdl_parse_failed", "severity": "error",
+                "object": {"kind": "model"},
+                "evidence": {"message": "inyectado"},
+                "fix": "corregir",
+            }],
+        }
+
+    monkeypatch.setattr(tmdl_validate, "validate", valida)
+    with pytest.raises(ModelAuthorError, match="introduce errores"):
+        model_author.create_calculated_table(
+            proyecto, "Invalida", "ROW(1)",
+            columns=[{"name": "a", "data_type": "int64"}])
+
+    assert llamadas == 2
+    assert not table_file.exists()
+    assert model_file.read_bytes() == model_before
 
 
 def test_sin_columnas_ni_modelo_abierto_lo_dice(proyecto):

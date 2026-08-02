@@ -17,6 +17,7 @@ estan resueltas:
 """
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from pathlib import Path
@@ -25,7 +26,8 @@ from typing import Any, Dict, List, Optional
 from config import ActivePbip
 from logging_config import get_logger
 from powerbi.errors import PowerBIMCPError, ValidationError
-from pbip.tmdl_reader import find_table_file
+from pbip.tmdl_reader import (_parse_relationships, find_table_file,
+                              parse_table_file)
 from utils.validation import (tmdl_quote_name, validate_measure_expression,
                               validate_object_name)
 
@@ -78,6 +80,126 @@ def _escribir(active: ActivePbip, ruta: Path, lineas: List[str],
         t.write_text(ruta, texto)
     return {"file": str(ruta), "backup": cm.result["journal"],
             "transaction": cm.result}
+
+
+def _texto(lineas: List[str]) -> str:
+    texto = "\n".join(lineas)
+    return texto if texto.endswith("\n") else texto + "\n"
+
+
+def _plan_registro_tabla(active: ActivePbip, nombre: str
+                         ) -> tuple[Path, List[str], bool]:
+    """Calcula el `ref table` sin escribir nada."""
+    modelo = _definition(active) / "model.tmdl"
+    if not modelo.exists():
+        raise ModelAuthorError(
+            "El modelo no tiene model.tmdl, asi que no se puede declarar la "
+            "tabla. El proyecto esta incompleto.",
+            details={"expected": str(modelo)})
+
+    lineas = modelo.read_text(encoding="utf-8-sig").splitlines()
+    ya_esta = any(
+        l.strip().startswith("ref table ")
+        and _unquote_tmdl(l.strip()[len("ref table "):].strip()).casefold()
+        == nombre.casefold()
+        for l in lineas)
+    if ya_esta:
+        return modelo, lineas, False
+
+    ultimos = [i for i, l in enumerate(lineas)
+               if l.strip().startswith("ref table ")]
+    destino = (ultimos[-1] + 1) if ultimos else len(lineas)
+    lineas.insert(destino, f"ref table {tmdl_quote_name(nombre)}")
+    return modelo, lineas, True
+
+
+def _errores(resultado: Dict[str, Any]) -> set[str]:
+    """Identidades estables de los errores de validacion de un modelo."""
+    return {
+        json.dumps(f, sort_keys=True, ensure_ascii=False, default=str)
+        for f in resultado.get("findings", [])
+        if f.get("severity") == "error"
+    }
+
+
+def _validar_modelo_sin_errores_nuevos(definicion: Path,
+                                       baseline: Dict[str, Any]) -> Dict[str, Any]:
+    """Valida dentro de la transaccion; lanzar aqui provoca rollback total."""
+    from services import tmdl_validate
+
+    revision = tmdl_validate.validate(definicion, use_tom=True)
+    introducidos = _errores(revision) - _errores(baseline)
+    if introducidos:
+        detalles = [json.loads(item) for item in sorted(introducidos)]
+        raise ModelAuthorError(
+            "El cambio introduce errores en el modelo TMDL. Se revierte la "
+            "operacion completa para no dejar un proyecto que Power BI no abra.",
+            details={"findings": detalles, "definition": str(definicion)})
+    return {
+        "valid": revision["valid"],
+        "parsed": revision.get("parsed"),
+        "parse_checked": revision.get("parse_checked", False),
+        "introduced_errors": 0,
+    }
+
+
+def escribir_tabla_y_registrarla(active: ActivePbip, ruta: Path,
+                                 lineas: List[str], nombre: str,
+                                 herramienta: str) -> Dict[str, Any]:
+    """Escribe tabla + `model.tmdl` en UNA transaccion validada.
+
+    Antes eran dos commits independientes. Si fallaba el segundo, quedaba un
+    archivo de tabla huerfano que el modelo no referenciaba. La validacion se
+    ejecuta despues de escribir ambos objetivos pero antes del commit: cualquier
+    error lanza dentro del context manager y restaura los dos archivos.
+    """
+    from services import tmdl_validate
+    from services import txn as txn_service
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation=herramienta)
+    definicion = _definition(active)
+    modelo, modelo_final, ref_added = _plan_registro_tabla(active, nombre)
+    baseline = tmdl_validate.validate(definicion, use_tom=True)
+
+    objetivos = [ruta]
+    if ref_added:
+        objetivos.append(modelo)
+    cm = txn_service.project_transaction(active, objetivos, tool=herramienta)
+    with cm as t:
+        t.write_text(ruta, _texto(lineas))
+        if ref_added:
+            t.write_text(modelo, _texto(modelo_final))
+        validacion = _validar_modelo_sin_errores_nuevos(definicion, baseline)
+
+    log.info("Tabla '%s' y registro en model.tmdl confirmados juntos", nombre)
+    return {
+        "file": str(ruta),
+        "model_tmdl": str(modelo),
+        "ref_added": ref_added,
+        "backup": cm.result["journal"],
+        "transaction": cm.result,
+        "model_validation": validacion,
+    }
+
+
+def _escribir_modelo_validado(active: ActivePbip, ruta: Path,
+                              lineas: List[str], herramienta: str
+                              ) -> Dict[str, Any]:
+    """Escribe un archivo TMDL y valida el modelo antes del commit."""
+    from services import tmdl_validate
+    from services import txn as txn_service
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation=herramienta)
+    definicion = _definition(active)
+    baseline = tmdl_validate.validate(definicion, use_tom=True)
+    cm = txn_service.project_transaction(active, [ruta], tool=herramienta)
+    with cm as t:
+        t.write_text(ruta, _texto(lineas))
+        validacion = _validar_modelo_sin_errores_nuevos(definicion, baseline)
+    return {"file": str(ruta), "backup": cm.result["journal"],
+            "transaction": cm.result, "model_validation": validacion}
 
 
 def _bloque_existe(lineas: List[str], palabra: str, nombre: str) -> Optional[int]:
@@ -227,30 +349,9 @@ def registrar_tabla_en_modelo(active: ActivePbip, nombre: str,
     quejarse y la tabla simplemente no existe, asi que cualquier medida o
     visual que la use aparece roto sin ninguna explicacion.
     """
-    from utils.validation import tmdl_quote_name
-
-    modelo = _definition(active) / "model.tmdl"
-    if not modelo.exists():
-        raise ModelAuthorError(
-            "El modelo no tiene model.tmdl, asi que no se puede declarar la "
-            "tabla. El proyecto esta incompleto.",
-            details={"expected": str(modelo)})
-
-    lineas = modelo.read_text(encoding="utf-8-sig").splitlines()
-    ya_esta = any(
-        l.strip().startswith("ref table ")
-        and _unquote_tmdl(l.strip()[len("ref table "):].strip()).casefold()
-        == nombre.casefold()
-        for l in lineas)
-    if ya_esta:
+    modelo, lineas, ref_added = _plan_registro_tabla(active, nombre)
+    if not ref_added:
         return {"model_tmdl": str(modelo), "ref_added": False}
-
-    # Detras de la ultima `ref table`, o al final si no hay ninguna; nunca
-    # antes de las propiedades del modelo.
-    ultimos = [i for i, l in enumerate(lineas)
-               if l.strip().startswith("ref table ")]
-    destino = (ultimos[-1] + 1) if ultimos else len(lineas)
-    lineas.insert(destino, f"ref table {tmdl_quote_name(nombre)}")
 
     _escribir(active, modelo, lineas, herramienta)
     log.info("Tabla '%s' declarada en model.tmdl", nombre)
@@ -311,7 +412,6 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
 
     definicion = _definition(active)
     carpeta = definicion / "tables"
-    carpeta.mkdir(parents=True, exist_ok=True)
     seguro = re.sub(r'[<>:"/\\|?*]', "_", name)
     ruta = carpeta / f"{seguro}.tmdl"
     if ruta.exists() and not overwrite:
@@ -353,13 +453,13 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
         lineas.append(f"\t\tsource = {expression}")
     lineas.append("")
 
-    salida = _escribir(active, ruta, lineas, "pbi_create_calculated_table")
-    registro = registrar_tabla_en_modelo(active, name, "pbi_create_calculated_table")
+    salida = escribir_tabla_y_registrarla(
+        active, ruta, lineas, name, "pbi_create_calculated_table")
     log.info("Tabla calculada '%s' con %s columnas", name, len(columns))
     return {"table": name, "columns": columns, "column_count": len(columns),
             "expression": expression,
             "action": "replaced" if overwrite else "created",
-            **registro, **salida}
+            **salida}
 
 
 #: Modos de almacenamiento de una particion.
@@ -433,6 +533,46 @@ def _indice_insercion_en_tabla(lineas: List[str]) -> int:
     return len(lineas)
 
 
+def _resolver_columna(active: ActivePbip, table: str,
+                      column: str) -> tuple[str, str]:
+    """Devuelve nombres canonicos o falla antes de tocar relationships.tmdl."""
+    table = validate_object_name(table, "tabla")
+    column = validate_object_name(column, "columna")
+    try:
+        ruta = find_table_file(active, table)
+        leida = parse_table_file(ruta)
+    except Exception as exc:  # noqa: BLE001 - se traduce a error de autoria
+        raise ModelAuthorError(
+            f"La tabla '{table}' no existe o no se puede leer en el modelo TMDL.",
+            details={"table": table, "column": column}) from exc
+
+    encontrada = next((c["name"] for c in leida["columns"]
+                       if c["name"].casefold() == column.casefold()), None)
+    if encontrada is None:
+        raise ModelAuthorError(
+            f"La columna '{column}' no existe en la tabla '{table}'.",
+            details={"table": table, "column": column,
+                     "available": [c["name"] for c in leida["columns"]]})
+    return leida["name"], encontrada
+
+
+def _rangos_relaciones(lineas: List[str]) -> List[tuple[int, int]]:
+    inicios = [i for i, linea in enumerate(lineas)
+               if _indent(linea) == 0
+               and linea.strip().startswith("relationship ")]
+    return [(inicio, inicios[pos + 1] if pos + 1 < len(inicios) else len(lineas))
+            for pos, inicio in enumerate(inicios)]
+
+
+def _clave_extremos(relacion: Dict[str, Any]) -> frozenset[tuple[str, str]]:
+    return frozenset({
+        (str(relacion.get("from_table", "")).casefold(),
+         str(relacion.get("from_column", "")).casefold()),
+        (str(relacion.get("to_table", "")).casefold(),
+         str(relacion.get("to_column", "")).casefold()),
+    })
+
+
 # --------------------------------------------------------------- relacion ----
 def create_relationship(active: ActivePbip, from_table: str, from_column: str,
                         to_table: str, to_column: str, *,
@@ -454,27 +594,61 @@ def create_relationship(active: ActivePbip, from_table: str, from_column: str,
             raise ModelAuthorError(
                 f"{etiqueta} no soportado: '{valor}'. Usa {list(validos)}.")
 
+    # Resolver ambos extremos es una precondicion, no una comprobacion tardia:
+    # una referencia inexistente hace que Desktop no pueda cargar el modelo.
+    from_table, from_column = _resolver_columna(active, from_table, from_column)
+    to_table, to_column = _resolver_columna(active, to_table, to_column)
+    if name is not None:
+        name = validate_object_name(name, "relacion")
+
     ruta = _definition(active) / "relationships.tmdl"
     lineas = ruta.read_text(encoding="utf-8-sig").splitlines() if ruta.exists() else []
 
     desde = f"{tmdl_quote_name(from_table)}.{tmdl_quote_name(from_column)}"
     hasta = f"{tmdl_quote_name(to_table)}.{tmdl_quote_name(to_column)}"
 
-    # Una relacion duplicada entre las mismas columnas no la admite el motor.
-    for i, linea in enumerate(lineas):
-        if linea.strip().startswith("fromColumn:") and linea.split(":", 1)[1].strip() == desde:
-            fin = _fin_del_bloque(lineas, max(0, i - 1))
-            trozo = "\n".join(lineas[max(0, i - 1):fin])
-            if f"toColumn: {hasta}" in trozo:
-                if not overwrite:
-                    raise ModelAuthorError(
-                        f"Ya existe una relacion de {desde} a {hasta}. "
-                        "Usa overwrite=true para reemplazarla.")
-                inicio = max(0, i - 1)
-                del lineas[inicio:fin]
-                break
+    existentes = _parse_relationships(ruta)
+    clave_nueva = frozenset({
+        (from_table.casefold(), from_column.casefold()),
+        (to_table.casefold(), to_column.casefold()),
+    })
+    mismos_extremos = [i for i, rel in enumerate(existentes)
+                       if _clave_extremos(rel) == clave_nueva]
+    if len(mismos_extremos) > 1:
+        raise ModelAuthorError(
+            "El modelo ya contiene varias relaciones duplicadas entre estos "
+            "extremos; corrige el modelo antes de reemplazarlas.",
+            details={"from": desde, "to": hasta, "count": len(mismos_extremos)})
+    if mismos_extremos and not overwrite:
+        raise ModelAuthorError(
+            f"Ya existe una relacion entre {desde} y {hasta}. "
+            "Usa overwrite=true para reemplazarla.")
 
-    identificador = name or str(uuid.uuid4())
+    reemplazada = mismos_extremos[0] if mismos_extremos else None
+    nombres = {
+        _unquote_tmdl(str(rel.get("name", ""))).casefold(): i
+        for i, rel in enumerate(existentes)
+        if rel.get("name")
+    }
+    if name is not None:
+        colision = nombres.get(name.casefold())
+        if colision is not None and colision != reemplazada:
+            raise ModelAuthorError(
+                f"Ya existe una relacion llamada '{name}'. Los nombres de "
+                "relacion deben ser unicos en todo el modelo.",
+                details={"name": name, "existing_index": colision})
+
+    if reemplazada is not None:
+        rangos = _rangos_relaciones(lineas)
+        inicio, fin = rangos[reemplazada]
+        del lineas[inicio:fin]
+
+    if name is not None:
+        identificador = name
+    elif reemplazada is not None:
+        identificador = _unquote_tmdl(str(existentes[reemplazada]["name"]))
+    else:
+        identificador = str(uuid.uuid4())
     bloque = [f"relationship {tmdl_quote_name(identificador)}"]
     if not is_active:
         bloque.append("\tisActive: false")
@@ -491,7 +665,8 @@ def create_relationship(active: ActivePbip, from_table: str, from_column: str,
     if lineas and lineas[-1].strip():
         lineas.append("")
     lineas += bloque
-    salida = _escribir(active, ruta, lineas, "pbi_create_relationship")
+    salida = _escribir_modelo_validado(
+        active, ruta, lineas, "pbi_create_relationship")
     log.info("Relacion %s -> %s", desde, hasta)
     return {"name": identificador, "from": desde, "to": hasta,
             "from_cardinality": from_cardinality, "to_cardinality": to_cardinality,
