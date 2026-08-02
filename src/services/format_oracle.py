@@ -190,10 +190,17 @@ def _matches_kind(value: Any, definition: Dict[str, Any]) -> bool:
     if kind in ("unknown", "formatting", "expr"):
         return True
     if kind == "fill":
-        return (isinstance(value, dict)
-                and isinstance(value.get("solid"), dict)
-                and isinstance(value["solid"].get("color"), dict)
-                and ("expr" in value["solid"]["color"]))
+        if not isinstance(value, dict) or not isinstance(value.get("solid"), dict):
+            return False
+        solid = value["solid"]
+        # Desktop usa ``solid.color.expr`` para un color literal y
+        # ``solid.expr.FillRule`` para formato condicional. Ambos son formas
+        # oficiales del mismo tipo ``fill``.
+        color = solid.get("color")
+        if isinstance(color, dict) and "expr" in color:
+            return True
+        expr = solid.get("expr")
+        return isinstance(expr, dict) and isinstance(expr.get("FillRule"), dict)
     if kind == "image":
         image = value.get("image") if isinstance(value, dict) else None
         requeridas = {k for k, v in (definition.get("subProperties") or {}).items()

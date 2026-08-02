@@ -127,6 +127,15 @@ def test_oraculo_puede_comprobar_todas_las_propiedades_del_visual(monkeypatch):
     assert [e["rule"] for e in result["errors"]] == ["format_property_unknown"]
 
 
+def test_oraculo_acepta_fillrule_exportado_por_desktop():
+    doc = _visual({"value": [{"properties": {
+        "fontColor": {"solid": {"expr": {"FillRule": {}}}},
+    }}]})
+    result = format_oracle.compare_managed_paths(
+        doc, [("objects", "value", "fontColor")], catalog=CATALOGO)
+    assert result["errors"] == []
+
+
 @pytest.mark.live_validator
 def test_snapshot_administrado_es_subconjunto_del_catalogo_oficial():
     """Impide que el fallback offline se separe silenciosamente de Desktop."""
