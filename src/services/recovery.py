@@ -324,59 +324,61 @@ def recover(active, journal_dir: Path, *, confirm: bool = False,
     jdir = Path(plan["journal"])
     origen = Path(active.project_dir).resolve()
     files_root = jdir / "files"
-    restaurados, fallidos = [], []
 
+    # Se leen y verifican TODOS los respaldos antes de tocar el primer destino.
+    # Luego la restauracion completa usa una nueva transaccion: si falla la
+    # ultima escritura, se recupera el estado que habia justo antes de empezar
+    # este intento. Antes el bucle dejaba los primeros archivos restaurados y
+    # devolvia INCOMPLETE.
+    operaciones = []
     for f in plan["files"]:
-        try:
-            # Revalidacion anti-TOCTOU: ni el destino ni el respaldo pueden
-            # haberse convertido en un enlace desde que se genero el preview.
-            destino = _resolver_ruta_manifest(
-                origen, f["path"], kind="destino de recuperacion")
-            if f["action"] == "delete":
-                # El original no existia: restaurar es volver a no existir.
-                destino.unlink(missing_ok=True)
-                restaurados.append(f["path"])
-                continue
+        destino = _resolver_ruta_manifest(
+            origen, f["path"], kind="destino de recuperacion")
+        if f["action"] == "delete":
+            operaciones.append({"path": f["path"], "target": destino,
+                                "action": "delete", "content": None})
+            continue
 
-            esperado = txn_service.Fingerprint(
-                f["original"]["state"], f["original"].get("sha256"),
-                f["original"].get("size"))
-            respaldo = _resolver_ruta_manifest(
-                files_root, f["path"], kind="respaldo del journal")
-            if not respaldo.is_file():
-                raise OSError("falta el respaldo del journal")
-            if not txn_service.fingerprint(respaldo).matches(esperado):
-                raise OSError("el respaldo cambio o no coincide con su hash")
-            contenido = respaldo.read_bytes()
-            if not txn_service.fingerprint_bytes(contenido).matches(esperado):
-                raise OSError("el respaldo cambio mientras se estaba leyendo")
+        esperado = txn_service.Fingerprint(
+            f["original"]["state"], f["original"].get("sha256"),
+            f["original"].get("size"))
+        respaldo = _resolver_ruta_manifest(
+            files_root, f["path"], kind="respaldo del journal")
+        if not respaldo.is_file():
+            _corrupto("Falta un respaldo al iniciar la recuperacion.",
+                      path=f["path"], journal=str(jdir))
+        if not txn_service.fingerprint(respaldo).matches(esperado):
+            _corrupto("Un respaldo cambio o no coincide con su hash.",
+                      path=f["path"], journal=str(jdir))
+        contenido = respaldo.read_bytes()
+        if not txn_service.fingerprint_bytes(contenido).matches(esperado):
+            _corrupto("Un respaldo cambio mientras se estaba leyendo.",
+                      path=f["path"], journal=str(jdir))
+        operaciones.append({"path": f["path"], "target": destino,
+                            "action": "write", "content": contenido})
 
-            # Escritura atomica: copy2 podia truncar el destino y fallar a mitad.
-            txn_service.durable_write(destino, contenido)
-            comprobado = txn_service.fingerprint(destino)
-            if comprobado.matches(esperado):
-                restaurados.append(f["path"])
+    cm = txn_service.transaction(
+        origen, txn_service.project_backup_root(active),
+        [o["target"] for o in operaciones], tool="pbi_recover_backup")
+    with cm as tx:
+        for operacion in operaciones:
+            if operacion["action"] == "delete":
+                tx.delete(operacion["target"])
             else:
-                fallidos.append({"path": f["path"],
-                                 "reason": "el archivo restaurado no coincide "
-                                           "con el original"})
-        except OSError as exc:
-            fallidos.append({"path": f["path"], "reason": str(exc)})
+                tx.write_bytes(operacion["target"], operacion["content"])
 
-    estado = RECOVERED if not fallidos else INCOMPLETE
+    restaurados = [o["path"] for o in operaciones]
+    fallidos: List[Dict[str, str]] = []
+    estado = RECOVERED
     _anotar_recuperacion(jdir, estado, restaurados, fallidos)
 
     resultado = {
         "journal": str(jdir), "state": estado, "recovered": True,
         "restored": restaurados, "restored_count": len(restaurados),
         "failed": fallidos,
-        "verified_byte_for_byte": not fallidos,
+        "verified_byte_for_byte": True,
+        "backup": cm.result["journal"], "transaction": cm.result,
     }
-    if fallidos:
-        raise RecoveryError(
-            f"Se restauraron {len(restaurados)} archivo(s) y {len(fallidos)} "
-            "fallaron. Queda intervencion manual.",
-            details=resultado)
     return resultado
 
 

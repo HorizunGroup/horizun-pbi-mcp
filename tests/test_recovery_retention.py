@@ -76,10 +76,36 @@ def test_recuperacion_devuelve_el_original_byte_a_byte(proyecto):
     r = recovery.recover(active, journal, confirm=True)
     assert r["state"] == recovery.RECOVERED
     assert r["verified_byte_for_byte"] is True
+    assert r["transaction"]["clean"] is True
 
     despues = huella(raiz)
     for clave, valor in antes.items():
         assert despues.get(clave) == valor, f"{clave} no volvio a su original"
+
+
+def test_fallo_durante_la_recuperacion_revierte_el_intento(
+        proyecto, monkeypatch):
+    active, raiz, _s = proyecto
+    journal = una_edicion(active)
+    antes_del_intento = huella(raiz)
+    original = txn_service.Transaction.write_bytes
+    llamadas = {"n": 0}
+
+    def escribir_y_fallar(self, target, data, validator=None):
+        llamadas["n"] += 1
+        resultado = original(self, target, data, validator)
+        if llamadas["n"] == 1:
+            raise OSError("fallo inyectado durante la recuperacion")
+        return resultado
+
+    monkeypatch.setattr(txn_service.Transaction, "write_bytes",
+                        escribir_y_fallar)
+    with pytest.raises(OSError, match="fallo inyectado"):
+        recovery.recover(active, journal, confirm=True)
+
+    assert huella(raiz) == antes_del_intento
+    manifiesto = json.loads((journal / "manifest.json").read_text(encoding="utf-8"))
+    assert "recovery" not in manifiesto
 
 
 def test_recrea_los_directorios_eliminados(proyecto):
