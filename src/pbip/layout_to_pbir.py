@@ -249,6 +249,13 @@ def _convertir_proyeccion(proyeccion: Dict[str, Any],
         salida["nativeQueryRef"] = nativo
     elif proyeccion.get("nativeQueryRef"):
         salida["nativeQueryRef"] = proyeccion["nativeQueryRef"]
+    else:
+        # El CLI oficial exige este identificador para cada proyeccion. Los
+        # Layout heredados no siempre incluyen `NativeReferenceName` (sobre
+        # todo en agregaciones), pero `queryRef` si es la identidad que enlaza
+        # la proyeccion con `prototypeQuery.Select`. Reutilizarla conserva la
+        # referencia real; no se deduce ni se inventa ningun campo del modelo.
+        salida["nativeQueryRef"] = query_ref
     for clave in ("displayName", "format", "active", "hidden"):
         if proyeccion.get(clave) is not None:
             salida[clave] = proyeccion[clave]

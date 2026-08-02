@@ -18,7 +18,7 @@ import pytest
 
 from pbip import layout_to_pbir, pbix_reader, pbix_to_pbip
 from powerbi.errors import PowerBIMCPError
-from services import pbir_schema
+from services import pbir_schema, report_validator
 
 
 # --------------------------------------------------------------- utilidades --
@@ -97,8 +97,8 @@ def _layout(secciones=None, config_extra=None, **raiz):
     return layout
 
 
-def _escribir_pbix(ruta, *, layout=None, pbir=None, con_modelo=True,
-                   connections=None):
+def _escribir_pbix(ruta, *, layout=None, pbir=None, assets=None,
+                   con_modelo=True, connections=None):
     with zipfile.ZipFile(ruta, "w") as zf:
         zf.writestr("Version", _u16("1.28"))
         zf.writestr("Settings", _u16({"Version": 4}))
@@ -110,6 +110,10 @@ def _escribir_pbix(ruta, *, layout=None, pbir=None, con_modelo=True,
         for nombre, contenido in (pbir or {}).items():
             zf.writestr(f"Report/definition/{nombre}",
                         json.dumps(contenido).encode("utf-8"))
+        for nombre, contenido in (assets or {}).items():
+            datos = (json.dumps(contenido).encode("utf-8")
+                     if isinstance(contenido, (dict, list)) else contenido)
+            zf.writestr(f"Report/{nombre}", datos)
         if con_modelo:
             zf.writestr("DataModel", _u16(
                 "This backup was created using XPress9 compression" + "." * 200))
@@ -202,6 +206,7 @@ def test_proyeccion_toma_la_expresion_del_prototype_query():
     assert y["field"]["Aggregation"]["Function"] == 0
     assert y["field"]["Aggregation"]["Expression"]["Column"][
         "Expression"]["SourceRef"] == {"Entity": "Ventas"}
+    assert y["nativeQueryRef"] == "Sum(Ventas.Importe)"
 
 
 def test_native_query_ref_se_conserva():
@@ -433,7 +438,11 @@ def test_convert_arma_el_proyecto_completo(tmp_path, pbix_heredado):
     assert pbir["datasetReference"]["byPath"]["path"] == "../Informe.SemanticModel"
 
 
-def test_pbir_embebido_se_copia_sin_reinterpretar(tmp_path):
+def test_pbir_embebido_se_copia_sin_reinterpretar(tmp_path, monkeypatch):
+    # Este fixture usa deliberadamente un esquema ficticio para comprobar
+    # copia byte a byte; la aceptacion oficial se cubre con informes completos.
+    monkeypatch.setattr(pbix_to_pbip, "_validar_informe_convertido",
+                        lambda _ruta: {"checked": False, "reason": "fixture"})
     original = {"$schema": "https://ejemplo/report", "themeCollection": {}}
     ruta = _escribir_pbix(tmp_path / "Moderno.pbix", pbir={
         "report.json": original,
@@ -467,6 +476,43 @@ def test_no_sobrescribe_sin_permiso(tmp_path, pbix_heredado):
     with pytest.raises(PowerBIMCPError) as exc:
         pbix_to_pbip.convert(pbix_heredado, tmp_path / "out", include_model=False)
     assert "overwrite" in exc.value.message
+
+
+def test_fallo_tardio_no_publica_parcial_ni_toca_el_anterior(
+        tmp_path, pbix_heredado, monkeypatch):
+    salida = tmp_path / "out"
+    primero = pbix_to_pbip.convert(
+        pbix_heredado, salida, include_model=False)
+    raiz = Path(primero.project_dir)
+    testigo = raiz / "testigo.usuario"
+    testigo.write_bytes(b"contenido anterior")
+
+    def falla(_report_dir):
+        raise pbix_to_pbip.PbixConversionError("fallo inyectado tardio")
+
+    monkeypatch.setattr(pbix_to_pbip, "_validar_informe_convertido", falla)
+    with pytest.raises(pbix_to_pbip.PbixConversionError):
+        pbix_to_pbip.convert(
+            pbix_heredado, salida, include_model=False, overwrite=True)
+
+    assert testigo.read_bytes() == b"contenido anterior"
+    assert not list(salida.glob(".hz_stage_*"))
+
+
+def test_overwrite_reemplaza_residuos_con_backup(tmp_path, pbix_heredado):
+    salida = tmp_path / "out"
+    primero = pbix_to_pbip.convert(pbix_heredado, salida, include_model=False)
+    raiz = Path(primero.project_dir)
+    residuo = raiz / "Informe.Report" / "definition" / "residuo.json"
+    residuo.write_text('{"viejo": true}', encoding="utf-8")
+
+    segundo = pbix_to_pbip.convert(
+        pbix_heredado, salida, include_model=False, overwrite=True)
+
+    assert not residuo.exists()
+    journal = Path(segundo.publication["transaction"]["journal"])
+    assert (journal / "files" / "Informe.Report" / "definition"
+            / "residuo.json").read_text(encoding="utf-8") == '{"viejo": true}'
 
 
 def test_ruta_demasiado_larga_se_rechaza_antes_de_escribir(tmp_path,
@@ -548,8 +594,11 @@ def test_export_tmdl_live(tmp_path):
         encoding="utf-8")
 
 
-def test_pbir_copiado_se_repara_si_le_falta_lo_obligatorio(tmp_path):
+def test_pbir_copiado_se_repara_si_le_falta_lo_obligatorio(tmp_path,
+                                                            monkeypatch):
     """Copiar fiel un report.json que Desktop no abre no es fidelidad."""
+    monkeypatch.setattr(pbix_to_pbip, "_validar_informe_convertido",
+                        lambda _ruta: {"checked": False, "reason": "fixture"})
     ruta = _escribir_pbix(tmp_path / "Incompleto.pbix", pbir={
         "report.json": {"$schema": "https://ejemplo/report",
                         "themeCollection": {"baseTheme": {"name": "CY24SU10"}}},
@@ -567,8 +616,10 @@ def test_pbir_copiado_se_repara_si_le_falta_lo_obligatorio(tmp_path):
     assert any("reportVersionAtImport" in w for w in resultado.warnings)
 
 
-def test_pbir_completo_se_copia_sin_tocar(tmp_path):
+def test_pbir_completo_se_copia_sin_tocar(tmp_path, monkeypatch):
     """La reparacion no debe alterar un informe que ya venia bien."""
+    monkeypatch.setattr(pbix_to_pbip, "_validar_informe_convertido",
+                        lambda _ruta: {"checked": False, "reason": "fixture"})
     informe = {"$schema": "https://ejemplo/report", "themeCollection": {
         "baseTheme": {"name": "CY24SU10", "type": "SharedResources",
                       "reportVersionAtImport": {"visual": "2.4.0",
@@ -584,3 +635,57 @@ def test_pbir_completo_se_copia_sin_tocar(tmp_path):
                / "report.json")
     assert destino.read_bytes() == json.dumps(informe).encode("utf-8")
     assert not [w for w in resultado.warnings if "tema" in w or "Version" in w]
+
+
+def test_tema_heredado_renombrado_iguala_el_name_interno(tmp_path):
+    """Regresion real: el CLI devolvia PBIR_THEME_FILE_NAME_MISMATCH."""
+    nombre = "TemaExportado123.json"
+    layout = _layout(
+        config_extra={"themeCollection": {
+            "baseTheme": {"name": "CY24SU10", "type": 2,
+                          "version": {"visual": "2.4.0", "report": "3.0.0",
+                                      "page": "2.3.0"}},
+            "customTheme": {"name": nombre, "type": 1,
+                            "version": {"visual": "2.4.0", "report": "3.0.0",
+                                        "page": "2.3.0"}},
+        }},
+        resourcePackages=[{"resourcePackage": {
+            "name": "RegisteredResources", "type": 1, "disabled": False,
+            "items": [{"type": 201, "path": nombre, "name": nombre}],
+        }}])
+    pbix = _escribir_pbix(
+        tmp_path / "Tema.pbix", layout=layout,
+        assets={f"StaticResources/RegisteredResources/{nombre}": {
+            "name": "NombreAnterior", "dataColors": ["#112233"]}})
+
+    resultado = pbix_to_pbip.convert(pbix, tmp_path / "out", include_model=False)
+    tema = json.loads((Path(resultado.report_dir) / "StaticResources"
+                       / "RegisteredResources" / nombre)
+                      .read_text(encoding="utf-8-sig"))
+
+    assert tema["name"] == nombre
+    assert resultado.report_validation["checked"] is True
+    assert any("internamente otro nombre" in w for w in resultado.warnings)
+
+
+@pytest.mark.skipif(not report_validator.estado()["available"],
+                    reason="requiere el CLI oficial de informes")
+def test_un_informe_que_el_cli_rechaza_no_se_publica(tmp_path):
+    """Una conversion no puede devolver exito con PBIR_ROLE_REQUIRED_MISSING."""
+    visual = _visual("solo_medida", tipo="clusteredColumnChart")
+    config = json.loads(visual["config"])
+    config["singleVisual"]["projections"].pop("Category")
+    config["singleVisual"]["prototypeQuery"]["Select"] = [
+        config["singleVisual"]["prototypeQuery"]["Select"][1]]
+    visual["config"] = json.dumps(config)
+    layout = _layout()
+    layout["sections"][0]["visualContainers"] = [visual]
+    pbix = _escribir_pbix(tmp_path / "Invalido.pbix", layout=layout)
+
+    with pytest.raises(pbix_to_pbip.PbixConversionError) as exc:
+        pbix_to_pbip.convert(pbix, tmp_path / "out", include_model=False)
+
+    assert any(d["code"] == "PBIR_ROLE_REQUIRED_MISSING"
+               for d in exc.value.details["diagnostics"])
+    assert not (tmp_path / "out" / "Invalido").exists()
+    assert not list((tmp_path / "out").glob(".hz_stage_*"))

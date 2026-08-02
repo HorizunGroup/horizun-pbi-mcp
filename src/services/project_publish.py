@@ -1,0 +1,147 @@
+"""Publicacion compensada de un proyecto completo construido en staging.
+
+Los generadores de proyectos no pueden escribir directamente en el destino:
+un fallo tardio (validador, Desktop, disco) dejaria medio ``.Report`` o borraria
+un proyecto anterior con ``overwrite=true``. La regla es la misma que para un
+flujo PBIR multiarchivo:
+
+1. construir y validar todo fuera del destino;
+2. planificar la union de archivos viejos y nuevos;
+3. publicar en una sola transaccion con backup;
+4. revertir byte a byte si cualquier escritura o el commit falla.
+"""
+from __future__ import annotations
+
+import shutil
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from config import get_settings
+from powerbi.errors import PowerBIMCPError
+from services import paths as safe_paths
+from services import txn as txn_service
+
+
+class ProjectPublishError(PowerBIMCPError):
+    code = "project_publish_failed"
+
+
+_STAGE_PREFIX = ".hz_stage_"
+
+
+def create_stage(base_dir: Path | str) -> Path:
+    """Crea un staging corto, hermano del destino final."""
+    base = Path(base_dir).expanduser().resolve()
+    base.mkdir(parents=True, exist_ok=True)
+    for _ in range(10):
+        stage = base / f"{_STAGE_PREFIX}{uuid.uuid4().hex[:10]}"
+        try:
+            stage.mkdir()
+            return stage
+        except FileExistsError:                       # pragma: no cover
+            continue
+    raise ProjectPublishError(
+        "No se pudo reservar una carpeta temporal para construir el proyecto.",
+        details={"base_dir": str(base)})
+
+
+def discard_stage(stage: Path | str) -> None:
+    """Elimina exclusivamente un staging creado por :func:`create_stage`."""
+    ruta = Path(stage).resolve()
+    if not ruta.name.startswith(_STAGE_PREFIX):
+        raise ProjectPublishError(
+            "Se rechazo eliminar una carpeta que no es un staging de Horizun.",
+            details={"stage": str(ruta)})
+    if ruta.exists():
+        shutil.rmtree(ruta)
+
+
+def _files(root: Path) -> Dict[str, Path]:
+    if not root.exists():
+        return {}
+    return {p.relative_to(root).as_posix(): p
+            for p in root.rglob("*") if p.is_file()}
+
+
+def _dirs(root: Path) -> Dict[str, Path]:
+    if not root.exists():
+        return {}
+    return {p.relative_to(root).as_posix(): p
+            for p in root.rglob("*") if p.is_dir()}
+
+
+def _remove_empty_dirs(root: Path, keep: set[str]) -> None:
+    if not root.exists():
+        return
+    directorios = [p for p in root.rglob("*") if p.is_dir()]
+    for directory in sorted(directorios, key=lambda p: len(p.parts), reverse=True):
+        if directory.relative_to(root).as_posix() in keep:
+            continue
+        try:
+            if not any(directory.iterdir()):
+                directory.rmdir()
+        except OSError:                                # pragma: no cover
+            continue
+
+
+def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
+                 tool: str, request_id: Optional[str] = None) -> Dict[str, Any]:
+    """Publica ``stage`` sobre ``target`` con journal y rollback completos."""
+    staging = Path(stage).resolve()
+    destino = Path(target).expanduser().resolve()
+    if not staging.is_dir():
+        raise ProjectPublishError(
+            "La carpeta temporal del proyecto no existe.",
+            details={"stage": str(staging)})
+    if staging.parent != destino.parent or not staging.name.startswith(_STAGE_PREFIX):
+        raise ProjectPublishError(
+            "El staging debe ser un hermano reconocido del destino final.",
+            details={"stage": str(staging), "target": str(destino)})
+    if destino.exists() and not destino.is_dir():
+        raise ProjectPublishError(
+            "El destino del proyecto existe pero no es una carpeta.",
+            details={"target": str(destino)})
+
+    existentes = _files(destino)
+    if existentes and not overwrite:
+        raise ProjectPublishError(
+            f"La carpeta de destino ya existe y no esta vacia: {destino}. "
+            "Usa overwrite=true si quieres reemplazarla.",
+            details={"target": str(destino)})
+    nuevos = _files(staging)
+    nuevos_dirs = _dirs(staging)
+    if not nuevos:
+        raise ProjectPublishError(
+            "El generador no produjo ningun archivo; no se publica un proyecto vacio.",
+            details={"stage": str(staging)})
+
+    # Las rutas se derivan exclusivamente de dos arboles ya resueltos. Se
+    # revalida cada destino antes de darselo a la transaccion.
+    relativas = sorted(set(existentes) | set(nuevos))
+    objetivos = [safe_paths.ensure_contained(
+        destino, destino / rel, kind="archivo de proyecto a publicar")
+        for rel in relativas]
+
+    backup_root = txn_service.resolve_backup_root(
+        destino, get_settings().backups_dir, extra_forbidden=(staging,))
+    cm = txn_service.transaction(
+        destino, backup_root, objetivos, tool=tool, request_id=request_id)
+    with cm as tx:
+        for rel, archivo in existentes.items():
+            if rel not in nuevos:
+                tx.delete(archivo)
+        for rel, archivo in nuevos.items():
+            tx.write_bytes(destino / rel, archivo.read_bytes())
+        for rel in sorted(nuevos_dirs, key=lambda p: len(Path(p).parts)):
+            tx.ensure_directory(destino / rel)
+        # Los directorios viejos ya vacios tambien son residuo: un directorio
+        # de pagina sin page.json confunde tanto a Desktop como al lector.
+        _remove_empty_dirs(destino, set(nuevos_dirs))
+
+    return {
+        "target": str(destino),
+        "files": len(nuevos),
+        "replaced_files": len(existentes),
+        "transaction": cm.result,
+    }

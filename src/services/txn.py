@@ -419,6 +419,26 @@ class Transaction:
     def write_text(self, target: Path, text: str) -> None:
         self.write_bytes(target, text.encode("utf-8"))
 
+    def ensure_directory(self, target: Path) -> None:
+        """Crea un directorio planificado como parte de la transaccion.
+
+        Algunos formatos distinguen una carpeta vacia obligatoria de una
+        carpeta ausente (por ejemplo ``definition/tables`` en un modelo recien
+        creado). Se registra toda la cadena nueva para retirarla si hay
+        rollback o falla el commit.
+        """
+        directory = safe_paths.ensure_contained(
+            self.project_dir, target, kind="directorio de proyecto")
+        if directory.exists():
+            if not directory.is_dir():
+                raise TransactionError(
+                    "Se esperaba crear un directorio, pero la ruta es un archivo.",
+                    details={"directory": safe_paths.relative_key(
+                        self.project_dir, directory)})
+            return
+        self._note_missing_dirs(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+
     def _record_for(self, target: Path) -> FileRecord:
         resolved = safe_paths.ensure_contained(
             self.project_dir, target, kind="objetivo de escritura")

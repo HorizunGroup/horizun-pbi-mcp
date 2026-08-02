@@ -127,26 +127,10 @@ def _revisar_informe(report_dir: Path) -> Dict[str, Any]:
             "diagnostics": len(resultado.diagnostics)}
 
 
-def crear_proyecto(out_dir: Path | str, name: str, *,
-                   culture: str = "es-ES",
-                   width: int = 1280, height: int = 1080,
-                   page_name: str = "Pagina 1",
-                   overwrite: bool = False) -> Dict[str, Any]:
-    """Escribe un .pbip vacio y devuelve sus rutas."""
-    if not str(name).strip():
-        raise ScaffoldError("Hace falta un nombre para el proyecto.")
-    if _PROHIBIDOS.search(name) or name.strip() in (".", ".."):
-        raise ScaffoldError(
-            f"El nombre '{name}' contiene caracteres de ruta. El nombre no "
-            "puede decidir donde se escribe el proyecto.",
-            details={"name": name})
-
-    raiz = Path(out_dir).expanduser() / name
-    if raiz.exists() and any(raiz.iterdir()) and not overwrite:
-        raise ScaffoldError(
-            f"Ya hay algo en {raiz}. Usa overwrite=true si de verdad quieres "
-            "escribir encima.", details={"project_dir": str(raiz)})
-
+def _construir_proyecto(raiz: Path, name: str, *, culture: str,
+                        width: int, height: int,
+                        page_name: str) -> Dict[str, Any]:
+    """Construye el arbol completo dentro de un staging todavia invisible."""
     report_dir = raiz / f"{name}.Report"
     model_dir = raiz / f"{name}.SemanticModel"
 
@@ -239,15 +223,67 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
     # que es el unico momento en que el error sale gratis.
     informe = _revisar_informe(report_dir)
 
+    return {"report_validation": informe, "page_id": page_id}
+
+
+def crear_proyecto(out_dir: Path | str, name: str, *,
+                   culture: str = "es-ES",
+                   width: int = 1280, height: int = 1080,
+                   page_name: str = "Pagina 1",
+                   overwrite: bool = False) -> Dict[str, Any]:
+    """Escribe un .pbip vacio y devuelve sus rutas.
+
+    El arbol se construye y valida en staging. Solo entonces se publica con
+    backup y una transaccion unica, de modo que un fallo no deje medio proyecto
+    ni ``overwrite`` mezcle paginas antiguas con el esqueleto nuevo.
+    """
+    if not str(name).strip():
+        raise ScaffoldError("Hace falta un nombre para el proyecto.")
+    if _PROHIBIDOS.search(name) or name.strip() in (".", ".."):
+        raise ScaffoldError(
+            f"El nombre '{name}' contiene caracteres de ruta. El nombre no "
+            "puede decidir donde se escribe el proyecto.",
+            details={"name": name})
+    if width <= 0 or height <= 0:
+        raise ScaffoldError(
+            "El ancho y el alto del lienzo deben ser mayores que cero.",
+            details={"width": width, "height": height})
+
+    from services import project_publish
+
+    base = Path(out_dir).expanduser().resolve()
+    raiz = base / name
+    if raiz.exists() and not raiz.is_dir():
+        raise ScaffoldError(
+            f"El destino existe pero no es una carpeta: {raiz}.",
+            details={"project_dir": str(raiz)})
+    if raiz.exists() and any(raiz.iterdir()) and not overwrite:
+        raise ScaffoldError(
+            f"Ya hay algo en {raiz}. Usa overwrite=true si de verdad quieres "
+            "reemplazarlo.", details={"project_dir": str(raiz)})
+
+    stage = project_publish.create_stage(base)
+    try:
+        construido = _construir_proyecto(
+            stage, name, culture=culture, width=width, height=height,
+            page_name=page_name)
+        publicacion = project_publish.publish_tree(
+            stage, raiz, overwrite=overwrite, tool="pbi_create_pbip_project")
+    finally:
+        project_publish.discard_stage(stage)
+
+    report_dir = raiz / f"{name}.Report"
+    model_dir = raiz / f"{name}.SemanticModel"
     log.info("Proyecto .pbip creado en %s (%sx%s, cultura %s)",
              raiz, width, height, culture)
     return {
-        "report_validation": informe,
+        "report_validation": construido["report_validation"],
+        "publication": publicacion,
         "project_dir": str(raiz),
         "pbip_path": str(raiz / f"{name}.pbip"),
         "report_dir": str(report_dir),
         "semantic_model_dir": str(model_dir),
-        "page_id": page_id,
+        "page_id": construido["page_id"],
         "canvas": {"width": width, "height": height},
         "culture": culture,
         "created": True,

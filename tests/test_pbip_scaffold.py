@@ -178,6 +178,42 @@ def test_no_pisa_una_carpeta_existente_sin_permiso(tmp_path):
     assert "overwrite" in str(exc.value)
 
 
+def test_fallo_tardio_no_deja_un_proyecto_parcial(tmp_path, monkeypatch):
+    """Antes se escribian once archivos antes de ejecutar el validador."""
+    def falla(_report_dir):
+        raise pbip_scaffold.ScaffoldError("fallo inyectado de validacion")
+
+    monkeypatch.setattr(pbip_scaffold, "_revisar_informe", falla)
+    with pytest.raises(pbip_scaffold.ScaffoldError):
+        pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+
+    assert not (tmp_path / "Demo").exists()
+    assert not list(tmp_path.glob(".hz_stage_*"))
+
+
+def test_overwrite_reemplaza_el_arbol_entero_y_respalda_lo_anterior(tmp_path):
+    primero = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    raiz = Path(primero["project_dir"])
+    residuo = raiz / "Demo.Report" / "definition" / "pages" / "pagina_vieja"
+    residuo.mkdir()
+    (residuo / "page.json").write_text('{"viejo": true}', encoding="utf-8")
+
+    segundo = pbip_scaffold.crear_proyecto(tmp_path, "Demo", overwrite=True)
+
+    assert not residuo.exists(), "overwrite mezclo paginas viejas con el proyecto nuevo"
+    journal = Path(segundo["publication"]["transaction"]["journal"])
+    respaldo = (journal / "files" / "Demo.Report" / "definition" / "pages"
+                / "pagina_vieja" / "page.json")
+    assert respaldo.read_text(encoding="utf-8") == '{"viejo": true}'
+
+
+def test_lienzo_no_positivo_falla_antes_de_crear_carpetas(tmp_path):
+    with pytest.raises(pbip_scaffold.ScaffoldError):
+        pbip_scaffold.crear_proyecto(tmp_path, "Demo", width=0)
+    assert not (tmp_path / "Demo").exists()
+    assert not list(tmp_path.glob(".hz_stage_*"))
+
+
 def test_un_nombre_con_separadores_de_ruta_se_rechaza(tmp_path):
     """El nombre no puede decidir donde se escribe."""
     with pytest.raises(pbip_scaffold.ScaffoldError):

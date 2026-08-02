@@ -33,7 +33,7 @@ from pbip import layout_to_pbir, pbix_reader
 from pbip.pbix_reader import PbixContents
 from powerbi.errors import PowerBIMCPError
 from utils.file_utils import rutas_demasiado_largas
-from utils.json_utils import write_json
+from utils.json_utils import read_json, write_json
 
 log = get_logger("pbix_to_pbip")
 
@@ -74,6 +74,8 @@ class ConversionResult:
     warnings: List[str] = field(default_factory=list)
     dropped: List[Dict[str, Any]] = field(default_factory=list)
     model: Optional[Dict[str, Any]] = None
+    report_validation: Optional[Dict[str, Any]] = None
+    publication: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -90,6 +92,8 @@ class ConversionResult:
             "warnings": self.warnings,
             "dropped": self.dropped,
             "model": self.model,
+            "report_validation": self.report_validation,
+            "publication": self.publication,
         }
 
 
@@ -195,6 +199,83 @@ def _copiar_recursos(contents: PbixContents, report_dir: Path,
         escritos.append(destino.relative_to(raiz).as_posix())
 
 
+def _normalizar_tema_personalizado(report_dir: Path,
+                                   avisos: List[str]) -> None:
+    """Iguala nombre declarado, nombre de archivo y ``name`` interno.
+
+    El layout heredado puede llevar un archivo renombrado por Desktop cuyo JSON
+    conserva el nombre original. PBIR no tolera esa discrepancia y el CLI la
+    reporta como ``PBIR_THEME_FILE_NAME_MISMATCH``. El nombre autoritativo es
+    el declarado en ``themeCollection`` y en el paquete de recursos.
+    """
+    from services import paths as safe_paths
+
+    report_json = report_dir / "definition" / "report.json"
+    if not report_json.exists():
+        return
+    informe = read_json(report_json)
+    tema = (informe.get("themeCollection") or {}).get("customTheme") or {}
+    declarado = tema.get("name")
+    if not isinstance(declarado, str) or not declarado:
+        return
+
+    item = None
+    for paquete in informe.get("resourcePackages") or []:
+        if paquete.get("type") != "RegisteredResources":
+            continue
+        candidatos = [i for i in paquete.get("items") or []
+                      if i.get("type") == "CustomTheme"]
+        item = next((i for i in candidatos
+                     if i.get("name") == declarado or i.get("path") == declarado),
+                    candidatos[0] if len(candidatos) == 1 else None)
+        if item:
+            break
+    if not item:
+        return
+    relativa = item.get("path")
+    if not isinstance(relativa, str) or not relativa:
+        return
+
+    base = report_dir / "StaticResources" / "RegisteredResources"
+    archivo = safe_paths.ensure_contained(
+        base, base / relativa, kind="archivo de tema personalizado")
+    if not archivo.is_file():
+        return
+    try:
+        contenido = read_json(archivo)
+    except Exception:                                  # el CLI dara el error preciso
+        return
+    if contenido.get("name") == declarado:
+        return
+    contenido["name"] = declarado
+    write_json(archivo, contenido)
+    avisos.append(
+        f"El tema personalizado declaraba internamente otro nombre; se igualo "
+        f"a '{declarado}' para que PBIR no rechace el archivo.")
+
+
+def _validar_informe_convertido(report_dir: Path) -> Dict[str, Any]:
+    """Exige que el informe generado no tenga errores del CLI oficial."""
+    from services import report_validator
+
+    resultado = report_validator.validar_informe(report_dir)
+    if resultado.status == report_validator.UNAVAILABLE:
+        return {"checked": False, "reason": resultado.detail}
+    if resultado.status == report_validator.TIMEOUT:
+        raise PbixConversionError(
+            "El validador oficial no respondio; no se publica un proyecto que "
+            "no se pudo comprobar.", details=resultado.to_envelope())
+    errores = [d.__dict__ for d in resultado.diagnostics if d.severity == "error"]
+    if errores:
+        raise PbixConversionError(
+            "La conversion produjo un informe que Power BI no aceptaria; no se "
+            "publico ningun proyecto parcial.",
+            details={"diagnostics": errores, "report_dir": str(report_dir)})
+    return {"checked": True, "status": resultado.status,
+            "warnings": resultado.warnings,
+            "diagnostics": len(resultado.diagnostics)}
+
+
 def _referencia_dataset(nombre: str, con_modelo: bool,
                         connection_string: Optional[str]) -> Dict[str, Any]:
     if con_modelo:
@@ -220,18 +301,96 @@ def _exigir_rutas_cortas(destino: Path, nombre: str,
     )
 
 
-def _preparar_carpeta(carpeta: Path, overwrite: bool) -> None:
-    if carpeta.exists() and any(carpeta.iterdir()):
-        if not overwrite:
-            raise PbixConversionError(
-                f"La carpeta de destino ya existe y no esta vacia: {carpeta}. "
-                "Usa overwrite=true si quieres reemplazarla.",
-                details={"path": str(carpeta)},
-            )
-        import shutil
+def _construir_en_stage(
+    pbix: Path,
+    contents: PbixContents,
+    conversion: Optional[layout_to_pbir.LayoutConversion],
+    stage: Path,
+    destino_final: Path,
+    nombre: str,
+    *,
+    tiene_modelo: bool,
+    quiere_modelo: bool,
+    dataset_connection_string: Optional[str],
+    desktop_timeout: int,
+    close_desktop: bool,
+    reuse_open_desktop: bool,
+) -> ConversionResult:
+    """Construye y valida todo sin hacer visible el destino final."""
+    report_dir = stage / f"{nombre}.Report"
+    definition_dir = report_dir / "definition"
+    definition_dir.mkdir(parents=True, exist_ok=True)
 
-        shutil.rmtree(carpeta)
-    carpeta.mkdir(parents=True, exist_ok=True)
+    resultado = ConversionResult(
+        source=str(pbix),
+        project_dir=str(destino_final),
+        pbip_path=str(destino_final / f"{nombre}.pbip"),
+        report_dir=str(destino_final / f"{nombre}.Report"),
+    )
+    resultado.warnings.extend(contents.warnings)
+    escritos = resultado.files_written
+
+    if conversion is None:
+        resultado.report_source = "pbir_copied"
+        _copiar_pbir(contents, definition_dir, escritos, stage,
+                     resultado.warnings)
+        resultado.pages = sum(
+            1 for p in contents.pbir_parts if p.endswith("/page.json"))
+        resultado.visuals = sum(
+            1 for p in contents.pbir_parts if p.endswith("/visual.json"))
+        log.info("%s ya venia en PBIR: copiadas %s partes",
+                 pbix.name, len(contents.pbir_parts))
+    else:
+        resultado.report_source = "layout_converted"
+        _escribir_conversion(conversion, definition_dir, escritos, stage)
+        resultado.pages = len(conversion.pages)
+        resultado.visuals = conversion.visual_count
+        resultado.warnings.extend(conversion.warnings)
+        resultado.dropped.extend(conversion.dropped)
+
+    _copiar_recursos(contents, report_dir, escritos, stage)
+
+    write_json(report_dir / ".platform", _platform("Report", nombre))
+    write_json(report_dir / "definition.pbir", {
+        "$schema": SCHEMA_PBIR,
+        "version": PBIR_VERSION,
+        "datasetReference": _referencia_dataset(
+            nombre, tiene_modelo, dataset_connection_string),
+    })
+    escritos.extend([f"{nombre}.Report/.platform",
+                     f"{nombre}.Report/definition.pbir"])
+
+    _normalizar_tema_personalizado(report_dir, resultado.warnings)
+    resultado.report_validation = _validar_informe_convertido(report_dir)
+
+    if quiere_modelo:
+        modelo = _exportar_modelo(
+            pbix, stage, nombre, contents, timeout=desktop_timeout,
+            close_after=close_desktop, reuse_open=reuse_open_desktop)
+        modelo.pop("semantic_model_dir", None)          # apuntaba al staging
+        resultado.semantic_model_dir = str(
+            destino_final / f"{nombre}.SemanticModel")
+        resultado.model_status = modelo.pop("status", "skipped")
+        resultado.model = modelo
+        resultado.warnings.extend(modelo.pop("warnings", []))
+        escritos.extend(modelo.get("written", []))
+    elif contents.has_data_model:
+        resultado.model_status = "skipped"
+        resultado.warnings.append(
+            "El .pbix lleva modelo de datos pero se pidio no exportarlo: el "
+            ".pbip queda sin '.SemanticModel' y no abrira en Desktop hasta "
+            "que se genere.")
+    else:
+        resultado.model_status = "absent"
+
+    write_json(stage / f"{nombre}.pbip", {
+        "$schema": SCHEMA_PBIP,
+        "version": PBIP_VERSION,
+        "artifacts": [{"report": {"path": f"{nombre}.Report"}}],
+        "settings": {"enableAutoRecovery": True},
+    })
+    escritos.append(f"{nombre}.pbip")
+    return resultado
 
 
 def convert(
@@ -297,88 +456,31 @@ def convert(
     previstas += [f"{nombre}.Report/{r}" for r in contents.report_assets]
     _exigir_rutas_cortas(destino, nombre, previstas)
 
-    _preparar_carpeta(destino, overwrite)
-    report_dir = destino / f"{nombre}.Report"
-    definition_dir = report_dir / "definition"
-    definition_dir.mkdir(parents=True, exist_ok=True)
+    if destino.exists() and not destino.is_dir():
+        raise PbixConversionError(
+            f"El destino existe pero no es una carpeta: {destino}.",
+            details={"path": str(destino)})
+    if destino.exists() and any(destino.iterdir()) and not overwrite:
+        raise PbixConversionError(
+            f"La carpeta de destino ya existe y no esta vacia: {destino}. "
+            "Usa overwrite=true si quieres reemplazarla.",
+            details={"path": str(destino)})
 
-    resultado = ConversionResult(
-        source=str(pbix),
-        project_dir=str(destino),
-        pbip_path=str(destino / f"{nombre}.pbip"),
-        report_dir=str(report_dir),
-    )
-    resultado.warnings.extend(contents.warnings)
-    escritos = resultado.files_written
+    from services import project_publish
 
-    if conversion is None:
-        resultado.report_source = "pbir_copied"
-        _copiar_pbir(contents, definition_dir, escritos, destino,
-                     resultado.warnings)
-        resultado.pages = sum(1 for p in contents.pbir_parts if p.endswith("/page.json"))
-        resultado.visuals = sum(1 for p in contents.pbir_parts if p.endswith("/visual.json"))
-        log.info("%s ya venia en PBIR: copiadas %s partes",
-                 pbix.name, len(contents.pbir_parts))
-    else:
-        resultado.report_source = "layout_converted"
-        _escribir_conversion(conversion, definition_dir, escritos, destino)
-        resultado.pages = len(conversion.pages)
-        resultado.visuals = conversion.visual_count
-        resultado.warnings.extend(conversion.warnings)
-        resultado.dropped.extend(conversion.dropped)
-
-    _copiar_recursos(contents, report_dir, escritos, destino)
-
-    write_json(report_dir / ".platform", _platform("Report", nombre))
-    write_json(report_dir / "definition.pbir", {
-        "$schema": SCHEMA_PBIR,
-        "version": PBIR_VERSION,
-        "datasetReference": _referencia_dataset(
-            nombre, tiene_modelo, dataset_connection_string),
-    })
-    escritos.extend([f"{nombre}.Report/.platform", f"{nombre}.Report/definition.pbir"])
-
-    if quiere_modelo:
-        try:
-            modelo = _exportar_modelo(
-                pbix, destino, nombre, contents,
-                timeout=desktop_timeout, close_after=close_desktop,
-                reuse_open=reuse_open_desktop)
-        except PowerBIMCPError as exc:
-            # El informe ya esta escrito. Decirlo evita que el usuario crea que
-            # no quedo nada y borre a mano un trabajo que si sirve.
-            exc.details = dict(exc.details or {})
-            exc.details["partial_project"] = {
-                "report_written": True,
-                "project_dir": str(destino),
-                "pages": resultado.pages,
-                "visuals": resultado.visuals,
-                "note": "El informe se convirtio y quedo en disco; falta el "
-                        "'.SemanticModel'. Repite la conversion con "
-                        "overwrite=true cuando se resuelva el motivo.",
-            }
-            raise
-        resultado.semantic_model_dir = modelo.pop("semantic_model_dir", None)
-        resultado.model_status = modelo.pop("status", "skipped")
-        resultado.model = modelo
-        resultado.warnings.extend(modelo.pop("warnings", []))
-        escritos.extend(modelo.get("written", []))
-    elif contents.has_data_model:
-        resultado.model_status = "skipped"
-        resultado.warnings.append(
-            "El .pbix lleva modelo de datos pero se pidio no exportarlo: el "
-            ".pbip queda sin '.SemanticModel' y no abrira en Desktop hasta que "
-            "se genere.")
-    else:
-        resultado.model_status = "absent"
-
-    write_json(destino / f"{nombre}.pbip", {
-        "$schema": SCHEMA_PBIP,
-        "version": PBIP_VERSION,
-        "artifacts": [{"report": {"path": f"{nombre}.Report"}}],
-        "settings": {"enableAutoRecovery": True},
-    })
-    escritos.append(f"{nombre}.pbip")
+    stage = project_publish.create_stage(destino.parent)
+    try:
+        resultado = _construir_en_stage(
+            pbix, contents, conversion, stage, destino, nombre,
+            tiene_modelo=tiene_modelo, quiere_modelo=quiere_modelo,
+            dataset_connection_string=dataset_connection_string,
+            desktop_timeout=desktop_timeout, close_desktop=close_desktop,
+            reuse_open_desktop=reuse_open_desktop)
+        resultado.publication = project_publish.publish_tree(
+            stage, destino, overwrite=overwrite,
+            tool="pbi_convert_pbix_to_pbip")
+    finally:
+        project_publish.discard_stage(stage)
 
     log.info("Convertido %s -> %s (%s paginas, %s visuales, modelo=%s)",
              pbix.name, destino, resultado.pages, resultado.visuals,
