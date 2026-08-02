@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -681,6 +682,44 @@ def test_respuesta_del_modelo_no_apunta_al_staging_eliminado(
     assert Path(resultado.model["path"]).is_dir()
     assert resultado.model["path"] == str(
         Path(resultado.semantic_model_dir) / "definition")
+
+
+def test_exportar_modelo_declara_el_diagrama_que_escribe(
+        tmp_path, pbix_heredado, monkeypatch):
+    with zipfile.ZipFile(pbix_heredado, "a") as zf:
+        zf.writestr("DiagramLayout", _u16({"version": "1.0", "diagrams": []}))
+    contents = pbix_reader.read_pbix(pbix_heredado)
+
+    from powerbi import desktop_launcher, tmdl_export
+
+    abierto = SimpleNamespace(
+        launched_by_us=True, waited_seconds=0.1,
+        instance={
+            "host": "localhost", "port": 50000,
+            "connection_string": "Data Source=localhost:50000",
+            "catalog": "modelo", "database_name": "modelo",
+            "model_name": "modelo", "pid": 123, "create_time": 1.0,
+        })
+    monkeypatch.setattr(desktop_launcher, "open_pbix", lambda *_a, **_k: abierto)
+    monkeypatch.setattr(desktop_launcher, "close", lambda _a: {"closed": True})
+
+    def exportar(_modelo, destino, overwrite=True):
+        Path(destino).mkdir(parents=True)
+        (Path(destino) / "model.tmdl").write_text(
+            "model Model\n", encoding="utf-8")
+        return {"files": ["model.tmdl"], "file_count": 1,
+                "path": str(destino)}
+
+    monkeypatch.setattr(tmdl_export, "export_to_tmdl", exportar)
+    monkeypatch.setattr(tmdl_export, "rename_database", lambda *_a, **_k: None)
+
+    resultado = pbix_to_pbip._exportar_modelo(  # noqa: SLF001
+        pbix_heredado, tmp_path / "stage", "Demo", contents,
+        timeout=10, close_after=True, reuse_open=False)
+
+    relativo = "Demo.SemanticModel/diagramLayout.json"
+    assert relativo in resultado["written"]
+    assert (tmp_path / "stage" / relativo).is_file()
 
 
 @pytest.mark.parametrize("nombre", ["CON", "nul.json", "AUX"])

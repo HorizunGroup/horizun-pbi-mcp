@@ -767,6 +767,9 @@ def _exportar_modelo(pbix: Path, destino: Path, nombre: str,
         f"{nombre}.SemanticModel/definition/{f}" for f in detalle["files"]]
     salida["written"].extend([f"{nombre}.SemanticModel/.platform",
                               f"{nombre}.SemanticModel/definition.pbism"])
+    if diagrama is not None:
+        salida["written"].append(
+            f"{nombre}.SemanticModel/diagramLayout.json")
     salida["status"] = "exported"
     salida.update({k: v for k, v in detalle.items() if k != "files"})
     salida["file_count"] = detalle["file_count"]
