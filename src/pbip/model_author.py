@@ -18,6 +18,7 @@ estan resueltas:
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from pathlib import Path
@@ -250,14 +251,33 @@ def create_calculated_column(active: ActivePbip, table: str, name: str,
 
     ruta = find_table_file(active, table)
     lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
+    leida = parse_table_file(ruta)
+    clave = name.casefold()
 
-    existente = _bloque_existe(lineas, "column", tmdl_quote_name(name))
-    if existente is None:
-        existente = _bloque_existe(lineas, "column", name)
+    # Columnas y medidas comparten el espacio de nombres dentro de una tabla.
+    # La comparacion del motor es case-insensitive: `Total` y `total` chocan
+    # aunque el parser textual pueda leer ambas declaraciones.
+    medida = next((m["name"] for m in leida["measures"]
+                   if m["name"].casefold() == clave), None)
+    if medida is not None:
+        raise ModelAuthorError(
+            f"No se puede crear la columna '{name}': en '{table}' ya existe "
+            f"la medida '{medida}' con el mismo nombre.",
+            details={"table": table, "column": name, "measure": medida,
+                     "rule": "measure_column_collision"})
+
+    columna = next((c["name"] for c in leida["columns"]
+                    if c["name"].casefold() == clave), None)
+    existente = None
+    if columna is not None:
+        existente = _bloque_existe(lineas, "column", tmdl_quote_name(columna))
+        if existente is None:
+            existente = _bloque_existe(lineas, "column", columna)
     if existente is not None:
         if not overwrite:
             raise ModelAuthorError(
-                f"La columna '{name}' ya existe en '{table}'. Usa overwrite=true.")
+                f"La columna '{columna}' ya existe en '{table}'. "
+                "Usa overwrite=true para reemplazarla.")
         fin = _fin_del_bloque(lineas, existente)
         del lineas[existente:fin]
         insercion = existente
@@ -375,6 +395,7 @@ def _normalizar_columnas(columns: List[Dict[str, str]]) -> List[Dict[str, str]]:
     desconocido ahora se rechaza en vez de ignorarse.
     """
     normalizadas: List[Dict[str, str]] = []
+    nombres: Dict[str, tuple[int, str]] = {}
     for indice, columna in enumerate(columns):
         if not isinstance(columna, dict):
             raise ModelAuthorError(
@@ -392,8 +413,79 @@ def _normalizar_columnas(columns: List[Dict[str, str]]) -> List[Dict[str, str]]:
             raise ModelAuthorError(
                 f"La columna {indice} no tiene 'name'.",
                 details={"column_index": indice, "column": columna})
+        salida["name"] = validate_object_name(str(salida["name"]), "columna")
+        clave_nombre = salida["name"].casefold()
+        if clave_nombre in nombres:
+            anterior, original = nombres[clave_nombre]
+            raise ModelAuthorError(
+                f"Las columnas {anterior} ('{original}') e {indice} "
+                f"('{salida['name']}') tienen el mismo nombre para el motor.",
+                details={"first_index": anterior, "second_index": indice,
+                         "name": salida["name"],
+                         "rule": "duplicate_column_name"})
+        nombres[clave_nombre] = (indice, salida["name"])
         normalizadas.append(salida)
     return normalizadas
+
+
+def resolver_destino_tabla(active: ActivePbip, nombre: str,
+                           overwrite: bool) -> Path:
+    """Resuelve el archivo sin confundir identidades que dan el mismo slug.
+
+    `A/B` y `A:B` producen `A_B.tmdl`. `overwrite=true` no autoriza a borrar la
+    primera para crear la segunda: son tablas distintas aunque compartan nombre
+    de archivo en Windows. Tambien se detecta la identidad case-insensitive si
+    una tabla existente vive en un archivo cuyo nombre no coincide con el slug.
+    """
+    definicion = _definition(active)
+    carpeta = definicion / "tables"
+    seguro = re.sub(r'[<>:"/\\|?*]', "_", nombre)
+    destino = carpeta / f"{seguro}.tmdl"
+    destino_key = os.path.normcase(str(destino.resolve()))
+
+    identidad: List[tuple[Path, str]] = []
+    ocupante: Optional[tuple[Path, str]] = None
+    for archivo in sorted(carpeta.glob("*.tmdl")) if carpeta.is_dir() else []:
+        misma_ruta = os.path.normcase(str(archivo.resolve())) == destino_key
+        try:
+            tabla = parse_table_file(archivo)["name"]
+        except Exception as exc:  # noqa: BLE001
+            if misma_ruta:
+                raise ModelAuthorError(
+                    f"El archivo destino '{archivo.name}' ya existe pero no se "
+                    "puede identificar que tabla contiene. No se sobrescribe.",
+                    details={"file": str(archivo), "table": nombre}) from exc
+            continue
+        if misma_ruta:
+            ocupante = (archivo, tabla)
+        if tabla.casefold() == nombre.casefold():
+            identidad.append((archivo, tabla))
+
+    if ocupante is not None and ocupante[1].casefold() != nombre.casefold():
+        raise ModelAuthorError(
+            f"El nombre '{nombre}' usaria '{ocupante[0].name}', pero ese archivo "
+            f"ya define otra tabla: '{ocupante[1]}'. El cambio se rechaza para "
+            "no sobrescribir una identidad distinta.",
+            details={"requested_table": nombre, "existing_table": ocupante[1],
+                     "file": str(ocupante[0]), "rule": "table_file_collision"})
+
+    if len(identidad) > 1:
+        raise ModelAuthorError(
+            f"Ya hay {len(identidad)} archivos que declaran la tabla '{nombre}'. "
+            "El modelo debe corregirse antes de escribir.",
+            details={"table": nombre,
+                     "files": [str(p) for p, _ in identidad],
+                     "rule": "duplicate_table_identity"})
+    if identidad:
+        archivo, existente = identidad[0]
+        if not overwrite:
+            raise ModelAuthorError(
+                f"Ya existe la tabla '{existente}'. Usa overwrite=true para "
+                "reemplazarla.", details={"file": str(archivo)})
+        return archivo
+    if ocupante is not None:  # misma identidad, cubierta arriba por `identidad`
+        return ocupante[0]
+    return destino
 
 
 def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
@@ -410,13 +502,7 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
     name = validate_object_name(name, "tabla")
     expression = validate_measure_expression(expression)
 
-    definicion = _definition(active)
-    carpeta = definicion / "tables"
-    seguro = re.sub(r'[<>:"/\\|?*]', "_", name)
-    ruta = carpeta / f"{seguro}.tmdl"
-    if ruta.exists() and not overwrite:
-        raise ModelAuthorError(
-            f"Ya existe la tabla '{name}'. Usa overwrite=true para reemplazarla.")
+    ruta = resolver_destino_tabla(active, name, overwrite)
 
     if not columns:
         if session is None:

@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from pbip import project_locator, table_from_file
+from pbip import model_author, project_locator, table_from_file
 from services import tmdl_validate
 
 
@@ -27,6 +27,22 @@ from services import tmdl_validate
 def proyecto(session, sample_pbip):
     project_locator.open_project(session, str(sample_pbip))
     return session.require_active_pbip()
+
+
+def _assert_tom_abre(proyecto):
+    import config
+
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    settings = config.get_settings()
+    anterior = settings.libs_dir
+    settings.libs_dir = config.PROJECT_ROOT / "libs"
+    try:
+        resultado = tmdl_validate.parse_with_tom(definition)
+    except Exception as exc:  # pragma: no cover - depende de DLL locales
+        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+    finally:
+        settings.libs_dir = anterior
+    assert resultado["parsed"] is True, resultado["error"]
 
 
 # --------------------------------------------------------------------------
@@ -91,6 +107,30 @@ def test_el_bom_no_se_cuela_en_el_nombre_de_la_primera_columna(tmp_path):
         _csv(tmp_path, "costos.csv", CSV_PUNTO, bom=True))
     assert perfil["columns"][0]["name"] == "Documento"
     assert perfil["encoding"] == 65001
+
+
+def test_encabezado_multilinea_se_rechaza_sin_tocar_el_proyecto(
+        proyecto, tmp_path):
+    origen = _csv(tmp_path, "multilinea.csv", '"Bad\nName",Good\n1,2\n')
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    model_file = definition / "model.tmdl"
+    model_before = model_file.read_bytes()
+    existentes = {p.name: p.read_bytes()
+                  for p in (definition / "tables").glob("*.tmdl")}
+
+    with pytest.raises(table_from_file.TableFromFileError) as exc:
+        table_from_file.agregar_tabla(
+            proyecto, origen, table_name="BadHeader")
+
+    assert "Bad" in exc.value.details["header"]
+    assert "Name" in exc.value.details["header"]
+    assert {c["codepoint"] for c in exc.value.details["controls"]} >= {
+        "U+000A"}
+    assert not (definition / "tables" / "BadHeader.tmdl").exists()
+    assert model_file.read_bytes() == model_before
+    assert {p.name: p.read_bytes()
+            for p in (definition / "tables").glob("*.tmdl")} == existentes
+    _assert_tom_abre(proyecto)
 
 
 def test_una_columna_vacia_no_se_declara_numerica(tmp_path):
@@ -237,6 +277,27 @@ def test_no_pisa_una_tabla_existente_sin_permiso(proyecto, tmp_path):
     with pytest.raises(table_from_file.TableFromFileError) as exc:
         table_from_file.agregar_tabla(proyecto, origen, table_name="T")
     assert "overwrite" in str(exc.value)
+
+
+def test_importacion_no_pisa_otro_nombre_con_el_mismo_slug(
+        proyecto, tmp_path):
+    primera = model_author.create_calculated_table(
+        proyecto, "A/B", "ROW(1)",
+        columns=[{"name": "a", "data_type": "int64"}])
+    tabla = Path(primera["file"])
+    modelo = Path(proyecto.semantic_model_dir) / "definition" / "model.tmdl"
+    tabla_before = tabla.read_bytes()
+    modelo_before = modelo.read_bytes()
+    origen = _csv(tmp_path, "datos.csv", "b\n1\n")
+
+    with pytest.raises(table_from_file.TableFromFileError) as exc:
+        table_from_file.agregar_tabla(
+            proyecto, origen, table_name="A:B", overwrite=True)
+
+    assert exc.value.details["rule"] == "table_file_collision"
+    assert tabla.read_bytes() == tabla_before
+    assert modelo.read_bytes() == modelo_before
+    _assert_tom_abre(proyecto)
 
 
 def test_dry_run_no_escribe_nada(proyecto, tmp_path):

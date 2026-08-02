@@ -28,6 +28,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
@@ -355,6 +356,35 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
             "encabezados. Power BI no puede cargarlas asi.",
             details={"positions": vacios, "path": str(ruta)})
 
+    vistos: Dict[str, tuple[int, str]] = {}
+    for indice, columna in enumerate(perfil["columns"]):
+        nombre = str(columna["name"])
+        controles = [
+            {"char": repr(ch), "codepoint": f"U+{ord(ch):04X}"}
+            for ch in nombre
+            if ch in "\r\n" or unicodedata.category(ch).startswith("C")
+        ]
+        if controles:
+            # No se sustituye silenciosamente: el nombre original tambien se
+            # usa en Power Query para promover y tipar la columna. Cambiar solo
+            # el TMDL produciria una tabla que abre pero no refresca. El detalle
+            # conserva la representacion exacta para que la correccion sea
+            # reversible en el archivo fuente.
+            raise TableFromFileError(
+                f"El encabezado de la columna {indice} contiene saltos de "
+                "linea o caracteres de control y no puede escribirse en TMDL.",
+                details={"index": indice, "header": repr(nombre),
+                         "controls": controles, "path": str(ruta)})
+        clave = nombre.casefold()
+        if clave in vistos:
+            anterior, original = vistos[clave]
+            raise TableFromFileError(
+                f"Los encabezados {anterior} ('{original}') e {indice} "
+                f"('{nombre}') son duplicados para el motor de Power BI.",
+                details={"first_index": anterior, "second_index": indice,
+                         "header": nombre, "path": str(ruta)})
+        vistos[clave] = (indice, nombre)
+
     # La cultura sale de como escribe los decimales el propio archivo. Es el
     # unico dato que no obliga a suponer.
     perfil["culture"] = {".": "en-US", ",": "es-ES"}.get(
@@ -474,21 +504,18 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   description: Optional[str] = None, overwrite: bool = False,
                   dry_run: bool = False, muestra: int = 200) -> Dict[str, Any]:
     """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre."""
-    from pbip.model_author import _definition
+    from pbip.model_author import ModelAuthorError, resolver_destino_tabla
     from utils.validation import validate_object_name
 
     ruta = Path(path).expanduser()
     perfil = perfilar(ruta, sheet=sheet, muestra=muestra)
 
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
-    definicion = _definition(active)
-    carpeta = definicion / "tables"
-    seguro = re.sub(r'[<>:"/\\|?*]', "_", nombre)
-    destino = carpeta / f"{seguro}.tmdl"
-    if destino.exists() and not overwrite:
+    try:
+        destino = resolver_destino_tabla(active, nombre, overwrite)
+    except ModelAuthorError as exc:
         raise TableFromFileError(
-            f"Ya existe la tabla '{nombre}'. Usa overwrite=true para "
-            "reemplazarla.", details={"file": str(destino)})
+            exc.message, details=exc.details) from exc
 
     texto = construir_tmdl(nombre, perfil, culture, description)
     resumen = {
@@ -501,8 +528,7 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
     if dry_run:
         return {**resumen, "dry_run": True, "tmdl": texto, "m": construir_m(perfil, culture)}
 
-    from pbip.model_author import (ModelAuthorError,
-                                   escribir_tabla_y_registrarla)
+    from pbip.model_author import escribir_tabla_y_registrarla
 
     try:
         salida = escribir_tabla_y_registrarla(

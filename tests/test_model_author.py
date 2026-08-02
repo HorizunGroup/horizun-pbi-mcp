@@ -16,6 +16,7 @@ import pytest
 
 from pbip import model_author, project_locator
 from pbip.model_author import ModelAuthorError
+from services import tmdl_validate
 
 
 @pytest.fixture
@@ -28,6 +29,22 @@ def _tabla(activo, nombre="Ventas") -> str:
     from pbip.tmdl_reader import find_table_file
 
     return find_table_file(activo, nombre).read_text(encoding="utf-8-sig")
+
+
+def _assert_tom_abre(proyecto):
+    import config
+
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    settings = config.get_settings()
+    anterior = settings.libs_dir
+    settings.libs_dir = config.PROJECT_ROOT / "libs"
+    try:
+        resultado = tmdl_validate.parse_with_tom(definition)
+    except Exception as exc:  # pragma: no cover - depende de DLL locales
+        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+    finally:
+        settings.libs_dir = anterior
+    assert resultado["parsed"] is True, resultado["error"]
 
 
 def _columnas_para_relacion(proyecto):
@@ -85,6 +102,35 @@ def test_columna_duplicada_exige_permiso(proyecto):
     texto = _tabla(proyecto)
     assert texto.count("column X ") == 1
     assert "column X = 2" in texto
+
+
+def test_columna_case_insensitive_no_duplica_columna_existente(proyecto):
+    from pbip.tmdl_reader import find_table_file
+
+    archivo = find_table_file(proyecto, "Ventas")
+    before = archivo.read_bytes()
+
+    with pytest.raises(ModelAuthorError):
+        model_author.create_calculated_column(
+            proyecto, "Ventas", "monto", "1")
+
+    assert archivo.read_bytes() == before
+    _assert_tom_abre(proyecto)
+
+
+def test_columna_no_puede_llamarse_como_medida_ni_con_overwrite(proyecto):
+    from pbip.tmdl_reader import find_table_file
+
+    archivo = find_table_file(proyecto, "Ventas")
+    before = archivo.read_bytes()
+
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_calculated_column(
+            proyecto, "Ventas", "total", "1", overwrite=True)
+
+    assert exc.value.details["rule"] == "measure_column_collision"
+    assert archivo.read_bytes() == before
+    _assert_tom_abre(proyecto)
 
 
 def test_tipo_y_resumen_se_validan(proyecto):
@@ -379,6 +425,26 @@ def test_el_nombre_del_archivo_se_sanea(proyecto):
         columns=[{"name": "a", "data_type": "int64"}])
     assert Path(r["file"]).name == "Con_Barra.tmdl"
     assert "table 'Con/Barra'" in Path(r["file"]).read_text(encoding="utf-8-sig")
+
+
+def test_slug_ocupado_por_otra_tabla_no_se_sobrescribe(proyecto):
+    primera = model_author.create_calculated_table(
+        proyecto, "A/B", "ROW(1)",
+        columns=[{"name": "a", "data_type": "int64"}])
+    tabla = Path(primera["file"])
+    modelo = Path(proyecto.semantic_model_dir) / "definition" / "model.tmdl"
+    tabla_before = tabla.read_bytes()
+    modelo_before = modelo.read_bytes()
+
+    with pytest.raises(ModelAuthorError) as exc:
+        model_author.create_calculated_table(
+            proyecto, "A:B", "ROW(2)", overwrite=True,
+            columns=[{"name": "b", "data_type": "int64"}])
+
+    assert exc.value.details["rule"] == "table_file_collision"
+    assert tabla.read_bytes() == tabla_before
+    assert modelo.read_bytes() == modelo_before
+    _assert_tom_abre(proyecto)
 
 
 # ------------------------------------------------ modo de almacenamiento ----
