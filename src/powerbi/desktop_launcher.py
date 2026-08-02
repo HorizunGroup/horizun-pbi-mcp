@@ -260,11 +260,6 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
             details={"path": str(pbix), "extension": pbix.suffix},
         )
 
-    # No se lanza Desktop para descubrir un error que el lint/TOM ya puede
-    # explicar. Esto evita el Frown "Sin título" de PBIP antiguos con medidas
-    # que chocan con columnas.
-    _preflight_pbip_model(pbix)
-
     # Se comprueba SIEMPRE, tambien cuando reuse_open=False. Antes ese modo
     # lanzaba otro PBIDesktop y la correlacion por archivo podia devolver la
     # ventana preexistente; el resultado quedaba marcado launched_by_us=True y
@@ -293,6 +288,13 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
             return OpenedPbix(
                 str(pbix), instancia, pid_existente, False, 0.0,
                 desktop_started=_process_started(pid_existente))
+
+    # Solo se valida el TMDL cuando realmente vamos a crear una ventana. Una
+    # sesion ya abierta sirve el modelo que Desktop tiene en memoria y debe
+    # poder reutilizarse aunque el estado guardado en disco sea distinto.
+    # Para aperturas nuevas, el preflight evita el Frown "Sin título" de PBIP
+    # antiguos con medidas que chocan con columnas.
+    _preflight_pbip_model(pbix)
 
     ejecutable = find_executable()
     # La foto previa incluye TODOS los puertos, no solo los que ya sirven un

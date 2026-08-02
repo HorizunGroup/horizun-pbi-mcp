@@ -294,9 +294,15 @@ Ninguna de estas es un defecto que se pueda corregir desde aquí. Están documen
 
 ### Esquemas que Microsoft no publica
 
-Power BI Desktop escribe `visualContainer/2.10.0` en informes recientes, y esa URL devuelve **404** en el origen oficial. Lo mismo con `bookmarks/2.0.0`. **El CLI oficial de Microsoft tampoco puede validarlos** — emite `PBIR_SCHEMA_UNREACHABLE` y se salta la validación de esquema de esos archivos.
+Power BI Desktop escribe `visualContainer/2.10.0` y `2.11.0` en informes
+recientes, y esas URLs devuelven **404** en el origen oficial. Lo mismo ocurre
+con `bookmarks/2.0.0`. **El CLI oficial de Microsoft tampoco puede validarlos**:
+emite `PBIR_SCHEMA_UNREACHABLE` y se salta la validación de esos archivos.
 
-Consecuencia: las escrituras sobre archivos que declaren esos esquemas se **bloquean** con `schema_unavailable` (`rule=no_publicado_upstream`). Es deliberado y fail-closed: validar 2.10.0 contra 2.7.0 sería adivinar, y `additionalProperties: false` rechazaría propiedades nuevas legítimas.
+Para `visualContainer`, 2.10/2.11 se comparan con 2.7 porque esa degradación
+se midió sobre 275 archivos reales y solo difiere lo que una versión posterior
+puede añadir. `bookmarks/2.0.0` se **bloquea** con `schema_unavailable` porque no
+existe una versión anterior de la misma familia contra la cual comprobarlo.
 
 Medido sobre un informe real de 443 documentos: 176 se validan, 240 quedan bloqueados por esta causa.
 
