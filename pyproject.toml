@@ -6,10 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "horizun-pbi-mcp"
 # PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
 version = "1.0.1"
-description = "Servidor MCP para Power BI: modelo semantico en vivo (DAX/TOM), proyectos .pbip (TMDL/PBIR), autoria de informes, auditoria integral y workflows."
+description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
+keywords = ["mcp", "model-context-protocol", "power-bi", "dax", "pbip", "tmdl", "pbir", "claude", "codex", "business-intelligence"]
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: Microsoft :: Windows",
@@ -20,6 +21,12 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+
+[project.urls]
+Homepage = "https://horizunhub.com"
+Repository = "https://github.com/HorizunGroup/horizun-pbi-mcp"
+Documentation = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/INSTALL.md"
+Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG.md"
 dependencies = [
     # Acotada por arriba a proposito: el servidor fija la version del producto
     # con `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`
