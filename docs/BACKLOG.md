@@ -3,9 +3,10 @@
 Lo que queda abierto, por qué importa y cómo se comprueba. Ordenado por lo que
 más duele.
 
-Se escribió el 2026-08-01, después de una sesión que encontró **doce defectos**
-con la suite en verde. La lista de abajo no es una lluvia de ideas: es lo que
-sabemos que falta, con evidencia.
+Se actualizó el 2026-08-01 después de auditar por AST las **116 tools**, probar
+conversiones reales PBIX→PBIP y volver a abrir los resultados en Power BI
+Desktop. La suite integrada quedó en **1493 passed, 3 skipped**. La lista de
+abajo no es una lluvia de ideas: es lo que sabemos que falta, con evidencia.
 
 ---
 
@@ -30,6 +31,12 @@ produce: grupos de formato, `solid.color`, expresiones, y los gradientes
 `FillRule`. Con ello una forma como `solid: {expr: ...}` se bloquea y revierte
 la transacción, aunque el esquema oficial la acepte. La regresión se ejecuta
 contra el commit anterior y falla allí.
+
+Además, la fábrica ya consulta el catálogo oficial para exigir roles,
+cardinalidades y clase de campo (`Grouping`, `Measure` o
+`GroupingOrMeasure`) antes de escribir. Esto cerró otra vía por la que Desktop
+aceptaba el archivo pero dejaba un visual vacío o semánticamente incorrecto.
+No sustituye el oráculo de formato: los roles viven fuera de `objects`.
 
 **Lo que aún falta:** un oráculo de equivalencia para el bloque completo. La
 forma más barata es un corpus anonimizado de visuales reales exportados de
@@ -137,7 +144,22 @@ No hay nada que hacer de este lado hasta que Microsoft los publique.
 
 ---
 
-## 8. Lo que aprendimos y no debe perderse
+## 8. `pbi_apply_plan` y la confirmación contractual
+
+**Estado:** pendiente de decisión de contrato.
+
+La tool aplica un plan firmado mediante `plan_token`, pero conserva
+`confirm=true` como valor por defecto histórico. Si se interpreta que el token
+es la aprobación explícita, el contrato actual es coherente. Si se exige además
+un `confirm=true` escrito por el cliente, el default debe pasar a `false`.
+
+Ese cambio rompería el contrato MCP congelado y por eso no se hizo durante la
+auditoría. Requiere aprobación deliberada y actualización del golden; no debe
+entrar disfrazado de refactor.
+
+---
+
+## 9. Lo que aprendimos y no debe perderse
 
 Tres reglas que salieron caras. Están en el código como comentarios, pero
 conviene tenerlas juntas:
@@ -151,5 +173,7 @@ conviene tenerlas juntas:
    mensaje nombra la línea culpable.
 
 3. **Lo que solo se ejecuta en la máquina del que programa, solo funciona
-   ahí.** La instalación limpia encontró dos defectos que ninguna de las 1255
-   pruebas veía, porque todas corrían sobre un entorno que ya estaba bien.
+   ahí.** La instalación limpia encontró dos defectos que ninguna prueba veía,
+   porque todas corrían sobre un entorno que ya estaba bien. La suite actual
+   tiene 1493 pruebas aprobadas, pero los oráculos externos siguen siendo
+   obligatorios.
