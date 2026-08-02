@@ -5,7 +5,7 @@ más duele.
 
 Se actualizó el 2026-08-02 después de auditar por AST las **117 tools**, probar
 conversiones reales PBIX→PBIP y volver a abrir los resultados en Power BI
-Desktop. La suite integrada quedó en **1536 passed, 3 skipped**. La lista de
+Desktop. La suite integrada quedó en **1538 passed, 3 skipped**. La lista de
 abajo no es una lluvia de ideas: es lo que sabemos que falta, con evidencia.
 
 ---
@@ -209,5 +209,5 @@ conviene tenerlas juntas:
 3. **Lo que solo se ejecuta en la máquina del que programa, solo funciona
    ahí.** La instalación limpia encontró dos defectos que ninguna prueba veía,
    porque todas corrían sobre un entorno que ya estaba bien. La suite actual
-   tiene 1536 pruebas aprobadas, pero los oráculos externos siguen siendo
+   tiene 1538 pruebas aprobadas, pero los oráculos externos siguen siendo
    obligatorios.

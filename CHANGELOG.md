@@ -5,6 +5,31 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [1.0.0] — 2026-08-02
+
+Primera versión estable del repositorio oficial. **117 tools, 1538 pruebas
+aprobadas y 3 omitidas por condiciones externas documentadas.**
+
+### Incluye
+
+- Validación previa de TMDL/TOM antes de abrir Power BI Desktop, que bloquea
+  colisiones de nombres y evita el Frown genérico de proyectos inválidos.
+- Oráculo estructural para las propiedades administradas de `objects`,
+  validación de roles y tipos contra el catálogo oficial y captura segura de
+  la ventana exacta de Desktop.
+- Transacciones atómicas, backups, journals, rollback y contrato MCP
+  compatible con las 34 tools originales.
+
+### Límites publicados
+
+- La equivalencia visual completa de `objects` aún requiere inspección
+  renderizada para combinaciones no cubiertas por el oráculo.
+- `mode="both"` permanece bloqueado por incompatibilidad entre Desktop abierto
+  y escritura PBIP segura; los dos esquemas Microsoft no publicados siguen
+  siendo una limitación upstream.
+
+---
+
 ## [1.0.0-rc.11] — 2026-08-01
 
 **116 tools, 1262 pruebas.**

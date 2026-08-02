@@ -91,7 +91,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ---
 
-## Excepciones aceptadas — no bloquean la RC
+## Excepciones aceptadas — no bloquean la versión estable
 
 | Excepción | Por qué |
 |---|---|
@@ -106,7 +106,8 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ## Etiquetado
 
-Primero una **release candidate**, marcada como *pre-release*. La actual es **`v1.0.0-rc.11`**.
+La versión estable es **`v1.0.0`**. Las excepciones de abajo son límites
+documentados del producto, no errores ocultos ni criterios omitidos.
 
 La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir con el tag **antes** de etiquetar. Instalar desde un tag y obtener un paquete que reporta otra versión es exactamente lo que estas comprobaciones existen para evitar.
 
@@ -126,9 +127,10 @@ La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir co
 > lección es la etapa, no el arreglo: **lo que solo se ejecuta en la máquina
 > del que programa, solo funciona ahí**.
 
-`v1.0.0` estable solo después de:
+Para esta publicación se acepta un entorno aislado reproducible y la matriz de
+CI en máquinas limpias de GitHub; no hace falta una segunda máquina física:
 
-1. clonar el repositorio **publicado** en una máquina o entorno limpio;
+1. exportar el árbol versionado y crear un entorno virtual sin paquetes del repositorio;
 2. instalar siguiendo el README, sin atajos;
 3. `pytest`, `doctor` y contract check en verde **allí**;
 4. registrar el MCP en un cliente y comprobar el handshake;

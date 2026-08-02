@@ -1,6 +1,8 @@
 # Publicación: cómo se hizo y cómo repetirlo
 
-Este documento era un plan. Ya se ejecutó, así que ahora describe **lo que se hizo**, para que la siguiente publicación siga el mismo camino.
+Este documento describe la publicación oficial: el repositorio histórico se
+conserva como legacy privado y la versión pública se exporta con historia nueva
+desde un árbol verificado.
 
 Repositorio público: **https://github.com/HorizunGroup/horizun-pbi-mcp**
 
@@ -55,13 +57,13 @@ Los tres últimos en verde, y el handshake stdio contra el paquete instalado.
 ```bash
 git init -b main
 git add -A
-git commit -m "Horizun PBI MCP v1.0.0-rc.N"
+git commit -m "Horizun PBI MCP v1.0.0"
 ```
 
 **Antes de etiquetar**, comprobar que `branding.VERSION` y `pyproject.toml` declaran esa misma versión. Etiquetar un commit que declara otra produce un paquete que miente sobre lo que es — pasó con `rc.2` y hubo que corregirlo.
 
 ```bash
-git tag -a v1.0.0-rc.N -m "..."
+git tag -a v1.0.0 -m "Horizun PBI MCP v1.0.0"
 ```
 
 ### 4. Publicar
@@ -69,13 +71,15 @@ git tag -a v1.0.0-rc.N -m "..."
 ```bash
 gh repo create horizun-pbi-mcp --public --source=. --remote=origin
 git push -u origin main
-git push origin v1.0.0-rc.N
-gh release create v1.0.0-rc.N --notes-file NOTAS.md --prerelease --verify-tag
+git push origin v1.0.0
+gh release create v1.0.0 --notes-file RELEASE_NOTES_1.0.0.md --verify-tag
 ```
 
 ### 5. Esperar al CI
 
-**No se declara terminado hasta que la matriz está completa en verde.** `rc.1` se publicó con `test (3.10)` en rojo y `build` saltado por dependencia; hubo que corregir y sacar `rc.2`.
+**No se declara terminado hasta que la matriz está completa en verde.** Las
+compuertas corren en máquinas limpias de GitHub; la validación local usa un
+entorno virtual sin paquetes del repositorio como evidencia reproducible.
 
 ```bash
 gh run list --repo HorizunGroup/horizun-pbi-mcp
@@ -118,6 +122,6 @@ Las tres dependencias externas —DLL de Analysis Services, esquemas PBIR y CLI 
 |---|---|
 | Rama principal | `main` |
 | CI | `windows-latest`, Python 3.10 y 3.13 |
-| Releases | pre-release hasta que `v1.0.0` esté probada desde una máquina limpia |
+| Releases | `v1.0.0` estable, con CI en máquinas limpias y validación local aislada |
 
 **Pendiente de configurar a mano** (necesita permisos que el token de CLI no tiene): protección de rama sobre `main` — requerir PR, requerir CI en verde, prohibir force-push. Se hace en *Settings → Branches → Add rule*.
