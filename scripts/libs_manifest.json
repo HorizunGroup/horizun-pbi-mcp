@@ -1,0 +1,84 @@
+{
+  "manifest_version": 1,
+  "generated": "2026-07-31",
+  "source": "https://www.nuget.org/api/v2/package/",
+  "redistribution": "NO. Son binarios de Microsoft: se descargan aqui y libs/ queda fuera del control de versiones.",
+  "required_dlls": [
+    "Microsoft.AnalysisServices.AdomdClient.dll",
+    "Microsoft.AnalysisServices.Core.dll",
+    "Microsoft.AnalysisServices.Tabular.dll",
+    "Microsoft.AnalysisServices.dll"
+  ],
+  "packages": [
+    {
+      "id": "Microsoft.AnalysisServices.AdomdClient.retail.amd64",
+      "version": "19.84.1",
+      "purpose": "ADOMD.NET (consultas DAX)",
+      "license": "Microsoft — ver terminos del paquete NuGet. NO se redistribuye.",
+      "url": "https://www.nuget.org/api/v2/package/Microsoft.AnalysisServices.AdomdClient.retail.amd64/19.84.1",
+      "sha256": "4134f9d09320169e6f4f2e2e388c779856d6b870bf91f0d3de11a8e7713f405c",
+      "bytes": 2142010
+    },
+    {
+      "id": "Microsoft.AnalysisServices.retail.amd64",
+      "version": "19.84.1",
+      "purpose": "AMO + TOM (lectura y escritura del modelo)",
+      "license": "Microsoft — ver terminos del paquete NuGet. NO se redistribuye.",
+      "url": "https://www.nuget.org/api/v2/package/Microsoft.AnalysisServices.retail.amd64/19.84.1",
+      "sha256": "2da37f7898c62140287ea1b25f24d74967fb4a12cfc818ff1113952b669ee425",
+      "bytes": 6624129
+    }
+  ],
+  "files": {
+    "Microsoft.AnalysisServices.AdomdClient.dll": {
+      "sha256": "92b4eda6672d82a2cac8ecc05a570e84195797bcaed362288e3a36d41aafa3cb",
+      "bytes": 2676160,
+      "package": "Microsoft.AnalysisServices.AdomdClient.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.AdomdClient.resources.dll": {
+      "sha256": "e744e948c41ec68826b32e80911aa9eecbf13a4e3565e18c049c14333e9ecf96",
+      "bytes": 73680,
+      "package": "Microsoft.AnalysisServices.AdomdClient.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.Core.dll": {
+      "sha256": "62cd242cc2bb5bd8784065e1d38da8714fb2a62587a9991759761109b6e6cf4b",
+      "bytes": 2983376,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.Core.resources.dll": {
+      "sha256": "4b395ec519340f46286acd74cead42bde8c421e8356e0ddabc8ec3f4a354a6f0",
+      "bytes": 197160,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.SPClient.Interfaces.dll": {
+      "sha256": "6f811fb32bc7ef510856cb9cf328f4c047d9dd1a29f7697268f12fd62fc280c2",
+      "bytes": 31184,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.Tabular.Json.dll": {
+      "sha256": "ab388b2cec8fe794e129f6d1c1c801c3b7de26e1c616188c3177d99d04798c70",
+      "bytes": 570320,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.Tabular.dll": {
+      "sha256": "e5d5e814a3f385bd3ffcdde385c7700958d4771303f99120da49e22c37bf1d5f",
+      "bytes": 2094656,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.Tabular.resources.dll": {
+      "sha256": "e1281cdc191c15423909dffc4cea0c3f4e7c41e0a325666d80a4341dacdd24dd",
+      "bytes": 81456,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.dll": {
+      "sha256": "9bcb91e544cbaec7580dbc9ed7025c9c66fd80983d0334f641dc042548572873",
+      "bytes": 705488,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    },
+    "Microsoft.AnalysisServices.resources.dll": {
+      "sha256": "dd8d4ed36a4bbb37773fd607f2d9ca4cf27f662e3c36722e3b6ccdd35c303df7",
+      "bytes": 14384,
+      "package": "Microsoft.AnalysisServices.retail.amd64"
+    }
+  }
+}

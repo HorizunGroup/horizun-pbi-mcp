@@ -1,0 +1,17 @@
+{
+  "name": "horizun-pbi-mcp",
+  "version": "1.0.0",
+  "description": "Power BI Desktop y PBIP desde Claude: DAX, TOM, TMDL, PBIR, visuales, auditoría y flujos seguros.",
+  "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
+  "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",
+  "repository": "https://github.com/HorizunGroup/horizun-pbi-mcp",
+  "license": "Apache-2.0",
+  "keywords": ["power-bi", "mcp", "dax", "pbip", "pbir", "tmdl"],
+  "skills": "./skills/",
+  "mcpServers": {
+    "horizun-pbi-mcp": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/plugin_launcher.py"]
+    }
+  }
+}

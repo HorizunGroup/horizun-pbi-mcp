@@ -1,0 +1,10 @@
+model Model
+	culture: es-ES
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	discourageImplicitMeasures
+	sourceQueryCulture: es-ES
+
+annotation __PBI_TimeIntelligenceEnabled = 0
+
+ref table Fact
+ref table Calendar

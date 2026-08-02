@@ -1,0 +1,3747 @@
+{
+  "contract_version": 1,
+  "tool_count": 117,
+  "tools": [
+    {
+      "name": "pbi_add_custom_visual",
+      "description": "Registra un custom visual de AppSource en el informe (publicCustomVisuals).\n\nSin argumentos registra \"HTML Content\" (renderiza HTML/SVG desde una medida\nDAX). Power BI Desktop lo descarga de AppSource al abrir el informe.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_id": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_add_image_resource",
+      "description": "Incrusta una imagen en el informe y la deja lista para usar.\n\nLa copia a StaticResources y la declara en report.json: sin las dos\ncosas Power BI no la encuentra y el visual sale vacio sin dar ningun\nerror. Devuelve `item_name`, que es lo que se le pasa al visual de tipo\n'image' en options.resource.\n\n`path`: archivo local (.png .jpg .gif .bmp .svg).",
+      "params": {
+        "name": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_add_table_from_file",
+      "description": "Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.\n\nEl mismo recorrido de Power Query —Obtener datos, promover encabezados,\ncambiar tipos, Cargar— pero escrito directo en el proyecto. Los pasos\nde la consulta se llaman como los pone Power BI ('Origen',\n'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y\neditar en el editor sin que desentone.\n\nAdmite .csv, .txt, .tsv, .xlsx, .xlsm y .json. Sin dependencias\nnuevas: el .xlsx se lee como lo que es, un zip con XML.\n\n**La cultura se deduce del archivo**, mirando como escribe los\ndecimales, y se emite SIEMPRE explicita en la consulta. Asumir la del\nmodelo es lo que convierte 10527.52 en diez millones sin que nada\nfalle: un informe que abre, pinta y miente. `culture` permite forzarla.\n\nLo escrito se valida antes de darlo por bueno: si el TMDL generado no\npasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que\nno abre.\n\n`dry_run=true` devuelve el TMDL y la M sin escribir nada.\n`sheet`: hoja del libro; si se omite, la primera.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "culture": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "description": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "sheet": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_align_visuals",
+      "description": "Alinea varios visuales por un borde.\n\n`edge`: left | right | top | bottom | center_h | center_v.\nDeterminista: la misma entrada produce siempre la misma salida.",
+      "params": {
+        "edge": {
+          "required": false,
+          "type": "string",
+          "default": "left"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_ids": {
+          "required": true,
+          "type": "array[string]"
+        }
+      },
+      "required": [
+        "page",
+        "visual_ids"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_analyze_model_quality",
+      "description": "Detecta problemas tipicos del modelo (calidad).\n\nRevisa medidas sin carpeta, DAX muy largo, relaciones bidireccionales/\ninactivas, columnas calculadas, IDs visibles, ausencia de calendario, etc.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_apply_audit_fixes",
+      "description": "Aplica las acciones devueltas por pbi_plan_audit_fixes.\n\nRequiere confirm=true. Cada accion se aplica por su propia via segura\n(transaccion, verificacion y rollback); si una falla, se reporta sin\ndetener las demas y sin ocultarlo.",
+      "params": {
+        "actions": {
+          "required": true,
+          "type": "array[object]"
+        },
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "actions"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_apply_design_system",
+      "description": "Aplica el sistema al informe y devuelve su rejilla.\n\nEscribe el tema y lo declara en `report.json`. Devuelve el lienzo, la\nrejilla (columnas, margen y medianil) y la escala tipografica, para que\nlo que se coloque a mano despues use las mismas guias que\n`pbi_compose_page`.\n\nEscribe en el informe (PBIR): conviene tener el proyecto CERRADO en\nPower BI Desktop.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "system": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "system"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_apply_page_spec",
+      "description": "Materializa el spec como una pagina PBIR, en UNA transaccion.\n\nCuatro desenlaces explicitos: `create` (no existe), `update` (existe y\nel spec cambia algo), `no_change` (ya coincide) y `conflict` (el nombre\nno identifica una sola pagina).\n\n`page`: id o nombre visible de la pagina a actualizar. Si se omite, se\nusa el nombre del spec. Al actualizar se CONSERVAN el id de la pagina y\nel de cada visual que siga representando lo mismo.\n\n`sync_mode`: `merge` (por defecto) anade y actualiza pero no borra lo\nque el spec no menciona; `replace` ademas elimina los visuales\nausentes. El defecto es conservador para que un spec parcial no pueda\nvaciar una pagina por omision.\n\n`interactions`: que le hace un visual a otro al seleccionar en el.\nCada visual del spec se puede senalar por su POSICION en `visuals`\n(0, 1, 2...), por el `id` que se le ponga en el spec, o por su titulo;\nno hace falta conocer los ids finales, que se generan aqui. Tipos:\n`Default`, `DataFilter`, `HighlightFilter`, `NoFilter` (tambien valen\n`filter`, `highlight` y `none`).\n\n`dry_run=true` devuelve un plan con `plan_token` y no escribe nada;\naplicalo despues con pbi_apply_plan.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "seed": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "spec": {
+          "required": true,
+          "type": "object"
+        },
+        "sync_mode": {
+          "required": false,
+          "type": "string",
+          "default": "merge"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_apply_plan",
+      "description": "Aplica un plan calculado con pbi_plan_change o con un dry_run.\n\nVerifica que el proyecto siga en el estado sobre el que se planifico; si\ncambio, rechaza el plan en vez de aplicar algo distinto de lo aprobado.\n\n`expected_operation` es opcional: si lo indicas, el plan solo se aplica\nsi fue generado para esa operacion (`plan_operation_mismatch` si no).",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "expected_operation": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "plan_token": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "plan_token"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_apply_theme",
+      "description": "Aplica un tema de colores al informe .pbip activo.\n\nEscribe el JSON del tema en StaticResources/RegisteredResources y lo\ndeclara en report.json (themeCollection + resourcePackages). Sin las\ntres cosas Power BI Desktop lo ignora en silencio.\n\n`preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de\nseries por la tuya (#RRGGBB); ojo, entonces el orden deja de estar\nverificado contra daltonismo. `name`: nombre visible del tema.\n\nRequiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "data_colors": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "name": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "preset": {
+          "required": false,
+          "type": "string",
+          "default": "control_room"
+        },
+        "request_id": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_arrange_visuals",
+      "description": "Reorganiza los visuales de una pagina.\n\n`layout`: grid | dashboard | executive_summary | custom.\n`visual_ids`: subconjunto opcional (por defecto todos). `custom`: mapa\nvisual_id -> {x,y,width,height} para layout 'custom'.",
+      "params": {
+        "canvas": {
+          "required": false,
+          "type": "null|object",
+          "default": null
+        },
+        "custom": {
+          "required": false,
+          "type": "null|object",
+          "default": null
+        },
+        "layout": {
+          "required": false,
+          "type": "string",
+          "default": "grid"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "spacing": {
+          "required": false,
+          "type": "number",
+          "default": 16
+        },
+        "visual_ids": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_audit_model",
+      "description": "Audita el modelo semantico con reglas de identificador estable.\n\nCada hallazgo trae `rule`, `severity`, `object`, `evidence`,\n`recommendation` y `auto_fix_available`. Ninguna heuristica se presenta\ncomo certeza: la evidencia acompana siempre al hallazgo.\n`rules`: subconjunto de reglas (ver pbi_list_audit_rules).\n`min_severity`: info | warning | error.",
+      "params": {
+        "min_severity": {
+          "required": false,
+          "type": "string",
+          "default": "info"
+        },
+        "rules": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_audit_project",
+      "description": "Auditoria integral: modelo semantico + informe + layout.\n\nDevuelve puntaje global y por dominio, resumen ejecutivo, hallazgos\npriorizados con evidencia y recomendacion, y que reglas tienen\ncorreccion automatica.\n\n`formats`: ['markdown','html'] escribe tambien esos informes en\noutputs/ y devuelve sus rutas. `rules` y `min_severity` acotan.",
+      "params": {
+        "formats": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "min_severity": {
+          "required": false,
+          "type": "string",
+          "default": "info"
+        },
+        "rules": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_audit_report_only",
+      "description": "Audita solo el informe PBIR (sin las reglas del modelo semantico).\n\nCubre paginas vacias, visuales sin titulo, campos rotos, duplicados,\ntamanos de lienzo inconsistentes y la geometria de cada pagina.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_backup_pbip_project",
+      "description": "Crea un backup con timestamp del proyecto .pbip activo.\n\n`mode`: folder | zip. `scope`: report | model | both. Devuelve la ruta.",
+      "params": {
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "folder"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "scope": {
+          "required": false,
+          "type": "string",
+          "default": "both"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_build_dashboard",
+      "description": "Construye un dashboard completo desde un objetivo, no desde primitivas.\n\nAnaliza el modelo, compone el spec segun el preset, calcula el layout,\ngenera preview, aplica en una transaccion y verifica el resultado.\n`dry_run=true` (por defecto) se detiene tras el preview.",
+      "params": {
+        "category": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "measures": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "preset": {
+          "required": false,
+          "type": "string",
+          "default": "executive"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "seed": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "measures",
+        "name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_build_evm_page",
+      "description": "Pagina EVM (Earned Value Management).\n\nEspera medidas del tipo PV, EV, AC, CPI y SPI; si no las reconoce, lo\navisa en vez de generar una pagina que no significa nada.",
+      "params": {
+        "category": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "measures": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "name": {
+          "required": false,
+          "type": "string",
+          "default": "EVM"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "seed": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "measures"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_build_executive_page",
+      "description": "Pagina de resumen ejecutivo: fila de KPIs y grafico protagonista.",
+      "params": {
+        "category": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "measures": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "name": {
+          "required": false,
+          "type": "string",
+          "default": "Resumen ejecutivo"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "seed": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "measures"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_capabilities",
+      "description": "Que puede hacerse AHORA MISMO, y que no, con el motivo.\n\nUn agente deberia consultarla antes de planificar: dice si la capa en\nvivo esta disponible, si se puede escribir en el .pbip, y que\ncapacidades dependen de la version del motor.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_column_dependencies",
+      "description": "Que usa una columna: medidas, columnas calculadas, relaciones y jerarquias.\n\nUtil antes de ocultar o eliminar una columna: dice si algo se rompe.",
+      "params": {
+        "column": {
+          "required": true,
+          "type": "string"
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_compare_live_to_pbip",
+      "description": "Compara el modelo EN VIVO con el TMDL del disco.\n\nUtil para saber si hay cambios en memoria sin guardar: lista tablas y\nmedidas que solo estan en un lado, y medidas cuyo DAX difiere.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_compose_page",
+      "description": "Compone una pagina entera sobre la rejilla del sistema de diseno.\n\nSe describe la INTENCION y el servidor decide la geometria:\n\n- `title` / `subtitle`: banda de cabecera, con el tamano y el color del\n  sistema y la altura minima que el texto necesita para no cortarse.\n- `kpis`: lista de campos (`\"[Medida]\"` o `{\"field\":..., \"title\":...}`).\n  Se reparten la fila entera sin dejar huecos.\n- `hero`: el grafico protagonista.\n  `{\"type\":\"lineChart\", \"category\":\"T[C]\", \"values\":[\"[M]\"], \"title\":...}`.\n- `supports`: los que van apilados a su derecha, mismo formato.\n- `detail`: tabla al pie. `{\"values\": [...], \"title\": ...}`.\n\nLa composicion es siempre la misma de arriba abajo, a proposito: la\ncoherencia entre paginas sale de que ninguna pueda inventarse su propio\norden. Si algo no cabe se dice con la cuenta hecha, en vez de encogerlo\nhasta que no se lea.\n\nEl COLOR del texto sale del tema que el informe tiene puesto, no del\nsistema: un informe solo admite un tema, y escribir el color del\nsistema pintaba el titulo casi invisible en cuanto los dos no\ncoincidian. La geometria si es de la pagina. Si no cuadran se avisa.\n\n`dry_run=true` devuelve el spec con todas las posiciones y no escribe.\nAplica el mismo camino que `pbi_apply_page_spec`, asi que pasa por la\nmisma validacion y la misma transaccion.",
+      "params": {
+        "detail": {
+          "required": false,
+          "type": "null|object",
+          "default": null
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "hero": {
+          "required": false,
+          "type": "null|object",
+          "default": null
+        },
+        "kpis": {
+          "required": false,
+          "type": "array[any]|null",
+          "default": null
+        },
+        "page_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "subtitle": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "supports": {
+          "required": false,
+          "type": "array[object]|null",
+          "default": null
+        },
+        "system": {
+          "required": true,
+          "type": "string"
+        },
+        "title": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "system",
+        "title"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_convert_pbix_to_pbip",
+      "description": "Convierte uno o varios .pbix en proyectos .pbip (PBIR + TMDL).\n\nEl informe sale del propio archivo: si el .pbix ya guarda PBIR se copia\ntal cual, y si trae el formato heredado se traduce pagina a pagina.\n\nEl modelo NO se puede leer del archivo (es un backup comprimido del\nmotor), asi que se ABRE EL .pbix EN POWER BI DESKTOP y se serializa a\nTMDL desde ahi. Cuenta con eso: cada archivo tarda lo que tarde Desktop\nen cargarlo. Si el informe ya esta abierto se reutiliza esa sesion; si\nlo abre esta tool, lo cierra al terminar (`close_desktop`). El .pbix\noriginal nunca se modifica.\n\n`path`: un .pbix o una CARPETA (`recursive` incluye subcarpetas).\n`out_dir`: carpeta donde crear el proyecto; se crea una subcarpeta por\ninforme. `include_model=false` genera solo la mitad del informe, sin\ntocar Desktop. `dataset_connection_string` es obligatorio para informes\ncon conexion en vivo (los que no llevan modelo propio).\n\nDevuelve, por archivo, que se escribio y —lo importante— los avisos y\nlo que se quedo por el camino (`dropped`), como los marcadores.",
+      "params": {
+        "close_desktop": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "dataset_connection_string": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "desktop_timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        },
+        "include_model": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "out_dir": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "project_name": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "recursive": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [
+        "out_dir",
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_copy_visual_format",
+      "description": "Copia el formato de un visual a otros DEL MISMO TIPO.\n\nSe copia el formato pero no el texto del titulo, que es contenido.\nCopiar entre tipos distintos se rechaza: la estructura de formato no es\nintercambiable y Power BI podria rechazar el informe.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "source_page": {
+          "required": true,
+          "type": "string"
+        },
+        "source_visual": {
+          "required": true,
+          "type": "string"
+        },
+        "target_page": {
+          "required": true,
+          "type": "string"
+        },
+        "target_visuals": {
+          "required": true,
+          "type": "array[string]"
+        }
+      },
+      "required": [
+        "source_page",
+        "source_visual",
+        "target_page",
+        "target_visuals"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_bookmark",
+      "description": "Crea un marcador: un estado del informe al que volver con un boton.\n\nEscribe el archivo del marcador Y lo mete en el indice: sin el indice\nPower BI no lo muestra aunque el archivo exista.\n\n`page`: id o titulo de la pagina que activara. `filters`: filtros a\nguardar, con la misma forma que en un page spec. `target_visuals`\nlimita a que visuales afecta. Devuelve `usage`, listo para pasarselo a\nun boton con action='bookmark'.",
+      "params": {
+        "display_name": {
+          "required": true,
+          "type": "string"
+        },
+        "filters": {
+          "required": false,
+          "type": "array[object]|null",
+          "default": null
+        },
+        "name": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "suppress_data": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "suppress_display": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "target_visuals": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        }
+      },
+      "required": [
+        "display_name",
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_calculated_column",
+      "description": "Crea una columna calculada (DAX) en una tabla del modelo .pbip.\n\n`data_type`: string | int64 | double | decimal | boolean | dateTime.\n`summarize_by`: como se agrega por defecto; 'none' para clasificaciones\ny textos, que es lo que casi siempre se quiere.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "data_type": {
+          "required": false,
+          "type": "string",
+          "default": "string"
+        },
+        "description": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "display_folder": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "expression": {
+          "required": true,
+          "type": "string"
+        },
+        "format_string": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "is_hidden": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "summarize_by": {
+          "required": false,
+          "type": "string",
+          "default": "none"
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "expression",
+        "name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_calculated_table",
+      "description": "Crea una tabla calculada (DAX) en el modelo .pbip.\n\nResuelve el caso tipico de tener diez metricas guardadas en diez\nCOLUMNAS en vez de en filas: con una tabla calculada que las dinamice\nse obtiene una matriz de verdad, en lugar de escribir una medida por\ncolumna.\n\nTMDL exige declarar las columnas y no se pueden adivinar leyendo el\nDAX: si no pasas `columns`, se deducen EJECUTANDO la expresion contra\nel modelo abierto en Power BI Desktop y leyendo el esquema que devuelve\nel motor. Para eso hace falta el modelo abierto Y seleccionado.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "columns": {
+          "required": false,
+          "type": "array[object]|null",
+          "default": null
+        },
+        "description": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "expression": {
+          "required": true,
+          "type": "string"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "expression",
+        "name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_hierarchy",
+      "description": "Crea una jerarquia sobre columnas de la misma tabla.\n\n`levels`: nombres de columna de MAYOR a MENOR granularidad (p.ej.\n['Anio','Mes','Dia']). El orden es el de profundizacion y se respeta\ntal cual: no se ordena ni se deduplica porque es informacion.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "description": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "display_folder": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "levels": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "levels",
+        "name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_html_visual",
+      "description": "Crea un visual \"HTML Content\" que renderiza el HTML/SVG devuelto por una medida.\n\n`html_measure`: medida cuyo resultado es HTML (p.ej. \"[HTML Panel EVM]\").\nRegistra el custom visual en el informe si aun no esta. La medida se crea\naparte con pbi_create_measure (el HTML se arma en DAX, tipicamente con VARs\ny CONCATENATEX sobre los datos del modelo).",
+      "params": {
+        "html_measure": {
+          "required": true,
+          "type": "string"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "position": {
+          "required": true,
+          "type": "object"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "title": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [
+        "html_measure",
+        "page",
+        "position"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_measure",
+      "description": "Crea (o reemplaza con overwrite=true) una medida DAX.\n\nValida que la tabla exista y que la medida no exista salvo overwrite.\n`data_category`: opcional, p.ej. \"ImageUrl\" para medidas que devuelven un\ndata-URI SVG (Power BI las renderiza como imagen en tablas/matrices).\nDevuelve el diff antes/despues.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "params": {
+        "data_category": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "description": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "display_folder": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "expression": {
+          "required": true,
+          "type": "string"
+        },
+        "format_string": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "expression",
+        "name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_page_from_spec",
+      "description": "Crea una hoja (pagina) PBIR completa a partir de un spec.\n\n`spec`: {page_name, canvas?, layout?(grid|dashboard|executive_summary),\n         visuals:[{type,title,fields:{rol:refs},position?}]}.\nClona visuales existentes del mismo tipo como plantilla. Hace backup.\nOmite 'position' en un visual para que se auto-acomode con 'layout'.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "spec": {
+          "required": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_pbip_project",
+      "description": "Crea un proyecto .pbip vacio pero valido, y lo deja activo.\n\nEs el punto de partida para armar un tablero solo con rutas de\narchivos: crear el proyecto, cargarle los datos con\npbi_add_table_from_file y componer las paginas, sin abrir Power BI\nDesktop hasta el final.\n\nEscribe el minimo que Power BI acepta —informe y modelo semantico\napuntandose entre si— con la referencia en ruta RELATIVA: una absoluta\nataria el proyecto a esta maquina. Incluye una pagina, porque un\ninforme sin ninguna no abre.\n\nNo declara `sourceQueryCulture` a proposito: la cultura se fija en cada\nconsulta, que es lo unico que no obliga a suponer como escribe los\ndecimales cada origen.",
+      "params": {
+        "culture": {
+          "required": false,
+          "type": "string",
+          "default": "es-ES"
+        },
+        "height": {
+          "required": false,
+          "type": "integer",
+          "default": 1080
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "open_project": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "out_dir": {
+          "required": true,
+          "type": "string"
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page_name": {
+          "required": false,
+          "type": "string",
+          "default": "Pagina 1"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "width": {
+          "required": false,
+          "type": "integer",
+          "default": 1280
+        }
+      },
+      "required": [
+        "name",
+        "out_dir"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_relationship",
+      "description": "Crea una relacion entre dos columnas del modelo .pbip.\n\nPor defecto muchos-a-uno con filtro en un sentido: es lo que crea Power\nBI y lo unico que no introduce ambiguedad. `cross_filtering`\n'bothDirections' resuelve casos concretos y complica el modelo entero,\nasi que conviene justificarlo.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "cross_filtering": {
+          "required": false,
+          "type": "string",
+          "default": "oneDirection"
+        },
+        "from_cardinality": {
+          "required": false,
+          "type": "string",
+          "default": "many"
+        },
+        "from_column": {
+          "required": true,
+          "type": "string"
+        },
+        "from_table": {
+          "required": true,
+          "type": "string"
+        },
+        "is_active": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "name": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "to_cardinality": {
+          "required": false,
+          "type": "string",
+          "default": "one"
+        },
+        "to_column": {
+          "required": true,
+          "type": "string"
+        },
+        "to_table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_column",
+        "from_table",
+        "to_column",
+        "to_table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_create_visual",
+      "description": "Crea un visual PBIR en una pagina.\n\n`visual_type` acepta: actionButton, areaChart, barChart, button, card,\ncardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,\ndonutChart, funnel, gauge, htmlContent,\nhtmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,\nmatrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,\nrectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,\ntext, textbox, treemap, waterfall y waterfallChart.\n\nPara visuales con datos, valida antes de escribir los roles obligatorios,\nla cardinalidad maxima de cada rol y el tipo de campo admitido: dimension\n(`Grouping`), medida (`Measure`) o cualquiera de ambos\n(`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,\nnavegador y boton) rechazan `fields` porque no llevan consulta.\n\n`fields`: rol -> campos, p.ej. {\"category\":\"Tabla[Col]\",\n          \"values\":[\"[Medida]\"], \"legend\":\"Tabla[Col]\"}.\n\nEl rol se reconoce escrito como sea: el logico (`values`), el nombre\nque usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,\n`Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede\nser `\"Tabla[Campo]\"` o el objeto que devuelve `pbi_list_visuals`, para\npoder leer una pagina y rehacerla sin traducir nada.\n\nUn rol que ese tipo de visual no tiene se RECHAZA con la lista de los\nvalidos. Antes se descartaba en silencio y el visual salia sin datos.\n\n`position`: {x, y, width, height} (z opcional).\nClona un visual del mismo tipo como plantilla si existe. Hace backup.",
+      "params": {
+        "fields": {
+          "required": true,
+          "type": "object"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "position": {
+          "required": true,
+          "type": "object"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "title": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "visual_type": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "page",
+        "position",
+        "visual_type"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_delete_bookmark",
+      "description": "Borra un marcador y lo quita del indice. Destructiva: confirm=true.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_delete_measure",
+      "description": "Elimina una medida. Operacion destructiva: requiere confirm=true.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_delete_page",
+      "description": "Elimina una pagina y actualiza el orden y la pagina activa.\n\nDestructiva: requiere confirm=true. Se niega a borrar la ultima pagina\ndel informe, porque un informe sin paginas no abre.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_delete_visual",
+      "description": "Elimina un visual. Operacion destructiva: requiere confirm=true.\n\nDevuelve la definicion previa, y el journal permite restaurarla.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_detect_layout_issues",
+      "description": "Diagnostica la geometria de una pagina (o de todas). Solo lectura.\n\nDetecta solapamientos, visuales fuera del lienzo, tamanos demasiado\npequenos, margenes, separaciones inconsistentes, orden Z duplicado o\nausente, paginas vacias y paginas saturadas. Cada hallazgo trae su\nevidencia geometrica.",
+      "params": {
+        "page": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_diff_page_spec",
+      "description": "Compara el spec con una pagina existente antes de aplicarlo.\n\nDice que visuales se anadirian, cuales sobrarian y cuantos quedan\nigual. Si la pagina no existe, informa que se creara.",
+      "params": {
+        "page": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "spec": {
+          "required": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_disable_auto_date_time",
+      "description": "Activa/desactiva 'Auto fecha y hora' (solo modo pbip).\n\nDesactivarlo aligera el modelo: al reabrir el .pbip, Power BI elimina las\ntablas de fecha automaticas (LocalDateTable_*). Requiere proyecto .pbip activo.",
+      "params": {
+        "enabled": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_distribute_visuals",
+      "description": "Reparte visuales con separacion uniforme. `axis`: horizontal|vertical.\n\nNecesita al menos tres visuales: con dos, la separacion ya es la que hay.",
+      "params": {
+        "axis": {
+          "required": false,
+          "type": "string",
+          "default": "horizontal"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_ids": {
+          "required": true,
+          "type": "array[string]"
+        }
+      },
+      "required": [
+        "page",
+        "visual_ids"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_document_model",
+      "description": "Genera documentacion completa del modelo en Markdown.\n\nIncluye resumen, tablas, columnas, medidas, relaciones, jerarquias, roles\n(RLS) y advertencias de calidad. Guarda el archivo en outputs/.",
+      "params": {
+        "include_quality": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_document_report_layout",
+      "description": "Genera documentacion Markdown del layout del informe (paginas y visuales).",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_duplicate_page",
+      "description": "Duplica una pagina con todos sus visuales, en una sola transaccion.\n\nSe regeneran los identificadores que deben ser unicos (el de la pagina\ny el de cada visual) y se conserva todo lo demas.",
+      "params": {
+        "new_name": {
+          "required": true,
+          "type": "string"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "new_name",
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_duplicate_visual",
+      "description": "Duplica un visual conservando campos, formato y filtros.\n\nSolo se regenera el identificador, que debe ser unico. La copia se\ndesplaza `offset_x`/`offset_y` para que no quede tapando al original.\n`target_page` permite copiarlo a otra pagina.",
+      "params": {
+        "new_title": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "offset_x": {
+          "required": false,
+          "type": "number",
+          "default": 24
+        },
+        "offset_y": {
+          "required": false,
+          "type": "number",
+          "default": 24
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "target_page": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_export_page_html",
+      "description": "Exporta una MAQUETA HTML de una pagina EXISTENTE (layout + campos de cada visual).",
+      "params": {
+        "page": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_generate_page_spec",
+      "description": "Genera un borrador de spec a partir de un preset y unos campos.\n\n`preset`: executive | financial | sales | operations | evm | detail.\n`measures`: medidas para los KPIs y los graficos. `category`: columna\npara el eje de los graficos. El resultado es un spec editable: revisalo\ny pasalo por pbi_validate_page_spec.",
+      "params": {
+        "category": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "height": {
+          "required": false,
+          "type": "integer",
+          "default": 720
+        },
+        "measures": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "page_name": {
+          "required": true,
+          "type": "string"
+        },
+        "preset": {
+          "required": false,
+          "type": "string",
+          "default": "executive"
+        },
+        "width": {
+          "required": false,
+          "type": "integer",
+          "default": 1280
+        }
+      },
+      "required": [
+        "page_name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_generate_report_page",
+      "description": "Genera una pagina con visuales propuestos a partir del modelo.\n\nRevisa el modelo, valida los campos sugeridos (no inventa campos), crea la\npagina, agrega tarjetas para medidas y un grafico por categoria, y acomoda\ntodo con el layout indicado. Devuelve un resumen de lo creado.",
+      "params": {
+        "available_fields_hint": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "create_missing_measures": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "layout": {
+          "required": false,
+          "type": "string",
+          "default": "executive_summary"
+        },
+        "objective": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "page_name": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "page_name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_generate_technical_documentation",
+      "description": "Documentacion tecnica completa en Markdown, guardada en outputs/.\n\nIncluye el modelo (tablas, medidas con su DAX y dependencias), el\ninforme pagina a pagina con los campos de cada visual, y la auditoria\ncon puntaje por dominio.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_get_object",
+      "description": "Devuelve un objeto del modelo con todo su detalle.\n\n`kind`: table | column | measure. Para una columna usa 'Tabla[Columna]'.\nEn una medida incluye ademas las referencias que aparecen en su DAX.",
+      "params": {
+        "kind": {
+          "required": true,
+          "type": "string"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_get_visual",
+      "description": "Definicion completa y normalizada de un visual.\n\nDevuelve tipo, posicion, orden Z, titulo, campos por rol, medidas y\ncolumnas referenciadas, si tiene formato propio, sus filtros, y la\ndefinicion cruda por si hace falta inspeccionarla.",
+      "params": {
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_health_check",
+      "description": "Estado general del servidor: dependencias, DLLs, sesion y proyecto.\n\nSolo lectura. Es lo primero que conviene llamar: dice si la capa EN VIVO\nesta disponible, si hay un proyecto .pbip abierto y si algo requiere\natencion (sesion obsoleta, journals pendientes).",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_hide_columns",
+      "description": "Oculta/muestra VARIAS columnas como un solo lote.\n\n`columns`: lista de {\"table\": ..., \"column\": ...}.\n\nValida todas las entradas antes de escribir: si alguna tabla o columna\nno existe, no se modifica nada y el error indica el indice. Los archivos\nTMDL se escriben en una sola transaccion y el modelo en vivo con un solo\nSaveChanges. `count` es el numero de entradas SOLICITADAS (incluidos\nduplicados); `results` trae una entrada por cada una, en el mismo orden.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "params": {
+        "columns": {
+          "required": true,
+          "type": "array[object]"
+        },
+        "hidden": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "columns"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_inspect_journal",
+      "description": "Inspecciona un journal y lo compara con el estado ACTUAL del proyecto.\n\nSolo lectura: no restaura nada. Por cada archivo dice si sigue como el\noriginal, si hay respaldo disponible y cual fue su desenlace.\n`journal`: ruta devuelta por pbi_list_pending_journals.",
+      "params": {
+        "journal": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "journal"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_inspect_pbix",
+      "description": "Radiografia de un .pbix SIN convertirlo ni abrir Power BI Desktop.\n\nDice en que formato esta el informe ('pbir' si ya trae el formato\nmejorado y solo hay que copiarlo, 'layout' si es el heredado y hay que\ntraducirlo), si lleva modelo de datos propio o es un informe con\nconexion en vivo, y cuantas paginas, recursos y visuales personalizados\ntiene. Sirve para saber que esperar antes de lanzar la conversion.\n\n`path`: ruta al archivo .pbix.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_audit_rules",
+      "description": "Catalogo de reglas de auditoria disponibles, con su dominio y severidad.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_autofix_rules",
+      "description": "Reglas que tienen correccion automatica, y en que consiste cada una.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_bookmarks",
+      "description": "Marcadores del informe, y los que no cuadran entre indice y disco.\n\nUn marcador que no esta en el indice no se muestra; una entrada del\nindice sin archivo rompe el panel. Los dos casos son mudos al abrir.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_convertible_pbix",
+      "description": "Lista los .pbix de una carpeta y como se convertiria cada uno.\n\nRecorre los archivos sin abrirlos en Desktop y dice, por cada uno, si\nel informe se copiaria (ya esta en PBIR) o habria que traducirlo, y si\nhace falta Desktop para sacar el modelo. Es la vista previa del lote.\n\n`path`: carpeta (o un .pbix suelto). `recursive`: incluir subcarpetas.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "recursive": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_design_systems",
+      "description": "Sistemas de diseno disponibles: para que sirve cada uno y que trae.\n\nUn sistema decide a la vez el tema (color y tipografia, con paletas ya\nverificadas contra daltonismo), el tamano del lienzo, la rejilla sobre\nla que se coloca todo y la escala de texto. Son la misma decision: un\ntablero de sala se lee a cuatro metros y uno en PDF a cuarenta\ncentimetros, y eso no es el mismo diseno con otro color.\n\nEligelo ANTES de la primera pagina; cambiarlo despues obliga a\nrecolocarlo todo.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_desktop_models",
+      "description": "Lista los modelos de Power BI Desktop abiertos localmente.\n\nDetecta el motor de Analysis Services (localhost:<puerto>) de cada informe\nabierto y devuelve puerto, connection string, catalogo y nº de tablas.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_hierarchies",
+      "description": "Lista las jerarquias del modelo con sus niveles y columnas.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_measures",
+      "description": "Lista medidas con tabla, expresion DAX, formato, descripcion y carpeta.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_page_presets",
+      "description": "Presets de pagina disponibles, con los bloques que compone cada uno.\n\nUn preset describe la INTENCION de la pagina (KPIs arriba, grafico\nprotagonista, detalle abajo). Los campos concretos los eliges tu.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_partitions",
+      "description": "Lista las particiones por tabla (modo de almacenamiento y origen).",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_pending_journals",
+      "description": "Lista los journals del proyecto activo.\n\nUn journal `pending` es el de una operacion que ni se confirmo ni se\nrevirtio (el proceso murio en medio). Contiene los originales.\n`only_pending=false` lista tambien los ya cerrados.",
+      "params": {
+        "only_pending": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_perspectives",
+      "description": "Lista las perspectivas del modelo.\n\nRequiere la capa EN VIVO: el lector TMDL de este proyecto no las extrae.\nSi no hay ninguna, devuelve una lista vacia con la explicacion.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_relationships",
+      "description": "Lista relaciones: tablas/columnas, cardinalidad, filtro cruzado y estado.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_report_pages",
+      "description": "Lista las paginas del informe PBIR activo (id, nombre, tamano, nº visuales).",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_report_resources",
+      "description": "Recursos del informe: declarados, en disco y los que no cuadran.\n\nUn archivo sin declarar no lo encuentra Power BI; una declaracion sin\narchivo deja el visual vacio. Los dos casos son invisibles al abrir el\ninforme, asi que se listan aparte.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_roles",
+      "description": "Lista los roles de seguridad (RLS) y sus filtros por tabla.",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_tables",
+      "description": "Lista tablas con columnas, tipos, visibilidad y conteos.\n\n`source`: 'live' (modelo abierto, por defecto) o 'pbip' (archivos TMDL).",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_themes",
+      "description": "Temas de informe disponibles, con su paleta y para que sirve cada uno.\n\nDevuelve, por tema: el escenario de uso, el color de fondo, los colores\nde serie EN SU ORDEN (el orden es lo que garantiza que dos series\ncontiguas se distingan tambien con daltonismo) y los colores de estado.\n\nUsalo para PROPONER un esquema antes de construir, en vez de decidirlo\npor el usuario.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_list_visuals",
+      "description": "Lista los visuales de una pagina: id, tipo, posicion, campos, titulo.\n\n`page`: id interno o nombre visible de la pagina.",
+      "params": {
+        "page": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_measure_dependencies",
+      "description": "De que depende una medida y quien depende de ella.\n\nDevuelve dependencias directas (medidas, columnas y referencias ROTAS),\nel cierre transitivo sobre medidas hasta `depth`, y la lista de medidas\nque la usan. Analisis lexico: detecta referencias escritas, no las\nconstruidas dinamicamente.",
+      "params": {
+        "depth": {
+          "required": false,
+          "type": "integer",
+          "default": 3
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_model_summary",
+      "description": "Resumen compacto del modelo, pensado para leerlo de un vistazo.\n\nConteos, tablas con su tamano, medidas por tabla, columnas calculadas,\ntablas desconectadas, relaciones bidireccionales y referencias rotas.\nEs la primera tool que conviene llamar para orientarse en un modelo.\n`source`: 'live' (Desktop abierto) o 'pbip' (archivos TMDL).",
+      "params": {
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_normalize_page_layout",
+      "description": "Corrige lo corregible de una pagina sin reacomodarla entera.\n\nMete dentro del lienzo lo que se sale, sube al minimo lo demasiado\npequeno y respeta los margenes. NO mueve lo que ya esta bien: es una\ncorreccion conservadora. `dry_run=true` devuelve el plan sin escribir.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_normalize_report",
+      "description": "Normaliza la geometria de TODAS las paginas del informe.\n\nMete dentro del lienzo lo que se sale, sube al minimo lo demasiado\npequeno y respeta margenes. No reacomoda lo que ya cumple. Compara el\npuntaje de auditoria antes y despues.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_open_in_desktop",
+      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "select": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_open_pbip_project",
+      "description": "Abre un proyecto .pbip y lo marca como proyecto activo.\n\nDetecta carpetas .SemanticModel (TMDL) y .Report (PBIR) y devuelve un\nresumen con advertencias (p.ej. si el informe no usa PBIR).\n`path`: ruta al archivo .pbip o a su carpeta.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_page_building_blocks",
+      "description": "Entrega el material para diseniar una hoja: modelo (tablas/medidas/columnas),\ncatalogo de visuales existentes (reutilizables como plantilla), canvas y paginas.\n\nUsa esto ANTES de proponer una hoja: te dice que campos y tipos de visual hay.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_plan_audit_fixes",
+      "description": "Planifica correcciones para reglas CONCRETAS. No escribe nada.\n\nNo existe \"arreglar todo\": hay que indicar `rules` explicitamente.\n`objects` acota mas todavia (ids de visual o de pagina). Devuelve las\nacciones exactas que se aplicarian, con su motivo.",
+      "params": {
+        "objects": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "rules": {
+          "required": true,
+          "type": "array[string]"
+        }
+      },
+      "required": [
+        "rules"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_plan_change",
+      "description": "Calcula un PLAN sin aplicar nada, y devuelve un `plan_token`.\n\n`operation`: una de las que lista pbi_capabilities en\n`planned_operations`. `arguments`: los mismos que aceptaria la tool.\n\nEl plan incluye el diff por archivo y una huella del estado sobre el que\nse calculo. Si el proyecto cambia despues, pbi_apply_plan lo rechaza.",
+      "params": {
+        "arguments": {
+          "required": true,
+          "type": "object"
+        },
+        "operation": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "operation"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_prepare_delivery",
+      "description": "Checklist de pre-entrega con plan de correccion.\n\nAudita el proyecto, produce un checklist de bloqueantes y propone las\ncorrecciones automaticas disponibles. Con `dry_run=false` las aplica y\ncompara el puntaje antes y despues.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_preview_page_spec",
+      "description": "Maqueta HTML del spec con las posiciones FINALES. No escribe al .pbip.\n\nLo que muestra el preview es exactamente lo que se escribiria: tipos,\ntitulos, campos, tamanos y posiciones salen del mismo compilado que usa\nla aplicacion.",
+      "params": {
+        "seed": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "spec": {
+          "required": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_preview_spec_html",
+      "description": "Genera una MAQUETA HTML de una hoja propuesta (sin escribir nada al .pbip).\n\n`spec`: {page_name, canvas?, layout?, visuals:[{type,title,fields,position?}]}.\nDevuelve la ruta del HTML (abrelo en el navegador para revisar el diseno).",
+      "params": {
+        "spec": {
+          "required": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_profile_data",
+      "description": "Perfila los VALORES del modelo abierto y devuelve lo que no cuadra.\n\nComplementa a pbi_audit_model, que revisa la estructura: un porcentaje\nque vale -800 no es un defecto del modelo sino de los datos, y solo se\nve consultandolos.\n\nDetecta porcentajes fuera de 0-100, columnas vacias, columnas de un\nsolo valor y columnas mayormente vacias. Cada hallazgo trae la consulta\nque lo demuestra y la consecuencia concreta sobre el tablero.\n\nSolo lectura. `tables` acota el trabajo; `max_columns` evita que un\nmodelo grande agote el timeout y devuelva un perfil a medias.",
+      "params": {
+        "max_columns": {
+          "required": false,
+          "type": "integer",
+          "default": 60
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_propose_dashboard",
+      "description": "Mira el modelo y PROPONE varios diseños distintos, con su porque.\n\nA diferencia de pbi_page_building_blocks, que entrega el inventario y\ndeja el diseño en manos de quien pregunta, esto clasifica lo que hay\n—que columna es un estado, cual una fecha, cuales forman una familia de\nmetricas comparables— y devuelve paginas completas con un spec listo\npara aplicar.\n\nDevuelve tambien `blockers`: lo que hay que resolver ANTES de construir\n(p.ej. un modelo sin medidas, donde todo visual caeria en sumas\nimplicitas), y `themes` con las paletas disponibles.\n\nUsalo para ofrecer opciones al usuario en vez de decidir por el.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_purge_backups",
+      "description": "Aplica la politica de retencion a los backups. DESTRUCTIVA.\n\nSin `confirm` devuelve el MANIFIESTO de lo que se eliminaria, sin tocar\nnada. Solo se borran directorios de journal reconocibles (con su\n`manifest.json`) dentro de la carpeta de backups del proyecto activo:\nnunca un archivo suelto, ni un enlace simbolico, ni una raiz amplia.\n\nSe conserva siempre el journal mas reciente y TODOS los pendientes:\nun journal pendiente guarda los unicos originales de una transaccion\nque no llego a cerrarse.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "days": {
+          "required": false,
+          "type": "integer",
+          "default": 30
+        },
+        "max_journals": {
+          "required": false,
+          "type": "integer",
+          "default": 50
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_recover_from_journal",
+      "description": "Restaura los originales guardados en un journal. DESTRUCTIVA.\n\nSin `confirm` devuelve la VISTA PREVIA: que archivos se restaurarian,\ncual es su estado actual y si alguien los cambio despues.\n\nEstados: `recoverable`, `recovered`, `conflict`, `incomplete`,\n`corrupted`. Si un archivo cambio despues de la transaccion, se rechaza\ncon `recovery_conflict` en vez de pisar ese trabajo; `force_conflict`\nlo aplica de todas formas.\n\nCada archivo se verifica byte a byte tras restaurarlo, y se recrean los\ndirectorios padre que hubieran desaparecido.",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "force_conflict": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "journal": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "journal"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_refresh_model",
+      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nDevuelve estado y duracion. Los errores de credenciales/origen se reportan.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "type": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_rename_page",
+      "description": "Cambia el nombre visible de una pagina. El id interno no cambia.",
+      "params": {
+        "new_name": {
+          "required": true,
+          "type": "string"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "new_name",
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_reorder_pages",
+      "description": "Fija el orden de las paginas del informe.\n\nAcepta ids o nombres visibles. Las paginas que no menciones quedan al\nfinal, conservando su orden relativo.",
+      "params": {
+        "order": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_repair_broken_references",
+      "description": "Detecta referencias rotas en los visuales y las repara.\n\nSin `mapping` solo diagnostica: adivinar a que campo queria apuntar un\nvisual roto no es una decision que deba tomarse sola. Pasa\n`{\"Tabla[Viejo]\": \"Tabla[Nuevo]\"}` para repararlas, y el destino se\nvalida contra el modelo antes de escribir.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "mapping": {
+          "required": false,
+          "type": "null|object",
+          "default": null
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_replace_visual_field",
+      "description": "Sustituye una referencia de campo dentro de un visual.\n\n`old_ref`/`new_ref`: 'Tabla[Campo]' o '[Medida]'. Trabaja sobre las\nproyecciones existentes; no crea roles nuevos. Falla si el visual no\nreferencia `old_ref`, en vez de no hacer nada en silencio.\n\nEl destino se valida contra el modelo antes de escribir: si no existe,\nes ambiguo o es de otro tipo (medida donde va una columna), se rechaza\ncon `field_not_found` en lugar de inventarlo.",
+      "params": {
+        "new_ref": {
+          "required": true,
+          "type": "string"
+        },
+        "old_ref": {
+          "required": true,
+          "type": "string"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "new_ref",
+        "old_ref",
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_report_capabilities",
+      "description": "Version PBIR observada, tema, custom visuals y tipos clonables.\n\nSolo se pueden crear visuales de tipos ya presentes en el informe: se\nclona una estructura real en vez de inventarla. Esta tool dice cuales\nhay disponibles antes de intentarlo.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_run_dax",
+      "description": "Ejecuta una consulta DAX de SOLO LECTURA contra el modelo activo.\n\nSolo se admiten formas reconocidas: EVALUATE, DEFINE...EVALUATE y DMVs\nde $SYSTEM. Cualquier otra cosa se rechaza (politica fail-closed).\n\n`max_rows`: limite de filas. `max_bytes`: tope de tamano del resultado,\npara no devolver megas al cliente. `timeout_seconds`: timeout del\ncomando. `export=true` vuelca el resultado completo a outputs/ y\ndevuelve la ruta.\n\nDevuelve columnas, tipos observados, filas, estadisticas de ejecucion y\nsi se trunco (y por que: filas o tamano). Los errores DAX del motor se\ndevuelven tal cual.",
+      "params": {
+        "export": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "max_bytes": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        },
+        "max_rows": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        },
+        "query": {
+          "required": true,
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_search_model",
+      "description": "Busca objetos del modelo por nombre (y en el DAX de las medidas).\n\n`term`: texto a buscar, sin distinguir mayusculas.\n`kinds`: filtra por tipo — table, column, measure, hierarchy, role.\nPara las medidas indica si coincidio el nombre o la expresion.",
+      "params": {
+        "kinds": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "limit": {
+          "required": false,
+          "type": "integer",
+          "default": 50
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "term": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "term"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_select_model",
+      "description": "Selecciona el modelo local activo para futuras operaciones.\n\nSi hay un solo modelo abierto no hace falta indicar puerto. Si hay varios,\npasa el `port` (visto en pbi_list_desktop_models).",
+      "params": {
+        "catalog": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "port": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_session_info",
+      "description": "Detalle de la sesion: modelo activo, proyecto activo y su frescura.\n\nDistingue una sesion valida de una obsoleta (`stale`) o de otra que\nocupo el mismo puerto (`mismatch`).",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_column_visibility",
+      "description": "Oculta o muestra una columna del modelo (p.ej. ocultar columnas de ID).\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "params": {
+        "column": {
+          "required": true,
+          "type": "string"
+        },
+        "hidden": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_conditional_format",
+      "description": "Colorea un visual segun el valor de un campo (degradado).\n\nEs lo que convierte una matriz de numeros en un mapa de calor, o unas\nbarras planas en una escala de semaforo.\n\n`field`: 'Tabla[Campo]' o '[Medida]' de donde sale el valor.\n`target`: 'background' o 'font' para tablas y matrices; 'bars' para\nbarras, columnas y puntos. `mid_color`: si lo indicas, el degradado\ntiene tres paradas en vez de dos, util cuando hay un punto neutro.\n`null_strategy`: asZero | none | specificColor.\n\nSi el visual ya tenia una regla en ese mismo destino, se sustituye:\ndos degradados sobre la misma propiedad no se suman, se pisan.",
+      "params": {
+        "field": {
+          "required": true,
+          "type": "string"
+        },
+        "max_color": {
+          "required": true,
+          "type": "string"
+        },
+        "mid_color": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "min_color": {
+          "required": true,
+          "type": "string"
+        },
+        "null_strategy": {
+          "required": false,
+          "type": "string",
+          "default": "asZero"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "target": {
+          "required": false,
+          "type": "string",
+          "default": "background"
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "max_color",
+        "min_color",
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_relationship_direction",
+      "description": "Cambia el filtro cruzado de una relacion.\n\n`direction`: 'single' (una direccion, recomendado) o 'both' (bidireccional).\nOJO: cambiar a 'single' puede alterar totales que dependian de la bidireccional;\nverifica el informe despues.\n\nNo confundir `direction='both'` (bidireccional, valido) con `mode='both'`,\nque esta temporalmente deshabilitado bajo la politica estricta: 'live'\nnecesita Power BI Desktop abierto y 'pbip' lo necesita cerrado, asi que\nuna sola llamada aplicaria solo uno de los dos destinos.",
+      "params": {
+        "direction": {
+          "required": false,
+          "type": "string",
+          "default": "single"
+        },
+        "from_table": {
+          "required": true,
+          "type": "string"
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "to_table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_table",
+        "to_table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_storage_mode",
+      "description": "Cambia el modo de almacenamiento de una tabla: import | directQuery | dual.\n\nCon directQuery el dato se consulta al origen en cada interaccion y\ndesaparece el refresco, pero NO es un interruptor inocuo: la consulta M\ntiene que ser plegable al origen, las columnas y tablas calculadas\ndejan de estar disponibles, y cada visual pasa a ser una consulta al\nservidor.\n\nDevuelve el modo anterior y cuantas particiones cambiaron, para poder\ndeshacerlo sabiendo exactamente que se toco.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "params": {
+        "mode": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_visual_title",
+      "description": "Cambia el titulo de un visual PRESERVANDO su formato (fuente, color).",
+      "params": {
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "title": {
+          "required": true,
+          "type": "string"
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "title",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_set_visual_z_order",
+      "description": "Fija el orden Z de los visuales de una pagina.\n\n`order`: ids de MENOR a MAYOR z; el ultimo queda encima. Los visuales\nque no menciones se colocan por encima, conservando su orden relativo.",
+      "params": {
+        "order": {
+          "required": true,
+          "type": "array[string]"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "order",
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_start_here",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento doce tools con buen nombre siguen siendo ciento doce tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_test_connection",
+      "description": "Valida la conexion al modelo activo con una consulta trivial.",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_update_measure",
+      "description": "Actualiza una medida existente. Lo no especificado se conserva.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "params": {
+        "description": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "display_folder": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "expression": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "format_string": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "mode": {
+          "required": false,
+          "type": "string",
+          "default": "live"
+        },
+        "name": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_update_visual_position",
+      "description": "Mueve/redimensiona un visual existente.",
+      "params": {
+        "height": {
+          "required": true,
+          "type": "number"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        },
+        "width": {
+          "required": true,
+          "type": "number"
+        },
+        "x": {
+          "required": true,
+          "type": "number"
+        },
+        "y": {
+          "required": true,
+          "type": "number"
+        },
+        "z": {
+          "required": false,
+          "type": "null|number",
+          "default": null
+        }
+      },
+      "required": [
+        "height",
+        "page",
+        "visual_id",
+        "width",
+        "x",
+        "y"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_desktop_render",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
+      "params": {
+        "capture_timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 30
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_generated_page",
+      "description": "Verifica una pagina YA escrita: referencias rotas y geometria.\n\nSe usa despues de aplicar un spec para comprobar que el resultado es\nvalido de verdad, no solo que la escritura no fallo.",
+      "params": {
+        "page": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_measures",
+      "description": "Valida DAX de medidas SIN modificar el modelo (dry-run con DEFINE MEASURE).\n\nIdeal para probar medidas ANTES de crearlas con pbi_create_measure.\n`measures`: lista de {\"name\",\"dax\",\"table\"(opcional)}. Las medidas pueden\nreferenciarse entre si. Devuelve por cada una: valid, value (muestra) y error.",
+      "params": {
+        "measures": {
+          "required": true,
+          "type": "array[object]"
+        }
+      },
+      "required": [
+        "measures"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_page_spec",
+      "description": "Valida un spec: esquema, referencias contra el modelo y geometria.\n\nLos errores traen su JSON path (`$.visuals[2].fields.values[0]`) para\nque se puedan corregir sin adivinar. No escribe nada.",
+      "params": {
+        "spec": {
+          "required": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_pbip_project",
+      "description": "Valida a fondo el proyecto .pbip activo (estructura, PBIR, TMDL).",
+      "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_tmdl",
+      "description": "Comprueba si un modelo TMDL abrira, sin abrir Power BI Desktop.\n\nDos capas. Un lint estatico que caza las trampas que solo se veian al\nabrir (una propiedad de tabla colocada despues de sus hijos, un\ncomentario '///' sobre una relacion, una medida que se llama como una\ncolumna de su tabla, medidas duplicadas, referencias rotas) y, si estan\nlas DLL, un parseo con el MISMO serializador que usa Power BI.\n\nCada hallazgo trae `rule`, `severity`, el archivo y la linea. Si el\nparseo no se pudo ejecutar se dice (`parse_checked: false`) en vez de\ndarlo por bueno.\n\nHay fallos que NINGUN analisis estatico ve porque dependen de los datos\n—un blanco en el lado 'uno' de una relacion, un separador decimal mal\ninterpretado—. Salen en `limitations`: para esos hay que refrescar.\n\n`path`: carpeta `definition` del modelo, la carpeta `.SemanticModel` o\nel `.pbip`. Si se omite, el proyecto activo.\n`use_tom=False`: solo el lint estatico, sin tocar las DLL.",
+      "params": {
+        "path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "use_tom": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+# ============================================================================
+# PowerBI-MCP — .gitignore
+# Regla rectora: en este repositorio NUNCA se versionan datos reales, modelos
+# de clientes, credenciales, binarios vendorizados ni configuracion personal.
+# Solo codigo, pruebas, fixtures sinteticos y documentacion.
+# ============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Credenciales y configuracion local ---
+# El .env real nunca se versiona; la plantilla .env.example si.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets*
+credentials*
+*credentials.json
+*.secrets.json
+
+# --- Configuracion MCP personal del usuario ---
+# Se versiona SOLO la plantilla: .mcp.json.example / examples/*.example.json
+.mcp.json
+mcp.json
+claude_desktop_config.json
+.claude/settings.local.json
+
+# --- DLLs vendorizadas de Analysis Services (ADOMD.NET / TOM) ---
+# Se rehidratan con: python scripts/fetch_libs.py
+libs/
+*.dll
+
+# --- Salidas de ejecucion, backups y logs ---
+outputs/
+backups/
+_backup_*/
+*_backup_*/
+*.log
+*.log.*
+
+# --- Artefactos y datos reales de Power BI (NUNCA versionar) ---
+*.pbix
+*.pbit
+*.pbip
+*.Report/
+*.SemanticModel/
+*.Dataset/
+*.abf
+# Datos tabulares que pudieran acompanar a un modelo
+*.xlsx
+*.xlsm
+*.csv
+*.parquet
+
+# Excepcion: los fixtures SINTETICOS si se versionan (no contienen datos reales).
+# El orden importa: git solo puede re-incluir archivos si antes re-incluye los
+# DIRECTORIOS que los contienen (por eso la primera linea lleva barra final).
+!tests/fixtures/synthetic/**/
+!tests/fixtures/synthetic/**
+
+# ...pero la re-inclusion anterior es amplia y tambien resucitaria los .pyc y
+# el __pycache__ de esa carpeta. Se vuelven a excluir DESPUES (gana la ultima
+# regla que coincide).
+tests/fixtures/synthetic/**/__pycache__/
+tests/fixtures/synthetic/**/*.py[cod]
+
+# --- Fixture local de compatibilidad (copia de un proyecto real) ---
+# Solo para pruebas locales de SOLO LECTURA. Jamas se versiona.
+tests/fixtures/local/
+tests/fixtures/_local*/
+
+# --- Temporales de escritura atomica ---
+*.tmp
+*.json.tmp
+*.bak
+*.orig
+
+# --- Editores / SO ---
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Artefactos de construccion del wheel
+build/
+schemas_cache/
+validator_cache/

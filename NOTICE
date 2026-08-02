@@ -1,0 +1,12 @@
+Horizun PBI MCP
+Copyright 2026 HorizunGroup and Horizun PBI MCP contributors
+
+This product is licensed under the Apache License, Version 2.0.
+
+This distribution does NOT redistribute Microsoft Analysis Services DLLs.
+The optional local runtime retrieves pinned packages from Microsoft's NuGet
+feed with scripts/fetch_libs.py and verifies their SHA-256 hashes before use.
+
+Power BI, Microsoft, Claude, Anthropic, ChatGPT, Codex, and OpenAI are
+trademarks of their respective owners. This project is independent and is not
+endorsed by Microsoft, Anthropic, or OpenAI.

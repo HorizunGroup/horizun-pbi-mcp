@@ -1,0 +1,7 @@
+interface:
+  display_name: "Instalar Horizun PBI MCP"
+  short_description: "Instala y verifica Horizun PBI MCP en Codex o Claude"
+  default_prompt: "Usa $horizun-pbi-setup para instalar y verificar Horizun PBI MCP en este cliente."
+
+policy:
+  allow_implicit_invocation: true

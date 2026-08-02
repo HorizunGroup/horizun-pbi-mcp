@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horizun-pbi-mcp"
+# PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
+version = "1.0.0"
+description = "Servidor MCP para Power BI: modelo semantico en vivo (DAX/TOM), proyectos .pbip (TMDL/PBIR), autoria de informes, auditoria integral y workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    # Acotada por arriba a proposito: el servidor fija la version del producto
+    # con `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`
+    # (comprobado en 1.28.1). Es API privada, asi que un salto mayor de `mcp`
+    # podria retirarla y dejar el servidor anunciando la version de la libreria
+    # en vez de la suya. tests/test_mcp_compat.py lo vigila.
+    "mcp>=1.28.1,<2",
+    "pythonnet>=3.0.5,<4",
+    "psutil>=5.9,<8",
+    "python-dotenv>=1.0,<2",
+    # Fase E3.1: validacion PBIR contra los esquemas OFICIALES. Un validador
+    # casero solo cubria type/required/properties/items/enum e ignoraba $ref,
+    # anyOf, const y additionalProperties, que es lo que el PBIR usa de verdad.
+    "jsonschema>=4.20,<5",
+    "referencing>=0.30,<1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+horizun-pbi-mcp = "server:main"
+# Alias legacy: se conserva para no romper instalaciones existentes.
+powerbi-mcp = "server:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+# Todos los modulos sueltos de src/. `reporting` faltaba: el wheel se instalaba
+# y el servidor moria al importar tools.documentation_tools.
+py-modules = ["server", "config", "logging_config", "reporting", "branding"]
+
+[tool.setuptools.package-data]
+# Los esquemas PBIR son DATOS, no codigo: sin esto el wheel se instala y
+# services/pbir_schema.py lanza schema_unavailable en la primera escritura.
+# El manifiesto (URLs + SHA-256) SI va en el paquete; los esquemas NO,
+# porque no declaran permiso de redistribucion.
+services = ["schemas/*.json"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# `services*` es obligatorio: contiene la capa de seguridad (paths, dax_guard,
+# project_state, txn) de la que dependen pbip/ y powerbi/. Sin el, un wheel
+# instalado arranca... hasta el primer import.
+include = ["powerbi*", "pbip*", "tools*", "utils*", "services*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,13 @@
+# Normaliza los finales de linea para que el repositorio no acumule diffs
+# espurios CRLF/LF al trabajar en Windows.
+* text=auto eol=lf
+
+# Los fixtures TMDL dependen de la indentacion por tabuladores: no tocar.
+*.tmdl text eol=lf
+
+# Binarios (por si alguno llegara a versionarse pese al .gitignore).
+*.dll binary
+*.pbix binary
+*.pbit binary
+*.png binary
+*.jpg binary

@@ -1,0 +1,113 @@
+name: ci
+
+# Las acciones van en su mayor actual (checkout v7, setup-python v7,
+# setup-node v7, upload-artifact v7): las v4/v5 corren sobre un runtime Node
+# que el runner ya marca como obsoleto. Es INDEPENDIENTE del Node 20 que se
+# instala mas abajo para el validador PBIR de Microsoft.
+#
+# Windows y solo Windows: Power BI Desktop es Windows-only, la capa en vivo usa
+# .NET Framework via pythonnet, y buena parte de la suite comprueba semantica de
+# rutas de Windows (UNC, \\?\, nombres reservados, ADS). En Linux no probaria lo
+# que hay que probar.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+# Solo lectura: este workflow no publica, no etiqueta y no comenta.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # La minima que declara pyproject y una moderna. Si la suite pasa en
+        # ambas, el rango `requires-python` es cierto y no una intencion.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Node >= 20 para el validador PBIR oficial de Microsoft. Sin el, la
+      # suite pasa igual: las pruebas usan un CLI falso determinista y la de
+      # integracion real se omite sola.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Instalar el paquete y las dependencias de test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+
+      # Esquemas oficiales del PBIR. Se descargan con hash verificado; sin
+      # ellos, las pruebas que escriben PBIR fallarian con schema_unavailable.
+      - name: Esquemas PBIR (verificados por SHA-256)
+        run: python scripts/fetch_pbir_schemas.py
+
+      - name: Validador PBIR oficial de Microsoft
+        run: python scripts/fetch_report_validator.py
+
+      # Las DLL de Analysis Services. La SUITE pasa sin ellas, pero `doctor`
+      # las considera un requisito obligatorio —y tiene razon: sin ellas la
+      # capa en vivo no puede funcionar—, asi que sin este paso el propio
+      # diagnostico fallaria en CI. Version fijada y hash verificado.
+      - name: DLLs de Analysis Services (verificadas por SHA-256)
+        run: python scripts/fetch_libs.py
+
+      - name: Pruebas
+        run: python -m pytest -q
+
+      - name: Diagnostico de la instalacion
+        run: python scripts/doctor.py
+
+      - name: Contrato MCP congelado
+        run: python -m tests.contract_utils
+
+  build:
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Construir wheel y sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Comprobar los artefactos
+        # No se publica en ningun indice: solo se verifica que se construyen y
+        # que los metadatos son validos.
+        run: |
+          python -m pip install twine
+          python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+
+# Lo que este workflow NO hace, a proposito:
+#   - no usa secretos: nada aqui necesita credenciales;
+#   - no descarga modelos ni informes reales;
+#   - no ejecuta pruebas `live` ni `live_validator`: exigen Power BI Desktop
+#     abierto y se omiten solas;
+#   - no publica en PyPI.
