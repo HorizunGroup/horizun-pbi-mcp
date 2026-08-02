@@ -498,6 +498,8 @@ def test_una_imagen_se_copia_y_se_declara(sample_pbip, session, tmp_path):
                for i in rr["items"])
     # y devuelve como usarla, que es el dato que hace falta despues
     assert r["usage"]["options"]["resource"] == r["item_name"]
+    assert r["transaction"]["clean"] is True
+    assert r["backup"]
 
 
 def test_no_pisa_un_recurso_existente(sample_pbip, session, tmp_path):
@@ -508,6 +510,52 @@ def test_no_pisa_un_recurso_existente(sample_pbip, session, tmp_path):
     a = resources.add_image(activo, _png(tmp_path))
     b = resources.add_image(activo, _png(tmp_path))
     assert a["item_name"] != b["item_name"]
+
+
+def test_nombre_de_recurso_no_puede_escapar_del_informe(
+        sample_pbip, session, tmp_path):
+    """La prueba de traversal solo apunta a un marcador dentro de tmp_path."""
+    from pbip import project_locator, resources
+    from powerbi.errors import PathSecurityError
+
+    project_locator.open_project(session, str(sample_pbip))
+    activo = session.require_active_pbip()
+    fuera = tmp_path / "fuera"
+    fuera.mkdir()
+    victima = fuera / "victima.json"
+    victima.write_bytes(b"NO TOCAR")
+
+    with pytest.raises(PathSecurityError):
+        resources.add_image(
+            activo, _png(tmp_path), name=str(victima), overwrite=True)
+
+    assert victima.read_bytes() == b"NO TOCAR"
+
+
+def test_fallo_al_registrar_recurso_revierte_la_copia(
+        sample_pbip, session, tmp_path, monkeypatch):
+    """Si falla el segundo archivo, ni la imagen ni report.json cambian."""
+    from pathlib import Path
+
+    from pbip import project_locator, resources
+    from services import txn as txn_service
+
+    project_locator.open_project(session, str(sample_pbip))
+    activo = session.require_active_pbip()
+    informe = Path(activo.report_dir) / "definition" / "report.json"
+    antes = informe.read_bytes()
+    destino = (Path(activo.report_dir) / "StaticResources"
+               / "RegisteredResources" / "atomico.png")
+
+    def fallar_registro(self, target, data):
+        raise RuntimeError("fallo inyectado al registrar report.json")
+
+    monkeypatch.setattr(txn_service.Transaction, "write_json", fallar_registro)
+    with pytest.raises(RuntimeError, match="fallo inyectado"):
+        resources.add_image(activo, _png(tmp_path), name="atomico.png")
+
+    assert not destino.exists()
+    assert informe.read_bytes() == antes
 
 
 def test_extension_no_soportada_se_rechaza(sample_pbip, session, tmp_path):

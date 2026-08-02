@@ -11,14 +11,15 @@ para enlazarlos.
 """
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config import ActivePbip
 from logging_config import get_logger
 from powerbi.errors import PowerBIMCPError
-from utils.json_utils import read_json, write_json
+from services import paths as safe_paths
+from services import txn as txn_service
+from utils.json_utils import read_json
 
 log = get_logger("resources")
 
@@ -91,15 +92,18 @@ def add_image(active: ActivePbip, origen: str | Path,
             "abrir y en publicar. Reducela antes de incrustarla.")
 
     carpeta = _carpeta(active)
-    carpeta.mkdir(parents=True, exist_ok=True)
     propuesto = name or ruta.name
     if not Path(propuesto).suffix:
         propuesto += ruta.suffix
+    # ``name`` llega directamente desde la tool MCP. Antes se combinaba con
+    # ``carpeta`` sin validarlo: un nombre absoluto o con ``..`` podia escapar
+    # de StaticResources y, con overwrite=true, sobrescribir cualquier archivo
+    # accesible (incluido definition/report.json).
+    safe_paths.safe_identifier(propuesto, kind="nombre de recurso")
     item_name = propuesto if overwrite else _nombre_unico(carpeta, propuesto)
 
-    destino = carpeta / item_name
-    shutil.copy2(ruta, destino)
-
+    destino = safe_paths.safe_join(carpeta, item_name,
+                                   kind="ruta de recurso del informe")
     informe_path = Path(active.report_dir) / "definition" / "report.json"
     if not informe_path.exists():
         raise ResourceError(f"No se encontro report.json en {informe_path}.")
@@ -107,11 +111,26 @@ def add_image(active: ActivePbip, origen: str | Path,
     informe["resourcePackages"] = _declarar(
         informe.get("resourcePackages"),
         {"name": item_name, "path": item_name, "type": tipo})
-    write_json(informe_path, informe)
+
+    # Copia y registro forman una sola unidad logica. El visual no encuentra un
+    # archivo sin declarar, y una declaracion sin archivo queda igualmente rota.
+    # La transaccion respalda ambos destinos, revalida contencion justo antes de
+    # escribir y revierte la copia si report.json no se puede confirmar.
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation="Anadir un recurso de imagen")
+    contenido = ruta.read_bytes()
+    cm = txn_service.project_transaction(
+        active, [destino, informe_path], tool="pbi_add_image_resource")
+    with cm as tx:
+        tx.write_bytes(destino, contenido)
+        tx.write_json(informe_path, informe)
 
     log.info("Recurso '%s' anadido (%s bytes)", item_name, tamano)
     return {"item_name": item_name, "file": str(destino), "type": tipo,
             "bytes": tamano, "source": str(ruta),
+            "backup": cm.result["journal"], "transaction": cm.result,
+            "validation_report": cm.validation,
             "usage": {"type": "image", "options": {"resource": item_name}}}
 
 
