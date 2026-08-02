@@ -69,15 +69,13 @@ o `Export-PowerBIReport`, y ninguno funciona sobre un `.pbip` local.
 
 ## 3. Cobertura de tipos de visual
 
-**Estado:** abierto, acotado.
+**Estado:** cerrado el 2026-08-01.
 
-Nueve tipos con datos: `card`, `cardVisual`, `tableEx`, `pivotTable`, `slicer`,
-`clusteredBarChart`, `clusteredColumnChart`, `lineChart`, `pieChart`. Más los
-de composición.
-
-**No están** los que se piden a menudo: `gauge`, `kpi`, `donutChart`,
-`areaChart`, `scatterChart`, `treemap`, `funnel`, `waterfall`, `multiRowCard`,
-`ribbonChart`.
+Están los nueve tipos con datos originales y los diez que faltaban: `gauge`,
+`kpi`, `donutChart`, `areaChart`, `scatterChart`, `treemap`, `funnel`,
+`waterfallChart`, `multiRowCard` y `ribbonChart`. `waterfall` se acepta como
+alias, pero se escribe como `waterfallChart`, que es el nombre real del
+catálogo oficial. Más los de composición.
 
 **Cómo añadir uno sin repetir el error de `cardVisual`:** los roles **no se
 deducen**. Se escribe un visual por cada par (tipo, rol candidato), se corre el
@@ -89,28 +87,28 @@ tiene el barrido montado.
 
 ## 4. Roles conocidos que no se ofrecen
 
-**Estado:** abierto, trivial.
+**Estado:** cerrado el 2026-08-01.
 
-El barrido contra el CLI oficial encontró roles válidos que `ROLE_MAP` no
-expone: `tooltips` en casi todos los gráficos, `Y2` en `lineChart` (eje
-secundario), `Rows` en los de barras.
-
-Están verificados contra el validador; solo hay que declararlos y probarlos.
+`ROLE_MAP` ya expone `tooltips`, `Y2` y `Rows`, además de los roles propios de
+los diez tipos nuevos. Los nombres se consultaron con `catalog describe` del
+CLI oficial; la prueba `abre` genera cada par tipo/rol y exige cero
+`PBIR_ROLE_UNKNOWN` sobre el informe completo.
 
 ---
 
 ## 5. El color mínimo de un degradado sobre tema oscuro
 
-**Estado:** abierto, es una trampa de uso, no un defecto.
+**Estado:** cerrado el 2026-08-01.
 
 `pbi_set_conditional_format` toma los colores de quien llama. Con `#FFFFFF`
 como mínimo sobre un tema oscuro, los valores bajos quedan **blanco sobre
 blanco**: la celda se pinta y el número desaparece.
 
-**Qué haría falta:** que el degradado por defecto salga del tema aplicado —el
-mínimo debería ser el fondo del tema, no blanco—, o al menos avisar cuando el
-contraste del extremo bajo caiga por debajo de 3:1. La cuenta ya existe en
-`tests/test_design_y_guia.py::contraste`.
+La operación conserva los colores explícitos del llamante, pero ahora lee el
+tema activo y avisa si cualquiera de los extremos queda por debajo de 3:1. Al
+pintar el fondo compara contra la tinta del tema; al pintar fuente o marcas,
+contra la superficie. Así `#FFFFFF` sobre texto blanco en el tema oscuro ya no
+pasa en silencio.
 
 ---
 
