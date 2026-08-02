@@ -42,8 +42,11 @@ def _start_install() -> dict[str, Any]:
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": log,
                               "stderr": subprocess.STDOUT, "close_fds": True}
     if os.name == "nt":
-        kwargs["creationflags"] = (getattr(subprocess, "CREATE_NO_WINDOW", 0) |
-                                   getattr(subprocess, "DETACHED_PROCESS", 0))
+        # Solo CREATE_NO_WINDOW: oculta la consola sin cortar la asociacion a
+        # una window station. Con DETACHED_PROCESS los nietos (pip, node) la
+        # pierden y algunos mueren con STATUS_DLL_INIT_FAILED (0xC0000142)
+        # antes de imprimir nada, dejando install.log vacio.
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     else:
         kwargs["start_new_session"] = True
     try:
@@ -69,10 +72,16 @@ def bootstrap_server() -> int:
             _start_install()
         except Exception as exc:
             print(f"launcher: no se pudo iniciar el instalador: {exc}", file=sys.stderr)
+        status = bootstrap.read_status()
+
+    runtime_note = ""
+    if status.get("state") == "failed":
+        runtime_note = f" La ultima instalacion fallo: {status.get('message', '')}"
 
     tools = [
         {"name": "pbi_install_runtime",
-         "description": "Prepara en segundo plano el runtime local aislado y verificado del plugin.",
+         "description": "Prepara en segundo plano el runtime local aislado y verificado del plugin."
+                         + runtime_note,
          "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
         {"name": "pbi_install_status",
          "description": "Informa el avance o el error de la instalación del runtime local.",
