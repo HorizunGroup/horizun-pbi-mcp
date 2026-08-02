@@ -1,0 +1,47 @@
+# Horizun PBI MCP
+
+> Open-source Model Context Protocol (MCP) server for local Power BI Desktop
+> and `.pbip` projects. It connects Claude, Codex and other MCP clients to a
+> live Power BI Desktop session and to Power BI project files on disk.
+
+## Canonical links
+
+- Repository: https://github.com/HorizunGroup/horizun-pbi-mcp
+- Latest stable release: https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest
+- Installation and client setup: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/INSTALL.md
+- Full tool catalogue (117 tools): https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/TOOL_CATALOG.md
+- Architecture and invariants: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/ARCHITECTURE.md
+- Security model: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/SECURITY.md
+- Tutorial, install to first dashboard: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/TUTORIAL.md
+- Horizun Hub ecosystem: https://horizunhub.com
+
+## What it does
+
+Horizun PBI MCP covers two complementary layers of Power BI automation.
+The live layer (Power BI Desktop open on `localhost:<port>`) queries data
+with DAX, documents the semantic model, and creates or edits measures via
+ADOMD.NET and TOM through `pythonnet`. The on-disk layer edits `.pbip`
+projects directly through TMDL (semantic model) and PBIR (report), so it can
+generate and arrange visuals and pages durably, edit-file by edit-file.
+
+The local live endpoint only ever exposes the data layer of the semantic
+model; visuals, pages and layout are never touched through it or through any
+live API — those are edited exclusively through PBIR files. The server
+enforces that separation instead of trying to move visuals live.
+
+v1.0.1 ships 117 tools, backed by 1547 passing tests (3 skipped, each with
+its documented condition). Two validation layers check every PBIR edit
+before it is written, and non-read-only DAX is blocked by a fail-closed
+classifier.
+
+## How to use it
+
+Register the server with Claude Code, Claude Desktop, Codex, or any stdio
+MCP client, then point it at a running Power BI Desktop instance or a
+`.pbip` project on disk. See docs/INSTALL.md for exact client configuration
+and docs/TOOL_INVENTORY.md for the 34-tool baseline surface with risk class
+and preconditions per tool.
+
+## License
+
+Apache-2.0. See LICENSE and NOTICE in the repository root.
