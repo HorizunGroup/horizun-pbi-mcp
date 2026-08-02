@@ -155,6 +155,43 @@ def test_cada_tipo_real_tiene_sus_roles():
     assert sin_roles == []
 
 
+def test_cada_tipo_con_datos_declara_roles_obligatorios():
+    sin_contrato = [t for t in visual_factory.REAL_TYPES
+                    if t not in visual_factory.REQUIRED_ROLES
+                    and t not in visual_factory.DECORATIVOS]
+    assert sin_contrato == []
+
+
+def test_faltan_roles_obligatorios_se_rechaza_antes_de_escribir(
+        session, sample_pbip):
+    project_locator.open_project(session, str(sample_pbip))
+    active = session.require_active_pbip()
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            active, "lineChart", {"category": ["Fact[Category]"]},
+            {"x": 0, "y": 0, "width": 400, "height": 240})
+    assert exc.value.details["missing_roles"] == ["Y"]
+
+
+@pytest.mark.parametrize("tipo,campos,rol,maximo", [
+    ("card", {"values": ["[A]", "[B]"]}, "Values", 1),
+    ("slicer", {"values": ["T[A]", "T[B]"]}, "Values", 1),
+    ("kpi", {"values": ["[A]"], "goal": ["[B]", "[C]", "[D]"]},
+     "Goal", 2),
+])
+def test_cardinalidad_oficial_se_exige(
+        session, sample_pbip, tipo, campos, rol, maximo):
+    project_locator.open_project(session, str(sample_pbip))
+    active = session.require_active_pbip()
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            active, tipo, campos,
+            {"x": 0, "y": 0, "width": 400, "height": 240},
+            measure_index={"A": "T", "B": "T", "C": "T", "D": "T"})
+    (detalle,) = exc.value.details["cardinality_exceeded"]
+    assert detalle == {"role": rol, "count": maximo + 1, "max": maximo}
+
+
 def test_no_se_anuncia_nada_que_no_este_en_el_mapa():
     fantasmas = [t for t in visual_factory.SUPPORTED
                  if t.lower() not in visual_factory.TYPE_MAP]

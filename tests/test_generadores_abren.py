@@ -159,6 +159,10 @@ CAMPOS = {
     "tableEx": {"values": ["Regiones[Zona]", "Ventas[Importe Total]"]},
     "pivotTable": {"rows": ["Regiones[Zona]"], "values": ["Ventas[Importe Total]"]},
     "slicer": {"values": ["Regiones[Zona]"]},
+    "barChart": {"category": ["Regiones[Zona]"],
+                 "values": ["Ventas[Importe Total]"]},
+    "columnChart": {"category": ["Regiones[Zona]"],
+                    "values": ["Ventas[Importe Total]"]},
     "clusteredBarChart": {"category": ["Regiones[Zona]"],
                           "values": ["Ventas[Importe Total]"]},
     "clusteredColumnChart": {"category": ["Regiones[Zona]"],
@@ -183,6 +187,8 @@ CAMPOS = {
     "multiRowCard": {"values": ["Ventas[Importe Total]"]},
     "ribbonChart": {"category": ["Regiones[Zona]"],
                     "values": ["Ventas[Importe Total]"]},
+    visual_factory.HTML_CONTENT_TYPE: {
+        "content": ["Ventas[Importe Total]"]},
 }
 
 
@@ -254,9 +260,19 @@ def test_cada_rol_declarado_existe_de_verdad_en_pbir(proyecto_real):
 
     for tipo, role_map in sorted(visual_factory.ROLE_MAP.items()):
         for orden, logico in enumerate(role_map):
+            campos = {k: list(v) for k, v in CAMPOS.get(tipo, {}).items()}
+            # El visual que se pregunta al CLI debe seguir completo: probar un
+            # rol opcional aislado produciria REQUIRED_MISSING antes de poder
+            # responder si ese rol existe. Si dos alias llegan a la misma clave
+            # PBIR, se sustituye el anterior para no exceder cardinalidad.
+            clave_probada = role_map[logico]
+            for existente in list(campos):
+                if role_map.get(existente) == clave_probada:
+                    campos.pop(existente)
             refs = CAMPOS.get(tipo, {}).get(logico) or ["Ventas[Importe Total]"]
+            campos[logico] = refs
             construido = visual_factory.build_visual(
-                active, tipo, {logico: refs},
+                active, tipo, campos,
                 {"x": 0, "y": 0, "width": 300, "height": 200},
                 measure_index={"Importe Total": "Ventas"})
             pid = f"rol{len(indice):04d}".ljust(20, "0")

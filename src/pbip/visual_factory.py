@@ -143,6 +143,57 @@ ROLE_MAP = {
     HTML_CONTENT_TYPE: {"values": "content", "content": "content"},
 }
 
+# Contrato del catalogo oficial (`catalog describe <visualType>`). Un rol
+# conocido no basta: omitir uno obligatorio o superar su cardinalidad genera
+# PBIR_ROLE_REQUIRED_MISSING/PBIR_ROLE_CARDINALITY_EXCEEDED y deja el informe
+# sin abrir. Las claves son las de queryState, no los alias de la API.
+REQUIRED_ROLES = {
+    "card": ("Values",),
+    "cardVisual": ("Data",),
+    "tableEx": ("Values",),
+    "pivotTable": ("Values",),
+    "slicer": ("Values",),
+    "barChart": ("Category", "Y"),
+    "columnChart": ("Category", "Y"),
+    "clusteredBarChart": ("Category", "Y"),
+    "clusteredColumnChart": ("Category", "Y"),
+    "lineChart": ("Category", "Y"),
+    "pieChart": ("Category", "Y"),
+    "gauge": ("Y",),
+    "kpi": ("Indicator",),
+    "donutChart": ("Category", "Y"),
+    "areaChart": ("Category", "Y"),
+    "scatterChart": ("X", "Y"),
+    "treemap": ("Values",),
+    "funnel": ("Category", "Y"),
+    "waterfallChart": ("Category", "Y"),
+    "multiRowCard": ("Values",),
+    "ribbonChart": ("Category", "Y"),
+    HTML_CONTENT_TYPE: ("content",),
+}
+
+MAX_PER_ROLE = {
+    "card": {"Values": 1},
+    "slicer": {"Values": 1},
+    "barChart": {"Series": 1},
+    "columnChart": {"Series": 1},
+    "clusteredBarChart": {"Series": 1},
+    "clusteredColumnChart": {"Series": 1},
+    "lineChart": {"Series": 1},
+    "pieChart": {"Category": 1, "Series": 1},
+    "gauge": {"Y": 1, "MinValue": 1, "MaxValue": 1, "TargetValue": 1},
+    "kpi": {"Indicator": 1, "TrendLine": 1, "Goal": 2},
+    "donutChart": {"Category": 1, "Series": 1},
+    "areaChart": {"Series": 1},
+    "scatterChart": {"Category": 1, "Series": 1, "Y": 1,
+                     "Size": 1, "Play": 1},
+    "treemap": {"Group": 1, "Details": 1},
+    "funnel": {"Category": 1},
+    "waterfallChart": {"Category": 1, "Breakdown": 1, "Y": 1},
+    "ribbonChart": {"Series": 1},
+    HTML_CONTENT_TYPE: {"content": 1},
+}
+
 #: Otros nombres con los que la gente llama al mismo rol. Se aceptan solo si el
 #: tipo tiene ese rol logico: en un `card` no hay leyenda que valga.
 #:
@@ -360,6 +411,32 @@ def _build_query(actual_type: str, fields: Dict[str, Any],
     if not query_state:
         warnings.append("El visual no recibio campos; quedara vacio.")
     return {"queryState": query_state}
+
+
+def _validate_role_contract(actual_type: str, query: Dict[str, Any]) -> None:
+    """Exige obligatoriedad y cardinalidad antes de buscar una plantilla."""
+    estados = query.get("queryState") or {}
+    faltantes = [rol for rol in REQUIRED_ROLES.get(actual_type, ())
+                 if not (estados.get(rol) or {}).get("projections")]
+    if faltantes:
+        raise VisualFactoryError(
+            f"El visual '{actual_type}' requiere los roles {faltantes}; no se "
+            "escribira un visual incompleto.",
+            details={"visual_type": actual_type, "missing_roles": faltantes,
+                     "required_roles": list(REQUIRED_ROLES.get(actual_type, ())),
+                     "received_roles": sorted(estados)})
+
+    excedidos = []
+    for rol, maximo in MAX_PER_ROLE.get(actual_type, {}).items():
+        cantidad = len((estados.get(rol) or {}).get("projections") or [])
+        if cantidad > maximo:
+            excedidos.append({"role": rol, "count": cantidad, "max": maximo})
+    if excedidos:
+        raise VisualFactoryError(
+            f"El visual '{actual_type}' supera la cardinalidad oficial de "
+            f"estos roles: {excedidos}.",
+            details={"visual_type": actual_type,
+                     "cardinality_exceeded": excedidos})
 
 
 def _title_object(title: str) -> Dict[str, Any]:
@@ -803,6 +880,7 @@ def build_visual(
                 "warnings": warnings}
 
     query = _build_query(actual_type, fields or {}, measure_index, warnings)
+    _validate_role_contract(actual_type, query)
     template = find_template(active, actual_type)
     if template is not None:
         data = copy.deepcopy(read_json(template))
