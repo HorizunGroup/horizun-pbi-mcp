@@ -269,7 +269,10 @@ def test_cada_rol_declarado_existe_de_verdad_en_pbir(proyecto_real):
             for existente in list(campos):
                 if role_map.get(existente) == clave_probada:
                     campos.pop(existente)
-            refs = CAMPOS.get(tipo, {}).get(logico) or ["Ventas[Importe Total]"]
+            tipo_rol = visual_factory.ROLE_KINDS[tipo][clave_probada]
+            refs = CAMPOS.get(tipo, {}).get(logico) or (
+                ["Regiones[Zona]"] if tipo_rol == "Grouping"
+                else ["Ventas[Importe Total]"])
             campos[logico] = refs
             construido = visual_factory.build_visual(
                 active, tipo, campos,

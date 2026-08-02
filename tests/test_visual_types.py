@@ -162,6 +162,13 @@ def test_cada_tipo_con_datos_declara_roles_obligatorios():
     assert sin_contrato == []
 
 
+def test_cada_rol_declara_el_tipo_de_campo_oficial():
+    faltantes = {(tipo, rol) for tipo, roles in visual_factory.ROLE_MAP.items()
+                 for rol in set(roles.values())
+                 if rol not in visual_factory.ROLE_KINDS.get(tipo, {})}
+    assert faltantes == set()
+
+
 def test_faltan_roles_obligatorios_se_rechaza_antes_de_escribir(
         session, sample_pbip):
     project_locator.open_project(session, str(sample_pbip))
@@ -190,6 +197,34 @@ def test_cardinalidad_oficial_se_exige(
             measure_index={"A": "T", "B": "T", "C": "T", "D": "T"})
     (detalle,) = exc.value.details["cardinality_exceeded"]
     assert detalle == {"role": rol, "count": maximo + 1, "max": maximo}
+
+
+def test_columna_cruda_no_puede_ocupar_un_rol_de_medida(
+        session, sample_pbip):
+    project_locator.open_project(session, str(sample_pbip))
+    active = session.require_active_pbip()
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            active, "columnChart",
+            {"category": ["Fact[Category]"], "values": ["Fact[Amount]"]},
+            {"x": 0, "y": 0, "width": 400, "height": 240})
+    (detalle,) = exc.value.details["role_kind_mismatch"]
+    assert detalle["role"] == "Y"
+    assert detalle["expected"] == "Measure"
+    assert detalle["received"] == "Grouping"
+
+
+def test_medida_no_puede_ocupar_un_rol_de_agrupacion(
+        session, sample_pbip):
+    project_locator.open_project(session, str(sample_pbip))
+    active = session.require_active_pbip()
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            active, "lineChart",
+            {"category": ["[TotalAmount]"], "values": ["[Ratio Pct]"]},
+            {"x": 0, "y": 0, "width": 400, "height": 240},
+            measure_index={"TotalAmount": "Fact", "Ratio Pct": "Fact"})
+    assert exc.value.details["role_kind_mismatch"][0]["role"] == "Category"
 
 
 def test_no_se_anuncia_nada_que_no_este_en_el_mapa():

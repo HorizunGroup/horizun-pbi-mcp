@@ -96,7 +96,8 @@ DECORATIVOS = frozenset({"textbox", "shape", "image", "pageNavigator", "actionBu
 # soportado. `tests/test_generadores_abren.py` mantiene esa comprobacion viva.
 ROLE_MAP = {
     "card": {"values": "Values"},
-    "cardVisual": {"values": "Data"},
+    "cardVisual": {"values": "Data", "rows": "Rows",
+                   "tooltips": "Tooltips"},
     # Una tabla no distingue dimension de medida: todo va a `Values`, en el
     # orden en que se pide. Se acepta `category` como en el segmentador porque
     # el destino no es ambiguo —y descartarlo, que es lo que se hacia antes,
@@ -192,6 +193,49 @@ MAX_PER_ROLE = {
     "waterfallChart": {"Category": 1, "Breakdown": 1, "Y": 1},
     "ribbonChart": {"Series": 1},
     HTML_CONTENT_TYPE: {"content": 1},
+}
+
+ROLE_KINDS = {
+    "card": {"Values": "Measure"},
+    "cardVisual": {"Data": "Measure", "Rows": "Grouping",
+                   "Tooltips": "Measure"},
+    "tableEx": {"Values": "GroupingOrMeasure"},
+    "pivotTable": {"Rows": "Grouping", "Columns": "Grouping",
+                   "Values": "Measure"},
+    "slicer": {"Values": "Grouping"},
+    "barChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                 "Rows": "Grouping", "Tooltips": "Measure"},
+    "columnChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                    "Rows": "Grouping", "Tooltips": "Measure"},
+    "clusteredBarChart": {"Category": "Grouping", "Series": "Grouping",
+                          "Y": "Measure", "Rows": "Grouping",
+                          "Tooltips": "Measure"},
+    "clusteredColumnChart": {"Category": "Grouping", "Series": "Grouping",
+                             "Y": "Measure", "Rows": "Grouping",
+                             "Tooltips": "Measure"},
+    "lineChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                  "Y2": "Measure", "Rows": "Grouping", "Tooltips": "Measure"},
+    "pieChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                 "Tooltips": "Measure"},
+    "gauge": {"Y": "Measure", "MinValue": "Measure", "MaxValue": "Measure",
+              "TargetValue": "Measure", "Tooltips": "Measure"},
+    "kpi": {"Indicator": "Measure", "TrendLine": "Grouping", "Goal": "Measure"},
+    "donutChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                   "Tooltips": "Measure"},
+    "areaChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                  "Y2": "Measure", "Rows": "Grouping", "Tooltips": "Measure"},
+    "scatterChart": {"Category": "Grouping", "Series": "Grouping",
+                     "X": "GroupingOrMeasure", "Y": "GroupingOrMeasure",
+                     "Size": "Measure", "Play": "Grouping", "Tooltips": "Measure"},
+    "treemap": {"Group": "Grouping", "Details": "Grouping", "Values": "Measure",
+                "Tooltips": "Measure"},
+    "funnel": {"Category": "Grouping", "Y": "Measure", "Tooltips": "Measure"},
+    "waterfallChart": {"Category": "Grouping", "Breakdown": "Grouping",
+                       "Y": "Measure", "Tooltips": "Measure"},
+    "multiRowCard": {"Values": "GroupingOrMeasure"},
+    "ribbonChart": {"Category": "Grouping", "Series": "Grouping", "Y": "Measure",
+                    "Rows": "Grouping", "Tooltips": "Measure"},
+    HTML_CONTENT_TYPE: {"content": "Measure"},
 }
 
 #: Otros nombres con los que la gente llama al mismo rol. Se aceptan solo si el
@@ -437,6 +481,29 @@ def _validate_role_contract(actual_type: str, query: Dict[str, Any]) -> None:
             f"estos roles: {excedidos}.",
             details={"visual_type": actual_type,
                      "cardinality_exceeded": excedidos})
+
+    incompatibles = []
+    for rol, estado in estados.items():
+        esperado = ROLE_KINDS.get(actual_type, {}).get(rol)
+        if esperado in (None, "GroupingOrMeasure"):
+            continue
+        for indice, proyeccion in enumerate(estado.get("projections") or []):
+            campo = proyeccion.get("field") if isinstance(proyeccion, dict) else None
+            claves = set(campo) if isinstance(campo, dict) else set()
+            recibido = ("Measure" if claves & {"Measure", "Aggregation"}
+                        else "Grouping" if claves & {"Column", "HierarchyLevel"}
+                        else "Unknown")
+            if recibido != esperado:
+                incompatibles.append({"role": rol, "index": indice,
+                                      "expected": esperado, "received": recibido,
+                                      "query_ref": proyeccion.get("queryRef")
+                                      if isinstance(proyeccion, dict) else None})
+    if incompatibles:
+        raise VisualFactoryError(
+            f"El visual '{actual_type}' recibio campos del tipo equivocado en "
+            f"estos roles: {incompatibles}.",
+            details={"visual_type": actual_type,
+                     "role_kind_mismatch": incompatibles})
 
 
 def _title_object(title: str) -> Dict[str, Any]:
