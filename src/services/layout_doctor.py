@@ -20,6 +20,11 @@ MIN_ANCHO, MIN_ALTO = 80, 60
 MARGEN = 8
 #: Cuantos visuales por pagina se consideran saturacion.
 SATURACION = 12
+# Desktop serializa geometria con decimales binarios: un visual pegado al
+# borde puede acabar en 1000.2 sobre un lienzo de 1000 y se muestra entero.
+# La misma tolerancia de medio pixel que usamos para solapes evita auditar eso
+# como un error real y proponer una reescritura innecesaria.
+EPSILON_GEOMETRIA = 0.5
 
 
 def _caja(v: Dict[str, Any]) -> Tuple[float, float, float, float]:
@@ -85,13 +90,13 @@ def detect_issues(visuals: List[Dict[str, Any]],
     for v in ordenados:
         x1, y1, x2, y2 = _caja(v)
         fuera = {}
-        if x1 < 0:
+        if x1 < -EPSILON_GEOMETRIA:
             fuera["left"] = round(x1, 1)
-        if y1 < 0:
+        if y1 < -EPSILON_GEOMETRIA:
             fuera["top"] = round(y1, 1)
-        if x2 > W:
+        if x2 > W + EPSILON_GEOMETRIA:
             fuera["right"] = round(x2 - W, 1)
-        if y2 > H:
+        if y2 > H + EPSILON_GEOMETRIA:
             fuera["bottom"] = round(y2 - H, 1)
         if fuera:
             hallazgos.append(_hallazgo(

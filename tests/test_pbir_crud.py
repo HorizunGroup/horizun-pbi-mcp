@@ -353,6 +353,22 @@ def test_detecta_fuera_del_lienzo():
     assert fuera[0]["evidence"]["overflow"]["right"] == 120
 
 
+@pytest.mark.parametrize("desborde", [0.1, 0.2, 0.5])
+def test_redondeo_subpixel_de_desktop_no_es_fuera_del_lienzo(desborde):
+    vis = [{"id": "a", "position": {
+        "x": 0, "y": 0, "width": 1280 + desborde, "height": 720}}]
+    r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
+    assert not any(i["rule"] == "layout_out_of_canvas" for i in r["issues"])
+
+
+def test_desborde_superior_a_medio_pixel_si_se_detecta():
+    vis = [{"id": "a", "position": {
+        "x": 0, "y": 0, "width": 1280.6, "height": 720}}]
+    r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
+    fuera = [i for i in r["issues"] if i["rule"] == "layout_out_of_canvas"]
+    assert fuera[0]["evidence"]["overflow"]["right"] == 0.6
+
+
 def test_detecta_visual_minusculo():
     vis = [{"id": "a", "position": {"x": 20, "y": 20, "width": 10, "height": 10}}]
     r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
