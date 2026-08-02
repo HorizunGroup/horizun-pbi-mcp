@@ -175,12 +175,12 @@ convertirlo en un **workflow guiado**, no en una operación.
 
 ---
 
-## 7. G10 — dos esquemas PBIR sin publicar
+## 7. G10 — tres versiones de esquema PBIR sin publicar
 
 **Estado:** abierto **upstream**, no nuestro.
 
-`visualContainer/2.10.0` y `bookmarks/2.0.0` devuelven 404 en el origen oficial
-de Microsoft. Su propio CLI tampoco los valida: emite
+`visualContainer/2.10.0`, `visualContainer/2.11.0` y `bookmarks/2.0.0` devuelven
+404 en el origen oficial de Microsoft. Su propio CLI tampoco los valida: emite
 `PBIR_SCHEMA_UNREACHABLE` y se los salta.
 
 No hay nada que hacer de este lado hasta que Microsoft los publique.

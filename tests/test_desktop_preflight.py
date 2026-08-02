@@ -47,6 +47,24 @@ def test_pbip_invalido_falla_antes_de_lanzar_desktop(tmp_path, monkeypatch):
         "tmdl_measure_column_collision"
 
 
+def test_pbip_ya_abierto_se_reutiliza_sin_validar_el_disco(tmp_path, monkeypatch):
+    pbip = _pbip_con_modelo(tmp_path)
+    instancia = {"port": 54321, "catalog": "Demo", "table_count": 1}
+    monkeypatch.setattr(
+        desktop_launcher, "proceso_con_archivo_abierto", lambda _path: 888)
+    monkeypatch.setattr(
+        desktop_launcher, "_instancia_de_proceso", lambda _pid: instancia)
+    monkeypatch.setattr(
+        desktop_launcher, "_preflight_pbip_model",
+        lambda _path: pytest.fail("no debe validar disco al reutilizar Desktop"))
+
+    opened = desktop_launcher.open_pbix(pbip, reuse_open=True)
+
+    assert opened.instance == instancia
+    assert opened.desktop_pid == 888
+    assert opened.launched_by_us is False
+
+
 def test_preflight_real_detecta_colision_sin_abrir_desktop(tmp_path):
     pbip = _pbip_con_modelo(tmp_path)
     definition = pbip.parent / "Demo.SemanticModel" / "definition"

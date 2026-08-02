@@ -5,6 +5,20 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
+## [Sin publicar]
+
+### Corregido
+
+- El oráculo oficial comprueba también visuales que solo contienen
+  `visualContainerObjects`; ya no cae al snapshot parcial en ese caso.
+- Las expresiones de formato vacías (`expr: {}`) se rechazan antes de escribir.
+- La degradación a un esquema PBIR anterior se limita a versiones que el
+  manifiesto identifica expresamente como no publicadas por Microsoft.
+- Una sesión PBIP ya abierta puede reutilizarse sin validar primero una copia
+  distinta o incompleta del modelo guardado en disco.
+
+---
+
 ## [1.0.0] — 2026-08-02
 
 Primera versión estable del repositorio oficial. **117 tools, 1542 pruebas

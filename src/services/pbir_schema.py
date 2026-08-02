@@ -299,7 +299,12 @@ def cargar(url: str, *, permitir_cercana: bool = False) -> Tuple[Dict[str, Any],
     version anterior de su familia en vez de bloquear.
     """
     conocido = any(d["url"] == url for d in manifiesto()["documents"])
-    if not conocido and permitir_cercana:
+    ausente = no_publicados().get(url)
+    # La aproximacion solo se permite para URLs que el manifiesto registra
+    # explicitamente como declaradas por Desktop pero ausentes en Microsoft.
+    # Una version arbitraria de la misma familia (por ejemplo 2.999.999) no es
+    # evidencia de compatibilidad y debe conservar la taxonomia unsupported.
+    if not conocido and permitir_cercana and ausente:
         alternativa = version_mas_cercana(url)
         if alternativa:
             _exigir_cache()
@@ -307,7 +312,6 @@ def cargar(url: str, *, permitir_cercana: bool = False) -> Tuple[Dict[str, Any],
             ruta = cache_dir() / entrada["file"]
             return json.loads(ruta.read_text(encoding="utf-8")), alternativa
 
-    ausente = no_publicados().get(url)
     if ausente:
         raise SchemaUnavailable(
             f"Power BI declara el esquema {url}, pero Microsoft no lo publica "
@@ -391,6 +395,9 @@ def _validar_expresion_formato(valor: Any, ruta: str,
     """
     if not isinstance(valor, dict):
         errores.append(_error_formato(ruta, "format_expression_object"))
+        return
+    if not valor:
+        errores.append(_error_formato(ruta, "format_expression_empty"))
         return
 
     literal = valor.get("Literal")

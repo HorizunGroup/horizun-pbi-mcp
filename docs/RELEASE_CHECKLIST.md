@@ -95,7 +95,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 | Excepción | Por qué |
 |---|---|
-| `visualContainer/2.10.0` y `bookmarks/2.0.0` sin publicar | 404 en el origen oficial; el CLI de Microsoft tampoco los valida |
+| `visualContainer/2.10.0`, `2.11.0` y `bookmarks/2.0.0` sin publicar | 404 en el origen oficial; el CLI de Microsoft tampoco los valida |
 | **G10** parcialmente cerrado | Consecuencia directa de lo anterior |
 | **R15** abierto, `both` bloqueado | Precondiciones mutuamente excluyentes ([`DUAL_MODE.md`](DUAL_MODE.md)) |
 | **Equivalencia visual completa de `objects` parcialmente cerrada** | Las rutas administradas se comprueban contra `effective-properties` oficial y un corpus anonimizado de formas exportadas por Desktop. Esto prueba estructura, propiedades, tipos y enums; no demuestra aún el resultado semántico de todos los píxeles ni todas las combinaciones posibles |
