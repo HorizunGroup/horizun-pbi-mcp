@@ -82,8 +82,25 @@ def runtime_env(p: dict[str, Path]) -> dict[str, str]:
     return env
 
 
-def _run(command: list[str], *, env: dict[str, str]) -> None:
-    subprocess.run(command, cwd=str(PLUGIN_ROOT), env=env, check=True)
+_STATUS_DLL_INIT_FAILED = 0xC0000142
+
+
+def _run(command: list[str], *, env: dict[str, str], retries: int = 1) -> None:
+    attempt = 0
+    while True:
+        try:
+            subprocess.run(command, cwd=str(PLUGIN_ROOT), env=env, check=True)
+            return
+        except subprocess.CalledProcessError as exc:
+            code = exc.returncode & 0xFFFFFFFF if exc.returncode is not None else None
+            # Bajo ciertos contextos de proceso en Windows (sin window station)
+            # un nieto puede morir en la carga de DLL antes de imprimir nada.
+            # Un segundo intento con el mismo comando normalmente basta.
+            if code == _STATUS_DLL_INIT_FAILED and attempt < retries:
+                attempt += 1
+                time.sleep(1)
+                continue
+            raise
 
 
 def install(base: Path | None = None, *, include_validator: bool = True) -> int:
@@ -138,8 +155,13 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                       message="Runtime listo. Reinicia Codex o Claude.")
         return 0
     except Exception as exc:
-        _write_status(p, state="failed", ready=False,
-                      message=f"{type(exc).__name__}: {exc}")
+        message = f"{type(exc).__name__}: {exc}"
+        _write_status(p, state="failed", ready=False, message=message)
+        try:
+            with open(p["log"], "a", encoding="utf-8") as log:
+                log.write(f"\n[FAILED] {message}\n")
+        except OSError:
+            pass
         return 1
     finally:
         try:
