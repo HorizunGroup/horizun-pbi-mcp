@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "horizun",
-  "description": "Complementos abiertos de HorizunGroup",
+  "description": "Open source plugins by HorizunGroup",
   "owner": {"name": "HorizunGroup"},
   "plugins": [
     {
       "name": "horizun-pbi-mcp",
-      "description": "Control seguro de Power BI Desktop y proyectos PBIP mediante MCP.",
+      "description": "Safe control of Power BI Desktop and PBIP projects via MCP.",
       "author": {"name": "HorizunGroup"},
       "category": "development",
       "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "main"},
