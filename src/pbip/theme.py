@@ -25,7 +25,9 @@ from typing import Any, Dict, List, Optional
 from config import ActivePbip
 from logging_config import get_logger
 from powerbi.errors import PowerBIMCPError
-from utils.json_utils import read_json, write_json
+from services import paths as safe_paths
+from services import txn as txn_service
+from utils.json_utils import read_json
 
 log = get_logger("theme")
 
@@ -33,6 +35,10 @@ log = get_logger("theme")
 ESTADO = {"good": "#0CA30C", "neutral": "#FAB219", "bad": "#D03B3B"}
 #: Version de tema que se declara al importar. PBIR la exige.
 VERSION_AL_IMPORTAR = {"visual": "2.4.0", "page": "2.3.0", "report": "3.0.0"}
+#: En report/2.0.0 la misma propiedad era una sola cadena; desde 3.x es el
+#: objeto de tres componentes de arriba. La escritura transaccional valida el
+#: esquema completo y no puede inventar una forma unica para ambas versiones.
+VERSION_AL_IMPORTAR_V2 = "1.0.0"
 
 #: Paleta categorica para superficie clara. Peor par contiguo: ΔE 9.1 protan,
 #: 19.6 vision normal. Tres colores quedan bajo 3:1 contra el fondo, asi que
@@ -211,10 +217,11 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
         nombre_archivo = saneado + ".json"
     tema["name"] = nombre_archivo
 
+    safe_paths.safe_identifier(nombre_archivo, kind="nombre de archivo de tema")
     report_dir = Path(active.report_dir)
-    destino = report_dir / "StaticResources" / "RegisteredResources" / nombre_archivo
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    write_json(destino, tema)
+    recursos_dir = report_dir / "StaticResources" / "RegisteredResources"
+    destino = safe_paths.safe_join(recursos_dir, nombre_archivo,
+                                   kind="ruta de tema del informe")
 
     informe_path = report_dir / "definition" / "report.json"
     if not informe_path.exists():
@@ -226,14 +233,30 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
         coleccion = {}
     anterior = (coleccion.get("customTheme") or {}).get("name")
     version = ((coleccion.get("baseTheme") or {}).get("reportVersionAtImport")
-               or VERSION_AL_IMPORTAR)
+               or (coleccion.get("customTheme") or {}).get("reportVersionAtImport"))
+    if version is None:
+        esquema = str(informe.get("$schema") or "")
+        version = (VERSION_AL_IMPORTAR_V2 if "/report/2.0.0/" in esquema
+                   else VERSION_AL_IMPORTAR)
     coleccion["customTheme"] = {"name": nombre_archivo,
                                 "type": "RegisteredResources",
                                 "reportVersionAtImport": version}
     informe["themeCollection"] = coleccion
     informe["resourcePackages"] = _paquete_recursos(
         informe.get("resourcePackages"), nombre_archivo)
-    write_json(informe_path, informe)
+
+    # El archivo y sus dos declaraciones en report.json forman una sola unidad:
+    # cualquiera de las dos mitades sin la otra hace que Desktop ignore el tema.
+    # La misma puerta bloquea la escritura si la version PBIR no es soportada o
+    # si Desktop puede tener abierto el proyecto.
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation="Aplicar un tema")
+    cm = txn_service.project_transaction(
+        active, [destino, informe_path], tool="pbi_apply_theme")
+    with cm as tx:
+        tx.write_json(destino, tema)
+        tx.write_json(informe_path, informe)
 
     log.info("Tema '%s' aplicado (%s)", tema.get("name"), nombre_archivo)
     return {
@@ -243,4 +266,7 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
         "replaced": anterior,
         "data_colors": tema.get("dataColors"),
         "status_colors": {k: tema.get(k) for k in ESTADO},
+        "backup": cm.result["journal"],
+        "transaction": cm.result,
+        "validation_report": cm.validation,
     }

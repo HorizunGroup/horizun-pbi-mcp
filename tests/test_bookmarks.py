@@ -129,3 +129,87 @@ def test_borrar_lo_quita_de_los_dos_sitios(proyecto):
 def test_borrar_lo_que_no_existe_lo_dice(proyecto):
     with pytest.raises(BookmarkError):
         bookmarks.delete_bookmark(proyecto, "no_existe")
+
+
+def test_fallo_al_indexar_revierte_el_marcador(proyecto, monkeypatch):
+    """El archivo no puede sobrevivir si falla su entrada en el indice."""
+    from services import txn as txn_service
+
+    carpeta = Path(proyecto.report_dir) / "definition" / "bookmarks"
+    original = txn_service.Transaction.write_json
+
+    def fallar_en_indice(self, target, data):
+        if Path(target).name == "bookmarks.json":
+            raise RuntimeError("fallo inyectado en el indice")
+        return original(self, target, data)
+
+    monkeypatch.setattr(txn_service.Transaction, "write_json", fallar_en_indice)
+    with pytest.raises(RuntimeError, match="fallo inyectado"):
+        bookmarks.create_bookmark(
+            proyecto, "Atomico", _pagina(proyecto), name="BookmarkAtomico")
+
+    assert not (carpeta / "BookmarkAtomico.bookmark.json").exists()
+    assert not (carpeta / "bookmarks.json").exists()
+
+
+def test_fallo_al_actualizar_indice_revierte_el_borrado(proyecto, monkeypatch):
+    from services import txn as txn_service
+
+    creado = bookmarks.create_bookmark(proyecto, "V", _pagina(proyecto))
+    archivo = Path(creado["file"])
+    indice = Path(creado["index"])
+    antes_archivo = archivo.read_bytes()
+    antes_indice = indice.read_bytes()
+    original = txn_service.Transaction.write_json
+
+    def fallar_en_indice(self, target, data):
+        if Path(target) == indice:
+            raise RuntimeError("fallo inyectado al borrar del indice")
+        return original(self, target, data)
+
+    monkeypatch.setattr(txn_service.Transaction, "write_json", fallar_en_indice)
+    with pytest.raises(RuntimeError, match="fallo inyectado"):
+        bookmarks.delete_bookmark(proyecto, creado["name"])
+
+    assert archivo.read_bytes() == antes_archivo
+    assert indice.read_bytes() == antes_indice
+
+
+def test_borrar_marcador_no_admite_traversal(proyecto):
+    from powerbi.errors import PathSecurityError
+
+    victima = Path(proyecto.report_dir) / "fuera.bookmark.json"
+    victima.write_bytes(b"NO TOCAR")
+    with pytest.raises(PathSecurityError):
+        bookmarks.delete_bookmark(proyecto, "../../fuera")
+    assert victima.read_bytes() == b"NO TOCAR"
+
+
+@pytest.mark.real_project_state
+def test_marcadores_no_se_escriben_con_desktop_abierto(
+        proyecto, monkeypatch):
+    from services import project_state
+
+    monkeypatch.setattr(
+        project_state, "detect",
+        lambda a, **kw: project_state.ProjectOpenState(
+            project_state.CLOSED, "high", "forzado"))
+    creado = bookmarks.create_bookmark(proyecto, "V", _pagina(proyecto))
+    archivo = Path(creado["file"])
+    indice = Path(creado["index"])
+    antes_archivo = archivo.read_bytes()
+    antes_indice = indice.read_bytes()
+
+    monkeypatch.setattr(
+        project_state, "detect",
+        lambda a, **kw: project_state.ProjectOpenState(
+            project_state.OPEN, "high", "forzado"))
+    project_state.invalidate_cache()
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        bookmarks.create_bookmark(
+            proyecto, "Bloqueado", _pagina(proyecto), name="BookmarkBloqueado")
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        bookmarks.delete_bookmark(proyecto, creado["name"])
+
+    assert archivo.read_bytes() == antes_archivo
+    assert indice.read_bytes() == antes_indice

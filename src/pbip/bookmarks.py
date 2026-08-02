@@ -30,7 +30,9 @@ from typing import Any, Dict, List, Optional
 from config import ActivePbip
 from logging_config import get_logger
 from powerbi.errors import PowerBIMCPError
-from utils.json_utils import read_json, write_json
+from services import paths as safe_paths
+from services import txn as txn_service
+from utils.json_utils import read_json
 
 log = get_logger("bookmarks")
 
@@ -154,8 +156,8 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
             "para un nombre de archivo. Usa letras, digitos, guion o guion bajo.")
 
     carpeta = _carpeta(active)
-    carpeta.mkdir(parents=True, exist_ok=True)
-    destino = carpeta / f"{identificador}.bookmark.json"
+    destino = safe_paths.safe_join(
+        carpeta, f"{identificador}.bookmark.json", kind="ruta de marcador")
     if destino.exists() and not overwrite:
         raise BookmarkError(
             f"Ya existe el marcador '{identificador}'. Usa overwrite=true.")
@@ -180,7 +182,6 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
     marcador = {"$schema": SCHEMA_BOOKMARK, "name": identificador,
                 "displayName": str(display_name), "options": opciones,
                 "explorationState": estado}
-    write_json(destino, marcador)
 
     # El indice: sin el, Power BI no lo muestra aunque el archivo exista.
     indice_path = carpeta / "bookmarks.json"
@@ -190,7 +191,15 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
     items = [i for i in (indice.get("items") or []) if i.get("name") != identificador]
     items.append({"name": identificador})
     indice["items"] = items
-    write_json(indice_path, indice)
+
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation="Crear un marcador")
+    cm = txn_service.project_transaction(
+        active, [destino, indice_path], tool="pbi_create_bookmark")
+    with cm as tx:
+        tx.write_json(destino, marcador)
+        tx.write_json(indice_path, indice)
 
     log.info("Marcador '%s' (%s) sobre la pagina %s", display_name,
              identificador, page)
@@ -198,6 +207,8 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
             "file": str(destino), "index": str(indice_path),
             "filters": len(filters or []),
             "target_visuals": list(target_visuals or []),
+            "backup": cm.result["journal"], "transaction": cm.result,
+            "validation_report": cm.validation,
             "usage": {"type": "button", "options": {"action": "bookmark",
                                                     "bookmark": identificador}}}
 
@@ -205,16 +216,30 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
 def delete_bookmark(active: ActivePbip, name: str) -> Dict[str, Any]:
     """Borra un marcador y lo quita del indice. Las dos cosas o ninguna."""
     carpeta = _carpeta(active)
-    destino = carpeta / f"{name}.bookmark.json"
+    safe_paths.safe_identifier(name, kind="id de marcador")
+    destino = safe_paths.safe_join(
+        carpeta, f"{name}.bookmark.json", kind="ruta de marcador")
     indice_path = carpeta / "bookmarks.json"
     if not destino.exists():
         raise BookmarkError(f"No existe el marcador '{name}'.")
 
-    destino.unlink()
+    indice = None
     if indice_path.exists():
         indice = read_json(indice_path)
         indice["items"] = [i for i in (indice.get("items") or [])
                            if i.get("name") != name]
-        write_json(indice_path, indice)
+
+    from services.pbir_edit import assert_escritura_pbir
+
+    assert_escritura_pbir(active, operation="Borrar un marcador")
+    objetivos = [destino] + ([indice_path] if indice is not None else [])
+    cm = txn_service.project_transaction(
+        active, objetivos, tool="pbi_delete_bookmark")
+    with cm as tx:
+        tx.delete(destino)
+        if indice is not None:
+            tx.write_json(indice_path, indice)
     log.info("Marcador '%s' borrado", name)
-    return {"name": name, "deleted": True, "file": str(destino)}
+    return {"name": name, "deleted": True, "file": str(destino),
+            "backup": cm.result["journal"], "transaction": cm.result,
+            "validation_report": cm.validation}

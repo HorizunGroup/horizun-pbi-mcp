@@ -239,6 +239,79 @@ def test_aplicar_tema_deja_los_tres_nombres_iguales(sample_pbip, session, tmp_pa
     assert archivo.name in rutas
 
 
+def test_fallo_al_declarar_tema_revierte_el_archivo_y_report_json(
+        sample_pbip, session, monkeypatch):
+    """Si falla el segundo archivo, el tema no puede quedar huerfano."""
+    from pathlib import Path
+
+    from pbip import project_locator
+    from services import txn as txn_service
+
+    project_locator.open_project(session, str(sample_pbip))
+    activo = session.require_active_pbip()
+    informe = Path(activo.report_dir) / "definition" / "report.json"
+    antes = informe.read_bytes()
+    destino = (Path(activo.report_dir) / "StaticResources" /
+               "RegisteredResources" / "Atomico.json")
+    original = txn_service.Transaction.write_json
+
+    def fallar_en_report(self, target, data):
+        if Path(target) == informe:
+            raise RuntimeError("fallo inyectado al declarar el tema")
+        return original(self, target, data)
+
+    monkeypatch.setattr(txn_service.Transaction, "write_json", fallar_en_report)
+    with pytest.raises(RuntimeError, match="fallo inyectado"):
+        theme.apply_theme(activo, theme.build_theme("claro"),
+                          file_name="Atomico.json")
+
+    assert not destino.exists()
+    assert informe.read_bytes() == antes
+
+
+def test_nombre_de_archivo_de_tema_no_admite_traversal(
+        sample_pbip, session, tmp_path):
+    from pbip import project_locator
+    from powerbi.errors import PathSecurityError
+
+    project_locator.open_project(session, str(sample_pbip))
+    activo = session.require_active_pbip()
+    victima = tmp_path / "fuera.json"
+    victima.write_bytes(b"NO TOCAR")
+
+    with pytest.raises(PathSecurityError):
+        theme.apply_theme(activo, theme.build_theme("claro"),
+                          file_name=str(victima))
+    assert victima.read_bytes() == b"NO TOCAR"
+
+
+@pytest.mark.real_project_state
+def test_tema_no_se_escribe_con_desktop_abierto(
+        sample_pbip, session, monkeypatch):
+    from pathlib import Path
+
+    from pbip import project_locator
+    from services import project_state
+
+    project_locator.open_project(session, str(sample_pbip))
+    activo = session.require_active_pbip()
+    informe = Path(activo.report_dir) / "definition" / "report.json"
+    antes = informe.read_bytes()
+    destino = (Path(activo.report_dir) / "StaticResources" /
+               "RegisteredResources" / "Bloqueado.json")
+    monkeypatch.setattr(
+        project_state, "detect",
+        lambda a, **kw: project_state.ProjectOpenState(
+            project_state.OPEN, "high", "forzado"))
+
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        theme.apply_theme(activo, theme.build_theme("claro"),
+                          file_name="Bloqueado.json")
+
+    assert not destino.exists()
+    assert informe.read_bytes() == antes
+
+
 # ------------------------------------------------- de que modelo se leen ------
 def test_el_tmdl_del_proyecto_manda_sobre_el_modelo_en_vivo(sample_pbip, session,
                                                             monkeypatch):
