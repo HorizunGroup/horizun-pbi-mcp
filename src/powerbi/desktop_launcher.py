@@ -50,6 +50,12 @@ class DesktopTimeoutError(PowerBIMCPError):
     code = "desktop_timeout"
 
 
+class DesktopPreflightError(PowerBIMCPError):
+    """El proyecto PBIP no puede abrirse por errores TMDL conocidos."""
+
+    code = "desktop_preflight_failed"
+
+
 @dataclass
 class OpenedPbix:
     """Sesion de Desktop que sirve un .pbix concreto."""
@@ -115,6 +121,43 @@ def _normalized_open_path(value: str | Path) -> str:
     if text.startswith("\\\\?\\"):
         text = text[4:]
     return os.path.normcase(os.path.normpath(text))
+
+
+def _preflight_pbip_model(pbip: Path) -> None:
+    """Valida TMDL antes de crear una ventana de Desktop.
+
+    Power BI Desktop muestra un Frown genérico cuando encuentra colisiones que
+    el parser TMDL acepta, por ejemplo una medida con el mismo nombre que una
+    columna. El lint local y, si están disponibles, las DLL de TOM pueden
+    explicar el error antes de lanzar Desktop. Los proyectos report-only no
+    tienen modelo propio y se dejan pasar.
+    """
+    if pbip.suffix.casefold() != ".pbip":
+        return
+    from services import tmdl_validate
+
+    try:
+        definition = tmdl_validate.resolve_definition_dir(pbip)
+    except tmdl_validate.ReportOnlyProjectError:
+        return
+    resultado = tmdl_validate.validate(definition, use_tom=True)
+    errores = [finding for finding in resultado.get("findings", [])
+               if finding.get("severity") == "error"]
+    if not errores:
+        return
+    raise DesktopPreflightError(
+        "El proyecto PBIP no se puede abrir porque su modelo TMDL tiene "
+        f"{len(errores)} error(es). Corrige los hallazgos antes de volver "
+        "a abrirlo.",
+        details={
+            "path": str(pbip),
+            "definition_dir": str(definition),
+            "rule": "tmdl_preflight",
+            "findings": errores,
+            "parse_checked": resultado.get("parse_checked"),
+            "parsed": resultado.get("parsed"),
+        },
+    )
 
 
 def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
@@ -196,6 +239,11 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
             "Power BI Desktop solo puede abrir aqui archivos .pbix o .pbip.",
             details={"path": str(pbix), "extension": pbix.suffix},
         )
+
+    # No se lanza Desktop para descubrir un error que el lint/TOM ya puede
+    # explicar. Esto evita el Frown "Sin título" de PBIP antiguos con medidas
+    # que chocan con columnas.
+    _preflight_pbip_model(pbix)
 
     # Se comprueba SIEMPRE, tambien cuando reuse_open=False. Antes ese modo
     # lanzaba otro PBIDesktop y la correlacion por archivo podia devolver la
