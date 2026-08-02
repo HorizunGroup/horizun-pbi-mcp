@@ -34,6 +34,8 @@ REAL_TYPES = (
     "tableEx",
     "pivotTable",
     "slicer",
+    "barChart",
+    "columnChart",
     "clusteredBarChart",
     "clusteredColumnChart",
     "lineChart",
@@ -52,8 +54,6 @@ REAL_TYPES = (
 ALIASES = {
     "table": "tableEx",
     "matrix": "pivotTable",
-    "barChart": "clusteredBarChart",
-    "columnChart": "clusteredColumnChart",
     "htmlContent": HTML_CONTENT_TYPE,
     "text": "textbox",
     "rectangle": "shape",
@@ -91,6 +91,8 @@ ROLE_MAP = {
     "tableEx": {"values": "Values", "category": "Values"},
     "pivotTable": {"rows": "Rows", "columns": "Columns", "values": "Values"},
     "slicer": {"values": "Values", "category": "Values"},
+    "barChart": {"category": "Category", "values": "Y", "legend": "Series"},
+    "columnChart": {"category": "Category", "values": "Y", "legend": "Series"},
     "clusteredBarChart": {"category": "Category", "values": "Y", "legend": "Series"},
     "clusteredColumnChart": {"category": "Category", "values": "Y", "legend": "Series"},
     "lineChart": {"category": "Category", "values": "Y", "legend": "Series"},
@@ -413,7 +415,7 @@ def _ajustar_alto_de_texto(pos: Dict[str, float], opciones: Dict[str, Any],
         pos["height"] = float(minimo)
 
 
-def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any],
+def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any], actual_type: str,
                                  opciones: Dict[str, Any]) -> None:
     """Formato del numero y de la etiqueta de una tarjeta.
 
@@ -422,8 +424,21 @@ def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any],
     no se pide: no se inventa formato que nadie encargo.
     """
     objetos = vis.setdefault("objects", {})
+
+    # Son dos visuales distintos aunque ambos se llamen "tarjeta" en la UI.
+    # El catalogo oficial del CLI 0.1.4 enumera `label` y `value` para
+    # `cardVisual`; el `card` clasico usa `categoryLabels` y `labels`. El mismo
+    # par nuevo aparece en los visual.json exportados por Desktop. Mezclarlos
+    # produce JSON valido de esquema que Desktop simplemente no aplica.
+    if actual_type == "cardVisual":
+        etiqueta, valor = "label", "value"
+        objetos.pop("categoryLabels", None)
+        objetos.pop("labels", None)
+    else:
+        etiqueta, valor = "categoryLabels", "labels"
+
     if opciones.get("show_category_label") is False:
-        objetos["categoryLabels"] = [{"properties": {"show": _lit(False)}}]
+        objetos[etiqueta] = [{"properties": {"show": _lit(False)}}]
 
     props: Dict[str, Any] = {}
     if opciones.get("value_font_size") is not None:
@@ -436,7 +451,7 @@ def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any],
     if opciones.get("value_color"):
         props["color"] = {"solid": {"color": _lit(opciones["value_color"])}}
     if props:
-        objetos["labels"] = [{"properties": props}]
+        objetos[valor] = [{"properties": props}]
     if not objetos:
         vis.pop("objects", None)
 
@@ -652,7 +667,7 @@ def build_visual(
         if title is not None:
             _set_title(vis, title)  # preserva el estilo del titulo de la plantilla
         if actual_type in ("card", "cardVisual"):
-            _aplicar_opciones_de_tarjeta(vis, options or {})
+            _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         origin = f"clonado de {template}"
     else:
         vis = {
@@ -663,7 +678,7 @@ def build_visual(
         if title is not None:
             _set_title(vis, title)
         if actual_type in ("card", "cardVisual"):
-            _aplicar_opciones_de_tarjeta(vis, options or {})
+            _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         data = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
         origin = "plantilla minima (validar en Power BI Desktop)"
         warnings.append(

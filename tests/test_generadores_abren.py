@@ -37,6 +37,7 @@ ningun oraculo y corren siempre: son la red que queda en CI.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -468,6 +469,23 @@ def test_cardVisual_usa_Data_y_no_Values():
     q = visual_factory._build_query(
         "cardVisual", {"values": ["Ventas[Importe]"]}, {}, [])
     assert list(q["queryState"]) == ["Data"]
+
+
+@pytest.mark.abre
+@pytest.mark.skipif(not _hay_cli(), reason="hace falta el CLI oficial")
+def test_catalogo_oficial_cardVisual_confirma_value_y_label():
+    """Mantiene el contrato de formato ligado al oraculo de Microsoft."""
+    cli = report_validator.localizar()
+    node = report_validator._node()
+    assert cli is not None and node is not None
+
+    proc = subprocess.run(
+        [str(node), str(cli), "catalog", "describe", "cardVisual"],
+        capture_output=True, text=True, timeout=10, check=True)
+    objetos = set(json.loads(proc.stdout)["data"]["formattingObjects"])
+
+    assert {"value", "label"} <= objetos
+    assert {"labels", "categoryLabels"}.isdisjoint(objetos)
 
 
 # ======================================== viaje de ida y vuelta (sin CLI) =====

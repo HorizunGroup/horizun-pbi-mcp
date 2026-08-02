@@ -111,8 +111,8 @@ def test_los_tipos_en_camelcase_del_reporte(tipo, esperado):
     ("card", "card"),
     ("table", "tableEx"),
     ("matrix", "pivotTable"),
-    ("barchart", "clusteredBarChart"),
-    ("columnChart", "clusteredColumnChart"),
+    ("barchart", "barChart"),
+    ("columnChart", "columnChart"),
     ("lineChart", "lineChart"),
     ("pieChart", "pieChart"),
     ("slicer", "slicer"),
@@ -122,6 +122,12 @@ def test_los_tipos_en_camelcase_del_reporte(tipo, esperado):
 def test_los_alias_de_siempre_siguen_valiendo(alias, esperado):
     """La correccion no puede quitarle nada a quien ya escribia specs."""
     assert visual_factory.resolve_type(alias) == esperado
+
+
+@pytest.mark.parametrize("tipo", ["barChart", "columnChart"])
+def test_los_tipos_oficiales_no_se_convierten_en_clustered(tipo):
+    """El nombre oficial solicitado debe ser el `visualType` que se escribe."""
+    assert visual_factory.resolve_type(tipo) == tipo
 
 
 # ================================================= invariantes del mapa ======

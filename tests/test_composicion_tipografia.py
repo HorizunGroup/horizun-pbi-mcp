@@ -164,6 +164,33 @@ def test_el_numero_de_la_tarjeta_puede_mandar(proyecto):
     assert props["bold"]["expr"]["Literal"]["Value"] == "true"
 
 
+def test_cardVisual_usa_los_grupos_value_y_label_del_catalogo(proyecto):
+    """La tarjeta nueva no comparte los grupos de formato de la clasica.
+
+    El CLI oficial y los visual.json exportados por Desktop enumeran `value`
+    y `label` para `cardVisual`; `labels` y `categoryLabels` son del `card`
+    clasico y sobreviven al esquema porque `objects` no valida sus claves.
+    """
+    salida = visual_factory.build_visual(
+        proyecto, "cardVisual", {"values": ["[TotalAmount]"]}, POS,
+        options={"show_category_label": False, "value_font_size": 32})
+
+    objetos = salida["visual"]["visual"]["objects"]
+    assert set(objetos) == {"label", "value"}
+    assert objetos["label"][0]["properties"]["show"]["expr"]["Literal"]["Value"] == "false"
+    assert objetos["value"][0]["properties"]["fontSize"]["expr"]["Literal"]["Value"] == "32D"
+
+
+@pytest.mark.parametrize("tipo", ["barChart", "columnChart"])
+def test_el_visualType_es_exactamente_el_tipo_oficial_solicitado(proyecto, tipo):
+    salida = visual_factory.build_visual(
+        proyecto, tipo,
+        {"category": ["Sales[Region]"], "values": ["[TotalAmount]"]}, POS)
+
+    assert salida["actual_type"] == tipo
+    assert salida["visual"]["visual"]["visualType"] == tipo
+
+
 def test_sin_opciones_la_tarjeta_no_se_toca(proyecto):
     """No se inventa formato que nadie pidio."""
     salida = visual_factory.build_visual(
