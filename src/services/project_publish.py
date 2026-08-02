@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from config import get_settings
+from config import ActivePbip, get_settings
 from powerbi.errors import PowerBIMCPError
 from services import paths as safe_paths
 from services import txn as txn_service
@@ -85,6 +85,25 @@ def _remove_empty_dirs(root: Path, keep: set[str]) -> None:
             continue
 
 
+def _assert_existing_target_writable(target: Path, *, operation: str) -> None:
+    """Aplica la misma puerta de Desktop a un proyecto aun no seleccionado."""
+    if not target.exists() or not any(target.iterdir()):
+        return
+    from services import project_state
+
+    pbips = sorted(target.glob("*.pbip"))
+    reports = sorted(p for p in target.glob("*.Report") if p.is_dir())
+    models = sorted(p for p in target.glob("*.SemanticModel") if p.is_dir())
+    active = ActivePbip(
+        pbip_path=str(pbips[0] if pbips else target / "__unknown__.pbip"),
+        project_dir=str(target),
+        report_dir=str(reports[0]) if reports else None,
+        semantic_model_dir=str(models[0]) if models else None,
+        has_pbir=bool(reports), has_tmdl=bool(models),
+    )
+    project_state.assert_writable(active, operation=operation)
+
+
 def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
                  tool: str, request_id: Optional[str] = None) -> Dict[str, Any]:
     """Publica ``stage`` sobre ``target`` con journal y rollback completos."""
@@ -104,11 +123,15 @@ def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
             details={"target": str(destino)})
 
     existentes = _files(destino)
-    if existentes and not overwrite:
+    destino_no_vacio = destino.exists() and any(destino.iterdir())
+    if destino_no_vacio and not overwrite:
         raise ProjectPublishError(
             f"La carpeta de destino ya existe y no esta vacia: {destino}. "
             "Usa overwrite=true si quieres reemplazarla.",
             details={"target": str(destino)})
+    if destino_no_vacio:
+        _assert_existing_target_writable(
+            destino, operation="Reemplazar un proyecto PBIP existente")
     nuevos = _files(staging)
     nuevos_dirs = _dirs(staging)
     if not nuevos:

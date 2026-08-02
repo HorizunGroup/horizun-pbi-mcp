@@ -515,6 +515,31 @@ def test_overwrite_reemplaza_residuos_con_backup(tmp_path, pbix_heredado):
             / "residuo.json").read_text(encoding="utf-8") == '{"viejo": true}'
 
 
+@pytest.mark.real_project_state
+def test_conversion_no_reemplaza_un_proyecto_abierto(
+        tmp_path, pbix_heredado, monkeypatch):
+    from services import project_state
+
+    salida = tmp_path / "out"
+    primero = pbix_to_pbip.convert(pbix_heredado, salida, include_model=False)
+    raiz = Path(primero.project_dir)
+    antes = {p.relative_to(raiz).as_posix(): p.read_bytes()
+             for p in raiz.rglob("*") if p.is_file()}
+    monkeypatch.setattr(
+        project_state, "detect",
+        lambda _active, **_kw: project_state.ProjectOpenState(
+            project_state.OPEN, "high", "abierto por la prueba"))
+
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        pbix_to_pbip.convert(
+            pbix_heredado, salida, include_model=False, overwrite=True)
+
+    despues = {p.relative_to(raiz).as_posix(): p.read_bytes()
+               for p in raiz.rglob("*") if p.is_file()}
+    assert despues == antes
+    assert not list(salida.glob(".hz_stage_*"))
+
+
 def test_ruta_demasiado_larga_se_rechaza_antes_de_escribir(tmp_path,
                                                            pbix_heredado):
     """Power BI Desktop no abre un .pbip con rutas de 260 o mas caracteres."""

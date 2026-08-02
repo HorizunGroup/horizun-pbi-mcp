@@ -207,6 +207,28 @@ def test_overwrite_reemplaza_el_arbol_entero_y_respalda_lo_anterior(tmp_path):
     assert respaldo.read_text(encoding="utf-8") == '{"viejo": true}'
 
 
+@pytest.mark.real_project_state
+def test_overwrite_no_reemplaza_un_proyecto_abierto(tmp_path, monkeypatch):
+    from services import project_state
+
+    primero = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    raiz = Path(primero["project_dir"])
+    antes = {p.relative_to(raiz).as_posix(): p.read_bytes()
+             for p in raiz.rglob("*") if p.is_file()}
+    monkeypatch.setattr(
+        project_state, "detect",
+        lambda _active, **_kw: project_state.ProjectOpenState(
+            project_state.OPEN, "high", "abierto por la prueba"))
+
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        pbip_scaffold.crear_proyecto(tmp_path, "Demo", overwrite=True)
+
+    despues = {p.relative_to(raiz).as_posix(): p.read_bytes()
+               for p in raiz.rglob("*") if p.is_file()}
+    assert despues == antes
+    assert not list(tmp_path.glob(".hz_stage_*"))
+
+
 def test_lienzo_no_positivo_falla_antes_de_crear_carpetas(tmp_path):
     with pytest.raises(pbip_scaffold.ScaffoldError):
         pbip_scaffold.crear_proyecto(tmp_path, "Demo", width=0)
