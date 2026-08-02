@@ -295,8 +295,22 @@ def _normalizar_roles(actual_type: str,
                 f"El rol '{rol_pedido}' espera un campo o una lista de campos; "
                 f"se recibio {type(refs).__name__}.",
                 details={"visual_type": actual_type, "role": rol_pedido})
-        normalizado.setdefault(clave, []).extend(
-            normalizar_referencia(r) for r in lista)
+        normalizados: List[Any] = []
+        for referencia in lista:
+            texto = normalizar_referencia(referencia)
+            if isinstance(referencia, dict):
+                # El lector entrega metadatos que no caben en `Tabla[Campo]`.
+                # Se conservan para que reconstruir una pagina no cambie una
+                # agregacion ni sus queryRef/nativeQueryRef originales.
+                campo = {"ref": texto}
+                for metadato in ("kind", "aggregation", "queryRef",
+                                 "nativeQueryRef"):
+                    if metadato in referencia:
+                        campo[metadato] = referencia[metadato]
+                normalizados.append(campo)
+            else:
+                normalizados.append(texto)
+        normalizado.setdefault(clave, []).extend(normalizados)
     return normalizado
 
 
@@ -323,9 +337,24 @@ def _build_query(actual_type: str, fields: Dict[str, Any],
         if not refs:
             continue
         projections = []
-        for ref in refs:
-            kind = _infer_kind(ref, measure_index)
-            projections.append(_field_node(ref, kind, measure_index, warnings))
+        for entrada in refs:
+            metadatos = entrada if isinstance(entrada, dict) else {}
+            ref = normalizar_referencia(entrada)
+            kind_leido = metadatos.get("kind")
+            kind = (kind_leido if kind_leido in ("measure", "column")
+                    else _infer_kind(ref, measure_index))
+            proyeccion = _field_node(ref, kind, measure_index, warnings)
+
+            if "aggregation" in metadatos:
+                proyeccion["field"] = {"Aggregation": {
+                    "Expression": proyeccion["field"],
+                    "Function": metadatos["aggregation"],
+                }}
+            for clave_ref in ("queryRef", "nativeQueryRef"):
+                valor = metadatos.get(clave_ref)
+                if isinstance(valor, str) and valor:
+                    proyeccion[clave_ref] = valor
+            projections.append(proyeccion)
         query_state[clave] = {"projections": projections}
 
     if not query_state:
@@ -358,6 +387,92 @@ def _set_title(vis: Dict[str, Any], title: str) -> None:
         vco["title"] = [{"properties": {
             "text": {"expr": {"Literal": {"Value": value}}},
             "show": {"expr": {"Literal": {"Value": "true"}}}}}]
+
+
+def _quitar_titulo_heredado(vis: Dict[str, Any]) -> None:
+    """`title=None` significa sin titulo, no "usa el de la plantilla"."""
+    vco = vis.get("visualContainerObjects")
+    if not isinstance(vco, dict):
+        return
+    vco.pop("title", None)
+    if not vco:
+        vis.pop("visualContainerObjects", None)
+
+
+def _quitar_selectores_de_campos_obsoletos(
+        vis: Dict[str, Any], query: Dict[str, Any], warnings: List[str]) -> None:
+    """Descarta formato acotado a campos que ya no estan en la consulta.
+
+    `selector.metadata` es un queryRef. Clonarlo junto con una consulta nueva
+    deja reglas de formato condicional apuntando al campo de la plantilla; el
+    esquema no lo denuncia porque el bloque `objects` es abierto.
+    """
+    referencias = {
+        proyeccion.get("queryRef")
+        for estado in (query.get("queryState") or {}).values()
+        for proyeccion in (estado.get("projections") or [])
+        if isinstance(proyeccion, dict) and proyeccion.get("queryRef")
+    }
+    objetos = vis.get("objects")
+    if not isinstance(objetos, dict):
+        return
+
+    eliminados = 0
+    for grupo, bloques in list(objetos.items()):
+        if not isinstance(bloques, list):
+            continue
+        vigentes = []
+        for bloque in bloques:
+            selector = bloque.get("selector") if isinstance(bloque, dict) else None
+            metadata = selector.get("metadata") if isinstance(selector, dict) else None
+            if metadata is not None and (
+                    not isinstance(metadata, str) or metadata not in referencias):
+                eliminados += 1
+                continue
+            vigentes.append(bloque)
+        if vigentes:
+            objetos[grupo] = vigentes
+        else:
+            objetos.pop(grupo, None)
+    if not objetos:
+        vis.pop("objects", None)
+    if eliminados:
+        warnings.append(
+            f"Se descartaron {eliminados} bloque(s) de formato de la plantilla "
+            "porque apuntaban a campos que ya no estan en la consulta.")
+
+
+def _normalizar_posicion(position: Dict[str, float]) -> Dict[str, float]:
+    """Convierte y valida geometria antes de leer una plantilla o escribir."""
+    try:
+        pos = {
+            "x": float(position["x"]),
+            "y": float(position["y"]),
+            "z": float(position.get("z", 0)),
+            "width": float(position["width"]),
+            "height": float(position["height"]),
+            "tabOrder": float(position.get("z", 0)),
+        }
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise VisualFactoryError(
+            "La posicion exige x, y, width y height numericos.",
+            details={"position": repr(position)}) from exc
+
+    no_finitas = [clave for clave in ("x", "y", "z", "width", "height")
+                  if not math.isfinite(pos[clave])]
+    if no_finitas:
+        raise VisualFactoryError(
+            f"La posicion contiene dimensiones no finitas: {no_finitas}.",
+            details={"position": repr(position), "invalid": no_finitas,
+                     "rule": "finite_position"})
+    no_positivas = [clave for clave in ("width", "height") if pos[clave] <= 0]
+    if no_positivas:
+        raise VisualFactoryError(
+            f"Las dimensiones width y height deben ser mayores que cero; "
+            f"no cumplen: {no_positivas}.",
+            details={"position": repr(position), "invalid": no_positivas,
+                     "rule": "positive_dimensions"})
+    return pos
 
 
 # ------------------------------------------------------------------ decorativos --
@@ -662,14 +777,7 @@ def build_visual(
     actual_type = resolve_type(visual_type)
     warnings: List[str] = []
 
-    pos = {
-        "x": float(position["x"]),
-        "y": float(position["y"]),
-        "z": float(position.get("z", 0)),
-        "width": float(position["width"]),
-        "height": float(position["height"]),
-        "tabOrder": float(position.get("z", 0)),
-    }
+    pos = _normalizar_posicion(position)
 
     if actual_type in DECORATIVOS:
         # No consultan datos: no se clonan plantillas (arrastrarian el texto o
@@ -708,6 +816,9 @@ def build_visual(
         vis.setdefault("drillFilterOtherVisuals", True)
         if title is not None:
             _set_title(vis, title)  # preserva el estilo del titulo de la plantilla
+        else:
+            _quitar_titulo_heredado(vis)
+        _quitar_selectores_de_campos_obsoletos(vis, query, warnings)
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         origin = f"clonado de {template}"

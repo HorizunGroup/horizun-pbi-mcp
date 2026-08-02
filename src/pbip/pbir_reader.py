@@ -74,6 +74,13 @@ def _extract_fields(visual_node: Dict[str, Any]) -> Dict[str, Any]:
             if not field:
                 continue
             parsed = _parse_field(field)
+            # Son parte de la identidad de la proyeccion, especialmente para
+            # agregaciones (`Sum(Tabla.Columna)`). Sin conservarlos, el viaje
+            # reader -> factory podia reconstruir el campo pero no la misma
+            # consulta que Desktop habia escrito.
+            for clave in ("queryRef", "nativeQueryRef"):
+                if clave in proj:
+                    parsed[clave] = proj[clave]
             refs.append(parsed)
             if parsed["kind"] == "measure" and parsed.get("ref"):
                 measures.append(parsed["ref"])
