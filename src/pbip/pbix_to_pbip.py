@@ -104,6 +104,14 @@ def _nombre_proyecto(pbix: Path, nombre: Optional[str]) -> str:
     if not limpio:
         raise PbixConversionError(
             f"No se pudo derivar un nombre de proyecto valido de '{pbix.name}'.")
+    from services import paths as safe_paths
+
+    try:
+        safe_paths.safe_identifier(limpio, kind="nombre de proyecto")
+    except PowerBIMCPError as exc:
+        raise PbixConversionError(
+            f"El nombre de proyecto '{elegido}' no es valido en Windows.",
+            details={"project_name": elegido, "cause": exc.to_dict()}) from exc
     return limpio
 
 
@@ -118,6 +126,88 @@ def _platform(tipo: str, nombre: str) -> Dict[str, Any]:
 def _escribir_binario(destino: Path, datos: bytes) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_bytes(datos)
+
+
+def _nombre_json(datos: bytes) -> Optional[str]:
+    """Lee solamente el ``name`` de una parte PBIR, sin modificarla."""
+    import json as _json
+
+    try:
+        contenido = _json.loads(pbix_reader.decode_text(datos).lstrip("\ufeff"))
+    except (ValueError, UnicodeError):
+        return None
+    nombre = contenido.get("name") if isinstance(contenido, dict) else None
+    return nombre if isinstance(nombre, str) and nombre else None
+
+
+def _normalizar_rutas_pbir(partes: Dict[str, bytes],
+                           avisos: List[str]) -> Dict[str, bytes]:
+    """Alinea carpetas de pagina/visual con sus identificadores internos.
+
+    Algunos PBIX report-only empaquetan ``pages/Resumen/page.json`` aunque el
+    ``name`` real sea un token y ``pages.json`` apunte a ese token. Al copiar
+    literalmente, el CLI devuelve ``PBIR_PAGE_JSON_MISSING``. En un proyecto
+    PBIR la ruta es identidad, por eso se conserva cada byte y solo se remapea
+    su carpeta al ``name`` declarado por el propio archivo.
+    """
+    from services import paths as safe_paths
+
+    paginas: Dict[str, str] = {}
+    visuales: Dict[tuple[str, str], str] = {}
+    for relativa, datos in partes.items():
+        trozos = relativa.split("/")
+        if len(trozos) == 3 and trozos[0] == "pages" \
+                and trozos[2] == "page.json":
+            nombre = _nombre_json(datos)
+            if nombre:
+                safe_paths.safe_identifier(nombre, kind="id de pagina PBIR")
+                paginas[trozos[1]] = nombre
+        elif len(trozos) == 5 and trozos[0] == "pages" \
+                and trozos[2] == "visuals" and trozos[4] == "visual.json":
+            nombre = _nombre_json(datos)
+            if nombre:
+                safe_paths.safe_identifier(nombre, kind="id de visual PBIR")
+                visuales[(trozos[1], trozos[3])] = nombre
+
+    salida: Dict[str, bytes] = {}
+    origen_por_destino: Dict[str, str] = {}
+    cambios_pagina: set[tuple[str, str]] = set()
+    cambios_visual: set[tuple[str, str]] = set()
+    for relativa, datos in partes.items():
+        trozos = relativa.split("/")
+        pagina_origen = trozos[1] if len(trozos) > 1 and trozos[0] == "pages" else None
+        if pagina_origen in paginas:
+            pagina_destino = paginas[pagina_origen]
+            if pagina_destino != pagina_origen:
+                trozos[1] = pagina_destino
+                cambios_pagina.add((pagina_origen, pagina_destino))
+        if len(trozos) > 3 and trozos[0] == "pages" and trozos[2] == "visuals" \
+                and pagina_origen is not None:
+            visual_origen = trozos[3]
+            visual_destino = visuales.get((pagina_origen, visual_origen))
+            if visual_destino and visual_destino != visual_origen:
+                trozos[3] = visual_destino
+                cambios_visual.add((visual_origen, visual_destino))
+        destino = "/".join(trozos)
+        clave = destino.casefold()
+        if clave in origen_por_destino:
+            raise PbixConversionError(
+                "Dos partes PBIR apuntan al mismo archivo despues de alinear "
+                "sus identificadores internos.",
+                details={"parts": [origen_por_destino[clave], relativa],
+                         "target": destino})
+        origen_por_destino[clave] = relativa
+        salida[destino] = datos
+
+    if cambios_pagina:
+        avisos.append(
+            f"Se alinearon {len(cambios_pagina)} carpeta(s) de pagina con su "
+            "identificador PBIR interno.")
+    if cambios_visual:
+        avisos.append(
+            f"Se alinearon {len(cambios_visual)} carpeta(s) de visual con su "
+            "identificador PBIR interno.")
+    return salida
 
 
 #: Version de tema que se declara cuando el origen no trae ninguna. Es
@@ -136,7 +226,7 @@ def _reparar_report_json(datos: bytes, avisos: List[str]) -> bytes:
     import json as _json
 
     try:
-        informe = _json.loads(datos.decode("utf-8-sig"))
+        informe = _json.loads(pbix_reader.decode_text(datos).lstrip("\ufeff"))
     except (ValueError, UnicodeError):
         return datos
     temas = informe.get("themeCollection")
@@ -172,7 +262,8 @@ def _reparar_report_json(datos: bytes, avisos: List[str]) -> bytes:
 def _copiar_pbir(contents: PbixContents, definition_dir: Path,
                  escritos: List[str], raiz: Path, avisos: List[str]) -> None:
     """El .pbix ya traia PBIR: se copia byte a byte, sin reinterpretarlo."""
-    for relativa, datos in sorted(contents.pbir_parts.items()):
+    partes = _normalizar_rutas_pbir(contents.pbir_parts, avisos)
+    for relativa, datos in sorted(partes.items()):
         if relativa == "report.json":
             datos = _reparar_report_json(datos, avisos)
         destino = definition_dir / relativa
@@ -254,6 +345,104 @@ def _normalizar_tema_personalizado(report_dir: Path,
         f"a '{declarado}' para que PBIR no rechace el archivo.")
 
 
+_ERRORES_TEMA_REPARABLES = frozenset({
+    "PBIR_THEME_VISUAL_PROP_UNKNOWN",
+    "PBIR_FORMATTING_OBJECT_UNKNOWN",
+})
+
+
+def _quitar_propiedad_visual_tema(tema: Dict[str, Any], ruta: str) -> int:
+    """Quita una propiedad obsoleta ``objeto.propiedad`` del tema."""
+    partes = ruta.split(".")
+    if len(partes) != 2:
+        return 0
+    objeto, propiedad = partes
+    eliminadas = 0
+    estilos = tema.get("visualStyles")
+    if not isinstance(estilos, dict):
+        return 0
+    for selectores in estilos.values():
+        if not isinstance(selectores, dict):
+            continue
+        for objetos in selectores.values():
+            if not isinstance(objetos, dict):
+                continue
+            instancias = objetos.get(objeto)
+            if not isinstance(instancias, list):
+                continue
+            for instancia in instancias:
+                if isinstance(instancia, dict) and propiedad in instancia:
+                    del instancia[propiedad]
+                    eliminadas += 1
+    return eliminadas
+
+
+def _quitar_objeto_visual_tema(tema: Dict[str, Any], ruta: str) -> int:
+    """Quita un objeto obsoleto descrito como ``visualStyles.V.S.O``."""
+    partes = ruta.split(".")
+    if len(partes) != 4 or partes[0] != "visualStyles":
+        return 0
+    _, tipo_patron, selector_patron, objeto = partes
+    estilos = tema.get("visualStyles")
+    if not isinstance(estilos, dict):
+        return 0
+    eliminados = 0
+    for tipo, selectores in estilos.items():
+        if tipo_patron != "*" and tipo != tipo_patron:
+            continue
+        if not isinstance(selectores, dict):
+            continue
+        for selector, objetos in selectores.items():
+            if selector_patron != "*" and selector != selector_patron:
+                continue
+            if isinstance(objetos, dict) and objeto in objetos:
+                del objetos[objeto]
+                eliminados += 1
+    return eliminados
+
+
+def _reparar_temas_obsoletos(report_dir: Path, errores: List[Any]) -> int:
+    """Aplica exclusivamente las incompatibilidades señaladas por el CLI.
+
+    No se mantiene una lista inventada de propiedades: el validador oficial
+    identifica el archivo y la ruta exacta. Solo se podan objetos/propiedades
+    de tema que el PBIR actual declara desconocidos; datos, consultas y
+    recursos permanecen intactos.
+    """
+    from collections import defaultdict
+    from services import paths as safe_paths
+
+    por_archivo: Dict[str, List[Any]] = defaultdict(list)
+    for error in errores:
+        if error.code in _ERRORES_TEMA_REPARABLES:
+            por_archivo[error.file].append(error)
+
+    total = 0
+    for relativa, diagnosticos in por_archivo.items():
+        if not relativa.startswith("StaticResources/RegisteredResources/"):
+            continue
+        archivo = safe_paths.ensure_contained(
+            report_dir, report_dir / relativa,
+            kind="tema señalado por el validador oficial")
+        if not archivo.is_file() or archivo.suffix.lower() != ".json":
+            continue
+        try:
+            tema = read_json(archivo)
+        except Exception:                              # el CLI conserva el error
+            continue
+        cambios = 0
+        for diagnostico in diagnosticos:
+            if diagnostico.code == "PBIR_THEME_VISUAL_PROP_UNKNOWN":
+                cambios += _quitar_propiedad_visual_tema(
+                    tema, diagnostico.path)
+            elif diagnostico.code == "PBIR_FORMATTING_OBJECT_UNKNOWN":
+                cambios += _quitar_objeto_visual_tema(tema, diagnostico.path)
+        if cambios:
+            write_json(archivo, tema)
+            total += cambios
+    return total
+
+
 def _validar_informe_convertido(report_dir: Path) -> Dict[str, Any]:
     """Exige que el informe generado no tenga errores del CLI oficial."""
     from services import report_validator
@@ -265,7 +454,22 @@ def _validar_informe_convertido(report_dir: Path) -> Dict[str, Any]:
         raise PbixConversionError(
             "El validador oficial no respondio; no se publica un proyecto que "
             "no se pudo comprobar.", details=resultado.to_envelope())
-    errores = [d.__dict__ for d in resultado.diagnostics if d.severity == "error"]
+    errores_obj = [d for d in resultado.diagnostics if d.severity == "error"]
+    reparaciones = 0
+    if errores_obj and all(d.code in _ERRORES_TEMA_REPARABLES
+                           for d in errores_obj):
+        reparaciones = _reparar_temas_obsoletos(report_dir, errores_obj)
+        if reparaciones:
+            resultado = report_validator.validar_informe(report_dir)
+            if resultado.status in (report_validator.UNAVAILABLE,
+                                     report_validator.TIMEOUT):
+                raise PbixConversionError(
+                    "El validador oficial no estuvo disponible despues de reparar un "
+                    "tema heredado; no se publico el proyecto.",
+                    details=resultado.to_envelope())
+            errores_obj = [d for d in resultado.diagnostics
+                           if d.severity == "error"]
+    errores = [d.__dict__ for d in errores_obj]
     if errores:
         raise PbixConversionError(
             "La conversion produjo un informe que Power BI no aceptaria; no se "
@@ -273,7 +477,8 @@ def _validar_informe_convertido(report_dir: Path) -> Dict[str, Any]:
             details={"diagnostics": errores, "report_dir": str(report_dir)})
     return {"checked": True, "status": resultado.status,
             "warnings": resultado.warnings,
-            "diagnostics": len(resultado.diagnostics)}
+            "diagnostics": len(resultado.diagnostics),
+            "theme_repairs": reparaciones}
 
 
 def _referencia_dataset(nombre: str, con_modelo: bool,
@@ -362,6 +567,12 @@ def _construir_en_stage(
 
     _normalizar_tema_personalizado(report_dir, resultado.warnings)
     resultado.report_validation = _validar_informe_convertido(report_dir)
+    reparaciones_tema = resultado.report_validation.get("theme_repairs", 0)
+    if reparaciones_tema:
+        resultado.warnings.append(
+            f"El validador oficial detecto {reparaciones_tema} propiedad(es) "
+            "u objeto(s) de tema obsoletos; se retiraron y el informe se "
+            "valido de nuevo.")
 
     if quiere_modelo:
         modelo = _exportar_modelo(
@@ -469,6 +680,7 @@ def convert(
     from services import project_publish
 
     stage = project_publish.create_stage(destino.parent)
+    limpio = True
     try:
         resultado = _construir_en_stage(
             pbix, contents, conversion, stage, destino, nombre,
@@ -480,7 +692,13 @@ def convert(
             stage, destino, overwrite=overwrite,
             tool="pbi_convert_pbix_to_pbip")
     finally:
-        project_publish.discard_stage(stage)
+        limpio = project_publish.discard_stage(stage)
+
+    if not limpio:
+        resultado.warnings.append(
+            "La conversion se publico, pero no se pudo retirar su carpeta "
+            "temporal de staging; puede limpiarse manualmente cuando deje de "
+            "estar en uso.")
 
     log.info("Convertido %s -> %s (%s paginas, %s visuales, modelo=%s)",
              pbix.name, destino, resultado.pages, resultado.visuals,

@@ -138,6 +138,49 @@ def _read_json_part(zf: zipfile.ZipFile, name: str) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else {"value": data}
 
 
+def _partes_copiables(nombres: List[str], prefijo: str) -> Dict[str, str]:
+    """Valida rutas del ZIP antes de convertirlas en rutas de Windows.
+
+    ``zipfile.read`` no extrae los archivos, pero el conversor si materializa
+    sus nombres despues. Un ``../`` o dos nombres que solo difieren por
+    mayusculas podrian escapar del staging o sobrescribirse silenciosamente en
+    NTFS. Cada componente se trata como identificador y el namespace se compara
+    de forma insensible a mayusculas, igual que el destino real.
+    """
+    from services import paths as safe_paths
+
+    salida: Dict[str, str] = {}
+    for nombre in nombres:
+        if not nombre.startswith(prefijo) or nombre.endswith("/"):
+            continue
+        relativa = nombre[len(prefijo):]
+        componentes = relativa.split("/")
+        if not relativa or any(not parte for parte in componentes):
+            raise PbixReadError(
+                f"La parte '{nombre}' tiene una ruta vacia o ambigua.",
+                details={"part": nombre, "prefix": prefijo})
+        try:
+            for parte in componentes:
+                safe_paths.safe_identifier(
+                    parte, kind="componente de ruta dentro del .pbix")
+        except PowerBIMCPError as exc:
+            raise PbixReadError(
+                f"La parte '{nombre}' contiene una ruta insegura; no se "
+                "materializo ningun archivo.",
+                details={"part": nombre, "cause": exc.to_dict()},
+            ) from exc
+        clave = relativa.casefold()
+        anterior = salida.get(clave)
+        if anterior is not None:
+            raise PbixReadError(
+                "El .pbix contiene dos partes que chocarian en Windows: "
+                f"'{prefijo}{anterior}' y '{nombre}'.",
+                details={"parts": [f"{prefijo}{anterior}", nombre]},
+            )
+        salida[clave] = relativa
+    return {relativa: f"{prefijo}{relativa}" for relativa in salida.values()}
+
+
 def _leer_layout(zf: zipfile.ZipFile, p: Path,
                  avisos: List[str]) -> Dict[str, Any]:
     """`Report/Layout` -> dict. Tolera texto mal codificado, pero lo dice.
@@ -205,21 +248,25 @@ def read_pbix(path: str | Path) -> PbixContents:
         contents.metadata = _read_json_part(zf, "Metadata")
         contents.settings = _read_json_part(zf, "Settings")
 
-        pbir = [n for n in nombres if n.startswith(PBIR_PREFIX) and not n.endswith("/")]
+        pbir = _partes_copiables(nombres, PBIR_PREFIX)
+        recursos_estaticos = _partes_copiables(nombres, STATIC_PREFIX)
+        visuales_personalizados = _partes_copiables(
+            nombres, CUSTOM_VISUALS_PREFIX)
         if pbir:
             contents.report_format = "pbir"
             contents.pbir_parts = {
-                n[len(PBIR_PREFIX):]: zf.read(n) for n in pbir
+                relativa: zf.read(nombre) for relativa, nombre in pbir.items()
             }
         elif LAYOUT_PART in nombres:
             contents.report_format = "layout"
             contents.layout = _leer_layout(zf, p, contents.warnings)
 
-        for n in nombres:
-            if n.endswith("/"):
-                continue
-            if n.startswith(STATIC_PREFIX) or n.startswith(CUSTOM_VISUALS_PREFIX):
-                contents.report_assets[n[len("Report/"):]] = zf.read(n)
+        for prefijo, partes in (
+                (STATIC_PREFIX, recursos_estaticos),
+                (CUSTOM_VISUALS_PREFIX, visuales_personalizados)):
+            for relativa, nombre in partes.items():
+                ruta_reporte = f"{prefijo[len('Report/'):]}{relativa}"
+                contents.report_assets[ruta_reporte] = zf.read(nombre)
 
         if DATA_MODEL_PART in nombres:
             info = zf.getinfo(DATA_MODEL_PART)

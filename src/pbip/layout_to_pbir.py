@@ -37,6 +37,8 @@ SCHEMA_PAGE = f"{SCHEMA_BASE}/page/2.1.0/schema.json"
 SCHEMA_PAGES = f"{SCHEMA_BASE}/pagesMetadata/1.1.0/schema.json"
 SCHEMA_VISUAL = f"{SCHEMA_BASE}/visualContainer/2.7.0/schema.json"
 SCHEMA_VERSION = f"{SCHEMA_BASE}/versionMetadata/1.0.0/schema.json"
+SCHEMA_BOOKMARK = f"{SCHEMA_BASE}/bookmark/2.1.0/schema.json"
+SCHEMA_BOOKMARKS = f"{SCHEMA_BASE}/bookmarksMetadata/1.0.0/schema.json"
 PBIR_DEFINITION_VERSION = "2.0.0"
 
 #: `displayOption` de pagina. El orden es el del enum interno de Power BI y se
@@ -69,6 +71,9 @@ _FILTER_HOW_CREATED = {0: "Auto", 1: "User", 2: "Drill", 3: "Include",
                        4: "Exclude", 5: "Drillthrough"}
 _PAGE_VISIBILITY = {0: "AlwaysVisible", 1: "HiddenInViewMode"}
 _PAGE_TYPES = ("Drillthrough", "Tooltip")
+_VISUAL_INTERACTION = {0: "Default", 1: "DataFilter",
+                       2: "HighlightFilter", 3: "NoFilter"}
+_FILTER_SORT_ORDER = {1: "Ascending", 2: "Descending", 3: "Custom"}
 _EXPORT_DATA_MODE = {0: "AllowSummarized", 1: "AllowSummarizedAndUnderlying",
                      2: "None"}
 _QUERY_LIMIT_OPTION = {0: "None", 1: "Shared", 2: "Premium", 3: "SQLServerAS",
@@ -276,6 +281,7 @@ def _convertir_query_state(single_visual: Dict[str, Any],
     aliases = _alias_de_tablas(prototipo)
     indice = _indice_de_select(prototipo, aliases)
     mostrar_todo = set(single_visual.get("showAllRoles") or [])
+    propiedades_columnas = single_visual.get("columnProperties") or {}
 
     estado: Dict[str, Any] = {}
     for rol, lista in proyecciones.items():
@@ -286,6 +292,18 @@ def _convertir_query_state(single_visual: Dict[str, Any],
             resultado = _convertir_proyeccion(
                 proyeccion, indice, f"{contexto} rol '{rol}'", avisos, perdidos)
             if resultado is not None:
+                # Layout guarda los alias y formatos personalizados aparte,
+                # indexados por queryRef. En PBIR viven dentro de la propia
+                # proyeccion; ignorarlos cambia encabezados y formatos.
+                metadatos = propiedades_columnas.get(proyeccion.get("queryRef")) \
+                    if isinstance(propiedades_columnas, dict) else None
+                if isinstance(metadatos, dict):
+                    if resultado.get("displayName") is None \
+                            and isinstance(metadatos.get("displayName"), str):
+                        resultado["displayName"] = metadatos["displayName"]
+                    if resultado.get("format") is None \
+                            and isinstance(metadatos.get("formatString"), str):
+                        resultado["format"] = metadatos["formatString"]
                 convertidas.append(resultado)
         if not convertidas:
             continue
@@ -319,18 +337,24 @@ def _convertir_sort(single_visual: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return salida
 
 
-def _nombre_de_filtro(filtro: Dict[str, Any], posicion: int) -> str:
+def _nombre_de_filtro(filtro: Dict[str, Any], posicion: int,
+                      contexto: str = "") -> str:
     """Identificador de 20 hex derivado del filtro, al estilo de Power BI."""
     import hashlib
     import json
 
-    semilla = json.dumps(filtro, sort_keys=True, ensure_ascii=False,
-                         default=str) + f"#{posicion}"
+    # PBIR exige que el identificador sea unico en TODO el informe, no solo
+    # dentro del filterConfig que lo contiene. El Layout heredado admite el
+    # mismo id en varios scopes, por eso el contexto forma parte de la semilla.
+    semilla = (json.dumps(filtro, sort_keys=True, ensure_ascii=False,
+                          default=str) + f"#{posicion}@{contexto}")
     return hashlib.sha1(semilla.encode("utf-8")).hexdigest()[:20]
 
 
 def _convertir_filtros(crudo: Any, contexto: str,
-                       avisos: List[str]) -> Optional[Dict[str, Any]]:
+                       avisos: List[str],
+                       nombres_usados: Optional[set[str]] = None,
+                       orden: Any = None) -> Optional[Dict[str, Any]]:
     """`filters` heredado -> `filterConfig`.
 
     Dos cambios: la expresion filtrada pasa de `expression` a `field`, y
@@ -338,23 +362,42 @@ def _convertir_filtros(crudo: Any, contexto: str,
     `additionalProperties: false`, asi que cualquier otra clave se descarta.
     """
     filtros = _json_embebido(crudo, contexto, avisos)
-    if not filtros:
-        return None
-    if not isinstance(filtros, list):
+    if filtros and not isinstance(filtros, list):
         avisos.append(f"{contexto}: 'filters' no era una lista; se omite.")
-        return None
+        filtros = []
     salida = []
-    for posicion, filtro in enumerate(filtros):
+    usados = nombres_usados if nombres_usados is not None else set()
+    for posicion, filtro in enumerate(filtros or []):
         if not isinstance(filtro, dict):
             continue
         convertido = {k: v for k, v in filtro.items() if k in _FILTER_KEYS}
         if "expression" in filtro:
             convertido["field"] = filtro["expression"]
-        if not convertido.get("name"):
+        nombre_original = convertido.get("name")
+        if not nombre_original:
             # En PBIR el nombre identifica al filtro y es obligatorio; el
             # heredado lo omitia. Se deriva del contenido para que sea estable
             # entre conversiones del mismo informe.
-            convertido["name"] = _nombre_de_filtro(filtro, posicion)
+            convertido["name"] = _nombre_de_filtro(
+                filtro, posicion, contexto)
+        nombre = convertido["name"]
+        if nombre in usados:
+            # Desktop heredado permite reutilizar un id entre scopes; el CLI
+            # PBIR responde PBIR_FILTER_NAME_DUPLICATE_GLOBAL. No hay
+            # referencias externas a este id: se puede hacer unico sin perder
+            # la expresion ni el estado del filtro.
+            intento = 0
+            while True:
+                candidato = _nombre_de_filtro(
+                    filtro, posicion + intento, f"{contexto}#duplicado")
+                if candidato not in usados:
+                    convertido["name"] = candidato
+                    break
+                intento += 1
+            avisos.append(
+                f"{contexto}: el filtro '{nombre}' repetia un identificador "
+                f"global; se renombro a '{convertido['name']}' para PBIR.")
+        usados.add(convertido["name"])
         creado = filtro.get("howCreated")
         if isinstance(creado, bool) or creado is None:
             convertido.pop("howCreated", None)
@@ -367,7 +410,50 @@ def _convertir_filtros(crudo: Any, contexto: str,
                 avisos.append(f"{contexto}: filtro con howCreated={creado} "
                               "desconocido; se omite esa propiedad.")
         salida.append(convertido)
-    return {"filters": salida} if salida else None
+    configuracion: Dict[str, Any] = {}
+    if salida:
+        configuracion["filters"] = salida
+    if isinstance(orden, str) and orden in _FILTER_SORT_ORDER.values():
+        configuracion["filterSortOrder"] = orden
+    elif isinstance(orden, int) and not isinstance(orden, bool):
+        equivalente = _FILTER_SORT_ORDER.get(orden)
+        if equivalente:
+            configuracion["filterSortOrder"] = equivalente
+        else:
+            avisos.append(
+                f"{contexto}: filterSortOrder={orden} desconocido; se omite.")
+    return configuracion or None
+
+
+def _convertir_interacciones(relaciones: Any, contexto: str,
+                             avisos: List[str]) -> Optional[List[Dict[str, Any]]]:
+    """``relationships`` de Layout -> ``visualInteractions`` de PBIR."""
+    if not relaciones:
+        return None
+    if not isinstance(relaciones, list):
+        avisos.append(f"{contexto}: las interacciones no eran una lista; se omiten.")
+        return None
+    salida = []
+    for relacion in relaciones:
+        if not isinstance(relacion, dict):
+            continue
+        origen, destino = relacion.get("source"), relacion.get("target")
+        if not isinstance(origen, str) or not isinstance(destino, str):
+            continue
+        tipo_crudo = relacion.get("type")
+        if isinstance(tipo_crudo, str) and tipo_crudo in _VISUAL_INTERACTION.values():
+            tipo = tipo_crudo
+        elif isinstance(tipo_crudo, int) and not isinstance(tipo_crudo, bool):
+            tipo = _VISUAL_INTERACTION.get(tipo_crudo)
+        else:
+            tipo = None
+        if tipo is None:
+            avisos.append(
+                f"{contexto}: interaccion {origen}->{destino} con tipo "
+                f"desconocido ({tipo_crudo}); se omite.")
+            continue
+        salida.append({"source": origen, "target": destino, "type": tipo})
+    return salida or None
 
 
 def _posicion(contenedor: Dict[str, Any],
@@ -431,13 +517,27 @@ def _limpiar_expansiones(estados: Any) -> Optional[List[Dict[str, Any]]]:
 
 def _nombre_seguro(nombre: str, respaldo: str) -> str:
     """Nombre usable como carpeta. Power BI ya usa tokens hexadecimales."""
+    from powerbi.errors import PowerBIMCPError
+    from services import paths as safe_paths
+
     limpio = _NOMBRE_SEGURO.sub("_", (nombre or "").strip())
-    return limpio or respaldo
+    if limpio:
+        try:
+            safe_paths.safe_identifier(limpio, kind="id PBIR heredado")
+            return limpio
+        except PowerBIMCPError:
+            # Layout es un formato heredado y puede contener nombres que NTFS
+            # interpreta como dispositivos (CON, NUL, AUX...) o componentes
+            # ambiguos. El respaldo es determinista y ya lo controla el
+            # conversor, por lo que no se materializa el nombre peligroso.
+            pass
+    return respaldo
 
 
 def _convertir_visual(contenedor: Dict[str, Any], indice_visual: int,
                       contexto_pagina: str, avisos: List[str],
-                      perdidos: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+                      perdidos: List[Dict[str, Any]],
+                      nombres_filtro: set[str]) -> Optional[Dict[str, Any]]:
     config = _json_embebido(contenedor.get("config"), f"{contexto_pagina} visual", avisos)
     if not isinstance(config, dict):
         perdidos.append({"where": contexto_pagina,
@@ -497,7 +597,9 @@ def _convertir_visual(contenedor: Dict[str, Any], indice_visual: int,
 
     if config.get("parentGroupName"):
         salida["parentGroupName"] = config["parentGroupName"]
-    filtros = _convertir_filtros(contenedor.get("filters"), contexto, avisos)
+    filtros = _convertir_filtros(
+        contenedor.get("filters"), contexto, avisos, nombres_filtro,
+        single.get("filterSortOrder") if isinstance(single, dict) else None)
     if filtros:
         salida["filterConfig"] = filtros
     if config.get("howCreated"):
@@ -512,7 +614,8 @@ def _convertir_visual(contenedor: Dict[str, Any], indice_visual: int,
 
 def _convertir_pagina(seccion: Dict[str, Any], indice: int,
                       avisos: List[str],
-                      perdidos: List[Dict[str, Any]]) -> Dict[str, Any]:
+                      perdidos: List[Dict[str, Any]],
+                      nombres_filtro: set[str]) -> Dict[str, Any]:
     nombre = _nombre_seguro(seccion.get("name") or "", f"pagina{indice}")
     display = seccion.get("displayName") or nombre
     contexto = f"pagina '{display}'"
@@ -529,8 +632,11 @@ def _convertir_pagina(seccion: Dict[str, Any], indice: int,
             pagina[clave] = seccion[clave]
     if config.get("objects"):
         pagina["objects"] = config["objects"]
-    if config.get("visualInteractions"):
-        pagina["visualInteractions"] = config["visualInteractions"]
+    interacciones = _convertir_interacciones(
+        config.get("relationships", config.get("visualInteractions")),
+        contexto, avisos)
+    if interacciones:
+        pagina["visualInteractions"] = interacciones
     if config.get("type") in _PAGE_TYPES:
         pagina["type"] = config["type"]
     # Una pagina oculta se marca en el `config` de la seccion, no en la seccion.
@@ -544,7 +650,9 @@ def _convertir_pagina(seccion: Dict[str, Any], indice: int,
                           "la pagina queda visible.")
     elif isinstance(visibilidad, bool):
         pagina["visibility"] = "HiddenInViewMode" if visibilidad else "AlwaysVisible"
-    filtros = _convertir_filtros(seccion.get("filters"), contexto, avisos)
+    filtros = _convertir_filtros(
+        seccion.get("filters"), contexto, avisos, nombres_filtro,
+        config.get("filterSortOrder"))
     if filtros:
         pagina["filterConfig"] = filtros
 
@@ -553,19 +661,26 @@ def _convertir_pagina(seccion: Dict[str, Any], indice: int,
     for i, contenedor in enumerate(seccion.get("visualContainers") or []):
         if not isinstance(contenedor, dict):
             continue
-        visual = _convertir_visual(contenedor, i, contexto, avisos, perdidos)
+        visual = _convertir_visual(
+            contenedor, i, contexto, avisos, perdidos, nombres_filtro)
         if visual is None:
             continue
         # Dos visuales con el mismo nombre chocarian al ser carpetas hermanas.
         nombre_visual = visual["name"]
-        if nombre_visual in vistos:
-            vistos[nombre_visual] += 1
-            visual["name"] = f"{nombre_visual}_{vistos[nombre_visual]}"
+        clave_visual = nombre_visual.casefold()
+        if clave_visual in vistos:
+            vistos[clave_visual] += 1
+            candidato = f"{nombre_visual}_{vistos[clave_visual]}"
+            while candidato.casefold() in vistos:
+                vistos[clave_visual] += 1
+                candidato = f"{nombre_visual}_{vistos[clave_visual]}"
+            visual["name"] = candidato
+            vistos[candidato.casefold()] = 0
             avisos.append(
                 f"{contexto}: habia dos visuales llamados '{nombre_visual}'; "
                 f"el segundo se renombro a '{visual['name']}'.")
         else:
-            vistos[nombre_visual] = 0
+            vistos[clave_visual] = 0
         visuales.append(visual)
 
     return {"name": nombre, "display_name": display, "page": pagina,
@@ -677,6 +792,113 @@ def _convertir_tema(coleccion: Any, avisos: List[str]) -> Dict[str, Any]:
     return salida or por_defecto
 
 
+def _id_marcador(valor: Any, contexto: str, usados: set[str],
+                  avisos: List[str]) -> str:
+    """Produce un id de archivo seguro, estable y globalmente unico."""
+    import hashlib
+    from powerbi.errors import PowerBIMCPError
+    from services import paths as safe_paths
+
+    original = str(valor or "").strip()
+    candidato = original
+    try:
+        safe_paths.safe_identifier(candidato, kind="id de marcador heredado")
+    except PowerBIMCPError:
+        candidato = "Bookmark" + hashlib.sha1(
+            f"{contexto}:{original}".encode("utf-8")).hexdigest()[:20]
+        avisos.append(
+            f"{contexto}: el marcador tenia un id no valido para PBIR; se "
+            f"normalizo a '{candidato}'.")
+    base = candidato
+    intento = 0
+    while candidato.casefold() in usados:
+        intento += 1
+        sufijo = hashlib.sha1(
+            f"{contexto}:{original}:{intento}".encode("utf-8")).hexdigest()[:8]
+        candidato = f"{base}_{sufijo}"
+    if candidato != base:
+        avisos.append(
+            f"{contexto}: el id de marcador '{base}' estaba repetido; se "
+            f"renombro a '{candidato}'.")
+    usados.add(candidato.casefold())
+    return candidato
+
+
+def _convertir_marcadores(marcadores: Any, resultado: LayoutConversion) -> None:
+    """Convierte marcadores heredados, cuyo estado ya es compatible con PBIR.
+
+    Desktop guarda el mismo ``explorationState`` en Layout y PBIR. La
+    diferencia estructural es solo que PBIR separa cada marcador en un archivo
+    y mantiene un indice; los grupos pasan a metadatos con nombres de hijos.
+    """
+    if not marcadores:
+        return
+    if not isinstance(marcadores, list):
+        resultado.warnings.append(
+            "Los marcadores del informe no eran una lista; no se convirtieron.")
+        resultado.dropped.append({"where": "informe",
+                                  "what": "marcadores con formato ilegible"})
+        return
+
+    usados: set[str] = set()
+
+    def convertir_lista(elementos: List[Any], contexto: str) -> List[Dict[str, Any]]:
+        indice: List[Dict[str, Any]] = []
+        for posicion, elemento in enumerate(elementos):
+            donde = f"{contexto} marcador #{posicion + 1}"
+            if not isinstance(elemento, dict):
+                resultado.dropped.append(
+                    {"where": donde, "what": "marcador no era un objeto"})
+                continue
+            nombre = _id_marcador(
+                elemento.get("name"), donde, usados, resultado.warnings)
+            hijos = elemento.get("children")
+            if isinstance(hijos, list):
+                hijos_indice = convertir_lista(hijos, f"grupo '{nombre}' / ")
+                nombres_hijos: List[str] = []
+                for item in hijos_indice:
+                    if "children" in item:
+                        # El indice PBIR no admite grupos anidados. Sus
+                        # marcadores se aplanan dentro del grupo padre.
+                        nombres_hijos.extend(item["children"])
+                    else:
+                        nombres_hijos.append(item["name"])
+                indice.append({
+                    "name": nombre,
+                    "displayName": str(elemento.get("displayName") or nombre),
+                    "children": nombres_hijos,
+                })
+                continue
+
+            estado = elemento.get("explorationState")
+            if not isinstance(estado, dict):
+                resultado.dropped.append({
+                    "where": donde,
+                    "what": "marcador sin explorationState legible",
+                })
+                usados.discard(nombre.casefold())
+                continue
+            convertido: Dict[str, Any] = {
+                "$schema": SCHEMA_BOOKMARK,
+                "name": nombre,
+                "displayName": str(elemento.get("displayName") or nombre),
+                "explorationState": estado,
+            }
+            if isinstance(elemento.get("options"), dict):
+                convertido["options"] = elemento["options"]
+            resultado.files[
+                f"bookmarks/{nombre}.bookmark.json"] = convertido
+            indice.append({"name": nombre})
+        return indice
+
+    items = convertir_lista(marcadores, "informe /")
+    if items:
+        resultado.files["bookmarks/bookmarks.json"] = {
+            "$schema": SCHEMA_BOOKMARKS,
+            "items": items,
+        }
+
+
 def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
     """Convierte un `Report/Layout` completo al arbol de archivos PBIR.
 
@@ -685,6 +907,9 @@ def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
     resultado = LayoutConversion()
     avisos = resultado.warnings
     perdidos = resultado.dropped
+    # El namespace de filtros es global en PBIR aunque Layout permita repetir
+    # IDs entre informe, paginas y visuales.
+    nombres_filtro: set[str] = set()
 
     config = _json_embebido(layout.get("config"), "informe", avisos) or {}
 
@@ -694,7 +919,13 @@ def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
     }
     if config.get("objects"):
         informe["objects"] = config["objects"]
-    ajustes = _convertir_settings(config.get("settings"), avisos)
+    ajustes_crudos = dict(config.get("settings") or {}) \
+        if isinstance(config.get("settings"), dict) else {}
+    if "defaultDrillFilterOtherVisuals" in config:
+        ajustes_crudos.setdefault(
+            "defaultDrillFilterOtherVisuals",
+            config["defaultDrillFilterOtherVisuals"])
+    ajustes = _convertir_settings(ajustes_crudos, avisos)
     if ajustes:
         informe["settings"] = ajustes
     if layout.get("publicCustomVisuals"):
@@ -702,7 +933,9 @@ def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
     recursos = _convertir_recursos(layout.get("resourcePackages"), avisos)
     if recursos:
         informe["resourcePackages"] = recursos
-    filtros = _convertir_filtros(layout.get("filters"), "informe", avisos)
+    filtros = _convertir_filtros(
+        layout.get("filters"), "informe", avisos, nombres_filtro,
+        config.get("filterSortOrder"))
     if filtros:
         informe["filterConfig"] = filtros
     if config.get("slowDataSourceSettings"):
@@ -714,10 +947,40 @@ def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
 
     secciones = layout.get("sections") or []
     paginas = []
+    pagina_activa: Optional[Dict[str, Any]] = None
+    indice_activo = config.get("activeSectionIndex")
     for i, seccion in enumerate(secciones):
         if not isinstance(seccion, dict):
             continue
-        paginas.append(_convertir_pagina(seccion, i, avisos, perdidos))
+        pagina_convertida = _convertir_pagina(
+            seccion, i, avisos, perdidos, nombres_filtro)
+        paginas.append(pagina_convertida)
+        # activeSectionIndex indexa el array ORIGINAL, no la lista ordenada por
+        # ordinal que se escribe despues.
+        if isinstance(indice_activo, int) and not isinstance(indice_activo, bool) \
+                and indice_activo == i:
+            pagina_activa = pagina_convertida
+
+    # Los nombres son carpetas en Windows: las colisiones se comparan sin
+    # distinguir mayusculas. Sin esto, una pagina pisa a otra al materializar.
+    paginas_vistas: Dict[str, int] = {}
+    for pagina in paginas:
+        original = pagina["name"]
+        clave = original.casefold()
+        if clave not in paginas_vistas:
+            paginas_vistas[clave] = 0
+            continue
+        paginas_vistas[clave] += 1
+        candidato = f"{original}_{paginas_vistas[clave]}"
+        while candidato.casefold() in paginas_vistas:
+            paginas_vistas[clave] += 1
+            candidato = f"{original}_{paginas_vistas[clave]}"
+        pagina["name"] = candidato
+        pagina["page"]["name"] = candidato
+        paginas_vistas[candidato.casefold()] = 0
+        avisos.append(
+            f"Habia dos paginas llamadas '{original}'; la segunda se "
+            f"renombro a '{candidato}' para evitar una colision en Windows.")
 
     paginas.sort(key=lambda p: p["ordinal"] if p["ordinal"] is not None else 0)
     for pagina in paginas:
@@ -730,22 +993,13 @@ def convert_layout(layout: Dict[str, Any]) -> LayoutConversion:
     orden = [p["name"] for p in paginas]
     metadatos: Dict[str, Any] = {"$schema": SCHEMA_PAGES, "pageOrder": orden}
     if orden:
-        indice_activo = config.get("activeSectionIndex")
-        if isinstance(indice_activo, int) and 0 <= indice_activo < len(orden):
-            metadatos["activePageName"] = orden[indice_activo]
+        if pagina_activa is not None:
+            metadatos["activePageName"] = pagina_activa["name"]
         else:
             metadatos["activePageName"] = orden[0]
     resultado.files["pages/pages.json"] = metadatos
 
-    # Los marcadores viven en el `config` del informe heredado y en PBIR son
-    # archivos propios bajo `bookmarks/`, con un modelo de estado distinto.
-    marcadores = config.get("bookmarks") or []
-    if marcadores:
-        perdidos.append({
-            "where": "informe",
-            "what": f"{len(marcadores)} marcador(es); PBIR los guarda en "
-                    "'bookmarks/' con otro formato de estado y no se traducen.",
-        })
+    _convertir_marcadores(config.get("bookmarks"), resultado)
 
     log.info("Layout convertido: %s paginas, %s visuales, %s avisos",
              len(paginas), resultado.visual_count, len(avisos))

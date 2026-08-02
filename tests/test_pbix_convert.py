@@ -153,6 +153,36 @@ def test_detecta_pbir_embebido(tmp_path):
     assert contents.summary()["page_count"] == 1
 
 
+@pytest.mark.parametrize("parte", [
+    "Report/definition/../../../fuera.json",
+    "Report/StaticResources/RegisteredResources/../fuera.json",
+    "Report/CustomVisuals/paquete/archivo.json:stream",
+])
+def test_rechaza_rutas_inseguras_dentro_del_pbix(tmp_path, parte):
+    ruta = tmp_path / "RutaInsegura.pbix"
+    with zipfile.ZipFile(ruta, "w") as zf:
+        zf.writestr("Report/Layout", _u16(_layout()))
+        zf.writestr(parte, b"no debe salir del staging")
+
+    with pytest.raises(pbix_reader.PbixReadError) as exc:
+        pbix_reader.read_pbix(ruta)
+
+    assert exc.value.details["part"] == parte
+    assert not (tmp_path / "fuera.json").exists()
+
+
+def test_rechaza_partes_que_chocan_por_mayusculas_en_windows(tmp_path):
+    ruta = tmp_path / "Colision.pbix"
+    with zipfile.ZipFile(ruta, "w") as zf:
+        zf.writestr("Report/definition/report.json", b"{}")
+        zf.writestr("Report/definition/REPORT.JSON", b"{}")
+
+    with pytest.raises(pbix_reader.PbixReadError) as exc:
+        pbix_reader.read_pbix(ruta)
+
+    assert len(exc.value.details["parts"]) == 2
+
+
 def test_informe_con_conexion_en_vivo_no_lleva_modelo(tmp_path):
     ruta = _escribir_pbix(tmp_path / "Thin.pbix", layout=_layout(),
                           con_modelo=False,
@@ -213,6 +243,25 @@ def test_native_query_ref_se_conserva():
     visual = _visual_convertido(_convertir(_layout()))
     cat = visual["visual"]["query"]["queryState"]["Category"]["projections"][0]
     assert cat["nativeQueryRef"] == "Region"
+
+
+def test_column_properties_pasa_alias_y_formato_a_la_proyeccion():
+    layout = _layout()
+    contenedor = layout["sections"][0]["visualContainers"][0]
+    config = json.loads(contenedor["config"])
+    config["singleVisual"]["columnProperties"] = {
+        "Sum(Ventas.Importe)": {
+            "displayName": "Importe total",
+            "formatString": "$ #,0.00",
+        },
+    }
+    contenedor["config"] = json.dumps(config)
+
+    visual = _visual_convertido(_convertir(layout))
+    medida = visual["visual"]["query"]["queryState"]["Y"]["projections"][0]
+
+    assert medida["displayName"] == "Importe total"
+    assert medida["format"] == "$ #,0.00"
 
 
 def test_orden_descendente_es_direction_2():
@@ -314,6 +363,19 @@ def test_dos_visuales_con_el_mismo_nombre_no_chocan():
     assert any("se renombro" in w for w in resultado.warnings)
 
 
+def test_visuales_que_solo_difieren_en_mayusculas_no_chocan_en_windows():
+    layout = _layout()
+    layout["sections"][0]["visualContainers"] = [
+        _visual("VisualA"), _visual("visuala")]
+
+    resultado = _convertir(layout)
+    nombres = {k.casefold() for k in resultado.files
+               if k.endswith("visual.json")}
+
+    assert len(nombres) == 2
+    assert any("se renombro" in w for w in resultado.warnings)
+
+
 # ------------------------------------------------------------- filtros -------
 def test_filtro_renombra_expression_a_field_y_destipa_how_created():
     layout = _layout()
@@ -344,6 +406,71 @@ def test_filtro_sin_nombre_recibe_uno_estable():
     assert nombre == segundo["filterConfig"]["filters"][0]["name"]
 
 
+def test_orden_personalizado_de_filtros_se_conserva_en_cada_scope():
+    layout = _layout(config_extra={"filterSortOrder": 3})
+    layout["sections"][0]["config"] = json.dumps({"filterSortOrder": 2})
+    visual = layout["sections"][0]["visualContainers"][0]
+    config_visual = json.loads(visual["config"])
+    config_visual["singleVisual"]["filterSortOrder"] = 1
+    visual["config"] = json.dumps(config_visual)
+
+    resultado = _convertir(layout)
+    pagina = resultado.files["pages/pagina0000000000000a/page.json"]
+    visual_convertido = _visual_convertido(resultado)
+
+    assert resultado.files["report.json"]["filterConfig"][
+        "filterSortOrder"] == "Custom"
+    assert pagina["filterConfig"]["filterSortOrder"] == "Descending"
+    assert visual_convertido["filterConfig"][
+        "filterSortOrder"] == "Ascending"
+
+
+def test_ids_de_filtro_son_unicos_en_todo_el_informe():
+    """Layout permite repetir IDs por scope; PBIR los exige globales."""
+    filtro = {
+        "name": "filtro_repetido",
+        "expression": {"Column": {
+            "Expression": {"SourceRef": {"Entity": "Ventas"}},
+            "Property": "Region",
+        }},
+        "type": "Categorical",
+    }
+    layout = _layout()
+    layout["filters"] = json.dumps([filtro])
+    layout["sections"][0]["filters"] = json.dumps([filtro])
+    layout["sections"][0]["visualContainers"][0]["filters"] = json.dumps(
+        [filtro])
+
+    resultado = _convertir(layout)
+    pagina = resultado.files["pages/pagina0000000000000a/page.json"]
+    visual = _visual_convertido(resultado)
+    nombres = [
+        resultado.files["report.json"]["filterConfig"]["filters"][0]["name"],
+        pagina["filterConfig"]["filters"][0]["name"],
+        visual["filterConfig"]["filters"][0]["name"],
+    ]
+
+    assert len(set(nombres)) == 3
+    assert nombres[0] == "filtro_repetido"
+    assert sum("identificador global" in aviso
+               for aviso in resultado.warnings) == 2
+
+
+def test_interacciones_visuales_numericas_pasan_a_enum_pbir():
+    layout = _layout()
+    layout["sections"][0]["config"] = json.dumps({"relationships": [
+        {"source": "origen", "target": "filtro", "type": 1},
+        {"source": "origen", "target": "resalta", "type": 2},
+        {"source": "origen", "target": "ninguno", "type": 3},
+    ]})
+
+    pagina = _convertir(layout).files[
+        "pages/pagina0000000000000a/page.json"]
+
+    assert [r["type"] for r in pagina["visualInteractions"]] == [
+        "DataFilter", "HighlightFilter", "NoFilter"]
+
+
 # ----------------------------------------------------- informe y recursos ----
 def test_ajustes_numericos_pasan_a_cadena_y_los_obsoletos_se_van():
     layout = _layout(config_extra={"settings": {
@@ -354,6 +481,14 @@ def test_ajustes_numericos_pasan_a_cadena_y_los_obsoletos_se_van():
     assert ajustes["queryLimitOption"] == "Auto"
     assert ajustes["useEnhancedTooltips"] is True
     assert "useNewFilterPaneExperience" not in ajustes
+
+
+def test_default_drill_legacy_pasa_a_settings():
+    ajustes = _convertir(_layout(config_extra={
+        "defaultDrillFilterOtherVisuals": False,
+    })).files["report.json"]["settings"]
+
+    assert ajustes["defaultDrillFilterOtherVisuals"] is False
 
 
 def test_tema_siempre_declara_version_aunque_el_origen_no_la_tenga():
@@ -384,10 +519,33 @@ def test_paquetes_de_recursos_cambian_los_enums_numericos():
     assert paquetes[1]["items"][0]["type"] == "Image"
 
 
-def test_marcadores_se_declaran_como_perdidos():
-    layout = _layout(config_extra={"bookmarks": [{"name": "b1"}]})
+def test_marcadores_heredados_se_separan_en_archivo_e_indice():
+    estado = {"version": "1.3", "activeSection": "pagina0000000000000a",
+              "sections": {"pagina0000000000000a": {
+                  "visualContainers": {}}}}
+    layout = _layout(config_extra={"bookmarks": [{
+        "name": "grupo1", "displayName": "Escenarios", "children": [{
+            "name": "b1", "displayName": "Vista inicial",
+            "options": {"targetVisualNames": []},
+            "explorationState": estado,
+        }],
+    }]})
     resultado = _convertir(layout)
-    assert any("marcador" in d["what"] for d in resultado.dropped)
+    marcador = resultado.files["bookmarks/b1.bookmark.json"]
+    indice = resultado.files["bookmarks/bookmarks.json"]
+
+    assert marcador["explorationState"] == estado
+    assert marcador["displayName"] == "Vista inicial"
+    assert indice["items"] == [{
+        "name": "grupo1", "displayName": "Escenarios", "children": ["b1"]}]
+    assert not resultado.dropped
+
+
+def test_marcador_sin_estado_se_declara_perdido():
+    resultado = _convertir(
+        _layout(config_extra={"bookmarks": [{"name": "b1"}]}))
+    assert any("explorationState" in d["what"] for d in resultado.dropped)
+    assert "bookmarks/bookmarks.json" not in resultado.files
 
 
 def test_orden_de_paginas_respeta_el_ordinal():
@@ -401,6 +559,24 @@ def test_orden_de_paginas_respeta_el_ordinal():
     ])
     metadatos = _convertir(layout).files["pages/pages.json"]
     assert metadatos["pageOrder"] == ["primera00000000000a", "segunda00000000000b"]
+    assert metadatos["activePageName"] == "segunda00000000000b"
+
+
+def test_paginas_que_solo_difieren_en_mayusculas_no_se_sobrescriben():
+    base = {"displayName": "Pagina", "filters": "[]", "config": "{}",
+            "displayOption": 1, "width": 1280, "height": 720,
+            "visualContainers": []}
+    layout = _layout(secciones=[
+        {**base, "name": "PaginaA", "ordinal": 0},
+        {**base, "name": "paginaa", "ordinal": 1},
+    ])
+
+    resultado = _convertir(layout)
+    orden = resultado.files["pages/pages.json"]["pageOrder"]
+
+    assert len({nombre.casefold() for nombre in orden}) == 2
+    assert len([k for k in resultado.files if k.endswith("/page.json")]) == 2
+    assert any("colision en Windows" in w for w in resultado.warnings)
 
 
 # ----------------------------------------------- salida contra los esquemas --
@@ -476,6 +652,46 @@ def test_no_sobrescribe_sin_permiso(tmp_path, pbix_heredado):
     with pytest.raises(PowerBIMCPError) as exc:
         pbix_to_pbip.convert(pbix_heredado, tmp_path / "out", include_model=False)
     assert "overwrite" in exc.value.message
+
+
+@pytest.mark.parametrize("nombre", ["CON", "nul.json", "AUX"])
+def test_nombre_de_proyecto_reservado_se_rechaza_sin_escribir(
+        tmp_path, pbix_heredado, nombre):
+    with pytest.raises(pbix_to_pbip.PbixConversionError):
+        pbix_to_pbip.convert(
+            pbix_heredado, tmp_path / "out", include_model=False,
+            project_name=nombre)
+
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("reservado", ["CON", "nul.json", "AUX"])
+def test_layout_no_materializa_ids_de_pagina_o_visual_reservados(reservado):
+    layout = _layout()
+    layout["sections"][0]["name"] = reservado
+    config = json.loads(layout["sections"][0]["visualContainers"][0]["config"])
+    config["name"] = reservado
+    layout["sections"][0]["visualContainers"][0]["config"] = json.dumps(config)
+
+    resultado = layout_to_pbir.convert_layout(layout)
+
+    assert resultado.files["pages/pages.json"]["pageOrder"] == ["pagina0"]
+    assert "pages/pagina0/visuals/visual0/visual.json" in resultado.files
+
+
+def test_active_section_index_booleano_no_se_interpreta_como_indice_uno():
+    paginas = []
+    for indice in range(2):
+        pagina = _layout()["sections"][0]
+        pagina["name"] = f"pagina{indice}"
+        pagina["displayName"] = f"Pagina {indice}"
+        pagina["ordinal"] = indice
+        paginas.append(pagina)
+
+    resultado = layout_to_pbir.convert_layout(
+        _layout(secciones=paginas, config_extra={"activeSectionIndex": True}))
+
+    assert resultado.files["pages/pages.json"]["activePageName"] == "pagina0"
 
 
 def test_fallo_tardio_no_publica_parcial_ni_toca_el_anterior(
@@ -641,6 +857,40 @@ def test_pbir_copiado_se_repara_si_le_falta_lo_obligatorio(tmp_path,
     assert any("reportVersionAtImport" in w for w in resultado.warnings)
 
 
+def test_pbir_embebido_alinea_carpetas_con_names_internos():
+    """Regresion real: alias de carpeta causaba PBIR_PAGE_JSON_MISSING."""
+    partes = {
+        "pages/Resumen/page.json": json.dumps(
+            {"name": "e4e96d500dbe0121"}).encode(),
+        "pages/Resumen/visuals/Titulo/visual.json": json.dumps(
+            {"name": "037dab71763e90d8"}).encode(),
+        "pages/pages.json": json.dumps(
+            {"pageOrder": ["e4e96d500dbe0121"]}).encode(),
+    }
+    avisos = []
+
+    salida = pbix_to_pbip._normalizar_rutas_pbir(partes, avisos)
+
+    assert "pages/e4e96d500dbe0121/page.json" in salida
+    assert ("pages/e4e96d500dbe0121/visuals/037dab71763e90d8/"
+            "visual.json") in salida
+    assert salida["pages/pages.json"] == partes["pages/pages.json"]
+    assert any("carpeta(s) de pagina" in aviso for aviso in avisos)
+    assert any("carpeta(s) de visual" in aviso for aviso in avisos)
+
+
+def test_alinear_rutas_pbir_bloquea_colisiones():
+    partes = {
+        "pages/A/page.json": json.dumps({"name": "pagina"}).encode(),
+        "pages/pagina/page.json": json.dumps({"name": "pagina"}).encode(),
+    }
+
+    with pytest.raises(pbix_to_pbip.PbixConversionError) as exc:
+        pbix_to_pbip._normalizar_rutas_pbir(partes, [])
+
+    assert exc.value.details["target"] == "pages/pagina/page.json"
+
+
 def test_pbir_completo_se_copia_sin_tocar(tmp_path, monkeypatch):
     """La reparacion no debe alterar un informe que ya venia bien."""
     monkeypatch.setattr(pbix_to_pbip, "_validar_informe_convertido",
@@ -691,6 +941,40 @@ def test_tema_heredado_renombrado_iguala_el_name_interno(tmp_path):
     assert tema["name"] == nombre
     assert resultado.report_validation["checked"] is True
     assert any("internamente otro nombre" in w for w in resultado.warnings)
+
+
+def test_repara_solo_propiedades_de_tema_marcadas_por_cli(tmp_path):
+    reporte = tmp_path / "Audit.Report"
+    tema_path = (reporte / "StaticResources" / "RegisteredResources"
+                 / "antiguo.json")
+    tema_path.parent.mkdir(parents=True)
+    tema_path.write_text(json.dumps({
+        "name": "antiguo.json",
+        "visualStyles": {
+            "*": {"*": {
+                "general": [{"responsive": False, "keep": True}],
+                "outspacePane": [{"show": True}],
+            }},
+            "barChart": {"*": {"outspacePane": [{"show": False}]}},
+        },
+    }), encoding="utf-8")
+    archivo = "StaticResources/RegisteredResources/antiguo.json"
+    diagnosticos = [
+        report_validator.Diagnostico(
+            code="PBIR_THEME_VISUAL_PROP_UNKNOWN", severity="error",
+            file=archivo, path="general.responsive"),
+        report_validator.Diagnostico(
+            code="PBIR_FORMATTING_OBJECT_UNKNOWN", severity="error",
+            file=archivo, path="visualStyles.*.*.outspacePane"),
+    ]
+
+    cambios = pbix_to_pbip._reparar_temas_obsoletos(reporte, diagnosticos)
+
+    tema = json.loads(tema_path.read_text(encoding="utf-8-sig"))
+    assert cambios == 3
+    assert tema["visualStyles"]["*"]["*"]["general"] == [{"keep": True}]
+    assert "outspacePane" not in tema["visualStyles"]["*"]["*"]
+    assert "outspacePane" not in tema["visualStyles"]["barChart"]["*"]
 
 
 @pytest.mark.skipif(not report_validator.estado()["available"],
