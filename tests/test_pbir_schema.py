@@ -216,6 +216,7 @@ def test_el_formato_condicional_que_generamos_pasa_la_barrera_de_objects():
     from pbip import conditional_format
 
     documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
     conditional_format.apply_to_visual(documento, _campo_de_prueba(),
                                        "#FFFFFF", "#2A78D6")
 

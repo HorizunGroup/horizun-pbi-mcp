@@ -33,6 +33,24 @@ DESTINOS = {
     "bars": ("dataPoint", "fill"),
     "datapoint": ("dataPoint", "fill"),
 }
+
+# `objects` no tiene un esquema de propiedades estricto. Por eso no basta con
+# escribir un grupo bien formado: si el grupo no existe para ESE visual,
+# Desktop lo ignora. Esta tabla sale del catalogo oficial del CLI de Microsoft
+# (`catalog describe <visualType>`), campo `formattingObjects`.
+_TIPOS_POR_GRUPO = {
+    "values": frozenset({"table", "tableEx", "matrix", "pivotTable"}),
+    "dataPoint": frozenset({
+        "areaChart", "stackedAreaChart", "hundredPercentStackedAreaChart",
+        "barChart", "clusteredBarChart", "stackedBarChart",
+        "hundredPercentStackedBarChart", "columnChart",
+        "clusteredColumnChart", "stackedColumnChart",
+        "hundredPercentStackedColumnChart", "lineChart", "pieChart",
+        "donutChart", "scatterChart", "treemap", "funnel", "gauge",
+        "ribbonChart", "lineClusteredColumnComboChart",
+        "lineStackedColumnComboChart",
+    }),
+}
 #: Que hacer con los vacios. 'asZero' los pinta como cero; 'specificColor'
 #: exige un color aparte; 'none' los deja sin pintar.
 ESTRATEGIAS_NULOS = ("asZero", "none", "specificColor")
@@ -162,6 +180,16 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
     nodo = visual.get("visual")
     if not isinstance(nodo, dict):
         raise ConditionalFormatError("El visual no tiene nodo 'visual'.")
+
+    tipo = nodo.get("visualType")
+    permitidos = _TIPOS_POR_GRUPO[grupo]
+    if tipo not in permitidos:
+        raise ConditionalFormatError(
+            f"El destino '{clave}' escribe el grupo '{grupo}', que no existe "
+            f"para el visual '{tipo}'. Tipos compatibles: {sorted(permitidos)}.",
+            details={"target": clave, "object_group": grupo,
+                     "visual_type": tipo, "compatible_visual_types":
+                     sorted(permitidos)})
 
     regla = build_fill_rule(field, min_color, max_color, mid_color, null_strategy)
     objetos = nodo.setdefault("objects", {})

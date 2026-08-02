@@ -532,7 +532,6 @@ def test_la_referencia_del_campo_se_deduce_como_en_el_resto_del_servidor(
 @pytest.mark.parametrize("target,grupo,prop", [
     ("background", "values", "backColor"),
     ("font", "values", "fontColor"),
-    ("bars", "dataPoint", "fill"),
 ])
 def test_cada_destino_escribe_donde_toca(target, grupo, prop):
     from pbip import conditional_format as cf
@@ -540,6 +539,27 @@ def test_cada_destino_escribe_donde_toca(target, grupo, prop):
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target=target)
     assert prop in vis["visual"]["objects"][grupo][0]["properties"]
+
+
+def test_barras_escribe_en_data_point_de_un_grafico_compatible():
+    from pbip import conditional_format as cf
+
+    vis = {"visual": {"visualType": "clusteredColumnChart"}}
+    cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
+    assert "fill" in vis["visual"]["objects"]["dataPoint"][0]["properties"]
+
+
+def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
+    """El esquema oficial acepta cualquier `objects`; Desktop simplemente
+    ignora un grupo que no pertenece al tipo. Hay que bloquearlo nosotros.
+    """
+    from pbip import conditional_format as cf
+
+    vis = _visual_matriz()
+    with pytest.raises(cf.ConditionalFormatError) as exc:
+        cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
+    assert exc.value.details["visual_type"] == "pivotTable"
+    assert "objects" not in vis["visual"]
 
 
 # --------------------------------------------------------- recursos ----------
