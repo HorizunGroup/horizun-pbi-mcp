@@ -23,7 +23,15 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def pbi_validate_pbip_project() -> Dict[str, Any]:
-        """Valida a fondo el proyecto .pbip activo (estructura, PBIR, TMDL)."""
+        """Valida a fondo el proyecto .pbip activo (estructura, PBIR, TMDL).
+
+        Incluye `references`: cada Measure/Column que un visual.json o su
+        filterConfig citan, cruzada contra el TMDL real. El esquema PBIR y la
+        sintaxis TMDL pueden pasar limpios por separado con un visual que
+        apunta a una medida borrada -- Desktop lo resuelve en silencio a
+        nada, sin marca visible. Solo corre si el TMDL es valido (comparar
+        contra un modelo que no abre es ruido, no una comprobacion).
+        """
         return guard(lambda: project_locator.validate_project(get_session()))
 
     @mcp.tool()

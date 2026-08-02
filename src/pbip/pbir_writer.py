@@ -178,6 +178,57 @@ def update_visual_position(
             "transaction": result}
 
 
+def update_visual_filters(
+    active: ActivePbip,
+    page: str,
+    visual_id: str,
+    filters: List[Dict[str, Any]],
+    do_backup: bool = True,
+    tx: Optional[txn_service.Transaction] = None,
+) -> Dict[str, Any]:
+    """Reemplaza el `filterConfig` de un visual EXISTENTE.
+
+    `filters` llega en el formato de `filter_builder.build_filter` (una lista
+    vacia quita el filterConfig del visual por completo, no lo deja vacio:
+    Power BI no distingue "sin filtros" de "filterConfig: {filters: []}", y
+    dejar la clave vacia es basura que ningun lector espera).
+    """
+    from pbip import filter_builder
+
+    page_dir = resolve_page_dir(active, page)
+    target = _visual_path(page_dir, visual_id)
+    if not target.exists():
+        raise ValidationError(
+            f"No existe el visual '{visual_id}' en la pagina '{page}'.")
+
+    data = read_json(target)
+    antes = data.get("filterConfig")
+    nuevo = filter_builder.build_filter_config(filters)
+    if nuevo is None:
+        data.pop("filterConfig", None)
+    else:
+        data["filterConfig"] = nuevo
+
+    if tx is not None:
+        tx.write_json(target, data)
+        result = None
+    else:
+        _assert_escritura_pbir(active, operation="Filtrar un visual")
+        with txn_service.project_transaction(
+                active, [target], tool="pbi_set_visual_filter") as t:
+            t.write_json(target, data)
+            result = t.summary()
+
+    if do_backup and result:
+        record_change("pbi_set_visual_filter",
+                      f"Filtros del visual '{visual_id}' actualizados en "
+                      f"pagina '{page}'.",
+                      files=[str(target)], backup=result["journal"])
+    return {"visual_id": visual_id, "before": antes, "after": nuevo,
+            "backup": result["journal"] if result else None,
+            "transaction": result}
+
+
 def _existing_page_id(active: ActivePbip, display_name: str) -> Optional[str]:
     """Devuelve el id de una pagina con ese nombre visible, si ya existe."""
     for d in pages_dir(active).iterdir():

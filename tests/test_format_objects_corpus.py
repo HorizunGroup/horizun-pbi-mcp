@@ -158,6 +158,20 @@ def test_visual_factory_equivale_a_exports_reales_en_todo_lo_que_formatea():
              "bold_value": True, "value_color": "#123456"})
         _assert_properties_seen(visual_type, visual)
 
+    # El marco (fondo/borde) se puede pedir en CUALQUIER tipo de visual, no
+    # solo tarjeta/forma. Se comprueba contra tres familias distintas (texto,
+    # grafico, segmentador) que el corpus confirma con la forma exacta que
+    # generamos (color liso, no ThemeDataColor/Conditional): 'card'/'tableEx'
+    # tambien aceptan el marco en Desktop, pero la muestra del corpus para
+    # esos dos solo capturo variantes de tema, asi que probarlos ahi habria
+    # sido una afirmacion sin evidencia, no una comprobacion real.
+    for visual_type in ("textbox", "lineChart", "slicer"):
+        visual = {}
+        visual_factory._aplicar_estilo_contenedor(
+            visual, {"background_color": "#123456", "border_color": "#654321",
+                     "border_radius": 8, "background_transparency": 10})
+        _assert_properties_seen(visual_type, visual)
+
 
 def test_fillrule_y_selectores_coinciden_con_formas_escritas_por_desktop():
     # Desktop conserva la agregacion exacta de la proyeccion. Es el caso que

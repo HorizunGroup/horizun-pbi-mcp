@@ -57,9 +57,14 @@ def test_las_88_tools_se_registran_con_esta_version_de_mcp():
 
 
 def test_la_cota_de_mcp_esta_declarada():
-    """La cota superior no es decorativa: sin ella el aviso no serviria."""
+    """La cota superior no es decorativa: sin ella el aviso no serviria.
+
+    La busqueda exige un especificador de version pegado a 'mcp' para no
+    engancharse con la entrada 'mcp' de `keywords`, que es solo una etiqueta
+    de PyPI y no declara ninguna cota.
+    """
     texto = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    linea = re.search(r'"mcp[^"]*"', texto)
+    linea = re.search(r'"mcp(?:>=|==|~=|<)[^"]*"', texto)
     assert linea, "no encuentro la dependencia 'mcp' en pyproject.toml"
     assert "<2" in linea.group(0), (
         f"la dependencia mcp debe estar acotada por arriba: {linea.group(0)}")
