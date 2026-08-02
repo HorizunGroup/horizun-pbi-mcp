@@ -143,7 +143,12 @@ def entorno_instalado(wheel, tmp_path_factory):
     py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     if not py.exists():
         pytest.skip("no se encontro el interprete del venv")
-    res = _correr([str(py), "-m", "pip", "install", "--no-deps", "-q", str(wheel)])
+    # El venv hereda dependencias del entorno padre. Si ese entorno tiene un
+    # checkout editable de la misma version, pip puede declarar el requisito
+    # satisfecho y NO instalar el wheel que esta prueba pretende verificar.
+    # --ignore-installed obliga a que los imports salgan del artefacto.
+    res = _correr([str(py), "-m", "pip", "install", "--ignore-installed",
+                   "--no-deps", "-q", str(wheel)])
     if res.returncode != 0:
         pytest.skip(f"no se pudo instalar el wheel: {res.stderr[-400:]}")
     return py
