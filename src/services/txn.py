@@ -455,8 +455,13 @@ class Transaction:
     def commit(self) -> Dict[str, Any]:
         for rec in self.records.values():
             rec.outcome = COMMITTED if rec.written else UNCHANGED
+        # El journal es parte del commit, no un log opcional. Declarar exito si
+        # no se pudo cerrarlo deja un manifiesto "open" que parece una
+        # transaccion interrumpida y rompe la recuperacion. Se marca committed
+        # solo DESPUES de persistir el cierre; si falla, el context manager
+        # compensa los archivos ya escritos.
+        self._write_manifest(status="committed", strict=True)
         self.committed = True
-        self._write_manifest(status="committed")
         return self.summary()
 
     def compensate(self, cause: Optional[str] = None) -> Dict[str, Any]:
@@ -526,7 +531,10 @@ class Transaction:
         # Retira los directorios que creamos y quedaron vacios. Sin esto, un
         # rollback de "crear pagina" dejaba un <pageId>/ huerfano sin page.json.
         self._removed_dirs = self._remove_created_dirs()
-        self._write_manifest(status=status, cause=cause)
+        # El rollback ya hizo el trabajo material. Si el disco tampoco permite
+        # anotar su resultado, no se debe deshacer ni ocultar esa restauracion;
+        # se registra el aviso y el resumen conserva el estado real en memoria.
+        self._write_manifest(status=status, cause=cause, strict=False)
         return self.summary()
 
     # -- informe ------------------------------------------------------------
@@ -548,7 +556,8 @@ class Transaction:
             "removed_dirs": getattr(self, "_removed_dirs", []),
         }
 
-    def _write_manifest(self, status: str, cause: Optional[str] = None) -> None:
+    def _write_manifest(self, status: str, cause: Optional[str] = None, *,
+                        strict: bool = True) -> None:
         manifest = {
             "manifest_version": MANIFEST_VERSION,
             "status": status,
@@ -569,7 +578,13 @@ class Transaction:
             durable_write(self.manifest_path,
                           (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
                           .encode("utf-8"), _json_validator)
-        except OSError as exc:                        # pragma: no cover
+        except OSError as exc:
+            if strict:
+                raise TransactionError(
+                    "No se pudo persistir el estado del journal; la operacion "
+                    "no se puede declarar confirmada.",
+                    details={"manifest": str(self.manifest_path),
+                             "status": status, "reason": str(exc)}) from exc
             log.warning("No se pudo escribir el manifiesto: %s", exc)
 
 

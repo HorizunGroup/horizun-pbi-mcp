@@ -365,6 +365,29 @@ def test_el_manifiesto_registra_hash_y_estado_por_archivo(entorno):
     assert manifest["status"] == "committed"
 
 
+def test_si_no_se_puede_cerrar_el_manifiesto_el_commit_se_revierte(
+        entorno, monkeypatch):
+    project, backups = entorno
+    destino = _visual(project)
+    antes = destino.read_bytes()
+    original = txn_service.durable_write
+
+    def fallar_solo_al_cerrar(path, data, validator=None):
+        if Path(path).name == "manifest.json" and b'"status": "committed"' in data:
+            raise OSError("fallo inyectado al cerrar journal")
+        return original(path, data, validator)
+
+    monkeypatch.setattr(txn_service, "durable_write", fallar_solo_al_cerrar)
+    with pytest.raises(txn_service.TransactionError,
+                       match="persistir el estado"):
+        with transaction(project, backups, [destino], tool="t") as tx:
+            tx.write_json(destino, visual("nuevo"))
+
+    assert destino.read_bytes() == antes
+    manifest = json.loads(Path(tx.manifest_path).read_text(encoding="utf-8"))
+    assert manifest["status"] == "rolled_back"
+
+
 # ------------------------------------------------- verificacion de backups ---
 def test_verify_backup_detecta_manifiesto_ausente(tmp_path):
     d = tmp_path / "bk"
