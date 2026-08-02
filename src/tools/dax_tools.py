@@ -89,6 +89,70 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
+    def pbi_validate_desktop_render(path: str, timeout: int = 300,
+                                    capture_timeout: int = 30,
+                                    reuse_open: bool = True) -> Dict[str, Any]:
+        """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
+
+        Es la comprobacion visual automatizable que complementa al validador
+        PBIR: espera el modelo, identifica la ventana por PID y hora de inicio,
+        y la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.
+        La captura no activa ni trae Desktop al frente, por lo que no puede
+        fotografiar por accidente otra ventana que tape el informe.
+
+        Si la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la
+        captura falla). Si el informe ya estaba abierto, reutiliza esa sesion y
+        nunca cierra la ventana del usuario.
+        """
+        def _impl():
+            from powerbi import desktop_capture, desktop_launcher
+
+            opened = desktop_launcher.open_pbix(
+                path, timeout=timeout, reuse_open=reuse_open)
+            close_result: Dict[str, Any] = {
+                "closed": False,
+                "reason": "la sesion ya estaba abierta; no se toca",
+            }
+            result: Optional[Dict[str, Any]] = None
+            try:
+                capture = desktop_capture.capture_opened(
+                    opened, timeout=capture_timeout)
+                result = {
+                    "path": opened.pbix_path,
+                    "instance": opened.instance,
+                    "desktop_pid": opened.desktop_pid,
+                    "launched_by_us": opened.launched_by_us,
+                    "reused_open_session": not opened.launched_by_us,
+                    "waited_seconds": opened.waited_seconds,
+                    "capture": capture,
+                }
+            finally:
+                # Incluso ante KeyboardInterrupt/SystemExit se intenta compensar
+                # la ventana que esta llamada abrio. `close` revalida nombre y
+                # create_time antes de terminar nada.
+                if opened.launched_by_us:
+                    try:
+                        close_result = desktop_launcher.close(opened)
+                    except Exception as exc:  # noqa: BLE001
+                        # No enmascara un fallo de captura con un segundo fallo
+                        # de compensacion. Si la captura si termino, el warning
+                        # deja claro que no es seguro reintentar a ciegas.
+                        close_result = {
+                            "closed": False,
+                            "reason": "desktop_close_failed",
+                            "error_type": type(exc).__name__,
+                            "message": str(exc),
+                        }
+            assert result is not None
+            result["desktop_close"] = close_result
+            if opened.launched_by_us and not close_result.get("closed"):
+                result.setdefault("warnings", []).append(
+                    "La captura termino, pero Desktop no se cerro porque su "
+                    "identidad ya no pudo verificarse; no se termino otro proceso.")
+            return result
+        return guard(_impl)
+
+    @mcp.tool()
     def pbi_run_dax(query: str, max_rows: Optional[int] = None,
                     max_bytes: Optional[int] = None,
                     timeout_seconds: Optional[int] = None,

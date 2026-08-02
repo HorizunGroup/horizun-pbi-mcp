@@ -197,9 +197,21 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
             details={"path": str(pbix), "extension": pbix.suffix},
         )
 
-    if reuse_open:
-        pid_existente = proceso_con_archivo_abierto(pbix)
-        if pid_existente:
+    # Se comprueba SIEMPRE, tambien cuando reuse_open=False. Antes ese modo
+    # lanzaba otro PBIDesktop y la correlacion por archivo podia devolver la
+    # ventana preexistente; el resultado quedaba marcado launched_by_us=True y
+    # close() terminaba una sesion del usuario. No existe una forma segura de
+    # forzar una segunda apertura del mismo archivo, asi que se falla cerrado.
+    pid_existente = proceso_con_archivo_abierto(pbix)
+    if pid_existente:
+        if not reuse_open:
+            raise ValidationError(
+                "El archivo ya esta abierto en Power BI Desktop y no se puede "
+                "forzar otra sesion sin arriesgar la ventana existente.",
+                details={"path": str(pbix), "pid": pid_existente,
+                         "reason": "desktop_file_already_open"},
+            )
+        if reuse_open:
             instancia = _instancia_de_proceso(pid_existente)
             if instancia:
                 log.info("El .pbix ya estaba abierto en Desktop (pid %s, puerto %s)",

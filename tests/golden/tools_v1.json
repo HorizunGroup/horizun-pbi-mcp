@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 116,
+  "tool_count": 117,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -3588,6 +3588,43 @@
         "width",
         "x",
         "y"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "name": "pbi_validate_desktop_render",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
+      "params": {
+        "capture_timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 30
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        }
+      },
+      "required": [
+        "path"
       ],
       "output_shape": {
         "type": "object",

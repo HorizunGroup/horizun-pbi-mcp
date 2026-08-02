@@ -142,6 +142,7 @@ THEME_TOOLS = [
 VERIFICACION_TOOLS = [
     "pbi_validate_tmdl",
     "pbi_open_in_desktop",
+    "pbi_validate_desktop_render",
 ]
 
 #: Carga de datos: abrir el archivo, transformarlo y cargarlo, como en la UI.

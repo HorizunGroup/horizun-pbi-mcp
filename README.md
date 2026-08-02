@@ -2,7 +2,7 @@
 
 Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop local** y con proyectos **`.pbip`** desde Claude Code.
 
-**v1.0.0-rc.11** — 116 tools, 1262 pruebas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
+**v1.0.0-rc.11** — 117 tools, más de 1500 pruebas (3 omitidas, con su condición documentada). Cubre dos capas complementarias:
 
 | Capa | Para qué | Cómo |
 |---|---|---|
@@ -22,7 +22,7 @@ Servidor **MCP** (Model Context Protocol) para trabajar con **Power BI Desktop l
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Arquitectura actual, deuda estructural e invariantes |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Convivencia con otros MCP de Power BI, con niveles de verificación |
 | [`AGENTS.md`](AGENTS.md) | Reglas para modificar este repositorio sin romper el contrato |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 116 tools por bloque, con su clase de riesgo |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | Las 117 tools por bloque, con su clase de riesgo |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Por qué `mode="both"` está bloqueado (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | Las dos capas de validación PBIR y sus límites |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | Qué se comprueba antes de publicar |
@@ -92,7 +92,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Al abrir la primera sesión, el plugin ejecuta toda la preparación en segundo
 plano automáticamente. Consulta `pbi_install_status`; cuando termine, reinicia
-el cliente y quedarán disponibles las 116 tools `pbi_*`. No hay descargas ni
+el cliente y quedarán disponibles las 117 tools `pbi_*`. No hay descargas ni
 scripts adicionales que el usuario deba ejecutar manualmente.
 
 > **Límite técnico honesto:** no hay ejecutable propio, pero sí necesitas
@@ -190,7 +190,7 @@ Sale con código **0** si todo lo obligatorio está bien. Distingue dependencia 
 
 ---
 
-## Tools disponibles (93)
+## Tools disponibles (117)
 
 > Catálogo completo por bloque: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Inventario del baseline con clase de riesgo y precondiciones: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -202,6 +202,7 @@ Sale con código **0** si todo lo obligatorio está bien. Distingue dependencia 
 - `pbi_run_dax` — ejecuta DAX (`query`, `max_rows`).
 - `pbi_test_connection` — valida la conexión activa.
 - `pbi_validate_measures` — valida DAX de medidas SIN modificar el modelo (dry-run con `DEFINE MEASURE`); útil antes de crearlas.
+- `pbi_validate_desktop_render` — abre un `.pbix`/`.pbip`, captura la ventana exacta por PID sin depender del foco y solo cierra Desktop si lo abrió la propia tool.
 
 **Documentación (Fase 3)**
 - `pbi_list_tables`, `pbi_list_measures`, `pbi_list_relationships` — con `source: live|pbip`.
@@ -358,7 +359,7 @@ python -m pytest -m live                # contra Power BI Desktop abierto
 python -m pytest -m live_validator      # contra el CLI oficial de Microsoft
 ```
 
-Verificar el contrato MCP (las 116 tools están congeladas):
+Verificar el contrato MCP (las 117 tools están congeladas):
 
 ```bash
 python -m tests.contract_utils

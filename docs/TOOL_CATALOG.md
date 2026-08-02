@@ -1,4 +1,4 @@
-# Catálogo de tools — 116
+# Catálogo de tools — 117
 
 Generado sobre el contrato congelado en `tests/golden/tools_v1.json`.
 Las **34 del baseline** conservan nombre, parámetros, tipos, defaults y forma de respuesta desde la versión 0.1.0.
@@ -23,10 +23,10 @@ tools registradas.
 | F R5 — atomicidad | 2 |
 | G — conversión `.pbix` | 3 |
 | H — composición, tema y marcadores | 7 |
-| I — verificación antes de entregar | 2 |
+| I — verificación antes de entregar | 3 |
 | J — carga de datos | 2 |
 | L — diseño y punto de entrada | 4 |
-| **Total** | **116** |
+| **Total** | **117** |
 
 ---
 
@@ -40,6 +40,7 @@ tools registradas.
 | `pbi_list_desktop_models` | Instancias de Power BI Desktop abiertas |
 | `pbi_select_model` | Fija el modelo activo (exige puerto si hay varias) |
 | `pbi_test_connection` | Valida la conexión |
+| `pbi_validate_desktop_render` | Captura la ventana exacta del informe por PID, sin foco; solo cierra Desktop si lo abrió la tool |
 | `pbi_list_pending_journals` | Journals de operaciones que quedaron a medias |
 | `pbi_inspect_journal` | Compara un journal con el estado actual (solo lectura) |
 
