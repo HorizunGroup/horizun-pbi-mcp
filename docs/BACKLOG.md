@@ -94,6 +94,14 @@ Si el proyecto recién generado no tiene datos materializados, todavía hay que
 refrescarlo. La tool captura la página visible; recorrer todas las páginas y
 clasificar defectos de composición sigue pendiente.
 
+Durante esta revisión apareció un caso real que antes terminaba en un Frown de
+Desktop: `Vista_Obra` tenía las medidas `Ejecutado` y `Programado` con el mismo
+nombre que sus columnas. El parser TMDL lo aceptaba, pero Power BI rechazaba el
+modelo al cargarlo. El launcher ahora ejecuta el lint/TOM antes de abrir la
+ventana y devuelve `desktop_preflight_failed` con las dos reglas y su evidencia;
+no deja un proceso `Sin título` colgado. La regresión está en
+`tests/test_desktop_preflight.py`.
+
 **Qué haría falta:** navegación determinista por todas las páginas y un oráculo
 de imagen/layout que pueda emitir diagnósticos concretos, sin confundir una
 diferencia legítima de datos o tema con un defecto.

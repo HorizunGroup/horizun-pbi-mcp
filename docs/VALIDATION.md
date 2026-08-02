@@ -76,6 +76,12 @@ visualmente buena. Para comprobar que Desktop renderiza el archivo existe
 `pbi_validate_desktop_render`; la evaluación estética/semántica de la captura
 sigue siendo una capa distinta.
 
+Antes de abrir un `.pbip`, `desktop_launcher` ejecuta además el validador TMDL.
+Si encuentra errores estáticos o de `TmdlSerializer`, devuelve
+`desktop_preflight_failed` con los hallazgos y no lanza Desktop. Esto evita que
+un proyecto antiguo termine en una ventana `Sin título` con un Frown genérico;
+por ejemplo, detecta una medida que colisiona con una columna de la misma tabla.
+
 ---
 
 ## Diagnósticos preexistentes
