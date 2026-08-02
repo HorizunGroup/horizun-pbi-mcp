@@ -50,7 +50,7 @@ def new_id() -> str:
 
 
 # GUID del visual "HTML Content" (dm-p, AppSource). Renderiza HTML/SVG desde una medida.
-HTML_CONTENT_GUID = "htmlContent443BE3AD55E043BF878BED274D3A6865"
+HTML_CONTENT_GUID = "htmlContent443BE3AD55E043BF878BED274D3A6855"
 
 
 def _report_json_path(active: ActivePbip) -> Path:

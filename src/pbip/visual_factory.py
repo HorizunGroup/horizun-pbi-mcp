@@ -23,7 +23,7 @@ from utils.json_utils import read_json
 log = get_logger("visual_factory")
 
 # GUID del custom visual "HTML Content" (renderiza HTML/SVG desde una medida DAX).
-HTML_CONTENT_TYPE = "htmlContent443BE3AD55E043BF878BED274D3A6865"
+HTML_CONTENT_TYPE = "htmlContent443BE3AD55E043BF878BED274D3A6855"
 
 # Nombre amigable -> visualType real de PBIR
 # visualTypes reales de PBIR que sabemos construir. Se escriben con las
