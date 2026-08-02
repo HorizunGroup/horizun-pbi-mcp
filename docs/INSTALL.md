@@ -1,9 +1,9 @@
-# Instalación y registro de Horizun PBI MCP
+# Installing and registering Horizun PBI MCP
 
-## Plugin directo para Codex y Claude Code
+## Direct plugin for Codex and Claude Code
 
-Esta es la vía recomendada para usuarios finales. No requiere un instalador
-ejecutable propio ni editar archivos MCP a mano:
+This is the recommended path for end users. It doesn't require a dedicated
+executable installer or hand-editing MCP files:
 
 ```bash
 # Codex
@@ -15,32 +15,32 @@ claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
 claude plugin install horizun-pbi-mcp@horizun
 ```
 
-La preparación empieza automáticamente en la primera sesión. Mientras avanza
-verás `pbi_install_runtime` y `pbi_install_status`; tras reiniciar el cliente
-aparecerán las 112 tools. No hay que descargar ni ejecutar nada por separado. El
-runtime y las descargas verificadas quedan en datos locales del plugin, fuera
-del repositorio y de tus proyectos.
+Setup starts automatically on the first session. While it progresses
+you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
+the client the 112 tools will appear. Nothing needs to be downloaded or run
+separately. The runtime and verified downloads stay in the plugin's local
+data, outside the repository and your projects.
 
-Python 3.10+ sigue siendo un requisito: es el proceso local que permite hablar
-con Power BI Desktop. Node 20 solo es necesario para el validador PBIR opcional.
+Python 3.10+ is still a requirement: it's the local process that talks to
+Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 
-Guía reproducible desde cero. Al final, un cliente MCP debe ver 112 tools `pbi_*`.
+Reproducible guide from scratch. At the end, an MCP client should see 112 `pbi_*` tools.
 
 ---
 
-## 1. Requisitos
+## 1. Requirements
 
-| Requisito | Por qué | Obligatorio |
+| Requirement | Why | Mandatory |
 |---|---|---|
-| **Windows** | Power BI Desktop sólo existe en Windows | Para la capa EN VIVO. La capa EN DISCO (`.pbip`) funciona en cualquier SO |
-| **Python ≥ 3.10** | Probado en 3.14.3 | Sí |
-| **.NET Framework 4.x** | Lo usa `pythonnet` (runtime `netfx`) | Para la capa EN VIVO |
-| **Power BI Desktop** | Levanta el motor local `msmdsrv.exe` | Para la capa EN VIVO |
-| **DLLs de Analysis Services** | ADOMD.NET + TOM. Se vendorizan en `libs/`, sin admin ni GAC | Sí |
+| **Windows** | Power BI Desktop only exists on Windows | For the LIVE layer. The ON-DISK layer (`.pbip`) works on any OS |
+| **Python ≥ 3.10** | Tested on 3.14.3 | Yes |
+| **.NET Framework 4.x** | Used by `pythonnet` (`netfx` runtime) | For the LIVE layer |
+| **Power BI Desktop** | Runs the local `msmdsrv.exe` engine | For the LIVE layer |
+| **Analysis Services DLLs** | ADOMD.NET + TOM. Vendored into `libs/`, no admin or GAC | Yes |
 
 ---
 
-## 2. Instalación
+## 2. Installation
 
 ```bash
 python -m pip install -r requirements.txt
@@ -50,41 +50,41 @@ python -m pip install -r requirements.txt
 python scripts/fetch_libs.py
 ```
 
-El segundo comando descarga las DLLs de Analysis Services a `libs/`. No requiere permisos de administrador y no toca el GAC.
+The second command downloads the Analysis Services DLLs to `libs/`. It doesn't require administrator permissions and doesn't touch the GAC.
 
-### Comprobar antes de registrar nada
+### Check before registering anything
 
 ```bash
 python scripts/doctor.py
 ```
 
-Debe terminar con `RESULTADO: instalacion operativa` y **código de salida 0**. Si algo obligatorio falla, el diagnóstico dice exactamente qué y cómo arreglarlo.
+Must end with `RESULTADO: instalacion operativa` and **exit code 0**. If something mandatory fails, the diagnostic says exactly what and how to fix it.
 
 ---
 
-## 3. Registro por cliente
+## 3. Registration per client
 
-No hay una forma portable común: cada cliente resuelve las variables, el directorio de trabajo y el intérprete de Python a su manera. Por eso el generador emite **rutas absolutas ya resueltas** en tu máquina.
+There's no common portable way: each client resolves variables, the working directory and the Python interpreter its own way. That's why the generator emits **already-resolved absolute paths** on your machine.
 
 ```bash
 python scripts/make_mcp_config.py --client all
 ```
 
-Imprime el fragmento correcto para cada cliente. **No modifica ninguna configuración global**: los ficheros globales se pegan a mano, a propósito.
+Prints the correct snippet for each client. **It doesn't modify any global configuration**: global files are pasted in by hand, on purpose.
 
-### Comparativa
+### Comparison
 
-| | Claude Code | Claude Desktop | Codex | stdio genérico |
+| | Claude Code | Claude Desktop | Codex | generic stdio |
 |---|---|---|---|---|
-| **Archivo** | `.mcp.json` del proyecto, o `~/.claude.json` | `%APPDATA%\Claude\claude_desktop_config.json` | `~/.codex/config.toml` | el de tu cliente |
-| **Formato** | JSON | JSON | **TOML** | JSON habitual |
-| **¿Expande `${VAR}`?** | Sí | **No lo asumas** | **No lo asumas** | Desconocido |
-| **Directorio de trabajo** | Hereda el de Claude Code | No configurable | Hereda el del proceso | Variable |
-| **¿Busca Python?** | No: usa `command` literal | No | No | No |
-| **Variables de entorno** | objeto `env` | objeto `env` | tabla `[mcp_servers.x.env]` | según cliente |
-| **Comprobación** | `/mcp` | reiniciar y mirar el panel | reiniciar y listar | `scripts/doctor.py` |
+| **File** | project's `.mcp.json`, or `~/.claude.json` | `%APPDATA%\Claude\claude_desktop_config.json` | `~/.codex/config.toml` | your client's |
+| **Format** | JSON | JSON | **TOML** | usual JSON |
+| **Expands `${VAR}`?** | Yes | **Don't assume it** | **Don't assume it** | Unknown |
+| **Working directory** | Inherits Claude Code's | Not configurable | Inherits the process's | Varies |
+| **Looks up Python?** | No: uses literal `command` | No | No | No |
+| **Environment variables** | `env` object | `env` object | `[mcp_servers.x.env]` table | depends on client |
+| **Check** | `/mcp` | restart and check the panel | restart and list | `scripts/doctor.py` |
 
-> **Por qué no se usa `${PBI_MCP_HOME}` en las plantillas.** Sólo un cliente de los cuatro garantiza expandirlo. Una plantilla que funciona en uno y falla en silencio en los otros tres es peor que una ruta absoluta explícita. Si tu cliente sí expande variables, puedes sustituirlas después: el servidor no depende de ninguna.
+> **Why `${PBI_MCP_HOME}` isn't used in the templates.** Only one of the four clients guarantees expanding it. A template that works on one and silently fails on the other three is worse than an explicit absolute path. If your client does expand variables, you can substitute them afterward: the server doesn't depend on any of them.
 
 ### Claude Code
 
@@ -92,7 +92,7 @@ Imprime el fragmento correcto para cada cliente. **No modifica ninguna configura
 python scripts/make_mcp_config.py --client claude-code --write
 ```
 
-Crea `.mcp.json` **dentro de este repositorio** (está en `.gitignore`: es tu configuración local). Reinicia Claude Code en esta carpeta y verifica con `/mcp`.
+Creates `.mcp.json` **inside this repository** (it's in `.gitignore`: it's your local configuration). Restart Claude Code in this folder and verify with `/mcp`.
 
 ### Claude Desktop
 
@@ -100,15 +100,15 @@ Crea `.mcp.json` **dentro de este repositorio** (está en `.gitignore`: es tu co
 python scripts/make_mcp_config.py --client claude-desktop
 ```
 
-Copia el bloque `mcpServers` a `%APPDATA%\Claude\claude_desktop_config.json` y reinicia la aplicación. Si usas un entorno virtual, apunta al `python.exe` **de ese venv**.
+Copy the `mcpServers` block to `%APPDATA%\Claude\claude_desktop_config.json` and restart the application. If you use a virtual environment, point to the `python.exe` **of that venv**.
 
 ### Codex
 
-Dos métodos oficiales. **El primero es el recomendado.**
+Two official methods. **The first is recommended.**
 
-#### Método 1 — `codex mcp add` con el paquete instalado
+#### Method 1 — `codex mcp add` with the installed package
 
-Instala el paquete (crea el ejecutable `horizun-pbi-mcp` en el `PATH`) y regístralo con el CLI de Codex:
+Install the package (creates the `horizun-pbi-mcp` executable on the `PATH`) and register it with the Codex CLI:
 
 ```bash
 python -m pip install horizun-pbi-mcp
@@ -122,48 +122,48 @@ codex mcp add horizun-pbi-mcp -- horizun-pbi-mcp
 codex mcp list
 ```
 
-Ventaja: no hay ninguna ruta absoluta que mantener. Si mueves el repositorio o cambias de intérprete, sigue funcionando.
+Advantage: there's no absolute path to maintain. If you move the repository or change interpreters, it keeps working.
 
-> Si usas un entorno virtual, actívalo **antes** de `pip install` y de `codex mcp add`: el ejecutable se crea dentro de ese venv, y Codex lanzará el que encuentre en el `PATH`.
+> If you use a virtual environment, activate it **before** `pip install` and `codex mcp add`: the executable is created inside that venv, and Codex will launch whichever it finds on the `PATH`.
 
-Para pasar variables de entorno:
+To pass environment variables:
 
 ```bash
 codex mcp add horizun-pbi-mcp --env HORIZUN_PBI_MCP_LOG_LEVEL=INFO -- horizun-pbi-mcp
 ```
 
-#### Método 2 — `~/.codex/config.toml` a mano
+#### Method 2 — `~/.codex/config.toml` by hand
 
-Útil si trabajas desde el repositorio sin instalar el paquete:
+Useful if you work from the repository without installing the package:
 
 ```bash
 python scripts/make_mcp_config.py --client codex
 ```
 
-Pega la sección TOML resultante en `~/.codex/config.toml`. Es **TOML**, no JSON:
+Paste the resulting TOML section into `~/.codex/config.toml`. It's **TOML**, not JSON:
 
 ```toml
 [mcp_servers.horizun-pbi-mcp]
-command = "C:/ruta/a/python.exe"
-args = ["C:/ruta/al/repositorio/src/server.py"]
+command = "C:/path/to/python.exe"
+args = ["C:/path/to/repository/src/server.py"]
 
 [mcp_servers.horizun-pbi-mcp.env]
 HORIZUN_PBI_MCP_LOG_LEVEL = "INFO"
 ```
 
-Ambas rutas deben ser **absolutas**: Codex no expande `${VAR}` ni busca el intérprete por ti.
+Both paths must be **absolute**: Codex doesn't expand `${VAR}` nor look up the interpreter for you.
 
-#### Comprobar
+#### Check
 
 ```bash
 codex mcp list
 ```
 
-Debe aparecer `horizun-pbi-mcp`. Si no, revisa que `horizun-pbi-mcp --help` funcione en la misma terminal desde la que lanzas Codex.
+`horizun-pbi-mcp` should appear. If not, check that `horizun-pbi-mcp --help` works in the same terminal you launch Codex from.
 
 ---
 
-## 4. Verificación end-to-end
+## 4. End-to-end verification
 
 ```bash
 python -m pytest -q
@@ -173,9 +173,9 @@ python -m pytest -q
 python scripts/doctor.py --check-dax --check-pbip "tests/fixtures/synthetic/minimal/Demo.pbip"
 ```
 
-`--check-dax` ejecuta `EVALUATE ROW("ok", 1, "probe", "doctor")` contra el modelo abierto: estrictamente de solo lectura. `--check-pbip` abre y valida un `.pbip` sin escribir nada en él.
+`--check-dax` runs `EVALUATE ROW("ok", 1, "probe", "doctor")` against the open model: strictly read-only. `--check-pbip` opens and validates a `.pbip` without writing anything to it.
 
-Si Power BI Desktop no está abierto, el diagnóstico base **no falla**: marca esas comprobaciones como omitidas. Para exigir Desktop:
+If Power BI Desktop isn't open, the base diagnostic **doesn't fail**: it marks those checks as skipped. To require Desktop:
 
 ```bash
 python scripts/doctor.py --require-desktop
@@ -183,40 +183,40 @@ python scripts/doctor.py --require-desktop
 
 ---
 
-## 5. Variables de entorno
+## 5. Environment variables
 
-Todas opcionales. Ver `.env.example`.
+All optional. See `.env.example`.
 
-| Variable | Defecto | Para qué |
+| Variable | Default | For what |
 |---|---|---|
-| `HORIZUN_PBI_MCP_LIBS_DIR` | `./libs` | Dónde están las DLLs |
-| `HORIZUN_PBI_MCP_DOTNET_RUNTIME` | `netfx` | `netfx` o `coreclr` |
-| `HORIZUN_PBI_MCP_MAX_ROWS` | `1000` | Límite de filas en DAX |
-| `HORIZUN_PBI_MCP_COMMAND_TIMEOUT` | `120` | Timeout de comandos (s) |
-| `HORIZUN_PBI_MCP_OUTPUTS_DIR` | `./outputs` | Documentación y `change_log.md` |
-| `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | Backups. **Apunta siempre fuera del `.pbip`** |
+| `HORIZUN_PBI_MCP_LIBS_DIR` | `./libs` | Where the DLLs are |
+| `HORIZUN_PBI_MCP_DOTNET_RUNTIME` | `netfx` | `netfx` or `coreclr` |
+| `HORIZUN_PBI_MCP_MAX_ROWS` | `1000` | Row limit in DAX |
+| `HORIZUN_PBI_MCP_COMMAND_TIMEOUT` | `120` | Command timeout (s) |
+| `HORIZUN_PBI_MCP_OUTPUTS_DIR` | `./outputs` | Documentation and `change_log.md` |
+| `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | Backups. **Always point it outside the `.pbip`** |
 | `HORIZUN_PBI_MCP_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
-| `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` a abrir al arrancar |
+| `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` to open on startup |
 
 ---
 
-## 6. Problemas frecuentes
+## 6. Common issues
 
-| Síntoma | Causa | Solución |
+| Symptom | Cause | Solution |
 |---|---|---|
-| `No se detecto ningun modelo` | Desktop cerrado, o puerto cambiado | El puerto cambia en cada arranque; se descubre solo. Abre el informe |
-| `adomd_not_installed` / `tom_not_installed` | Faltan DLLs | `python scripts/fetch_libs.py` |
-| `clr_not_available` | Falta .NET | Prueba `PBI_MCP_DOTNET_RUNTIME=coreclr` |
-| `pbir_not_enabled` | El informe no está en PBIR | Guarda como `.pbip` con formato de reporte mejorado |
-| Los cambios de visuales no aparecen | PBIR se carga al abrir | Cierra y reabre Desktop |
-| Se perdieron cambios del informe | Desktop estaba abierto y guardó encima | Edita el PBIR **con Desktop cerrado**. Los backups están en `backups/` |
-| El servidor arranca pero el cliente no lo ve | Ruta o intérprete mal en la config | `python scripts/make_mcp_config.py --client <tu-cliente>` y vuelve a pegar |
-| Sesión apuntando a un puerto muerto | `outputs/session.json` obsoleto | `python scripts/doctor.py` lo detecta; borra el fichero o reselecciona |
+| `No se detecto ningun modelo` | Desktop closed, or port changed | The port changes on every startup; it's discovered automatically. Open the report |
+| `adomd_not_installed` / `tom_not_installed` | Missing DLLs | `python scripts/fetch_libs.py` |
+| `clr_not_available` | .NET missing | Try `PBI_MCP_DOTNET_RUNTIME=coreclr` |
+| `pbir_not_enabled` | The report isn't in PBIR | Save as `.pbip` with the enhanced report format |
+| Visual changes don't show up | PBIR loads on open | Close and reopen Desktop |
+| Report changes were lost | Desktop was open and saved over them | Edit the PBIR **with Desktop closed**. Backups are in `backups/` |
+| Server starts but the client doesn't see it | Wrong path or interpreter in the config | `python scripts/make_mcp_config.py --client <your-client>` and paste again |
+| Session pointing to a dead port | Stale `outputs/session.json` | `python scripts/doctor.py` detects it; delete the file or reselect |
 
 ---
 
-## 7. Convivencia con otros MCP de Power BI
+## 7. Coexistence with other Power BI MCPs
 
-Los prefijos no chocan (`pbi_*` vs `pbir_*`), así que se pueden registrar varios servidores a la vez.
+Prefixes don't clash (`pbi_*` vs `pbir_*`), so several servers can be registered at once.
 
-**Cuidado:** dos servidores escribiendo el mismo `.pbip` no se coordinan entre sí. Hasta que la Fase 1 añada bloqueo y detección de cambios externos, usa uno solo por proyecto a la vez. Ver [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).
+**Caution:** two servers writing to the same `.pbip` don't coordinate with each other. Until Phase 1 adds locking and external-change detection, use only one per project at a time. See [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).

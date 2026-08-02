@@ -1,169 +1,170 @@
-# Validación PBIR: dos capas, un oráculo de formato y sus límites
+# PBIR validation: two layers, a format oracle, and their limits
 
-Antes de escribir un archivo del informe, Horizun PBI MCP lo valida en **dos capas independientes**. Ninguna sustituye a la otra, y ninguna promete más de lo que comprueba.
+Before writing a report file, Horizun PBI MCP validates it in **two independent layers**. Neither replaces the other, and neither promises more than it checks.
 
-Para las propiedades que el propio servidor añade a `visual.objects`, una
-tercera barrera específica compara además la estructura con el catálogo de
-formato y con formas que Power BI Desktop exportó realmente.
+For the properties the server itself adds to `visual.objects`, a
+third, specific barrier also compares the structure against the format
+catalog and against shapes Power BI Desktop actually exported.
 
 ---
 
-## Capa 1 — validador interno por esquema
+## Layer 1 — internal schema validator
 
-`services/pbir_schema.py`. Valida **cada documento por separado** contra el JSON Schema **oficial** que el propio archivo declara en `$schema`.
+`services/pbir_schema.py`. Validates **each document separately** against the **official** JSON Schema the file itself declares in `$schema`.
 
-- Los esquemas son las **copias oficiales exactas** de `developer.microsoft.com`, con su cierre transitivo de `$ref` (22 documentos: `semanticQuery`, `filterConfiguration`, `formattingObjectDefinitions`, `visualConfiguration`…).
-- Cada uno tiene su **SHA-256 fijado** en `src/services/schemas/pbir_manifest.json`.
-- La validación la hace **`jsonschema`**, con el draft que declara cada documento (draft-07).
-- Las referencias se resuelven contra un `referencing.Registry` construido **solo** con el manifiesto: allowlist, **cero acceso a red**, cero resolución de URLs arbitrarias.
+- The schemas are **exact official copies** from `developer.microsoft.com`, with their transitive `$ref` closure (22 documents: `semanticQuery`, `filterConfiguration`, `formattingObjectDefinitions`, `visualConfiguration`…).
+- Each one has its **SHA-256 pinned** in `src/services/schemas/pbir_manifest.json`.
+- Validation is done by **`jsonschema`**, with the draft each document declares (draft-07).
+- References are resolved against a `referencing.Registry` built **only** from the manifest: allowlist, **zero network access**, zero resolution of arbitrary URLs.
 
-**No se redistribuyen.** No declaran licencia ni permiso, así que se instalan aparte:
+**Not redistributed.** They don't declare a license or permission, so they're installed separately:
 
 ```bash
 python scripts/fetch_pbir_schemas.py
 ```
 
-**Sin esa caché, toda escritura PBIR falla con `schema_unavailable`.** No se degrada a "solo compruebo que sea JSON".
+**Without that cache, every PBIR write fails with `schema_unavailable`.** It doesn't degrade to "just check it's JSON".
 
-### Qué NO puede ver
+### What it CANNOT see
 
-Documentos sueltos. No ve nada que dependa de mirar el informe entero: si un objeto de formato existe para ese tipo de visual, si una columna ocupa un rol que solo admite medidas, si el nombre de un tema cuadra con el que referencia `report.json`.
+Standalone documents. It sees nothing that depends on looking at the whole report: whether a format object exists for that visual type, whether a column occupies a role that only accepts measures, whether a theme's name matches the one `report.json` references.
 
 ---
 
-## Capa 2 — validador oficial de Microsoft
+## Layer 2 — Microsoft's official validator
 
-`services/report_validator.py`. Ejecuta el CLI oficial sobre el `.Report` **completo**, después de escribir el lote y **antes de confirmar**.
+`services/report_validator.py`. Runs the official CLI over the **entire** `.Report`, after writing the batch and **before committing**.
 
 ```bash
-python scripts/fetch_report_validator.py     # requiere Node >= 20
+python scripts/fetch_report_validator.py     # requires Node >= 20
 ```
 
-Paquete: `@microsoft/powerbi-report-authoring-cli@0.1.4` (MIT, Microsoft Corporation), versión exacta, tarball verificado por SHA-1 e integrity SHA-512 antes de instalar. **Ninguna operación normal ejecuta `npx` ni descarga `@latest`.**
+Package: `@microsoft/powerbi-report-authoring-cli@0.1.4` (MIT, Microsoft Corporation), exact version, tarball verified by SHA-1 and SHA-512 integrity before installing. **No normal operation runs `npx` or downloads `@latest`.**
 
-Encuentra lo que la capa 1 no puede. Sobre un informe real de referencia: **44 errores y 12 avisos**.
+It finds what layer 1 can't. On a real reference report: **44 errors and 12 warnings**.
 
-| Diagnóstico | Qué detecta |
+| Diagnostic | What it detects |
 |---|---|
-| `PBIR_FORMATTING_OBJECT_UNKNOWN` | Objeto de formato que no existe para ese tipo de visual |
-| `PBIR_ROLE_KIND_MISMATCH` | Columna en un rol que solo admite medidas |
-| `PBIR_THEME_FILE_NAME_MISMATCH` | El tema declara un nombre distinto del que referencia `report.json` |
-| `PBIR_VISUAL_TYPE_UNKNOWN` | Visual personalizado no reconocido |
-| `PBIR_VISUAL_DIR_WITHOUT_JSON` | Carpeta de visual sin su `visual.json` |
+| `PBIR_FORMATTING_OBJECT_UNKNOWN` | A format object that doesn't exist for that visual type |
+| `PBIR_ROLE_KIND_MISMATCH` | A column in a role that only accepts measures |
+| `PBIR_THEME_FILE_NAME_MISMATCH` | The theme declares a different name than what `report.json` references |
+| `PBIR_VISUAL_TYPE_UNKNOWN` | Unrecognized custom visual |
+| `PBIR_VISUAL_DIR_WITHOUT_JSON` | Visual folder without its `visual.json` |
 
-Se invoca **siempre con `--no-schema`**: por defecto el CLI descarga esquemas por red, y una mutación no puede depender de eso. Medido: en ese modo conserva los 44 errores semánticos y solo pierde el aviso de esquema inalcanzable, que ya cubre la capa 1.
+It's always invoked with **`--no-schema`**: by default the CLI downloads schemas over the network, and a mutation can't depend on that. Measured: in that mode it keeps the 44 semantic errors and only loses the unreachable-schema warning, which layer 1 already covers.
 
-**El código de salida del CLI es 0 incluso cuando falla.** Manda el recuento de diagnósticos, no el exit code.
-
----
-
-## Oráculo de las rutas de formato administradas
-
-`services/format_oracle.py` consulta `formatting effective-properties` del CLI
-fijado y valida las rutas `(scope, group, property)` del visual completo,
-incluidas las heredadas de una plantilla, con su tipo de valor y sus enums. Un
-snapshot mínimo permite la misma barrera offline para las rutas administradas y
-una prueba viva comprueba que no se separe del catálogo oficial.
-
-El fixture sintético `format_objects_corpus.json` añade evidencia independiente
-de visuales exportados por Desktop: conserva solo claves estructurales y tokens
-de tipo. No contiene datos, identificadores, nombres, rutas ni conteos de los
-informes de origen.
-
-Sin el CLI oficial no se finge equivalencia completa; se conserva la barrera
-estructural local. El oráculo tampoco afirma que una estructura válida produzca
-una composición visualmente buena. Para comprobar que Desktop renderiza el archivo existe
-`pbi_validate_desktop_render`; la evaluación estética/semántica de la captura
-sigue siendo una capa distinta.
-
-Antes de abrir un `.pbip`, `desktop_launcher` ejecuta además el validador TMDL.
-Si encuentra errores estáticos o de `TmdlSerializer`, devuelve
-`desktop_preflight_failed` con los hallazgos y no lanza Desktop. Esto evita que
-un proyecto antiguo termine en una ventana `Sin título` con un Frown genérico;
-por ejemplo, detecta una medida que colisiona con una columna de la misma tabla.
-También bloquea un modelo semántico sin tablas (`tmdl_empty_model`), que de otro
-modo solo produciría un timeout esperando un motor que nunca llega a servir.
+**The CLI's exit code is 0 even when it fails.** It reports the diagnostic count, not the exit code.
 
 ---
 
-## Diagnósticos preexistentes
+## Oracle for managed format paths
 
-Un informe puede traer defectos propios. El de referencia trae 44. Atribuirlos a nuestra operación sería falso; ignorar los nuevos, peligroso.
+`services/format_oracle.py` queries `formatting effective-properties` from the
+pinned CLI and validates the visual's full `(scope, group, property)` paths,
+including those inherited from a template, with their value type and enums. A
+minimal snapshot enables the same offline barrier for the managed paths, and
+a live test checks it doesn't drift from the official catalog.
 
-El **baseline se toma antes de escribir**. Después se comparan diagnósticos **normalizados**: código, severidad, archivo relativo y ruta JSON. **Nunca el mensaje humano** — lleva rutas absolutas y texto variable.
+The synthetic fixture `format_objects_corpus.json` adds independent evidence
+from visuals exported by Desktop: it keeps only structural keys and type
+tokens. It contains no data, identifiers, names, paths or counts from the
+source reports.
 
-| Situación | Resultado |
+Without the official CLI, full equivalence isn't feigned; the local
+structural barrier is kept. The oracle also doesn't claim that a valid
+structure produces a visually good composition. To check that Desktop
+renders the file there's `pbi_validate_desktop_render`; the aesthetic/semantic
+evaluation of the capture remains a separate layer.
+
+Before opening a `.pbip`, `desktop_launcher` also runs the TMDL validator.
+If it finds static or `TmdlSerializer` errors, it returns
+`desktop_preflight_failed` with the findings and doesn't launch Desktop. This
+prevents an old project from ending up in an `Untitled` window with a
+generic Frown; for example, it detects a measure that collides with a column
+in the same table. It also blocks a semantic model with no tables
+(`tmdl_empty_model`), which would otherwise just produce a timeout waiting
+for an engine that never gets to serve.
+
+---
+
+## Pre-existing diagnostics
+
+A report can carry its own defects. The reference one carries 44. Attributing them to our operation would be false; ignoring the new ones, dangerous.
+
+The **baseline is taken before writing**. Afterward, **normalized** diagnostics are compared: code, severity, relative file and JSON path. **Never the human message** — it carries absolute paths and variable text.
+
+| Situation | Result |
 |---|---|
-| Error nuevo | **Bloquea** y revierte |
-| Más errores que antes | **Bloquea** |
-| El mismo error, en otro archivo o ruta | **Bloquea** |
-| Errores preexistentes idénticos | No se atribuyen a la operación |
-| Aviso nuevo | No bloquea |
-| Se resuelve un error preexistente | No bloquea |
+| New error | **Blocks** and reverts |
+| More errors than before | **Blocks** |
+| Same error, in a different file or path | **Blocks** |
+| Identical pre-existing errors | Not attributed to the operation |
+| New warning | Doesn't block |
+| A pre-existing error gets resolved | Doesn't block |
 
-Los preexistentes **no se corrigen automáticamente**, nunca.
+Pre-existing ones are **never fixed automatically**.
 
 ---
 
-## Selección de backend
+## Backend selection
 
-| Capa 1 | Capa 2 | Comportamiento |
+| Layer 1 | Layer 2 | Behavior |
 |---|---|---|
-| disponible | disponible | Ambas. `validation_level = official_schema+report` |
-| disponible | ausente | Solo esquema. `validation_level = official_schema` |
-| no disponible | — | **Bloquea** con `schema_unavailable` |
+| available | available | Both. `validation_level = official_schema+report` |
+| available | absent | Schema only. `validation_level = official_schema` |
+| not available | — | **Blocks** with `schema_unavailable` |
 
-En ningún caso se cae a "solo JSON parseable".
+In no case does it fall back to "just parseable JSON".
 
 ---
 
-## El límite conocido: esquemas que Microsoft no publica
+## The known limit: schemas Microsoft doesn't publish
 
-Power BI Desktop escribe `visualContainer/2.10.0` en informes recientes. **Esa URL devuelve 404** en el origen oficial. Igual con `bookmarks/2.0.0`.
+Power BI Desktop writes `visualContainer/2.10.0` in recent reports. **That URL returns 404** at the official source. Same with `bookmarks/2.0.0`.
 
-**El CLI oficial tampoco puede validarlos**: los descarga de la misma URL y emite `PBIR_SCHEMA_UNREACHABLE`, saltándose la validación de esquema de esos archivos.
+**The official CLI can't validate them either**: it downloads them from the same URL and emits `PBIR_SCHEMA_UNREACHABLE`, skipping schema validation for those files.
 
-Es una incompatibilidad **upstream**, no de este servidor.
+It's an **upstream** incompatibility, not this server's.
 
-**Consecuencia práctica:** las escrituras sobre archivos que declaren esos esquemas se bloquean con `schema_unavailable` y `rule=no_publicado_upstream`.
+**Practical consequence:** writes on files declaring those schemas are blocked with `schema_unavailable` and `rule=no_publicado_upstream`.
 
-Se optó por bloquear, no por adivinar. Validar 2.10.0 contra 2.7.0 daría falsos negativos —`additionalProperties: false` rechazaría propiedades nuevas legítimas— y falsos positivos en lo que 2.10.0 haya relajado.
+Blocking was chosen over guessing. Validating 2.10.0 against 2.7.0 would give false negatives —`additionalProperties: false` would reject legitimate new properties— and false positives on whatever 2.10.0 may have relaxed.
 
-Medido sobre un informe real de 443 documentos:
+Measured on a real 443-document report:
 
 | | |
 |---|---|
-| Se validan | **176** |
-| Bloqueados por esquema no publicado | **240** |
-| Fuera de ámbito (`CustomVisuals/`, `StaticResources/`) | 25 |
-| Incumplen de verdad | 2 |
+| Validate | **176** |
+| Blocked for unpublished schema | **240** |
+| Out of scope (`CustomVisuals/`, `StaticResources/`) | 25 |
+| Genuinely non-compliant | 2 |
 
-**G10 queda como excepción de release documentada.**
+**G10 remains a documented release exception.**
 
 ---
 
-## Códigos de error
+## Error codes
 
-| Código | Significa |
+| Code | Meaning |
 |---|---|
-| `invalid_json` | El contenido no parsea |
-| `schema_unsupported` | El `$schema` no está en el manifiesto, o un tipo PBIR conocido no lo declara |
-| `schema_unavailable` | Los esquemas no están instalados, el hash no cuadra, o Microsoft no publica ese esquema |
-| `schema_validation_failed` | Parsea, el esquema se conoce, y no cumple |
-| `report_validation_failed` | El validador oficial encontró errores **nuevos** |
-| `validator_unavailable` | Se necesita el validador oficial y no está |
+| `invalid_json` | The content doesn't parse |
+| `schema_unsupported` | The `$schema` isn't in the manifest, or a known PBIR type doesn't declare it |
+| `schema_unavailable` | The schemas aren't installed, the hash doesn't match, or Microsoft doesn't publish that schema |
+| `schema_validation_failed` | It parses, the schema is known, and it doesn't comply |
+| `report_validation_failed` | The official validator found **new** errors |
+| `validator_unavailable` | The official validator is needed and isn't present |
 
-Los errores dicen **archivo y ruta JSON** (`$.position.width`) y **nunca los valores**: son datos del informe.
+Errors state the **file and JSON path** (`$.position.width`) and **never the values**: those are report data.
 
 ---
 
-## Verificar el estado
+## Check status
 
 ```bash
 python scripts/doctor.py
 ```
 
 ```bash
-python scripts/fetch_pbir_schemas.py --update      # recalcula el manifiesto
-python scripts/fetch_report_validator.py --check   # estado del CLI oficial
+python scripts/fetch_pbir_schemas.py --update      # recomputes the manifest
+python scripts/fetch_report_validator.py --check   # official CLI status
 ```

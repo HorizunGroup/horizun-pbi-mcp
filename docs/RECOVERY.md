@@ -1,117 +1,117 @@
-# Guía de recuperación
+# Recovery guide
 
-Qué hacer cuando algo se queda a medias. **Nada de lo que sigue borra datos**: todas las operaciones dejan el original en un journal.
+What to do when something is left half-done. **Nothing below deletes data**: every operation leaves the original in a journal.
 
 ---
 
-## 1. Lo primero: mirar, no tocar
+## 1. First thing: look, don't touch
 
 ```bash
 python scripts/doctor.py
 ```
 
-Desde un cliente MCP:
+From an MCP client:
 
 ```
-pbi_health_check          → ¿hay journals pendientes?
-pbi_list_pending_journals → cuáles y de qué operación
-pbi_inspect_journal       → qué archivos toca y si siguen como el original
+pbi_health_check          → are there pending journals?
+pbi_list_pending_journals → which ones, and from what operation
+pbi_inspect_journal       → which files it touches and whether they still match the original
 ```
 
-`pbi_inspect_journal` es **solo lectura**. No restaura nada; te dice si hace falta.
+`pbi_inspect_journal` is **read-only**. It restores nothing; it tells you whether restoring is needed.
 
 ---
 
-## 2. Cómo leer un journal
+## 2. How to read a journal
 
-Cada journal es una carpeta en la raíz de backups del proyecto:
+Each journal is a folder in the project's backup root:
 
 ```
-<backups>/<nombre>_<hash12>/<fecha>_<request_id>/
-    manifest.json     qué operación, cuándo, qué archivos, con su sha256
-    files/            copia del original de cada archivo tocado
+<backups>/<name>_<hash12>/<date>_<request_id>/
+    manifest.json     which operation, when, which files, with their sha256
+    files/            copy of the original of each touched file
 ```
 
 `manifest.json` → `status`:
 
-| Estado | Significa | Acción |
+| State | Means | Action |
 |---|---|---|
-| `committed` | Terminó bien | Ninguna |
-| `rolled_back` | Falló y se revirtió | Ninguna, salvo que haya conflictos |
-| `compensated` | Se deshizo algo ya confirmado | Ninguna |
-| `open` | **El proceso murió a medias** | Revisar |
-| `unreadable` | El manifiesto no se puede leer | Revisar a mano |
+| `committed` | Finished fine | None |
+| `rolled_back` | Failed and was reverted | None, unless there are conflicts |
+| `compensated` | Something already committed was undone | None |
+| `open` | **The process died halfway through** | Review |
+| `unreadable` | The manifest can't be read | Review by hand |
 
-Y por archivo, `outcome`:
+And per file, `outcome`:
 
-| Outcome | Significa |
+| Outcome | Means |
 |---|---|
-| `restored` | Devuelto a su estado original |
-| `unchanged` | Nunca se llegó a escribir |
-| `rollback_conflict` | **Cambió por fuera después**; no se tocó, a propósito |
-| `rollback_failed` | Se intentó restaurar y falló |
+| `restored` | Returned to its original state |
+| `unchanged` | It was never actually written |
+| `rollback_conflict` | **Changed externally afterward**; not touched, on purpose |
+| `rollback_failed` | Restore was attempted and failed |
 
 ---
 
-## 3. Journal `open`: recuperación manual
+## 3. Journal `open`: manual recovery
 
-Significa que el proceso murió entre la escritura y el cierre. El original está en `files/`.
+Means the process died between writing and closing. The original is in `files/`.
 
-1. Cierra Power BI Desktop.
-2. `pbi_inspect_journal` sobre ese journal. Mira `matches_original` de cada archivo:
-   - `true` → ese archivo ya está como al principio.
-   - `false` → tiene nuestra escritura a medias, o un cambio externo.
-3. Copia desde `files/<ruta relativa>` sobre `<proyecto>/<ruta relativa>`.
-4. Vuelve a inspeccionar: `matches_original` debe ser `true` en todos.
+1. Close Power BI Desktop.
+2. `pbi_inspect_journal` on that journal. Check each file's `matches_original`:
+   - `true` → that file is already back to how it started.
+   - `false` → it has our half-done write, or an external change.
+3. Copy from `files/<relative path>` over `<project>/<relative path>`.
+4. Inspect again: `matches_original` must be `true` for all of them.
 
-**No hay restauración automática al arrancar**, a propósito: reanudar solo una operación que el usuario quizá ya deshizo a mano puede ser peor que dejarlo quieto.
-
----
-
-## 4. `rollback_conflict`: no es un fallo
-
-Alguien modificó el archivo **después** de que lo escribiéramos. El rollback lo respetó en lugar de pisarlo.
-
-Decide tú:
-
-- **Quedarte con el cambio externo** → nada que hacer.
-- **Volver al original** → cópialo desde `files/`.
+**There's no automatic restoration on startup**, on purpose: resuming an operation the user may have already undone by hand could be worse than leaving it alone.
 
 ---
 
-## 5. Situaciones concretas
+## 4. `rollback_conflict`: not a failure
 
-| Síntoma | Qué pasó | Solución |
+Someone modified the file **after** we wrote it. The rollback respected that instead of overwriting it.
+
+Your call:
+
+- **Keep the external change** → nothing to do.
+- **Go back to the original** → copy it from `files/`.
+
+---
+
+## 5. Specific situations
+
+| Symptom | What happened | Solution |
 |---|---|---|
-| `project_open_in_desktop` | Desktop tiene el proyecto abierto, o no se pudo descartar | Ciérralo del todo y repite. Es intencionado |
-| `stale_session` | El puerto cambió o lo ocupa otro proceso | `pbi_list_desktop_models` y `pbi_select_model` |
-| `plan_token_stale` | El proyecto cambió desde que se calculó el plan | Regenera el plan |
-| `request_id_conflict` | Mismo `request_id`, otros argumentos | Usa uno nuevo |
-| `dual_mode_not_safely_available` | `mode="both"` | Elige `live` o `pbip` |
-| `rollback_incomplete` | La reversión no quedó limpia | Sigue el §3 con el journal del error |
-| `bulk_partially_applied` | Se escribió el disco y falló lo vivo, sin poder compensar | `details.journal` trae los originales |
-| `.tmp` dentro del `.pbip` | No debería ocurrir desde 1A | Es basura: bórralo. El original está intacto |
-| Los cambios no se ven en Desktop | PBIR se carga al abrir | Cierra y reabre el informe |
-| Cambios de modelo perdidos | Con `mode="live"` no se persisten sin Ctrl+S | Vuelve a aplicarlos y guarda |
+| `project_open_in_desktop` | Desktop has the project open, or it couldn't be ruled out | Close it completely and retry. It's intentional |
+| `stale_session` | The port changed or another process holds it | `pbi_list_desktop_models` and `pbi_select_model` |
+| `plan_token_stale` | The project changed since the plan was computed | Regenerate the plan |
+| `request_id_conflict` | Same `request_id`, different arguments | Use a new one |
+| `dual_mode_not_safely_available` | `mode="both"` | Choose `live` or `pbip` |
+| `rollback_incomplete` | The reversion wasn't clean | Follow §3 with the error's journal |
+| `bulk_partially_applied` | Disk was written and the live side failed, without being able to compensate | `details.journal` has the originals |
+| `.tmp` inside the `.pbip` | Shouldn't happen since 1A | It's garbage: delete it. The original is intact |
+| Changes not showing in Desktop | PBIR loads on open | Close and reopen the report |
+| Lost model changes | With `mode="live"` they don't persist without Ctrl+S | Reapply them and save |
 
 ---
 
-## 6. Volver a un estado conocido
+## 6. Returning to a known state
 
 ```
 pbi_backup_pbip_project(mode="folder", scope="both")
 ```
 
-Crea una copia completa con manifiesto de hashes. Para restaurarla, cierra Desktop y copia la carpeta de vuelta.
+Creates a full copy with a hash manifest. To restore it, close Desktop and copy the folder back.
 
-Los backups y journals **nunca se purgan solos**, y los que ya tuvieras en tu proyecto no se tocan.
+Backups and journals are **never purged automatically**, and any you already had in your project are left untouched.
 
 ---
 
-## 7. Qué nunca ocurre
+## 7. What never happens
 
-- No se escribe fuera del proyecto activo.
-- No se escribe PBIR si Desktop puede tener el proyecto abierto.
-- No se sobrescribe un JSON que no parsea.
-- No se pisa un cambio externo durante un rollback.
-- No se reporta éxito si la reversión no quedó limpia.
+- Nothing is written outside the active project.
+- No PBIR write happens if Desktop might have the project open.
+- JSON that doesn't parse is never overwritten.
+- An external change is never overwritten during a rollback.
+- Success is never reported if the reversion wasn't clean.

@@ -1,208 +1,208 @@
-# Matriz de capacidades y convivencia
+# Capability and coexistence matrix
 
-_Generado en la Fase 0. Fecha de inspección: 2026-07-30._
+_Generated in Phase 0. Inspection date: 2026-07-30._
 
-## Cómo leer esta matriz
+## How to read this matrix
 
-Cada afirmación lleva su **nivel de verificación**. No se mezclan.
+Every statement carries its **verification level**. They are not mixed.
 
-| Nivel | Significado |
+| Level | Meaning |
 |---|---|
-| **Probada** | Se ejecutó en esta máquina y se observó el resultado |
-| **Observada** | Se leyó del artefacto instalado (código, bundle, manifiesto) sin ejecutarlo |
-| **Declarada** | Lo dice su documentación; no se comprobó |
-| **Pendiente** | No se pudo verificar sin violar una restricción de la Fase 0 |
+| **Tested** | Run on this machine and the result observed |
+| **Observed** | Read from the installed artifact (code, bundle, manifest) without running it |
+| **Declared** | Stated in its documentation; not checked |
+| **Pending** | Couldn't be verified without violating a Phase 0 constraint |
 
 ---
 
-## Servidores inspeccionados
+## Servers inspected
 
-| Servidor | Versión | Estado | Nivel máximo alcanzado |
+| Server | Version | Status | Highest level reached |
 |---|---|---|---|
-| **Horizun PBI MCP** (este repo) | 1.0.1 | Presente, arranca | **Probada** — handshake stdio, 117 tools, 1547 pruebas, DAX en vivo, fixture PBIR y captura de Desktop por PID |
-| **powerbi-report-mcp** | 0.9.6 | Presente y compilado en `..\PowerBI MCP\powerbi-report-mcp\dist\index.js` | **Observada** — 57 nombres de tool extraídos del bundle y del README. **No ejecutado** |
-| **@microsoft/powerbi-modeling-mcp** | 0.5.0-beta.11 | Descargado a temporal, extraído y leído. **No ejecutado** | **Declarada** — README + CHANGELOG + `index.js`. Ejecución **detenida** por condición de parada (§2.1) |
+| **Horizun PBI MCP** (this repo) | 1.0.1 | Present, starts | **Tested** — stdio handshake, 117 tools, 1547 tests, live DAX, PBIR fixture and Desktop capture by PID |
+| **powerbi-report-mcp** | 0.9.6 | Present and built at `..\PowerBI MCP\powerbi-report-mcp\dist\index.js` | **Observed** — 57 tool names extracted from the bundle and the README. **Not run** |
+| **@microsoft/powerbi-modeling-mcp** | 0.5.0-beta.11 | Downloaded to a temp folder, extracted and read. **Not run** | **Declared** — README + CHANGELOG + `index.js`. Execution **halted** due to a stop condition (§2.1) |
 
-### Procedencia del paquete de Microsoft (inspección del 2026-07-30)
+### Provenance of the Microsoft package (inspection on 2026-07-30)
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Paquete | `@microsoft/powerbi-modeling-mcp` |
-| Versión fijada | `0.5.0-beta.11` (**no** se usó `@latest`) |
-| Origen | `https://registry.npmjs.org/@microsoft/powerbi-modeling-mcp/-/powerbi-modeling-mcp-0.5.0-beta.11.tgz` |
-| SHA-1 | `fe7552d74cd3093a6935a11f7365c5eeffaa8ea1` — **verificado** contra el descargado |
-| Integridad | `sha512-a5aO6glpBFIlaHHe+8LRunNPExJqsbnskRHDW5y7Vb7Jac85KqMUUEvxRuL2IkwJDDng0FEhfZNUbqw3ehmQIw==` |
-| Licencia | **Microsoft Software License Terms (PREVIEW)** — propietaria, no OSS |
-| Repositorio | `github.com/microsoft/powerbi-modeling-mcp` |
-| Método | `npm pack` a un directorio temporal. **Sin instalación global. Sin `npx -y`. Sin tocar ninguna configuración MCP** |
-| Estado del canal | Sólo existen versiones `0.5.0-beta.*`. **No hay release estable** |
+| Package | `@microsoft/powerbi-modeling-mcp` |
+| Pinned version | `0.5.0-beta.11` (**not** `@latest`) |
+| Origin | `https://registry.npmjs.org/@microsoft/powerbi-modeling-mcp/-/powerbi-modeling-mcp-0.5.0-beta.11.tgz` |
+| SHA-1 | `fe7552d74cd3093a6935a11f7365c5eeffaa8ea1` — **verified** against the download |
+| Integrity | `sha512-a5aO6glpBFIlaHHe+8LRunNPExJqsbnskRHDW5y7Vb7Jac85KqMUUEvxRuL2IkwJDDng0FEhfZNUbqw3ehmQIw==` |
+| License | **Microsoft Software License Terms (PREVIEW)** — proprietary, not OSS |
+| Repository | `github.com/microsoft/powerbi-modeling-mcp` |
+| Method | `npm pack` to a temp directory. **No global install. No `npx -y`. No MCP configuration touched** |
+| Channel status | Only `0.5.0-beta.*` versions exist. **No stable release** |
 
 ---
 
-## 2.1 Por qué se detuvo la ejecución
+## 2.1 Why execution was halted
 
-La autorización decía: *"Si el paquete exige autenticación o una conexión con efectos externos, detenerse."* Se cumplen **tres** condiciones de parada, halladas leyendo el paquete antes de ejecutarlo:
+The authorization said: *"If the package requires authentication or a connection with external effects, stop."* **Three** stop conditions are met, found by reading the package before running it:
 
-**1. Telemetría a Microsoft por el mero hecho de usarlo.** README §Data Collection:
+**1. Telemetry to Microsoft from mere use.** README §Data Collection:
 
 > "The software may collect information about you and your use of the software and send it to Microsoft. […] **Your use of the software operates as your consent to these practices.**"
 
-Arrancarlo es una conexión con efectos externos y consiente el envío de datos. No es una decisión que corresponda tomar a un agente.
+Starting it is a connection with external effects and consents to sending data. That's not a decision an agent should make.
 
-**2. Aceptación de licencia por uso.** LICENSE, encabezado: *"BY USING THE SOFTWARE, YOU ACCEPT THESE TERMS."* Además restringe el uso: *"You may not use the software in a live operating environment unless Microsoft permits you to do so under another agreement."* En este equipo hay Power BI Desktop abierto con un modelo real.
+**2. License acceptance by use.** LICENSE, header: *"BY USING THE SOFTWARE, YOU ACCEPT THESE TERMS."* It also restricts use: *"You may not use the software in a live operating environment unless Microsoft permits you to do so under another agreement."* This machine has Power BI Desktop open with a real model.
 
-**3. Auto-instalación de 48 MB en tiempo de ejecución.** El paquete de 34 KB es sólo un lanzador. `index.js:96` ejecuta `npm install @microsoft/powerbi-modeling-mcp-win32-x64@<version>` si el paquete de plataforma no está presente:
+**3. Runtime self-install of 48 MB.** The 34 KB package is just a launcher. `index.js:96` runs `npm install @microsoft/powerbi-modeling-mcp-win32-x64@<version>` if the platform package isn't present:
 
 ```js
 execFileSync('npm', ['install', `${platformPackageName}@${version}`], { ... })
 ```
 
-| Paquete de plataforma | Dato |
+| Platform package | Data |
 |---|---|
-| Nombre | `@microsoft/powerbi-modeling-mcp-win32-x64` |
-| Tamaño | **50.425.117 bytes (~48 MB)**, 7 archivos |
+| Name | `@microsoft/powerbi-modeling-mcp-win32-x64` |
+| Size | **50,425,117 bytes (~48 MB)**, 7 files |
 | SHA-1 | `296f8168c4982760b1b8ba0b381f0cdbbbfa3501` |
 
-Es contenible (pre-descargando el paquete de plataforma fijado a un `node_modules` temporal), pero **no cambia nada**: los puntos 1 y 2 bastan para detenerse.
+It's containable (pre-downloading the pinned platform package to a temporary `node_modules`), but **it doesn't change anything**: points 1 and 2 are enough to stop.
 
-**Para levantar el bloqueo hace falta que el responsable del proyecto decida**, con conocimiento de la telemetría y de los términos de licencia, si autoriza arrancarlo. Sólo entonces subiría de *Declarada* a *Observada*/*Probada*.
+**Lifting the block requires the project owner to decide**, with knowledge of the telemetry and license terms, whether to authorize running it. Only then would it move from *Declared* to *Observed*/*Tested*.
 
 ---
 
-## 2.2 Capacidad DECLARADA de @microsoft/powerbi-modeling-mcp 0.5.0-beta.11
+## 2.2 DECLARED capability of @microsoft/powerbi-modeling-mcp 0.5.0-beta.11
 
-Extraída de README y CHANGELOG. **Nada de esto está observado ni probado.**
+Extracted from README and CHANGELOG. **None of this is observed or tested.**
 
-| Área declarada | Evidencia |
+| Declared area | Evidence |
 |---|---|
-| Tools por dominio | `database_operations`, `table_operations`, `column_operations`, `dax_operations`, operaciones de medidas, jerarquías de usuario |
-| Conexión | Power BI Desktop, **workspace de Fabric** y carpetas **PBIP/TMDL**. Prompts `/ConnectToPowerBIDesktop`, `/ConnectToFabric`, `/ConnectToPowerBIProject` |
-| Modelado | crear/actualizar tablas, columnas, medidas, relaciones; `IsKey`; `sortByColumn`; Expression Context; Direct Lake |
-| DAX | ejecutar y validar, métricas de ejecución, **impersonación con roles y UPN** |
-| Serialización | `ExportTMDL`, `ExportTMSL`, `DeployToFabric` |
+| Tools by domain | `database_operations`, `table_operations`, `column_operations`, `dax_operations`, measure operations, user hierarchies |
+| Connection | Power BI Desktop, **Fabric workspace** and **PBIP/TMDL** folders. Prompts `/ConnectToPowerBIDesktop`, `/ConnectToFabric`, `/ConnectToPowerBIProject` |
+| Modeling | create/update tables, columns, measures, relationships; `IsKey`; `sortByColumn`; Expression Context; Direct Lake |
+| DAX | execute and validate, execution metrics, **impersonation with roles and UPN** |
+| Serialization | `ExportTMDL`, `ExportTMSL`, `DeployToFabric` |
 | Refresh | `RefreshWithXMLA`, `RefreshWithAPI`, `CheckStatusOfRefreshWithAPI`, `CancelRefreshWithAPI` |
-| Lotes | operaciones por lote nativas en todas las tools, con soporte transaccional (declarado) |
-| Buenas prácticas | evaluación e implementación de best practices de modelado |
-| Autenticación | Entra ID vía Azure Identity SDK; modos `AzureCLI`, `DefaultAzureCredential`, `managedidentity`, service principal |
-| Transporte | stdio y **HTTP opcional**, con advertencia propia: *"no MCP-level auth in HTTP mode"* |
+| Batches | native batch operations across all tools, with transactional support (declared) |
+| Best practices | evaluation and implementation of modeling best practices |
+| Authentication | Entra ID via Azure Identity SDK; `AzureCLI`, `DefaultAzureCredential`, `managedidentity`, service principal modes |
+| Transport | stdio and **optional HTTP**, with its own warning: *"no MCP-level auth in HTTP mode"* |
 
-### Dos señales que conviene no pasar por alto
+### Two signals worth not overlooking
 
-1. **`0.5.0-beta.11`: "Skip write-operation confirmation prompts by default. Provide `--require-confirmation` flag."** Las operaciones de escritura **no piden confirmación por defecto**. Es la política opuesta a la de este proyecto (`confirm=true` obligatorio en lo destructivo).
-2. **Canal exclusivamente beta**, con cambios de ruptura recientes (`Rename Refresh to RefreshWithXMLA (breaking change)` en beta.3). Construir una dependencia sobre él es asumir su inestabilidad.
+1. **`0.5.0-beta.11`: "Skip write-operation confirmation prompts by default. Provide `--require-confirmation` flag."** Write operations **don't ask for confirmation by default**. It's the opposite policy of this project (`confirm=true` mandatory on destructive ones).
+2. **Beta-only channel**, with recent breaking changes (`Rename Refresh to RefreshWithXMLA (breaking change)` in beta.3). Building a dependency on it means assuming its instability.
 
 ---
 
-## 2.3 Impacto sobre la reorientación al modelo en vivo
+## 2.3 Impact on the live-model reorientation
 
-La reorientación aprobada apunta a: capa en vivo, ADOMD/TOM, puente `live|pbip|both`, auditoría del modelo. **Ese es exactamente el territorio declarado por Microsoft**: su servidor dice cubrir modelado semántico sobre Desktop *y* PBIP/TMDL, DAX, refresh y best practices.
+The approved reorientation targets: the live layer, ADOMD/TOM, the `live|pbip|both` bridge, model auditing. **That's exactly the territory Microsoft's own server declares**: it claims to cover semantic modeling over Desktop *and* PBIP/TMDL, DAX, refresh and best practices.
 
-Dicho eso, y manteniendo la disciplina de niveles, lo declarado **no demuestra** nada sobre: seguridad de sus escrituras, comportamiento con Desktop abierto, rollback, telemetría real, ni si el puente `live↔pbip` que ofrecemos existe ahí de verdad. Aplica el mismo criterio que pediste para `powerbi-report-mcp`: **provisional hasta probar contratos y comportamiento**.
+That said, and keeping the level discipline, what's declared **proves nothing** about: the safety of its writes, behavior with Desktop open, rollback, real telemetry, or whether the `live↔pbip` bridge we offer even exists there. The same criterion requested for `powerbi-report-mcp` applies: **provisional until contracts and behavior are tested**.
 
-Lo que sigue siendo, hasta donde alcanza la evidencia, exclusivo de este proyecto:
+What remains, as far as the evidence reaches, exclusive to this project:
 
-| Capacidad | Estado frente a Microsoft (declarado) |
+| Capability | Status vs. Microsoft (declared) |
 |---|---|
-| HTML/SVG dentro de Power BI vía medida DAX + `data_category="ImageUrl"` | No aparece en su documentación |
-| Creación de visuales y páginas PBIR | No aparece: su alcance declarado es el **modelo**, no el informe |
-| Preview HTML de una hoja antes de escribirla | No aparece |
-| Funcionamiento **sin telemetría y sin licencia propietaria** | Diferencia estructural, no de funcionalidad |
-| Política de confirmación explícita en escrituras destructivas | Opuesta a su default declarado |
+| HTML/SVG inside Power BI via DAX measure + `data_category="ImageUrl"` | Not present in their documentation |
+| Creating visuals and PBIR pages | Not present: their declared scope is the **model**, not the report |
+| HTML preview of a sheet before writing it | Not present |
+| Working **without telemetry and without a proprietary license** | Structural difference, not a functional one |
+| Explicit confirmation policy on destructive writes | Opposite of their declared default |
 
 ---
 
 ## 1. Horizun PBI MCP vs. @microsoft/powerbi-modeling-mcp
 
-| Capacidad | Horizun PBI MCP | Microsoft MCP 0.5.0-beta.11 | Estrategia |
+| Capability | Horizun PBI MCP | Microsoft MCP 0.5.0-beta.11 | Strategy |
 |---|---|---|---|
-| DAX en vivo | ✅ **Probada** (`EVALUATE ROW` en 2 ms, puerto 58770) | 📄 **Declarada** (`dax_operations`, con métricas e impersonación) | Mantener compatibilidad |
-| Medidas / TOM | ✅ **Probada** | 📄 **Declarada** (TOM 19.114.1.3) | Mantener; no priorizar duplicación |
-| Lectura de modelo (TMDL) | ✅ **Probada** | 📄 **Declarada** (`ExportTMDL`, conexión a carpeta PBIP) | Mantener |
-| PBIR (informe) | ✅ **Probada** | ❌ **No declarada** — su alcance es el modelo | **Sigue siendo nuestro** |
-| Visuales / páginas | ✅ **Probada** | ❌ **No declarada** | **Sigue siendo nuestro** |
-| HTML/SVG por medida | ✅ **Probada** | ❌ **No declarada** | **Sigue siendo nuestro** |
-| Auditoría integral | 🟡 Parcial (7 reglas) | 📄 **Declarada** (best practices) | Comparar antes de expandir |
-| Refresh | ✅ Local | 📄 **Declarada** (XMLA + API async, Fabric) | Ellos van más lejos |
-| Power BI Service / Fabric | ❌ No | 📄 **Declarada** (workspaces, DeployToFabric, Entra ID) | No competir aquí |
-| Confirmación en escrituras | ✅ `confirm=true` obligatorio en destructivas | 📄 **Declarada: desactivada por defecto** (`--require-confirmation` para activarla) | Diferencia de política, a nuestro favor |
-| Licencia / telemetría | Apache-2.0, sin telemetría | Propietaria PREVIEW, telemetría por uso | Diferencia estructural |
+| Live DAX | ✅ **Tested** (`EVALUATE ROW` in 2 ms, port 58770) | 📄 **Declared** (`dax_operations`, with metrics and impersonation) | Maintain compatibility |
+| Measures / TOM | ✅ **Tested** | 📄 **Declared** (TOM 19.114.1.3) | Maintain; don't prioritize duplication |
+| Model reading (TMDL) | ✅ **Tested** | 📄 **Declared** (`ExportTMDL`, PBIP folder connection) | Maintain |
+| PBIR (report) | ✅ **Tested** | ❌ **Not declared** — their scope is the model | **Still ours** |
+| Visuals / pages | ✅ **Tested** | ❌ **Not declared** | **Still ours** |
+| HTML/SVG per measure | ✅ **Tested** | ❌ **Not declared** | **Still ours** |
+| Comprehensive audit | 🟡 Partial (7 rules) | 📄 **Declared** (best practices) | Compare before expanding |
+| Refresh | ✅ Local | 📄 **Declared** (XMLA + async API, Fabric) | They go further here |
+| Power BI Service / Fabric | ❌ No | 📄 **Declared** (workspaces, DeployToFabric, Entra ID) | Not competing here |
+| Confirmation on writes | ✅ `confirm=true` mandatory on destructive ones | 📄 **Declared: off by default** (`--require-confirmation` to enable it) | Policy difference, in our favor |
+| License / telemetry | Apache-2.0, no telemetry | Proprietary PREVIEW, telemetry on use | Structural difference |
 
-**Ninguna fila de la columna Microsoft pasa de *Declarada*.** Está leída de su documentación, no ejecutada. El nombre de un paquete —y su README— no son evidencia de comportamiento.
+**No row in the Microsoft column goes beyond *Declared*.** It's read from their documentation, not executed. A package's name — and its README — are not evidence of behavior.
 
 ---
 
-## 2. Horizun PBI MCP vs. powerbi-report-mcp 0.9.6 — hallazgo relevante
+## 2. Horizun PBI MCP vs. powerbi-report-mcp 0.9.6 — relevant finding
 
-Este servidor **ya está compilado en el equipo** y cubre justo el dominio que la auditoría identificó como el diferenciador de Horizun PBI MCP: PBIR.
+This server **is already built on this machine** and covers exactly the domain the earlier audit identified as Horizun PBI MCP's differentiator: PBIR.
 
-**57 tools observadas** en su bundle, agrupadas:
+**57 tools observed** in its bundle, grouped:
 
-| Área | Tools observadas (muestra) |
+| Area | Tools observed (sample) |
 |---|---|
-| Páginas | `pbir_create_page`, `pbir_delete_page`, `pbir_duplicate_page`, `pbir_rename_page`, `pbir_reorder_pages`, `pbir_set_active_page`, `pbir_set_page_visibility`, `pbir_update_page_size` |
-| Visuales | `pbir_add_visual`, `pbir_get_visual`, `pbir_delete_visual`, `pbir_duplicate_visual`, `pbir_move_visual`, `pbir_change_visual_type`, `pbir_format_visual`, `pbir_set_visual_title`, `pbir_set_visual_sort`, `pbir_set_visual_interaction`, `pbir_update_visual_bindings` |
+| Pages | `pbir_create_page`, `pbir_delete_page`, `pbir_duplicate_page`, `pbir_rename_page`, `pbir_reorder_pages`, `pbir_set_active_page`, `pbir_set_page_visibility`, `pbir_update_page_size` |
+| Visuals | `pbir_add_visual`, `pbir_get_visual`, `pbir_delete_visual`, `pbir_duplicate_visual`, `pbir_move_visual`, `pbir_change_visual_type`, `pbir_format_visual`, `pbir_set_visual_title`, `pbir_set_visual_sort`, `pbir_set_visual_interaction`, `pbir_update_visual_bindings` |
 | Layout | `pbir_auto_layout`, `pbir_layout_grid`, `pbir_validate_wireframe` |
-| Temas | `pbir_apply_theme`, `pbir_get_report_theme`, `pbir_set_report_theme`, `pbir_diff_report_theme`, `pbir_audit_theme_compliance`, `pbir_lookup_theme_property` |
-| Filtros | `pbir_add_page_filter`, `pbir_list_filters`, `pbir_remove_filter`, `pbir_clear_filters`, `pbir_set_filter_pane` |
-| Marcadores | `pbir_add_bookmark`, `pbir_list_bookmarks`, `pbir_rename_bookmark`, `pbir_delete_bookmark` |
-| Lotes | `pbir_bulk_bind`, `pbir_bulk_delete_visuals`, `pbir_bulk_update_format` |
-| Formato condicional | `pbir_set_conditional_format`, `pbir_set_datapoint_colors`, `pbir_set_page_background` |
+| Themes | `pbir_apply_theme`, `pbir_get_report_theme`, `pbir_set_report_theme`, `pbir_diff_report_theme`, `pbir_audit_theme_compliance`, `pbir_lookup_theme_property` |
+| Filters | `pbir_add_page_filter`, `pbir_list_filters`, `pbir_remove_filter`, `pbir_clear_filters`, `pbir_set_filter_pane` |
+| Bookmarks | `pbir_add_bookmark`, `pbir_list_bookmarks`, `pbir_rename_bookmark`, `pbir_delete_bookmark` |
+| Batches | `pbir_bulk_bind`, `pbir_bulk_delete_visuals`, `pbir_bulk_update_format` |
+| Conditional formatting | `pbir_set_conditional_format`, `pbir_set_datapoint_colors`, `pbir_set_page_background` |
 
-### Solapamiento real
+### Real overlap
 
-| Capacidad | Horizun PBI MCP | powerbi-report-mcp | Veredicto |
+| Capability | Horizun PBI MCP | powerbi-report-mcp | Verdict |
 |---|---|---|---|
-| Listar páginas/visuales | ✅ 3 tools | ✅ observadas | **Duplicado** |
-| Crear/mover visual | ✅ 2 tools | ✅ observadas | **Duplicado** |
-| Borrar/duplicar visual y página | ❌ | ✅ observadas | **Ellos van por delante** |
-| Temas, marcadores, filtros | ❌ | ✅ observadas | **Solo ellos** |
-| Operaciones por lotes | ❌ | ✅ observadas | **Solo ellos** |
-| Formato condicional | ❌ | ✅ observadas | **Solo ellos** |
-| Capa EN VIVO (ADOMD/TOM) | ✅ **Probada** | ❌ no observada | **Solo nosotros** |
-| Medidas DAX (crear/editar) | ✅ **Probada** | ❌ no observada (tiene `pbir_manage_extension_measures`, que es otra cosa) | **Solo nosotros** |
-| Refresh local | ✅ | ❌ no observada | **Solo nosotros** |
-| Documentación del modelo | ✅ **Probada** | ❌ no observada | **Solo nosotros** |
-| HTML/SVG por medida DAX | ✅ **Probada** | ❌ no observada | **Solo nosotros** |
-| Generación declarativa de páginas + preview HTML | ✅ **Probada** | 🟡 `pbir_validate_wireframe` sugiere algo parecido | **A revisar** |
-| Modo dual live+pbip | ✅ **Probada** | ❌ | **Solo nosotros** |
+| List pages/visuals | ✅ 3 tools | ✅ observed | **Duplicated** |
+| Create/move visual | ✅ 2 tools | ✅ observed | **Duplicated** |
+| Delete/duplicate visual and page | ❌ | ✅ observed | **They're ahead** |
+| Themes, bookmarks, filters | ❌ | ✅ observed | **Only theirs** |
+| Batch operations | ❌ | ✅ observed | **Only theirs** |
+| Conditional formatting | ❌ | ✅ observed | **Only theirs** |
+| LIVE layer (ADOMD/TOM) | ✅ **Tested** | ❌ not observed | **Only ours** |
+| DAX measures (create/edit) | ✅ **Tested** | ❌ not observed (has `pbir_manage_extension_measures`, which is something else) | **Only ours** |
+| Local refresh | ✅ | ❌ not observed | **Only ours** |
+| Model documentation | ✅ **Tested** | ❌ not observed | **Only ours** |
+| HTML/SVG via DAX measure | ✅ **Tested** | ❌ not observed | **Only ours** |
+| Declarative page generation + HTML preview | ✅ **Tested** | 🟡 `pbir_validate_wireframe` suggests something similar | **To review** |
+| Dual live+pbip mode | ✅ **Tested** | ❌ | **Only ours** |
 
-### Qué implica para el plan
+### What this means for the plan
 
-La premisa de la auditoría anterior —"PBIR es el diferenciador principal"— **queda debilitada**: hay un servidor local, más maduro en ese dominio concreto, ya construido.
+The earlier audit's premise — "PBIR is the main differentiator" — **is weakened**: there's a local server, more mature in that specific domain, already built.
 
-Lo que sigue siendo genuinamente único de Horizun PBI MCP:
+What remains genuinely unique to Horizun PBI MCP:
 
-1. **La capa EN VIVO** (ADOMD.NET + TOM contra `msmdsrv.exe`). Consultar datos reales, crear medidas, refrescar.
-2. **El puente vivo↔disco** (`mode: live|pbip|both`), que ningún otro de los dos hace.
-3. **HTML/SVG dentro de Power BI** vía medida DAX + `data_category="ImageUrl"`.
-4. **Documentación y auditoría del modelo semántico.**
+1. **The LIVE layer** (ADOMD.NET + TOM against `msmdsrv.exe`). Querying real data, creating measures, refreshing.
+2. **The live↔disk bridge** (`mode: live|pbip|both`), which neither of the other two does.
+3. **HTML/SVG inside Power BI** via DAX measure + `data_category="ImageUrl"`.
+4. **Semantic model documentation and auditing.**
 
-Esto no cierra la puerta a las fases 2–3, pero **cambia su justificación**: dejarían de ser "la ventaja competitiva" para ser "lo mínimo para que la capa en vivo sea utilizable de punta a punta". Es una decisión de producto, no técnica, y corresponde al responsable del proyecto.
-
----
-
-## 3. Estrategia de convivencia
-
-Los tres servidores pueden registrarse a la vez: los prefijos no chocan (`pbi_*` vs `pbir_*` vs los de Microsoft).
-
-**Riesgo real de convivencia:** dos servidores escribiendo el mismo `.pbip` sin coordinación. Ninguno de los dos conoce los bloqueos del otro. Mitigación en la Fase 1: lock de archivo + `expected_state` + detección de modificación externa entre lectura y escritura.
-
-**Sobre reutilizar su código:** no se ha copiado ni integrado nada. `powerbi-report-mcp` trae `LICENSE` propio; cualquier reutilización exigiría revisarlo primero. La vía recomendada es **registrar ambos servidores**, no fusionarlos.
+This doesn't close the door on phases 2–3, but **it changes their justification**: they'd stop being "the competitive edge" and become "the minimum for the live layer to be usable end to end." It's a product decision, not a technical one, and belongs to the project owner.
 
 ---
 
-## 4. Para completar esta matriz
+## 3. Coexistence strategy
 
-- [x] ~~Descargar e inspeccionar `@microsoft/powerbi-modeling-mcp`~~ → hecho: versión fijada, integridad verificada, leído. Nivel **Declarada**.
-- [ ] **Decisión del responsable:** autorizar el arranque de la beta de Microsoft, sabiendo que (a) su uso consiente telemetría a Microsoft, (b) usarlo acepta sus términos de licencia PREVIEW, (c) auto-instala 48 MB. Sólo entonces sube a *Observada*/*Probada*.
-- [ ] Ejecutar `powerbi-report-mcp` con `tools/list` contra un fixture sintético → sube de *Observada* a *Probada*. **Sin bloqueos conocidos**: es un build local ya presente, sin telemetría ni licencia propietaria detectadas.
-- [ ] Comparar contratos y comportamiento antes de duplicar cualquier capacidad PBIR nueva.
+All three servers can be registered at once: the prefixes don't clash (`pbi_*` vs `pbir_*` vs Microsoft's).
 
-## 5. Reutilización de código: no
+**Real coexistence risk:** two servers writing to the same `.pbip` without coordination. Neither one knows about the other's locks. Mitigation in Phase 1: file lock + `expected_state` + detecting external modification between read and write.
 
-No se ha copiado ni integrado una sola línea de ninguno de los dos.
+**On reusing their code:** nothing has been copied or integrated. `powerbi-report-mcp` ships its own `LICENSE`; any reuse would require reviewing it first. The recommended path is **registering both servers**, not merging them.
 
-- `@microsoft/powerbi-modeling-mcp`: **licencia propietaria** (Microsoft Software License Terms, PREVIEW). Prohíbe expresamente el uso en entorno productivo sin otro acuerdo. Incorporar su código no es una opción.
-- `powerbi-report-mcp`: trae `LICENSE` propio; habría que revisarlo antes de cualquier reutilización.
+---
 
-La vía correcta sigue siendo **registrar los servidores por separado**, no fusionarlos.
+## 4. To complete this matrix
+
+- [x] ~~Download and inspect `@microsoft/powerbi-modeling-mcp`~~ → done: pinned version, integrity verified, read. Level **Declared**.
+- [ ] **Owner decision:** authorize starting Microsoft's beta, knowing that (a) using it consents to telemetry to Microsoft, (b) using it accepts its PREVIEW license terms, (c) it self-installs 48 MB. Only then does it move to *Observed*/*Tested*.
+- [ ] Run `powerbi-report-mcp` with `tools/list` against a synthetic fixture → moves from *Observed* to *Tested*. **No known blockers**: it's a local build already present, with no telemetry or proprietary license detected.
+- [ ] Compare contracts and behavior before duplicating any new PBIR capability.
+
+## 5. Code reuse: none
+
+Not a single line has been copied or integrated from either.
+
+- `@microsoft/powerbi-modeling-mcp`: **proprietary license** (Microsoft Software License Terms, PREVIEW). Expressly prohibits use in a production environment without another agreement. Incorporating its code is not an option.
+- `powerbi-report-mcp`: ships its own `LICENSE`; it would need reviewing before any reuse.
+
+The correct path remains **registering the servers separately**, not merging them.

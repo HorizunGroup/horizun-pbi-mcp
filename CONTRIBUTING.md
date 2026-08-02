@@ -1,12 +1,12 @@
-# Contribuir a Horizun PBI MCP
+# Contributing to Horizun PBI MCP
 
-Este servidor escribe en los proyectos de Power BI de otras personas. Un fallo aquí no da un error: **corrompe un informe** y el usuario lo descubre al abrirlo, lejos de la operación que lo causó. Las reglas de abajo existen por eso.
+This server writes to other people's Power BI projects. A failure here doesn't produce an error: it **corrupts a report**, and the user finds out when they open it, far removed from the operation that caused it. The rules below exist because of that.
 
-Las reglas operativas completas están en [`AGENTS.md`](AGENTS.md) y tienen prioridad.
+The full operating rules are in [`AGENTS.md`](AGENTS.md) and take priority.
 
 ---
 
-## Antes de tocar nada
+## Before touching anything
 
 ```bash
 python -m pytest -q
@@ -14,101 +14,101 @@ python scripts/doctor.py
 python -m tests.contract_utils
 ```
 
-Los tres en verde. **No se construye sobre rojo.**
+All three green. **Don't build on red.**
 
-## El contrato MCP es intocable
+## The MCP contract is untouchable
 
-Las tools están congeladas en `tests/golden/tools_v1.json`.
+The tools are frozen in `tests/golden/tools_v1.json`.
 
-**Sin aprobación explícita, prohibido:** eliminar o renombrar una tool, eliminar un parámetro, añadir uno **obligatorio**, cambiar un tipo o un valor por defecto, cambiar la forma de la respuesta.
+**Without explicit approval, forbidden:** removing or renaming a tool, removing a parameter, adding a **required** one, changing a type or a default value, changing the response shape.
 
-**Permitido:** añadir tools, añadir parámetros **opcionales con default**, añadir campos al dict de respuesta, mejorar descripciones.
+**Allowed:** adding tools, adding **optional parameters with a default**, adding fields to the response dict, improving descriptions.
 
-Tras un cambio deliberado y aprobado:
+After a deliberate, approved change:
 
 ```bash
 python -m tests.contract_utils --write
 ```
 
-Nunca digas «el contrato no cambió» si regeneraste el golden. Reporta **rupturas (0)** y **compatibles (N)** por separado.
+Never say "the contract didn't change" if you regenerated the golden. Report **breaks (0)** and **compatible (N)** separately.
 
-## Invariantes
+## Invariants
 
-1. **stdout es el canal JSON-RPC.** Todo log va a stderr o a archivo. Un `print()` de depuración rompe la conexión del cliente.
-2. **Nunca sobrescribir un JSON que no parsea.** Si no se puede leer, se aborta.
-3. **Toda escritura sobre el proyecto del usuario:** backup antes, relectura después, rollback si falla.
-4. **Ninguna ruta de escritura sale del proyecto activo.**
-5. **No se inventan campos.** Si no existe, se informa; no se adivina.
-6. **Las destructivas exigen `confirm=true`.**
-7. **Preferir clonar una plantilla real** antes que construir JSON de visual a mano.
-8. **Fail-closed.** Ante la duda, bloquear. Un `unsupported_feature` es mejor que una escritura a ciegas.
+1. **stdout is the JSON-RPC channel.** All logging goes to stderr or a file. A debug `print()` breaks the client connection.
+2. **Never overwrite JSON that doesn't parse.** If it can't be read, abort.
+3. **Every write to the user's project:** backup before, re-read after, rollback on failure.
+4. **No write path leaves the active project.**
+5. **No fields are invented.** If it doesn't exist, report it; don't guess.
+6. **Destructive ones require `confirm=true`.**
+7. **Prefer cloning a real template** over hand-building visual JSON.
+8. **Fail-closed.** When in doubt, block. An `unsupported_feature` is better than a blind write.
 
-## Una transacción por operación lógica
+## One transaction per logical operation
 
-Prohibido:
+Forbidden:
 
-- transacción dentro de un `for`;
-- **llamar en bucle a una función que abre su propia transacción** (el caso que el chequeo léxico no ve);
-- capturar una excepción para continuar tras una mutación fallida;
-- devolver `ok:true` con suboperaciones fallidas;
-- que una tool decorada llame a otra tool decorada.
+- transaction inside a `for`;
+- **calling in a loop a function that opens its own transaction** (the case the lexical check doesn't see);
+- catching an exception to keep going after a failed mutation;
+- returning `ok:true` with failed sub-operations;
+- a decorated tool calling another decorated tool.
 
-El patrón correcto: **compilar todos los cambios en memoria** → calcular archivos afectados → **una** transacción → validar → commit → verificar.
+The correct pattern: **compile all changes in memory** → compute affected files → **one** transaction → validate → commit → verify.
 
 ```bash
 python -m pytest tests/test_workflow_atomicity.py -q
 ```
 
-Incluye dos chequeos estáticos que fallan si alguien reintroduce el patrón.
+Includes two static checks that fail if anyone reintroduces the pattern.
 
-## Pruebas
+## Tests
 
-Una prueba que no puede fallar es peor que ninguna: da confianza falsa.
+A test that can't fail is worse than none: it gives false confidence.
 
-**Prohibido:** `or True`, asserts sobre constantes, mocks que verifican su propio valor, `except` demasiado amplios, tests sin asserts, skips sin motivo.
+**Forbidden:** `or True`, asserts on constants, mocks that verify their own value, overly broad `except`, tests without asserts, unmotivated skips.
 
-**Toda corrección de defecto necesita una prueba de regresión que falle contra el commit anterior y pase con el arreglo.** Compruébalo:
+**Every defect fix needs a regression test that fails against the previous commit and passes with the fix.** Check it:
 
 ```bash
-git worktree add --detach /tmp/regresion <commit-anterior>
-cp tests/test_lo_nuevo.py /tmp/regresion/tests/
-cd /tmp/regresion && python -m pytest tests/test_lo_nuevo.py
+git worktree add --detach /tmp/regression <previous-commit>
+cp tests/test_new_thing.py /tmp/regression/tests/
+cd /tmp/regression && python -m pytest tests/test_new_thing.py
 ```
 
-Si pasa ahí, la prueba no prueba nada.
+If it passes there, the test isn't testing anything.
 
-**Prepara la precondición.** El fixture `minimal` no tiene interacciones ni referencias: una prueba de duplicación sobre él pasa sin comprobar nada. Usa `tests/fixtures/rich.py` o construye el escenario.
+**Set up the precondition.** The `minimal` fixture has no interactions or references: a duplication test on it passes without checking anything. Use `tests/fixtures/rich.py` or build the scenario.
 
-**Path traversal:** el "afuera" se crea **dentro del `tmp_path` de pytest** (`synthetic.outside_marker_dir()`). Jamás una ruta real del equipo.
+**Path traversal:** the "outside" is created **inside pytest's `tmp_path`** (`synthetic.outside_marker_dir()`). Never a real machine path.
 
-## Datos reales: nunca entran a git
+## Real data: never enters git
 
-| Nunca versionar | Sí versionar |
+| Never version | Do version |
 |---|---|
-| `.pbix`, `.pbip` reales, `.Report/`, `.SemanticModel/` | `tests/fixtures/synthetic/**`, `tests/fixtures/rich.py` |
-| `libs/` (DLLs de Microsoft) | `scripts/fetch_libs.py` + `libs_manifest.json` |
-| `schemas_cache/`, `validator_cache/` | los manifiestos con URLs y hashes |
-| `outputs/`, `backups/`, `*.log` | plantillas `*.example.*` |
+| Real `.pbix`, `.pbip`, `.Report/`, `.SemanticModel/` | `tests/fixtures/synthetic/**`, `tests/fixtures/rich.py` |
+| `libs/` (Microsoft DLLs) | `scripts/fetch_libs.py` + `libs_manifest.json` |
+| `schemas_cache/`, `validator_cache/` | manifests with URLs and hashes |
+| `outputs/`, `backups/`, `*.log` | `*.example.*` templates |
 | `.env`, `.mcp.json` | `.env.example` |
 
-Los fixtures sintéticos **no contienen** nombres comerciales, datos, rutas ni GUID de ningún proyecto real. Hay pruebas que lo verifican.
+Synthetic fixtures **contain no** commercial names, data, paths or GUIDs from any real project. There are tests that verify this.
 
-## Dependencias
+## Dependencies
 
-Versión **exacta** y **hash verificado antes de instalar**, en las tres cadenas: DLLs de Analysis Services, esquemas PBIR y CLI oficial de Microsoft.
+**Exact** version and **hash verified before installing**, across all three chains: Analysis Services DLLs, PBIR schemas and Microsoft's official CLI.
 
-Nunca `latest`, nunca `npx -y`, nunca descargar durante una operación normal. Fallo cerrado si el hash no coincide.
+Never `latest`, never `npx -y`, never download during a normal operation. Fail closed if the hash doesn't match.
 
 ## Commits
 
-- Sin remoto, sin `push`, sin publicar paquetes.
-- **Un commit por fase**, temático y reversible.
-- No mezclar correcciones funcionales con documentación o limpieza.
-- El mensaje explica **qué estaba mal**, no solo qué se cambió.
-- `a304e33` es el baseline: **no se reescribe**.
+- No remote, no `push`, no publishing packages.
+- **One commit per phase**, thematic and reversible.
+- Don't mix functional fixes with documentation or cleanup.
+- The message explains **what was wrong**, not just what was changed.
+- `a304e33` is the baseline: **it is not rewritten**.
 
-## Estilo
+## Style
 
-- Comentarios en el código: **por qué**, no qué. Si el código dice qué hace, el comentario sobra.
-- Nombres y mensajes en español, como el resto del repositorio.
-- Los mensajes de error dicen **qué pasó, dónde y qué hacer**. Nunca incluyen valores del informe del usuario ni rutas personales.
+- Code comments: **why**, not what. If the code says what it does, the comment is redundant.
+- Names and messages in Spanish, like the rest of the repository.
+- Error messages say **what happened, where, and what to do**. They never include values from the user's report nor personal paths.

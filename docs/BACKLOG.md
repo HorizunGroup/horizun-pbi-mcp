@@ -1,222 +1,224 @@
 # Backlog
 
-Lo que queda abierto, por qué importa y cómo se comprueba. Ordenado por lo que
-más duele.
+What remains open, why it matters and how to check it. Ordered by what
+hurts the most.
 
-Se actualizó el 2026-08-02 después de auditar por AST las **117 tools**, probar
-conversiones reales PBIX→PBIP y volver a abrir los resultados en Power BI
-Desktop. La suite integrada quedó en **1542 passed, 3 skipped**. La lista de
-abajo no es una lluvia de ideas: es lo que sabemos que falta, con evidencia.
+Updated on 2026-08-02 after auditing the **117 tools** via AST, testing
+real PBIX→PBIP conversions and reopening the results in Power BI
+Desktop. The integrated suite came in at **1542 passed, 3 skipped**. The list
+below isn't a brainstorm: it's what we know is missing, with evidence.
 
 ---
 
-## 1. Equivalencia completa del bloque `objects`
+## 1. Full equivalence of the `objects` block
 
-**Estado:** parcialmente cerrado. La estructura que genera Horizun ya tiene
-oráculo; la equivalencia visual completa sigue siendo una limitación en
+**Status:** partially closed. The structure Horizun generates already has an
+oracle; full visual equivalence remains a limitation in
 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
-El esquema oficial `formattingObjectDefinitions` declara
-`DataViewObjectPropertyDefinitions` como `additionalProperties: {}`. Acepta
-literalmente cualquier cosa. Ahí viven el formato condicional, los tamaños de
-fuente y los colores de cada visual.
+The official `formattingObjectDefinitions` schema declares
+`DataViewObjectPropertyDefinitions` as `additionalProperties: {}`. It accepts
+literally anything. That's where conditional formatting, font sizes and
+colors of each visual live.
 
-**Consecuencia medida:** el formato condicional se escribió mal durante toda la
-vida del proyecto —faltaba el nivel `color`— y pasó el validador oficial de
-Microsoft con cero errores. Solo se vio abriendo el informe y viendo una tabla
-sin colorear.
+**Measured consequence:** conditional formatting was written incorrectly
+throughout the project's entire life — the `color` level was missing — and it
+passed Microsoft's official validator with zero errors. It was only
+noticed by opening the report and seeing an uncolored table.
 
-**Barreras actuales:** `services.pbir_schema.validar_objetos_visual()` comprueba
-antes de cada escritura la gramática de los envoltorios que el servidor
-produce: grupos de formato, `solid.color`, expresiones, y los gradientes
-`FillRule`. Con ello una forma como `solid: {expr: ...}` se bloquea y revierte
-la transacción, aunque el esquema oficial la acepte. La regresión se ejecuta
-contra el commit anterior y falla allí.
+**Current barriers:** `services.pbir_schema.validar_objetos_visual()` checks,
+before every write, the grammar of the wrappers the server produces: format
+groups, `solid.color`, expressions, and `FillRule` gradients. With this, a
+shape like `solid: {expr: ...}` gets blocked and the transaction reverted,
+even though the official schema accepts it. The regression runs against the
+previous commit and fails there.
 
-`services.format_oracle` añade la pieza que faltaba para las rutas que el MCP
-administra: consulta `formatting effective-properties` del CLI oficial y
-compara grupo, propiedad, tipo y enum por `visualType`. Un snapshot mínimo de
-esas mismas rutas mantiene la barrera sin Node; una prueba viva exige que el
-snapshot continúe siendo subconjunto exacto del catálogo oficial instalado.
+`services.format_oracle` adds the missing piece for the paths the MCP
+manages: it queries `formatting effective-properties` from the official CLI
+and compares group, property, type and enum by `visualType`. A minimal
+snapshot of those same paths keeps the barrier alive without Node; a live
+test requires the snapshot to remain an exact subset of the installed
+official catalog.
 
-El corpus sintético `tests/fixtures/synthetic/format_objects_corpus.json`
-conserva únicamente formas estructurales que Desktop exportó. Se construyó
-desde copias temporales de 125 PBIX y reemplaza cada hoja por un token de tipo.
-No contiene rutas, conteos por origen, hashes, GUID, IDs, URLs, textos, nombres
-de página/tabla/campo, valores del modelo ni tipos custom. El extractor falla
-cerrado ante cualquier clave no incluida en su allowlist.
+The synthetic corpus `tests/fixtures/synthetic/format_objects_corpus.json`
+keeps only structural shapes that Desktop actually exported. It was built
+from temporary copies of 125 PBIX files and replaces every literal with a type
+token. It contains no paths, per-origin counts, hashes, GUIDs, IDs, URLs,
+text, page/table/field names, model values or custom types. The extractor
+fails closed on any key not in its allowlist.
 
-Esta evidencia descubrió y cerró defectos que el esquema aceptaba: `cardVisual`
-usaba `value.color` en vez de `value.fontColor`; formas e iconos escribían enums
-inventados; `table`/`matrix` aceptaban propiedades que Desktop ignora; y los
-`FillRule` perdían `Aggregation.Function` y usaban un selector incorrecto.
+This evidence found and closed defects the schema accepted: `cardVisual`
+used `value.color` instead of `value.fontColor`; shapes and icons wrote
+invented enums; `table`/`matrix` accepted properties Desktop ignores; and
+`FillRule` entries lost `Aggregation.Function` and used the wrong selector.
 
-Además, la fábrica consulta el catálogo oficial para exigir roles,
-cardinalidades y clase de campo (`Grouping`, `Measure` o
-`GroupingOrMeasure`) antes de escribir. Esto cerró otra vía por la que Desktop
-aceptaba el archivo pero dejaba un visual vacío o semánticamente incorrecto.
-Los roles viven fuera de `objects` y se validan por separado.
+The factory also queries the official catalog to require roles,
+cardinalities and field class (`Grouping`, `Measure` or
+`GroupingOrMeasure`) before writing. This closed another route by which
+Desktop accepted the file but left an empty or semantically incorrect
+visual. Roles live outside `objects` and are validated separately.
 
-**Cierre adicional:** cuando está instalado el CLI oficial, cada escritura PBIR
-vuelve a comparar **todas** las propiedades presentes en `objects` y
-`visualContainerObjects` del visual contra `effective-properties`, incluidas
-las heredadas de una plantilla. Una propiedad o grupo desconocido bloquea la
-transacción con `format_oracle`. Sin el CLI se conserva la barrera estructural
-offline y no se finge equivalencia completa. La comprobación estructural
-tampoco demuestra por sí sola que un visual se pinte como se espera: eso
-pertenece a la comprobación renderizada del punto siguiente.
+**Additional closure:** when the official CLI is installed, every PBIR write
+re-compares **all** properties present in `objects` and
+`visualContainerObjects` of the visual against `effective-properties`,
+including those inherited from a template. An unknown property or group
+blocks the transaction with `format_oracle`. Without the CLI, the offline
+structural barrier is kept and full equivalence is not feigned. The
+structural check alone also doesn't prove a visual renders as expected: that
+belongs to the rendered check in the next point.
 
 ---
 
-## 2. Interpretación automática de la comprobación visual
+## 2. Automatic interpretation of the visual check
 
-**Estado:** parcialmente cerrado. La captura ya es automática y segura; decidir
-si el resultado es visualmente correcto todavía requiere inspección.
+**Status:** partially closed. Capture is already automatic and safe; deciding
+whether the result is visually correct still requires inspection.
 
-El **contraste WCAG** (`tests/test_design_y_guia.py`) cerró una clase real: el
-título en `#0B0B0B` sobre fondo `#1A1A19`.
+The **WCAG contrast** check (`tests/test_design_y_guia.py`) closed a real
+class: a title in `#0B0B0B` on a `#1A1A19` background.
 
-La tool `pbi_validate_desktop_render` abre el `.pbix`/`.pbip`, correlaciona la
-ventana exacta por PID y hora de creación, y la renderiza con `PrintWindow` sin
-depender del foco. Falla cerrado ante ventanas ambiguas o PID reciclado, escribe
-el PNG atómicamente en `outputs/desktop_captures` y solo cierra Desktop si esa
-misma llamada lo abrió. Se probó sobre Power BI Desktop real.
+The `pbi_validate_desktop_render` tool opens the `.pbix`/`.pbip`, correlates
+the exact window by PID and creation time, and renders it with `PrintWindow`
+without depending on focus. It fails closed on ambiguous windows or a
+recycled PID, writes the PNG atomically to `outputs/desktop_captures` and
+only closes Desktop if that same call opened it. It was tested against a
+real Power BI Desktop.
 
-Lo que sigue exigiendo ojos: que el número quepa, que la tabla pinte, que la
-leyenda no tape la barra y que el eje no se corte. La captura demuestra que la
-ventana renderizó; no interpreta semánticamente sus píxeles.
+What still requires eyes: whether the number fits, whether the table
+renders, whether the legend doesn't cover the bar and whether the axis isn't
+cut off. The capture proves the window rendered; it doesn't semantically
+interpret its pixels.
 
-**Procedimiento actual**, para no reinventarlo cada vez:
+**Current procedure**, so it doesn't need reinventing every time:
 
 ```python
-resultado = pbi_validate_desktop_render(
-    path=r"C:\ruta\Proyecto.pbip", timeout=300, capture_timeout=30)
+result = pbi_validate_desktop_render(
+    path=r"C:\path\Project.pbip", timeout=300, capture_timeout=30)
 ```
 
-Si el proyecto recién generado no tiene datos materializados, todavía hay que
-refrescarlo. La tool captura la página visible; recorrer todas las páginas y
-clasificar defectos de composición sigue pendiente.
+If the freshly generated project has no materialized data, it still needs a
+refresh. The tool captures the visible page; walking through all pages and
+classifying composition defects is still pending.
 
-Durante esta revisión apareció un caso real que antes terminaba en un Frown de
-Desktop: un modelo de obra tenía las medidas `Ejecutado` y `Programado` con el
-mismo nombre que sus columnas. El parser TMDL lo aceptaba, pero Power BI
-rechazaba el modelo al cargarlo. El launcher ahora ejecuta el lint/TOM antes de
-abrir la ventana y devuelve `desktop_preflight_failed` con las dos reglas y su
-evidencia; no deja un proceso `Sin título` colgado. La regresión está en
-`tests/test_desktop_preflight.py`.
+During this review a real case appeared that used to end in a Desktop Frown:
+a construction-site model had the measures `Ejecutado` and `Programado` with
+the same name as their columns. The TMDL parser accepted it, but Power BI
+rejected the model on load. The launcher now runs the lint/TOM check before
+opening the window and returns `desktop_preflight_failed` with the two rules
+and their evidence; it doesn't leave a hung `Untitled` process. The
+regression is in `tests/test_desktop_preflight.py`.
 
-La misma barrera detecta ahora modelos semánticos vacíos antes del timeout de
-Desktop (`tmdl_empty_model`). En la barrida de nueve proyectos locales, cinco
-abrieron y capturaron correctamente, tres quedaron rechazados antes de lanzar
-Desktop por estar vacíos y el proyecto con colisiones quedó rechazado con sus
-dos hallazgos. No se dejó ningún proceso huérfano.
+The same barrier now detects empty semantic models before Desktop's timeout
+(`tmdl_empty_model`). In the sweep of nine local projects, five opened and
+captured correctly, three were rejected before launching Desktop for being
+empty, and the project with collisions was rejected with its two findings.
+No orphaned process was left behind.
 
-**Qué haría falta:** navegación determinista por todas las páginas y un oráculo
-de imagen/layout que pueda emitir diagnósticos concretos, sin confundir una
-diferencia legítima de datos o tema con un defecto.
-
----
-
-## 3. Cobertura de tipos de visual
-
-**Estado:** cerrado el 2026-08-01.
-
-Están los nueve tipos con datos originales y los diez que faltaban: `gauge`,
-`kpi`, `donutChart`, `areaChart`, `scatterChart`, `treemap`, `funnel`,
-`waterfallChart`, `multiRowCard` y `ribbonChart`. `waterfall` se acepta como
-alias, pero se escribe como `waterfallChart`, que es el nombre real del
-catálogo oficial. Más los de composición.
-
-**Cómo añadir uno sin repetir el error de `cardVisual`:** los roles **no se
-deducen**. Se escribe un visual por cada par (tipo, rol candidato), se corre el
-CLI oficial sobre el informe entero y se lee qué devuelve `PBIR_ROLE_UNKNOWN`.
-Sale la tabla autoritativa en una pasada. `tests/test_generadores_abren.py`
-tiene el barrido montado.
+**What's still needed:** deterministic navigation through every page and an
+image/layout oracle that can emit concrete diagnoses, without confusing a
+legitimate data or theme difference with a real defect.
 
 ---
 
-## 4. Roles conocidos que no se ofrecen
+## 3. Visual type coverage
 
-**Estado:** cerrado el 2026-08-01.
+**Status:** closed on 2026-08-01.
 
-`ROLE_MAP` ya expone `tooltips`, `Y2` y `Rows`, además de los roles propios de
-los diez tipos nuevos. Los nombres se consultaron con `catalog describe` del
-CLI oficial; la prueba `abre` genera cada par tipo/rol y exige cero
-`PBIR_ROLE_UNKNOWN` sobre el informe completo.
+The nine types with original data are present, plus the ten that were
+missing: `gauge`, `kpi`, `donutChart`, `areaChart`, `scatterChart`,
+`treemap`, `funnel`, `waterfallChart`, `multiRowCard` and `ribbonChart`.
+`waterfall` is accepted as an alias, but written as `waterfallChart`, which
+is the real name in the official catalog. Plus the composition ones.
 
----
-
-## 5. El color mínimo de un degradado sobre tema oscuro
-
-**Estado:** cerrado el 2026-08-01.
-
-`pbi_set_conditional_format` toma los colores de quien llama. Con `#FFFFFF`
-como mínimo sobre un tema oscuro, los valores bajos quedan **blanco sobre
-blanco**: la celda se pinta y el número desaparece.
-
-La operación conserva los colores explícitos del llamante, pero ahora lee el
-tema activo y avisa si cualquiera de los extremos queda por debajo de 3:1. Al
-pintar el fondo compara contra la tinta del tema; al pintar fuente o marcas,
-contra la superficie. Así `#FFFFFF` sobre texto blanco en el tema oscuro ya no
-pasa en silencio.
+**How to add one without repeating the `cardVisual` mistake:** roles are
+**not deduced**. A visual is written for every (type, candidate role) pair,
+the official CLI is run over the whole report, and whatever returns
+`PBIR_ROLE_UNKNOWN` is read. The authoritative table comes out in one pass.
+`tests/test_generadores_abren.py` has the sweep wired up.
 
 ---
 
-## 6. R15 — `both` bloqueado
+## 4. Known roles not offered
 
-**Estado:** abierto por diseño. Analizado en [`DUAL_MODE.md`](DUAL_MODE.md).
+**Status:** closed on 2026-08-01.
 
-`live` exige Power BI Desktop **abierto**; `pbip` exige que esté **cerrado**.
-Son precondiciones mutuamente excluyentes, así que `both` producía un estado
-parcial determinista. Se bloqueó en vez de fingir atomicidad.
-
-No es deuda: es una decisión con su razonamiento escrito. Reabrirlo exige
-convertirlo en un **workflow guiado**, no en una operación.
+`ROLE_MAP` now exposes `tooltips`, `Y2` and `Rows`, plus the roles specific
+to the ten new types. The names were checked with `catalog describe` from
+the official CLI; the `abre` test generates every type/role pair and
+requires zero `PBIR_ROLE_UNKNOWN` over the full report.
 
 ---
 
-## 7. G10 — tres versiones de esquema PBIR sin publicar
+## 5. The minimum color of a gradient on a dark theme
 
-**Estado:** abierto **upstream**, no nuestro.
+**Status:** closed on 2026-08-01.
 
-`visualContainer/2.10.0`, `visualContainer/2.11.0` y `bookmarks/2.0.0` devuelven
-404 en el origen oficial de Microsoft. Su propio CLI tampoco los valida: emite
-`PBIR_SCHEMA_UNREACHABLE` y se los salta.
+`pbi_set_conditional_format` takes the caller's colors. With `#FFFFFF`
+as the minimum on a dark theme, low values end up **white on white**: the
+cell gets painted and the number disappears.
 
-No hay nada que hacer de este lado hasta que Microsoft los publique.
-
----
-
-## 8. `pbi_apply_plan` y la confirmación contractual
-
-**Estado:** pendiente de decisión de contrato.
-
-La tool aplica un plan firmado mediante `plan_token`, pero conserva
-`confirm=true` como valor por defecto histórico. Si se interpreta que el token
-es la aprobación explícita, el contrato actual es coherente. Si se exige además
-un `confirm=true` escrito por el cliente, el default debe pasar a `false`.
-
-Ese cambio rompería el contrato MCP congelado y por eso no se hizo durante la
-auditoría. Requiere aprobación deliberada y actualización del golden; no debe
-entrar disfrazado de refactor.
+The operation keeps the caller's explicit colors, but now reads the active
+theme and warns if either end falls below 3:1. When painting the background
+it compares against the theme's ink; when painting font or marks, against
+the surface. So `#FFFFFF` on white text in the dark theme no longer passes
+silently.
 
 ---
 
-## 9. Lo que aprendimos y no debe perderse
+## 6. R15 — `both` blocked
 
-Tres reglas que salieron caras. Están en el código como comentarios, pero
-conviene tenerlas juntas:
+**Status:** open by design. Analyzed in [`DUAL_MODE.md`](DUAL_MODE.md).
 
-1. **Una suite verde no prueba nada si la forma correcta la define el mismo
-   código que se prueba.** Hay que preguntarle a `TmdlSerializer` y al CLI
-   oficial. `tests/test_generadores_abren.py`.
+`live` requires Power BI Desktop **open**; `pbip` requires it **closed**.
+They are mutually exclusive preconditions, so `both` used to produce a
+deterministic partial state. It was blocked instead of faking atomicity.
 
-2. **Una prueba que pasa pero no habría cazado el defecto no vale nada.**
-   Verificar por mutación: revertir el arreglo y comprobar que falla, y que el
-   mensaje nombra la línea culpable.
+It's not debt: it's a decision with its reasoning written down. Reopening it
+requires turning it into a **guided workflow**, not an operation.
 
-3. **Lo que solo se ejecuta en la máquina del que programa, solo funciona
-   ahí.** La instalación limpia encontró dos defectos que ninguna prueba veía,
-   porque todas corrían sobre un entorno que ya estaba bien. La suite actual
-   tiene 1542 pruebas aprobadas, pero los oráculos externos siguen siendo
-   obligatorios.
+---
+
+## 7. G10 — three unpublished PBIR schema versions
+
+**Status:** open **upstream**, not ours.
+
+`visualContainer/2.10.0`, `visualContainer/2.11.0` and `bookmarks/2.0.0`
+return 404 at Microsoft's official source. Their own CLI doesn't validate
+them either: it emits `PBIR_SCHEMA_UNREACHABLE` and skips them.
+
+There's nothing to do on our side until Microsoft publishes them.
+
+---
+
+## 8. `pbi_apply_plan` and contractual confirmation
+
+**Status:** pending contract decision.
+
+The tool applies a plan signed via `plan_token`, but keeps `confirm=true`
+as the historical default. If the token is interpreted as the explicit
+approval, the current contract is coherent. If a client-written
+`confirm=true` is also required, the default should switch to `false`.
+
+That change would break the frozen MCP contract and so it wasn't made
+during the audit. It requires a deliberate approval and a golden update; it
+must not slip in disguised as a refactor.
+
+---
+
+## 9. What we learned and must not lose
+
+Three rules that were expensive to learn. They're in the code as comments,
+but it's worth having them together:
+
+1. **A green suite proves nothing if the same code being tested defines
+   the correct shape.** You have to ask `TmdlSerializer` and the official
+   CLI. `tests/test_generadores_abren.py`.
+
+2. **A test that passes but wouldn't have caught the bug is worthless.**
+   Verify by mutation: revert the fix and check that it fails, and that the
+   message names the culprit line.
+
+3. **What only runs on the developer's own machine only works there.**
+   The clean install found two defects no test caught, because they all
+   ran on an environment that was already fine. The current suite has 1542
+   tests passed, but the external oracles remain mandatory.

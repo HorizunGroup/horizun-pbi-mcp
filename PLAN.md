@@ -1,158 +1,158 @@
-# Plan — MCP propio para Power BI (Desktop local)
+# Plan — dedicated MCP for Power BI (local Desktop)
 
-> Documento de diseño. Decidido con Claude Code el 2026-07-06.
-> Estado: **plan aprobado, sin código todavía.** Arranque acordado: escribir código en fases (empezando por Fase 0) cuando se decida.
+> Design document. Decided with Claude Code on 2026-07-06.
+> Status: **plan approved, no code yet.** Agreed start: write code in phases (starting with Phase 0) once decided.
 
-## Objetivo
+## Objective
 
-Crear un servidor **MCP propio** para Power BI que hable con el **Desktop local** (el informe abierto en el PC) y cubra:
+Create a **dedicated MCP** server for Power BI that talks to the **local Desktop** (the report open on the PC) and covers:
 
-1. Consultar datos con **DAX** (lenguaje natural → DAX → resultados)
-2. **Documentar** el modelo (medidas, tablas, relaciones, RLS)
-3. **Crear/editar medidas** DAX
-4. **Refrescar** el dataset (local)
-5. **Generar y acomodar visualizaciones**
+1. Query data with **DAX** (natural language → DAX → results)
+2. **Document** the model (measures, tables, relationships, RLS)
+3. **Create/edit** DAX measures
+4. **Refresh** the dataset (local)
+5. **Generate and arrange** visualizations
 
-## Realidad clave: el "Desktop local" son DOS capas
+## Key reality: the "local Desktop" is TWO layers
 
-Con Power BI Desktop abierto, se expone un motor de Analysis Services en `localhost:<puerto>`.
-Ese motor **solo es la capa de DATOS** (modelo semántico). La capa de **INFORME**
-(visuales, páginas, layout del lienzo) **NO** está en ese endpoint ni en ninguna API en vivo.
+With Power BI Desktop open, an Analysis Services engine is exposed at `localhost:<port>`.
+That engine **is only the DATA layer** (semantic model). The **REPORT** layer
+(visuals, pages, canvas layout) is **NOT** in that endpoint or in any live API.
 
-| Objetivo | ¿En vivo (endpoint local)? | Cómo |
+| Objective | Live (local endpoint)? | How |
 |---|---|---|
-| Consultar datos con DAX | Sí | ADOMD → `executeQueries` contra `localhost` |
-| Documentar el modelo | Sí | Leer metadatos vía TOM |
-| Crear/editar medidas DAX | Sí | TOM escribe al modelo abierto (como Tabular Editor) |
-| Refrescar dataset (local) | Sí | TOM `RefreshType.Full` (workspaces en nube quedan fuera) |
-| **Generar/acomodar visuales** | **No en vivo** | Solo por archivos PBIP/PBIR en disco |
+| Query data with DAX | Yes | ADOMD → `executeQueries` against `localhost` |
+| Document the model | Yes | Read metadata via TOM |
+| Create/edit DAX measures | Yes | TOM writes to the open model (like Tabular Editor) |
+| Refresh dataset (local) | Yes | TOM `RefreshType.Full` (cloud workspaces are out of scope) |
+| **Generate/arrange visuals** | **Not live** | Only via PBIP/PBIR files on disk |
 
-## Decisión: se trabaja en formato PBIP (proyecto)
+## Decision: work in PBIP (project) format
 
-Confirmado: el usuario usará **`.pbip`** (Power BI Project). Guardar el informe así lo
-descompone en archivos de texto en disco:
+Confirmed: the user will use **`.pbip`** (Power BI Project). Saving the report this way
+breaks it down into text files on disk:
 
 ```
-MiInforme.pbip
-├─ MiInforme.SemanticModel/
-│   └─ definition/ …            ← TMDL: tablas, medidas, relaciones (texto editable)
-└─ MiInforme.Report/
+MyReport.pbip
+├─ MyReport.SemanticModel/
+│   └─ definition/ …            ← TMDL: tables, measures, relationships (editable text)
+└─ MyReport.Report/
     └─ definition/
-        └─ pages/<pagina>/visuals/<visual>/visual.json   ← PBIR: cada visual es un JSON
+        └─ pages/<page>/visuals/<visual>/visual.json   ← PBIR: each visual is a JSON
 ```
 
-- **TMDL** (Tabular Model Definition Language) = modelo y medidas como texto.
-- **PBIR** (formato de informe mejorado) = cada visual es un JSON con tipo, campos y posición (x, y, alto, ancho).
+- **TMDL** (Tabular Model Definition Language) = model and measures as text.
+- **PBIR** (enhanced report format) = each visual is a JSON with type, fields and position (x, y, height, width).
 
-Así, "generar y acomodar visuales" = **escribir archivos JSON**. Power BI Desktop detecta el
-cambio en disco y recarga.
+So "generate and arrange visuals" = **writing JSON files**. Power BI Desktop detects the
+change on disk and reloads.
 
-> **A VERIFICAR antes de la Fase 3:** PBIR fue *preview* durante 2024. Confirmar si en la
-> versión instalada de 2026 ya es GA y si la vista previa está activada
-> (Opciones → Características de vista previa). Es el supuesto técnico crítico del plan.
+> **TO VERIFY before Phase 3:** PBIR was in *preview* during 2024. Confirm whether the
+> installed 2026 version is already GA and whether the preview feature is enabled
+> (Options → Preview Features). This is the plan's critical technical assumption.
 
-## Arquitectura recomendada (híbrida)
+## Recommended architecture (hybrid)
 
 ```
 Claude Code
     │ MCP (stdio)
     ▼
-Servidor MCP  (Python + FastMCP)
-    ├─ ADOMD → localhost:<puerto>   ← consultas DAX + documentar (EN VIVO, rápido)
-    ├─ TOM  → localhost:<puerto>    ← crear/editar medidas + refrescar (EN VIVO)
-    └─ archivos TMDL + PBIR         ← generar/acomodar visuales + medidas durables (DISCO)
+MCP Server  (Python + FastMCP)
+    ├─ ADOMD → localhost:<port>   ← DAX queries + document (LIVE, fast)
+    ├─ TOM  → localhost:<port>    ← create/edit measures + refresh (LIVE)
+    └─ TMDL + PBIR files          ← generate/arrange visuals + durable measures (DISK)
 ```
 
-**Regla de reparto:**
-- Lo que es **consulta o dato** → endpoint en vivo (rápido, inmediato).
-- Lo que es **autoría durable** (visuales, y opcionalmente medidas) → archivos PBIP.
+**Split rule:**
+- What is **query or data** → live endpoint (fast, immediate).
+- What is **durable authoring** (visuals, and optionally measures) → PBIP files.
 
-## Lenguaje / librerías
+## Language / libraries
 
-- **Servidor MCP:** Python con **FastMCP** (lo más rápido de montar).
-- **DAX en vivo:** `pyadomd` (requiere el cliente **ADOMD.NET** instalado).
-- **Escribir al modelo (TOM):** Python es incómodo con TOM (es .NET). Dos caminos:
-  - `pythonnet` cargando TOM, **o**
-  - invocar **Tabular Editor 2 (CLI, gratis)** desde el servidor ← **recomendado** (robusto, evita interop).
-- **Visuales PBIR:** edición de JSON pura, agnóstico del lenguaje (Python directo).
+- **MCP server:** Python with **FastMCP** (fastest to set up).
+- **Live DAX:** `pyadomd` (requires the **ADOMD.NET** client installed).
+- **Writing to the model (TOM):** Python is awkward with TOM (it's .NET). Two paths:
+  - `pythonnet` loading TOM, **or**
+  - invoking **Tabular Editor 2 (CLI, free)** from the server ← **recommended** (robust, avoids interop).
+- **PBIR visuals:** pure JSON editing, language-agnostic (direct Python).
 
-## Roadmap por fases
+## Roadmap by phases
 
-- **Fase 0 — Conexión + DAX.** Descubrir el puerto local del Desktop, `pyadomd`, tool `pbi_run_dax`.
-  Es el "hola mundo" y ya da valor.
-- **Fase 1 — Documentar.** `pbi_document_model` → medidas/tablas/relaciones a Markdown o Excel.
-- **Fase 2 — Medidas.** Crear/editar DAX (Tabular Editor CLI o TMDL).
-- **Fase 3 — Visuales.** Generar y acomodar visuales escribiendo PBIR. **Fase de mayor riesgo** (depende de PBIR GA).
-- **Fase 4 — Refresh/gestión** local.
+- **Phase 0 — Connection + DAX.** Discover Desktop's local port, `pyadomd`, `pbi_run_dax` tool.
+  It's the "hello world" and already delivers value.
+- **Phase 1 — Document.** `pbi_document_model` → measures/tables/relationships to Markdown or Excel.
+- **Phase 2 — Measures.** Create/edit DAX (Tabular Editor CLI or TMDL).
+- **Phase 3 — Visuals.** Generate and arrange visuals by writing PBIR. **Highest-risk phase** (depends on PBIR GA).
+- **Phase 4 — Refresh/management** local.
 
-## Riesgos / decisiones abiertas
+## Risks / open decisions
 
-- **PBIR en preview** → la Fase 3 (visuales) es la de mayor riesgo. Validar pronto con un `.pbip`
-  de prueba antes de invertir en el resto.
-- **Puerto local dinámico** → el Desktop cambia de puerto en cada arranque. El MCP debe
-  descubrirlo (leer el proceso `msmdsrv` o el archivo de conexión temporal de PBI Desktop).
-- **En vivo vs archivos** → editar medidas en vivo por TOM no queda en el `.pbix`/`.pbip` hasta
-  guardar. Decidir si el MCP escribe en vivo, en archivos, o ambos coordinados.
-- **Prerrequisitos de entorno:** cliente ADOMD.NET instalado; Tabular Editor 2 si se usa esa vía.
+- **PBIR in preview** → Phase 3 (visuals) is the highest-risk one. Validate early with a test
+  `.pbip` before investing in the rest.
+- **Dynamic local port** → Desktop changes port on every startup. The MCP must
+  discover it (read the `msmdsrv` process or PBI Desktop's temporary connection file).
+- **Live vs. files** → editing measures live via TOM doesn't persist to the `.pbix`/`.pbip` until
+  saved. Decide whether the MCP writes live, to files, or both coordinated.
+- **Environment prerequisites:** ADOMD.NET client installed; Tabular Editor 2 if using that route.
 
-## Próximo paso acordado
+## Agreed next step
 
-Guardar este plan (hecho). Cuando se decida construir, arrancar por **Fase 0** — y antes,
-**verificar el estado de PBIR** en la versión instalada.
+Save this plan (done). Once building is decided, start with **Phase 0** — and before
+that, **verify PBIR's status** in the installed version.
 
 ---
 
-## Actualización 2026-07-07 — Implementación (validado en máquina)
+## Update 2026-07-07 — Implementation (validated on machine)
 
-Construido e integrado. Validaciones técnicas realizadas **contra el entorno real**:
+Built and integrated. Technical validations performed **against the real environment**:
 
-- **`pythonnet` funciona en Python 3.14.3.** `import clr` OK con runtime `netfx`.
-- **ADOMD.NET + TOM no estaban instalados** (ni GAC ni Program Files) ni Tabular Editor.
-  → Se **vendorizan las DLLs** de `Microsoft.AnalysisServices.*` (v19.84.1, net45) en `libs/`
-  vía `scripts/fetch_libs.py` (NuGet, **sin admin/GAC**).
-- **DAX en vivo validado:** conexión a `localhost:<puerto>`, descubrimiento de catálogo,
-  `EVALUATE`, DMVs, y lectura de modelo con TOM — todo OK contra Desktop abierto.
-- **PBIR confirmado GA** en los `.pbip` de prueba (`definition.pbir` v4.0, `definition/pages/<id>/`).
-- **TMDL** con indentación por tabs (medida = 1 tab, props = 2, expresión = 3).
+- **`pythonnet` works on Python 3.14.3.** `import clr` OK with the `netfx` runtime.
+- **ADOMD.NET + TOM were not installed** (neither GAC nor Program Files), nor was Tabular Editor.
+  → The `Microsoft.AnalysisServices.*` DLLs are **vendored** (v19.84.1, net45) in `libs/`
+  via `scripts/fetch_libs.py` (NuGet, **without admin/GAC**).
+- **Live DAX validated:** connection to `localhost:<port>`, catalog discovery,
+  `EVALUATE`, DMVs, and model reading with TOM — all OK against an open Desktop.
+- **PBIR confirmed GA** in the test `.pbip` files (`definition.pbir` v4.0, `definition/pages/<id>/`).
+- **TMDL** with tab-based indentation (measure = 1 tab, props = 2, expression = 3).
 
-### Decisión técnica (cambia respecto al plan original)
+### Technical decision (changes from the original plan)
 
-> **TOM vía `pythonnet` con DLLs vendorizadas** — en vez de **Tabular Editor 2 CLI**.
-> Motivo: pythonnet es estable aquí, las DLLs se obtienen sin instalar nada en el sistema,
-> y así se evita una dependencia externa (TE2 no estaba instalado). Da el mismo poder
-> (crear/editar medidas, refrescar) que TE2 y mantiene la edición durable por TMDL.
+> **TOM via `pythonnet` with vendored DLLs** — instead of **Tabular Editor 2 CLI**.
+> Reason: pythonnet is stable here, the DLLs are obtained without installing anything
+> on the system, and this avoids an external dependency (TE2 wasn't installed). It gives the same power
+> (create/edit measures, refresh) as TE2 while keeping durable editing via TMDL.
 
-### Bugs encontrados y corregidos durante la validación (vía smoke tests)
+### Bugs found and fixed during validation (via smoke tests)
 
-1. **Deadlock en `config.get_session`**: tomaba un `Lock` no reentrante y volvía a pedirlo
-   dentro de `get_settings`. → locks separados + resolver settings fuera del lock.
-2. **Colisión de backups en el mismo segundo**: `timestamp()` a segundos hacía fallar
-   `copytree`. → sufijo aleatorio corto en el nombre del backup.
-3. **Heurística de "ID visible"** no detectaba camelCase (`ClienteID`). → patrón ampliado.
+1. **Deadlock in `config.get_session`**: it took a non-reentrant `Lock` and requested it
+   again inside `get_settings`. → separate locks + resolving settings outside the lock.
+2. **Backup collision within the same second**: `timestamp()` at second precision made
+   `copytree` fail. → short random suffix in the backup name.
+3. **"Visible ID" heuristic** didn't detect camelCase (`ClientID`). → broadened pattern.
 
-### Estado por fases
+### Status by phase
 
-Fase 0–11 implementadas y probadas (live + archivos). 23 tools MCP registradas.
-33 pruebas `pytest` en verde (las que requieren Desktop se saltan). README y ejemplos listos.
+Phases 0–11 implemented and tested (live + files). 23 MCP tools registered.
+33 `pytest` tests green (the ones requiring Desktop are skipped). README and examples ready.
 
-### Revisión adversarial multi-agente (5 dimensiones + verificación)
+### Multi-agent adversarial review (5 dimensions + verification)
 
-Se corrió una revisión con subagentes (find → verify) sobre `src/`. De 26 hallazgos
-crudos, 15 confirmados. **Correcciones aplicadas:**
+A review was run with subagents (find → verify) over `src/`. Of 26 raw
+findings, 15 confirmed. **Fixes applied:**
 
-- **Path traversal** en `project_locator` (crítico): rutas de `artifacts`/`byPath` del
-  `.pbip` ahora se validan con `ensure_within_base` contra el **directorio del proyecto**
-  (no el del report — el `.SemanticModel` es un hermano `../`, que es legítimo).
-- **Cuelgue por puertos muertos**: `AdomdClient` añade `Connect Timeout` a la cadena y
-  fija `CommandTimeout`. Evita hangs indefinidos con archivos de puerto obsoletos.
-- **`.NET .Message`** (PascalCase) en `desktop_discovery` (antes usaba `message`).
-- **TMDL multilínea**: líneas de expresión (incl. en blanco) se indentan a 3 tabs.
-- **Validación en modo `live`** (nombre/expresión de medida), consistente con `pbip`.
-- **Modo `both`**: si un lado falla, el otro igual se intenta y se reporta la inconsistencia.
-- **Referencias de campo vacías/malformadas** (`Tabla[]`, `[`) ahora se rechazan.
-- `except` demasiado amplios estrechados (find_template, list_visuals).
+- **Path traversal** in `project_locator` (critical): `artifacts`/`byPath` paths from
+  the `.pbip` are now validated with `ensure_within_base` against the **project
+  directory** (not the report's — `.SemanticModel` is a sibling `../`, which is legitimate).
+- **Hang on dead ports**: `AdomdClient` now adds `Connect Timeout` to the connection string and
+  sets `CommandTimeout`. Avoids indefinite hangs with stale port files.
+- **`.NET .Message`** (PascalCase) in `desktop_discovery` (previously used `message`).
+- **Multiline TMDL**: expression lines (including blank ones) are indented to 3 tabs.
+- **Validation in `live` mode** (measure name/expression), consistent with `pbip`.
+- **`both` mode**: if one side fails, the other is still attempted and the inconsistency is reported.
+- **Empty/malformed field references** (`Table[]`, `[`) are now rejected.
+- Overly broad `except` narrowed (find_template, list_visuals).
 
-**Hallazgo rechazado con criterio:** "citar valores de propiedad TMDL (formatString/
-displayFolder)". Es **incorrecto**: los valores de propiedad TMDL toman el resto de la
-línea (los espacios son válidos sin comillas) y citar `formatString` lo rompería
-(`#,0` debe ir sin comillas). No se aplicó.
+**Finding rejected on merit:** "quote TMDL property values (formatString/
+displayFolder)". This is **incorrect**: TMDL property values take the rest of the
+line (spaces are valid without quotes), and quoting `formatString` would break it
+(`#,0` must go unquoted). Not applied.
