@@ -446,15 +446,23 @@ def _validar_valor_formato(valor: Any, ruta: str,
     if "solid" in valor:
         solido = valor["solid"]
         ruta_solido = _ruta_hija(ruta, "solid")
-        if not isinstance(solido, dict) or not isinstance(solido.get("color"), dict):
+        if not isinstance(solido, dict):
             errores.append(_error_formato(_ruta_hija(ruta_solido, "color"),
                                           "format_solid_color"))
-        else:
+        elif isinstance(solido.get("color"), dict):
             color = solido["color"]
             if "expr" in color:
                 _validar_expresion_formato(color["expr"],
                                             _ruta_hija(_ruta_hija(ruta_solido, "color"), "expr"),
                                             errores)
+        elif isinstance(solido.get("expr"), dict) and "FillRule" in solido["expr"]:
+            # Formato condicional exportado por Desktop: el FillRule cuelga
+            # directamente de ``solid.expr``; no lleva un nivel ``color``.
+            _validar_expresion_formato(
+                solido["expr"], _ruta_hija(ruta_solido, "expr"), errores)
+        else:
+            errores.append(_error_formato(_ruta_hija(ruta_solido, "color"),
+                                          "format_solid_color"))
 
     if "expr" in valor:
         _validar_expresion_formato(valor["expr"], _ruta_hija(ruta, "expr"), errores)

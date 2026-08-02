@@ -64,3 +64,22 @@ def test_preflight_real_detecta_colision_sin_abrir_desktop(tmp_path):
 
     assert any(f["rule"] == "tmdl_measure_column_collision"
                for f in exc.value.details["findings"])
+
+
+def test_preflight_bloquea_modelo_semantico_vacio_antes_del_timeout(tmp_path):
+    proyecto = tmp_path / "Vacio"
+    semantic = proyecto / "Vacio.SemanticModel" / "definition"
+    semantic.mkdir(parents=True)
+    pbip = proyecto / "Vacio.pbip"
+    pbip.write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/pbip/pbipProperties/1.0.0/schema.json",
+        "version": "1.0",
+        "artifacts": [{"report": {"path": "Vacio.Report"}}],
+    }), encoding="utf-8")
+    (proyecto / "Vacio.Report").mkdir()
+
+    with pytest.raises(desktop_launcher.DesktopPreflightError) as exc:
+        desktop_launcher._preflight_pbip_model(pbip)
+
+    assert exc.value.details["rule"] == "tmdl_empty_model"
+    assert exc.value.details["findings"][0]["severity"] == "error"

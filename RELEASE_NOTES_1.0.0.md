@@ -3,10 +3,12 @@
 Primera versión estable del repositorio oficial de Horizun PBI MCP.
 
 - 117 tools MCP y contrato compatible con las 34 tools originales.
-- 1540 pruebas aprobadas; 3 omitidas únicamente por condiciones externas
+- 1542 pruebas aprobadas; 3 omitidas únicamente por condiciones externas
   documentadas.
 - Validación TMDL/TOM antes de abrir Power BI Desktop, evitando el Frown de
   proyectos con colisiones de nombres.
+- Preflight de modelos vacíos: devuelve un diagnóstico accionable en vez de
+  esperar un timeout de Desktop sin motor servido.
 - Validación PBIR contra esquemas y CLI oficiales cuando están publicados,
   oráculo estructural para `objects`, transacciones atómicas, journals,
   backups y rollback.
