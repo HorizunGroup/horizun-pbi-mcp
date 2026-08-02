@@ -186,7 +186,14 @@ def discover_instances() -> List[Dict[str, Any]]:
     for item in _ports_from_processes():
         candidates[item["port"]] = item
     for item in _workspace_port_files():
-        candidates.setdefault(item["port"], item)
+        existing = candidates.get(item["port"])
+        if existing is None:
+            candidates[item["port"]] = item
+        elif item.get("workspace"):
+            # El proceso aporta PID/hora de arranque y el archivo aporta el
+            # workspace. Son piezas complementarias de una misma identidad;
+            # `setdefault` descartaba la segunda y debilitaba la verificacion.
+            existing["workspace"] = item["workspace"]
 
     if not candidates:
         return []
@@ -221,14 +228,18 @@ def discover_instances() -> List[Dict[str, Any]]:
 def session_fingerprint(instance: Dict[str, Any]) -> str:
     """Huella estable de una sesion concreta del motor.
 
-    Combina puerto, pid, hora de creacion del proceso y catalogo. Si el puerto
-    se reutiliza por otro proceso, o el mismo proceso carga otro modelo, la
-    huella cambia: por eso sirve para detectar una sesion reutilizada.
+    Combina puerto, pid, hora de creacion, workspace y catalogo. Si el puerto
+    se reutiliza por otro proceso, o el mismo proceso/workspace carga otro
+    modelo, la huella cambia: por eso sirve para detectar una sesion reutilizada.
     """
+    workspace = instance.get("workspace")
+    workspace_id = (os.path.normcase(os.path.normpath(str(workspace)))
+                    if workspace else None)
     parts = [
         str(instance.get("port")),
         str(instance.get("pid")),
         str(instance.get("create_time")),
+        str(workspace_id),
         str(instance.get("catalog")),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
@@ -269,6 +280,18 @@ def verify_model(model: ActiveModel) -> Dict[str, Any]:
         return {"status": "mismatch", "reason": (
             "El proceso del puerto tiene otra hora de arranque: el identificador "
             "de proceso se reutilizo."), "instance": inst}
+
+    recorded_workspace = getattr(model, "workspace", None)
+    current_workspace = inst.get("workspace")
+    if recorded_workspace is not None:
+        recorded_workspace = os.path.normcase(os.path.normpath(
+            str(recorded_workspace)))
+        current_workspace = (os.path.normcase(os.path.normpath(
+            str(current_workspace))) if current_workspace else None)
+        if recorded_workspace != current_workspace:
+            return {"status": "mismatch", "reason": (
+                "El puerto pertenece ahora a otro workspace de Power BI "
+                "Desktop."), "instance": inst}
 
     if model.catalog and inst.get("catalog") and model.catalog != inst["catalog"]:
         return {"status": "mismatch", "reason": (

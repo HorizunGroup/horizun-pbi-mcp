@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -136,6 +137,11 @@ class ActivePbip:
 class Session:
     """Estado mutable de la sesion, seguro para hilos."""
 
+    # Una comprobacion de identidad implica enumerar procesos, puertos y
+    # consultar el catalogo. Se permite reutilizarla solo durante una ventana
+    # muy corta; nunca durante toda la vida del servidor MCP.
+    _MODEL_VERIFICATION_TTL_SECONDS = 1.0
+
     def __init__(self, settings: Settings):
         self.settings = settings
         self._lock = threading.RLock()
@@ -144,6 +150,8 @@ class Session:
         # Huella ya verificada en este proceso. Una sesion recargada de disco
         # arranca SIN verificar: no se confia en lo que quedo guardado.
         self._verified_fingerprint: Optional[str] = None
+        self._verified_identity: Optional[tuple[Any, ...]] = None
+        self._verified_at_monotonic: Optional[float] = None
         self._session_file = settings.outputs_dir / "session.json"
         self._load_persisted()
 
@@ -158,7 +166,25 @@ class Session:
             self._active_model = model
             # Se acaba de descubrir: cuenta como verificada en este proceso.
             self._verified_fingerprint = model.session_fingerprint
+            self._verified_identity = self._model_identity(model)
+            self._verified_at_monotonic = time.monotonic()
             self._persist()
+
+    @staticmethod
+    def _model_identity(model: ActiveModel) -> tuple[Any, ...]:
+        """Identidad inmutable usada para ligar la cache a una seleccion."""
+        workspace = (os.path.normcase(os.path.normpath(model.workspace))
+                     if model.workspace else None)
+        return (
+            model.host.casefold(), int(model.port), model.pid,
+            model.process_started, workspace, model.catalog,
+            model.session_fingerprint,
+        )
+
+    def _invalidate_model_verification(self) -> None:
+        self._verified_fingerprint = None
+        self._verified_identity = None
+        self._verified_at_monotonic = None
 
     def require_active_model(self, verify: bool = True) -> ActiveModel:
         """Devuelve el modelo activo, comprobando que la sesion siga siendo la misma.
@@ -178,25 +204,60 @@ class Session:
                     "pbi_select_model para elegir el modelo local abierto."
                 )
             verified = self._verified_fingerprint
+            verified_identity = self._verified_identity
+            verified_at = self._verified_at_monotonic
+            identity = self._model_identity(model)
 
         if not verify:
             return model
 
-        # Ya verificada en esta ejecucion y sin cambios: no se repite el escaneo.
-        if verified is not None and verified == model.session_fingerprint:
-            return model
+        # La cache esta ligada a TODA la identidad y caduca como maximo en un
+        # segundo. Asi una sesion valida no se reutiliza indefinidamente si
+        # Desktop muere o Windows recicla el PID/puerto.
+        if verified is not None and verified == model.session_fingerprint \
+                and verified_identity == identity and verified_at is not None:
+            age = time.monotonic() - verified_at
+            if 0.0 <= age < self._MODEL_VERIFICATION_TTL_SECONDS:
+                return model
 
         from powerbi.desktop_discovery import StaleSessionError, verify_model
 
-        status = verify_model(model)
+        try:
+            status = verify_model(model)
+        except Exception:
+            # Un fallo del propio descubrimiento tampoco deja una identidad
+            # certificada. Si otro hilo ya selecciono otro modelo, no se borra
+            # la cache nueva.
+            with self._lock:
+                if self._active_model is model \
+                        and self._model_identity(model) == identity:
+                    self._invalidate_model_verification()
+            raise
         if status["status"] != "ok":
+            with self._lock:
+                if self._active_model is model \
+                        and self._model_identity(model) == identity:
+                    self._invalidate_model_verification()
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {status['reason']} "
                 "Ejecuta pbi_list_desktop_models y pbi_select_model de nuevo.",
                 details={"status": status["status"], "recorded": model.to_dict()},
             )
         with self._lock:
+            # La seleccion pudo cambiar en otro hilo mientras se enumeraban
+            # procesos. Nunca certificar la identidad vieja como si fuera la
+            # nueva.
+            if self._active_model is not model \
+                    or self._model_identity(model) != identity:
+                self._invalidate_model_verification()
+                raise StaleSessionError(
+                    "El modelo activo cambio durante la comprobacion de "
+                    "identidad. Reintenta la operacion.",
+                    details={"status": "changed_during_verification"},
+                )
             self._verified_fingerprint = model.session_fingerprint
+            self._verified_identity = identity
+            self._verified_at_monotonic = time.monotonic()
         return model
 
     # -- proyecto pbip activo --

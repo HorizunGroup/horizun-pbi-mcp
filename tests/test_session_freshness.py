@@ -6,10 +6,14 @@ reutilizar tanto el puerto como el identificador de proceso.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+import config as config_module
 from config import ActiveModel
 from powerbi import desktop_discovery
+from powerbi import model_writer
 from powerbi.desktop_discovery import StaleSessionError
 from powerbi.errors import NoActiveModelError
 
@@ -20,6 +24,7 @@ def instancia(port=50000, pid=111, create_time=1000.0, catalog="cat-A",
             "create_time": create_time, "catalog": catalog,
             "database_name": catalog, "model_name": "Model",
             "connection_string": f"Data Source=localhost:{port}",
+            "workspace": r"C:\PBI\Workspace-A",
             "status": status, "table_count": 3, "warnings": [], **extra}
     inst["session_fingerprint"] = desktop_discovery.session_fingerprint(inst)
     return inst
@@ -31,6 +36,7 @@ def modelo_desde(inst):
         connection_string=inst["connection_string"], catalog=inst["catalog"],
         database_name=inst["database_name"], model_name=inst["model_name"],
         pid=inst["pid"], process_started=inst["create_time"],
+        workspace=inst.get("workspace"),
         session_fingerprint=inst["session_fingerprint"])
 
 
@@ -82,6 +88,14 @@ def test_pid_reutilizado_con_otra_hora_de_arranque_es_mismatch(instancias):
     assert "reutilizo" in res["reason"]
 
 
+def test_mismo_pid_y_puerto_en_otro_workspace_es_mismatch(instancias):
+    modelo = modelo_desde(instancia(workspace=r"C:\PBI\Workspace-A"))
+    instancias([instancia(workspace=r"C:\PBI\Workspace-B")])
+    res = desktop_discovery.verify_model(modelo)
+    assert res["status"] == "mismatch"
+    assert "workspace" in res["reason"]
+
+
 def test_otro_catalogo_en_el_mismo_puerto_es_mismatch(instancias):
     modelo = modelo_desde(instancia(catalog="cat-A"))
     instancias([instancia(catalog="cat-B")])
@@ -117,6 +131,15 @@ def test_la_huella_distingue_sesiones():
     assert a != b and a != c and len(a) == 16
 
 
+def test_la_huella_distingue_workspaces():
+    base = {"port": 1, "pid": 2, "create_time": 3.0, "catalog": "x"}
+    a = desktop_discovery.session_fingerprint(
+        {**base, "workspace": r"C:\PBI\Workspace-A"})
+    b = desktop_discovery.session_fingerprint(
+        {**base, "workspace": r"C:\PBI\Workspace-B"})
+    assert a != b
+
+
 # --------------------------------------------------- integracion en sesion ---
 def test_require_active_model_falla_si_la_sesion_esta_obsoleta(session, instancias):
     inst = instancia()
@@ -146,6 +169,48 @@ def test_require_active_model_pasa_si_todo_coincide(session, instancias):
     instancias([inst])
     session._verified_fingerprint = None
     assert session.require_active_model().port == inst["port"]
+
+
+def test_cache_de_identidad_caduca_y_detecta_puerto_reutilizado(
+        session, instancias, monkeypatch):
+    """Regresion: antes, la primera validacion habilitaba cache para siempre."""
+    now = [100.0]
+    monkeypatch.setattr(config_module, "time",
+                        SimpleNamespace(monotonic=lambda: now[0]),
+                        raising=False)
+    original = instancia(pid=111)
+    session.set_active_model(modelo_desde(original))
+
+    # Desktop muere y el mismo puerto pasa a otra instancia. Al vencer el TTL
+    # debe descubrirlo sin que la prueba manipule campos privados de Session.
+    instancias([instancia(pid=999)])
+    now[0] += 1.0
+    with pytest.raises(StaleSessionError) as exc:
+        session.require_active_model()
+    assert exc.value.details["status"] == "mismatch"
+    assert session._verified_fingerprint is None
+
+
+def test_mutacion_live_revalida_antes_de_conectar(
+        session, instancias, monkeypatch):
+    now = [200.0]
+    monkeypatch.setattr(config_module, "time",
+                        SimpleNamespace(monotonic=lambda: now[0]),
+                        raising=False)
+    session.set_active_model(modelo_desde(instancia(pid=111)))
+    instancias([instancia(pid=777)])
+    now[0] += 1.0
+
+    conectado = []
+
+    def no_debe_conectar(_model):
+        conectado.append(True)
+        raise AssertionError("no debe conectar a una identidad obsoleta")
+
+    monkeypatch.setattr(model_writer, "connect", no_debe_conectar)
+    with pytest.raises(StaleSessionError):
+        model_writer.set_column_hidden(session, "T", "C", True)
+    assert conectado == []
 
 
 def test_verify_false_no_consulta_el_sistema(session, instancias):
@@ -195,3 +260,25 @@ def test_los_archivos_de_puerto_huerfanos_no_se_borran(monkeypatch, tmp_path):
     assert res[0]["status"] == "unreachable"
     assert res[0]["source"] == "port_file"
     assert port_file.exists(), "no se elimina nada del disco del usuario"
+
+
+def test_descubrimiento_combina_pid_y_workspace(monkeypatch):
+    monkeypatch.setattr(desktop_discovery, "_ports_from_processes", lambda: [{
+        "host": "localhost", "port": 50000, "pid": 321,
+        "create_time": 123.0, "source": "process",
+    }])
+    monkeypatch.setattr(desktop_discovery, "_workspace_port_files", lambda: [{
+        "host": "localhost", "port": 50000, "pid": None,
+        "create_time": None, "source": "port_file",
+        "workspace": r"C:\PBI\Workspace-A",
+    }])
+    monkeypatch.setattr(desktop_discovery, "_port_is_listening",
+                        lambda _host, _port: True)
+    monkeypatch.setattr(desktop_discovery, "_enrich", lambda host, port: {
+        **instancia(port=port), "host": host,
+    })
+
+    [found] = desktop_discovery.discover_instances()
+    assert found["pid"] == 321
+    assert found["create_time"] == 123.0
+    assert found["workspace"] == r"C:\PBI\Workspace-A"
