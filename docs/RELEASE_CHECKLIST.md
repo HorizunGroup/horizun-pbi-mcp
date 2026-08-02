@@ -86,7 +86,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 ## 8. Documentación coherente
 
 - Conteo de tools y de pruebas tomados de la **ejecución final**, no estimados.
-- Limitaciones descritas como son: esquemas no publicados upstream, `both` bloqueado, el bloque `objects` sin validar.
+- Limitaciones descritas como son: esquemas no publicados upstream, `both` bloqueado y equivalencia visual completa de `objects` aún parcial.
 - Ningún ejemplo con rutas personales.
 
 ---
@@ -98,9 +98,9 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 | `visualContainer/2.10.0` y `bookmarks/2.0.0` sin publicar | 404 en el origen oficial; el CLI de Microsoft tampoco los valida |
 | **G10** parcialmente cerrado | Consecuencia directa de lo anterior |
 | **R15** abierto, `both` bloqueado | Precondiciones mutuamente excluyentes ([`DUAL_MODE.md`](DUAL_MODE.md)) |
-| **Equivalencia completa del bloque `objects` de un visual pendiente** | Una barrera local detecta las formas mal anidadas que generamos (`solid.color`, expresiones y `FillRule`), pero el esquema oficial deja el bloque abierto. Sigue faltando un corpus exportado de Desktop para probar equivalencia de propiedades y combinaciones |
+| **Equivalencia visual completa de `objects` parcialmente cerrada** | Las rutas administradas se comprueban contra `effective-properties` oficial y un corpus anonimizado de formas exportadas por Desktop. Esto prueba estructura, propiedades, tipos y enums; no demuestra aún el resultado semántico de todos los píxeles ni todas las combinaciones posibles |
 | Errores preexistentes del informe del usuario | No se corrigen automáticamente, nunca |
-| Dos pruebas omitidas | Requieren Desktop abierto o una precondición del modelo |
+| Tres pruebas omitidas | Requieren Desktop abierto o una precondición del modelo |
 
 ---
 

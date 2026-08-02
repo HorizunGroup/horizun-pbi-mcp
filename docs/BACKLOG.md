@@ -3,16 +3,17 @@
 Lo que queda abierto, por qué importa y cómo se comprueba. Ordenado por lo que
 más duele.
 
-Se actualizó el 2026-08-01 después de auditar por AST las **116 tools**, probar
+Se actualizó el 2026-08-02 después de auditar por AST las **117 tools**, probar
 conversiones reales PBIX→PBIP y volver a abrir los resultados en Power BI
-Desktop. La suite integrada quedó en **1493 passed, 3 skipped**. La lista de
+Desktop. La suite integrada quedó en **1536 passed, 3 skipped**. La lista de
 abajo no es una lluvia de ideas: es lo que sabemos que falta, con evidencia.
 
 ---
 
-## 1. El bloque `objects` de un visual no lo valida nadie
+## 1. Equivalencia completa del bloque `objects`
 
-**Estado:** parcialmente cerrado. Declarado como limitación en
+**Estado:** parcialmente cerrado. La estructura que genera Horizun ya tiene
+oráculo; la equivalencia visual completa sigue siendo una limitación en
 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
 El esquema oficial `formattingObjectDefinitions` declara
@@ -25,52 +26,77 @@ vida del proyecto —faltaba el nivel `color`— y pasó el validador oficial de
 Microsoft con cero errores. Solo se vio abriendo el informe y viendo una tabla
 sin colorear.
 
-**Barrera actual:** `services.pbir_schema.validar_objetos_visual()` comprueba
+**Barreras actuales:** `services.pbir_schema.validar_objetos_visual()` comprueba
 antes de cada escritura la gramática de los envoltorios que el servidor
 produce: grupos de formato, `solid.color`, expresiones, y los gradientes
 `FillRule`. Con ello una forma como `solid: {expr: ...}` se bloquea y revierte
 la transacción, aunque el esquema oficial la acepte. La regresión se ejecuta
 contra el commit anterior y falla allí.
 
-Además, la fábrica ya consulta el catálogo oficial para exigir roles,
+`services.format_oracle` añade la pieza que faltaba para las rutas que el MCP
+administra: consulta `formatting effective-properties` del CLI oficial y
+compara grupo, propiedad, tipo y enum por `visualType`. Un snapshot mínimo de
+esas mismas rutas mantiene la barrera sin Node; una prueba viva exige que el
+snapshot continúe siendo subconjunto exacto del catálogo oficial instalado.
+
+El corpus sintético `tests/fixtures/synthetic/format_objects_corpus.json`
+conserva únicamente formas estructurales que Desktop exportó. Se construyó
+desde copias temporales de 125 PBIX y reemplaza cada hoja por un token de tipo.
+No contiene rutas, conteos por origen, hashes, GUID, IDs, URLs, textos, nombres
+de página/tabla/campo, valores del modelo ni tipos custom. El extractor falla
+cerrado ante cualquier clave no incluida en su allowlist.
+
+Esta evidencia descubrió y cerró defectos que el esquema aceptaba: `cardVisual`
+usaba `value.color` en vez de `value.fontColor`; formas e iconos escribían enums
+inventados; `table`/`matrix` aceptaban propiedades que Desktop ignora; y los
+`FillRule` perdían `Aggregation.Function` y usaban un selector incorrecto.
+
+Además, la fábrica consulta el catálogo oficial para exigir roles,
 cardinalidades y clase de campo (`Grouping`, `Measure` o
 `GroupingOrMeasure`) antes de escribir. Esto cerró otra vía por la que Desktop
 aceptaba el archivo pero dejaba un visual vacío o semánticamente incorrecto.
-No sustituye el oráculo de formato: los roles viven fuera de `objects`.
+Los roles viven fuera de `objects` y se validan por separado.
 
-**Lo que aún falta:** un oráculo de equivalencia para el bloque completo. La
-forma más barata es un corpus anonimizado de visuales reales exportados de
-Power BI Desktop, y comparar la estructura que generamos contra la que produce
-la herramienta. No es validación de esquema; es equivalencia con el producto.
-La barrera actual no puede descubrir una propiedad nueva, una combinación que
-Desktop ignora, ni demostrar que un visual se pinta como se espera.
+**Lo que aún falta:** el oráculo cubre solo las rutas que este servidor escribe;
+no pretende rechazar extensiones conservadas al clonar una plantilla ni probar
+cada combinación posible de propiedades. La equivalencia estructural tampoco
+demuestra por sí sola que un visual se pinte como se espera: eso pertenece a la
+comprobación renderizada del punto siguiente.
 
 ---
 
-## 2. La comprobación visual sigue siendo manual
+## 2. Interpretación automática de la comprobación visual
 
-**Estado:** parcialmente cerrado.
+**Estado:** parcialmente cerrado. La captura ya es automática y segura; decidir
+si el resultado es visualmente correcto todavía requiere inspección.
 
-Lo único de «se ve bien» que está automatizado es el **contraste WCAG**
-(`tests/test_design_y_guia.py`), y cerró una clase real: el título en `#0B0B0B`
-sobre fondo `#1A1A19`.
+El **contraste WCAG** (`tests/test_design_y_guia.py`) cerró una clase real: el
+título en `#0B0B0B` sobre fondo `#1A1A19`.
+
+La tool `pbi_validate_desktop_render` abre el `.pbix`/`.pbip`, correlaciona la
+ventana exacta por PID y hora de creación, y la renderiza con `PrintWindow` sin
+depender del foco. Falla cerrado ante ventanas ambiguas o PID reciclado, escribe
+el PNG atómicamente en `outputs/desktop_captures` y solo cierra Desktop si esa
+misma llamada lo abrió. Se probó sobre Power BI Desktop real.
 
 Lo que sigue exigiendo ojos: que el número quepa, que la tabla pinte, que la
-leyenda no tape la barra, que el eje no se corte.
+leyenda no tape la barra y que el eje no se corte. La captura demuestra que la
+ventana renderizó; no interpreta semánticamente sus píxeles.
 
 **Procedimiento actual**, para no reinventarlo cada vez:
 
 ```python
-from powerbi import desktop_launcher
-desktop_launcher.open_pbix(r"C:\ruta\Proyecto.pbip", timeout=300)
+resultado = pbi_validate_desktop_render(
+    path=r"C:\ruta\Proyecto.pbip", timeout=300, capture_timeout=30)
 ```
 
-Después hay que **refrescar** —un proyecto recién generado abre sin datos— y
-recorrer las páginas con capturas.
+Si el proyecto recién generado no tiene datos materializados, todavía hay que
+refrescarlo. La tool captura la página visible; recorrer todas las páginas y
+clasificar defectos de composición sigue pendiente.
 
-**Qué haría falta:** exportar la página a imagen sin intervención. Power BI
-Desktop no expone eso por línea de comandos; el camino realista es el servicio
-o `Export-PowerBIReport`, y ninguno funciona sobre un `.pbip` local.
+**Qué haría falta:** navegación determinista por todas las páginas y un oráculo
+de imagen/layout que pueda emitir diagnósticos concretos, sin confundir una
+diferencia legítima de datos o tema con un defecto.
 
 ---
 
@@ -175,5 +201,5 @@ conviene tenerlas juntas:
 3. **Lo que solo se ejecuta en la máquina del que programa, solo funciona
    ahí.** La instalación limpia encontró dos defectos que ninguna prueba veía,
    porque todas corrían sobre un entorno que ya estaba bien. La suite actual
-   tiene 1493 pruebas aprobadas, pero los oráculos externos siguen siendo
+   tiene 1536 pruebas aprobadas, pero los oráculos externos siguen siendo
    obligatorios.

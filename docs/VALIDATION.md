@@ -1,6 +1,10 @@
-# Validación PBIR: dos capas y sus límites
+# Validación PBIR: dos capas, un oráculo de formato y sus límites
 
 Antes de escribir un archivo del informe, Horizun PBI MCP lo valida en **dos capas independientes**. Ninguna sustituye a la otra, y ninguna promete más de lo que comprueba.
+
+Para las propiedades que el propio servidor añade a `visual.objects`, una
+tercera barrera específica compara además la estructura con el catálogo de
+formato y con formas que Power BI Desktop exportó realmente.
 
 ---
 
@@ -50,6 +54,27 @@ Encuentra lo que la capa 1 no puede. Sobre un informe real de referencia: **44 e
 Se invoca **siempre con `--no-schema`**: por defecto el CLI descarga esquemas por red, y una mutación no puede depender de eso. Medido: en ese modo conserva los 44 errores semánticos y solo pierde el aviso de esquema inalcanzable, que ya cubre la capa 1.
 
 **El código de salida del CLI es 0 incluso cuando falla.** Manda el recuento de diagnósticos, no el exit code.
+
+---
+
+## Oráculo de las rutas de formato administradas
+
+`services/format_oracle.py` consulta `formatting effective-properties` del CLI
+fijado y valida las rutas `(scope, group, property)` que Horizun acaba de
+generar, incluidos el tipo de valor y los enums. Un snapshot mínimo permite la
+misma barrera offline y una prueba viva comprueba que no se separe del catálogo
+oficial.
+
+El fixture sintético `format_objects_corpus.json` añade evidencia independiente
+de visuales exportados por Desktop: conserva solo claves estructurales y tokens
+de tipo. No contiene datos, identificadores, nombres, rutas ni conteos de los
+informes de origen.
+
+El alcance es deliberado: no rechaza propiedades ajenas conservadas al clonar
+una plantilla y no afirma que una estructura válida produzca una composición
+visualmente buena. Para comprobar que Desktop renderiza el archivo existe
+`pbi_validate_desktop_render`; la evaluación estética/semántica de la captura
+sigue siendo una capa distinta.
 
 ---
 
