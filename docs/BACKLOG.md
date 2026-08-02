@@ -5,7 +5,7 @@ más duele.
 
 Se actualizó el 2026-08-02 después de auditar por AST las **117 tools**, probar
 conversiones reales PBIX→PBIP y volver a abrir los resultados en Power BI
-Desktop. La suite integrada quedó en **1540 passed, 3 skipped**. La lista de
+Desktop. La suite integrada quedó en **1542 passed, 3 skipped**. La lista de
 abajo no es una lluvia de ideas: es lo que sabemos que falta, con evidencia.
 
 ---
@@ -104,6 +104,12 @@ rechazaba el modelo al cargarlo. El launcher ahora ejecuta el lint/TOM antes de
 abrir la ventana y devuelve `desktop_preflight_failed` con las dos reglas y su
 evidencia; no deja un proceso `Sin título` colgado. La regresión está en
 `tests/test_desktop_preflight.py`.
+
+La misma barrera detecta ahora modelos semánticos vacíos antes del timeout de
+Desktop (`tmdl_empty_model`). En la barrida de nueve proyectos locales, cinco
+abrieron y capturaron correctamente, tres quedaron rechazados antes de lanzar
+Desktop por estar vacíos y el proyecto con colisiones quedó rechazado con sus
+dos hallazgos. No se dejó ningún proceso huérfano.
 
 **Qué haría falta:** navegación determinista por todas las páginas y un oráculo
 de imagen/layout que pueda emitir diagnósticos concretos, sin confundir una
@@ -212,5 +218,5 @@ conviene tenerlas juntas:
 3. **Lo que solo se ejecuta en la máquina del que programa, solo funciona
    ahí.** La instalación limpia encontró dos defectos que ninguna prueba veía,
    porque todas corrían sobre un entorno que ya estaba bien. La suite actual
-   tiene 1540 pruebas aprobadas, pero los oráculos externos siguen siendo
+   tiene 1542 pruebas aprobadas, pero los oráculos externos siguen siendo
    obligatorios.

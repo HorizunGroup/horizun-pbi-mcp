@@ -81,6 +81,8 @@ Si encuentra errores estáticos o de `TmdlSerializer`, devuelve
 `desktop_preflight_failed` con los hallazgos y no lanza Desktop. Esto evita que
 un proyecto antiguo termine en una ventana `Sin título` con un Frown genérico;
 por ejemplo, detecta una medida que colisiona con una columna de la misma tabla.
+También bloquea un modelo semántico sin tablas (`tmdl_empty_model`), que de otro
+modo solo produciría un timeout esperando un motor que nunca llega a servir.
 
 ---
 

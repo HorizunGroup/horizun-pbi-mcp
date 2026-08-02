@@ -140,6 +140,26 @@ def _preflight_pbip_model(pbip: Path) -> None:
         definition = tmdl_validate.resolve_definition_dir(pbip)
     except tmdl_validate.ReportOnlyProjectError:
         return
+    tables_dir = definition / "tables"
+    table_files = sorted(tables_dir.glob("*.tmdl")) if tables_dir.is_dir() else []
+    if not table_files:
+        raise DesktopPreflightError(
+            "El proyecto PBIP tiene un modelo semántico vacío: Power BI "
+            "Desktop no llegará a servir un motor para este proyecto. "
+            "Añade al menos una tabla TMDL o ábrelo como informe-only.",
+            details={
+                "path": str(pbip),
+                "definition_dir": str(definition),
+                "rule": "tmdl_empty_model",
+                "findings": [{
+                    "rule": "tmdl_empty_model",
+                    "severity": "error",
+                    "path": str(tables_dir),
+                }],
+                "parse_checked": False,
+                "parsed": False,
+            },
+        )
     resultado = tmdl_validate.validate(definition, use_tom=True)
     errores = [finding for finding in resultado.get("findings", [])
                if finding.get("severity") == "error"]
