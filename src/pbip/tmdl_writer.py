@@ -66,11 +66,16 @@ def _locate_measure(lines: List[str], name: str) -> Optional[Tuple[int, int]]:
     El inicio incluye los doc-comments `///` inmediatamente anteriores (son la
     descripcion de la medida), para que reemplazar/borrar no los duplique.
     """
+    wanted = name.casefold()
     for i, line in enumerate(lines):
         if _indent(line) == 1 and _first_token(line) == "measure":
             header = line.strip()[len("measure"):].strip()
             nm = _unquote(header.split("=", 1)[0].strip())
-            if nm == name:
+            # El motor tabular trata los nombres de medida sin distinguir
+            # mayusculas. Una busqueda exacta dejaba crear `Ventas` y `ventas`
+            # en la misma tabla; el archivo se escribia con exito, pero Desktop
+            # rechazaba el modelo al abrirlo por nombre duplicado.
+            if nm.casefold() == wanted:
                 start = i
                 while start > 0 and lines[start - 1].strip().startswith("///"):
                     start -= 1
@@ -90,15 +95,24 @@ def _locate_measure(lines: List[str], name: str) -> Optional[Tuple[int, int]]:
 def _insertion_index(lines: List[str]) -> int:
     for i, line in enumerate(lines):
         if _indent(line) == 1 and _first_token(line) in _CHILD_KEYWORDS:
-            return i
+            # Los doc-comments `///` son parte del child que viene justo
+            # despues. Insertar entre el comentario y su declaracion deja un
+            # comentario huerfano (y normalmente una linea vacia entre ambos),
+            # que TmdlSerializer rechaza. El punto de insercion es el inicio
+            # del bloque completo, incluidos todos sus doc-comments contiguos.
+            start = i
+            while start > 0 and lines[start - 1].strip().startswith("///"):
+                start -= 1
+            return start
     return len(lines)
 
 
 def _snapshot(file_path: Path, name: str) -> Optional[Dict[str, Any]]:
+    wanted = name.casefold()
     try:
         parsed = parse_table_file(file_path)
         for m in parsed["measures"]:
-            if m["name"] == name:
+            if m["name"].casefold() == wanted:
                 return m
     except Exception:  # noqa: BLE001
         pass
