@@ -233,6 +233,7 @@ def test_aplicar_tema_deja_los_tres_nombres_iguales(sample_pbip, session, tmp_pa
 
     assert contenido["name"] == archivo.name == declarado
     assert declarado.endswith(".json")
+    assert theme.current_theme(activo)["background"] == "#1A1A19"
     # y queda declarado como recurso, o Desktop lo ignora en silencio
     paquetes = {p["type"]: p for p in informe["resourcePackages"]}
     rutas = [i["path"] for i in paquetes["RegisteredResources"]["items"]]
@@ -560,6 +561,24 @@ def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
         cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
     assert exc.value.details["visual_type"] == "pivotTable"
     assert "objects" not in vis["visual"]
+
+
+def test_degradado_blanco_avisa_sobre_tema_oscuro():
+    from pbip import conditional_format as cf
+
+    avisos = cf.contrast_warnings(
+        "#FFFFFF", "#2A78D6", target="background",
+        theme_data={"background": "#1A1A19", "foreground": "#FFFFFF"})
+    assert len(avisos) == 1
+    assert "min" in avisos[0] and "1.00:1" in avisos[0]
+
+
+def test_degradado_con_contraste_suficiente_no_avisa():
+    from pbip import conditional_format as cf
+
+    assert cf.contrast_warnings(
+        "#000000", "#1A1A19", target="background",
+        theme_data={"background": "#FFFFFF", "foreground": "#FFFFFF"}) == []
 
 
 # --------------------------------------------------------- recursos ----------

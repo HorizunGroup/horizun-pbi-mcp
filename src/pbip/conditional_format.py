@@ -73,6 +73,47 @@ def _validar_color(valor: str, etiqueta: str) -> str:
     return valor
 
 
+def _luminancia(color: str) -> float:
+    """Luminancia relativa WCAG de un color ya validado."""
+    _validar_color(color, "color")
+    hexa = color[1:]
+    if len(hexa) == 3:
+        hexa = "".join(c * 2 for c in hexa)
+    canales = [int(hexa[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    lineales = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                for c in canales]
+    return 0.2126 * lineales[0] + 0.7152 * lineales[1] + 0.0722 * lineales[2]
+
+
+def contrast_ratio(a: str, b: str) -> float:
+    """Relacion de contraste WCAG entre dos colores hexadecimales."""
+    la, lb = _luminancia(a), _luminancia(b)
+    claro, oscuro = max(la, lb), min(la, lb)
+    return (claro + 0.05) / (oscuro + 0.05)
+
+
+def contrast_warnings(min_color: str, max_color: str, *, target: str,
+                      theme_data: Optional[Dict[str, Any]]) -> List[str]:
+    """Advierte extremos que pueden desaparecer sobre el tema activo."""
+    if not isinstance(theme_data, dict):
+        return []
+    clave = str(target).strip().lower()
+    # Si se pinta el fondo, el numero conserva la tinta del tema. Si se pinta
+    # la fuente o una marca, el contraste relevante es contra la superficie.
+    referencia = (theme_data.get("foreground") if clave == "background"
+                  else theme_data.get("background"))
+    if not (isinstance(referencia, str) and _HEX_COLOR.fullmatch(referencia)):
+        return []
+    avisos = []
+    for extremo, color in (("min", min_color), ("max", max_color)):
+        razon = contrast_ratio(color, referencia)
+        if razon < 3.0:
+            avisos.append(
+                f"Contraste bajo en el extremo {extremo}: {color} frente a "
+                f"{referencia} del tema ({razon:.2f}:1, minimo recomendado 3:1).")
+    return avisos
+
+
 def build_fill_rule(field: Dict[str, Any], min_color: str, max_color: str,
                     mid_color: Optional[str] = None,
                     null_strategy: str = "asZero") -> Dict[str, Any]:

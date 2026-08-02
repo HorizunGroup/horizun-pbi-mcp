@@ -307,7 +307,7 @@ def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
     `field_ref` se resuelve igual que en el resto del servidor ('Tabla[Campo]'),
     de modo que la referencia del color y la de la consulta son la misma cosa.
     """
-    from pbip import conditional_format, visual_factory
+    from pbip import conditional_format, theme, visual_factory
 
     ruta = _visual_file(active, page, visual_id)
     if not ruta.exists():
@@ -322,6 +322,9 @@ def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
     detalle = conditional_format.apply_to_visual(
         datos, nodo, min_color, max_color, target=target,
         mid_color=mid_color, null_strategy=null_strategy)
+    avisos.extend(conditional_format.contrast_warnings(
+        min_color, max_color, target=target,
+        theme_data=theme.current_theme(active)))
 
     assert_escritura_pbir(active, operation="Aplicar formato condicional")
     cm = txn_service.project_transaction(active, [ruta],

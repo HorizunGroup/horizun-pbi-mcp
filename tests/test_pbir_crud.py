@@ -161,6 +161,23 @@ def test_set_visual_title_preserva_formato(proyecto):
     assert "fontColor" in props, "el formato del titulo se conserva"
 
 
+def test_formato_condicional_devuelve_aviso_de_contraste_del_tema(
+        proyecto, monkeypatch):
+    from pbip import theme
+
+    active, _p, _s = proyecto
+    monkeypatch.setattr(
+        theme, "current_theme",
+        lambda _active: {"background": "#1A1A19", "foreground": "#FFFFFF"})
+
+    resultado = pbir_edit.set_conditional_format(
+        active, P, COL, "Fact[Amount]", "#1A1A19", "#FFFFFF",
+        target="bars")
+
+    assert any("extremo min" in aviso and "1.00:1" in aviso
+               for aviso in resultado["warnings"])
+
+
 def test_orden_z(proyecto):
     active, _p, _s = proyecto
     r = pbir_edit.set_visual_z_order(active, P, [COL, CARD])

@@ -179,6 +179,44 @@ def build_theme(preset: str = "control_room",
     return tema
 
 
+def current_theme(active: ActivePbip) -> Optional[Dict[str, Any]]:
+    """Lee el tema activo del informe sin salir de ``.Report``.
+
+    Se prefiere el tema personalizado porque reemplaza al base. Un descriptor
+    sin archivo local no se inventa: simplemente no hay colores con los que
+    calcular contraste.
+    """
+    if not active.report_dir:
+        return None
+    report_dir = Path(active.report_dir)
+    informe_path = report_dir / "definition" / "report.json"
+    if not informe_path.exists():
+        return None
+    informe = read_json(informe_path)
+    coleccion = informe.get("themeCollection")
+    if not isinstance(coleccion, dict):
+        return None
+
+    for clave, partes in (
+        ("customTheme", ("StaticResources", "RegisteredResources")),
+        ("baseTheme", ("StaticResources", "SharedResources", "BaseThemes")),
+    ):
+        descriptor = coleccion.get(clave)
+        if not isinstance(descriptor, dict) or not descriptor.get("name"):
+            continue
+        nombre = safe_paths.safe_identifier(
+            str(descriptor["name"]), kind="nombre de tema activo")
+        nombres = [nombre] if nombre.lower().endswith(".json") else [nombre + ".json"]
+        base = report_dir.joinpath(*partes)
+        for candidato in nombres:
+            ruta = safe_paths.safe_join(base, candidato,
+                                        kind="ruta del tema activo")
+            if ruta.is_file():
+                tema = read_json(ruta)
+                return tema if isinstance(tema, dict) else None
+    return None
+
+
 def _paquete_recursos(paquetes: Any, archivo: str) -> List[Dict[str, Any]]:
     """Declara el tema dentro de `RegisteredResources`, creandolo si no existe."""
     paquetes = list(paquetes or [])
