@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from pbip import pbir_reader, project_locator, tmdl_reader
+from powerbi.errors import ValidationError
 from services import page_spec, project_state
 from services import txn as txn_service
 from services.page_spec import SpecValidationError
@@ -305,6 +306,22 @@ def test_la_verificacion_detecta_referencias_rotas(proyecto):
     md["measures"] = [m for m in md["measures"] if m["name"] != "TotalAmount"]
     v = page_spec.validate_generated_page(active, res["page_id"], md)
     assert v["valid"] is False and v["broken_references"]
+
+
+def test_la_verificacion_no_oculta_un_visual_ilegible(proyecto):
+    active, md, _p, _s = proyecto
+    c = page_spec.compile_spec(active, spec_base(), md, seed="x")
+    res = page_spec.apply_spec(active, c)
+    page_dir = pbir_reader.resolve_page_dir(active, res["page_id"])
+    corrupto = page_dir / "visuals" / "visual_corrupto" / "visual.json"
+    corrupto.parent.mkdir()
+    corrupto.write_text("{no es json", encoding="utf-8")
+
+    with pytest.raises(ValidationError) as exc:
+        page_spec.validate_generated_page(active, res["page_id"], md)
+
+    assert exc.value.details["unreadable_visuals"][0]["visual_id"] == \
+        "visual_corrupto"
 
 
 # ================================================================ presets ====

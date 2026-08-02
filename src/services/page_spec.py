@@ -581,7 +581,7 @@ def apply_spec(active: ActivePbip, compilado: Dict[str, Any], *,
 def validate_generated_page(active: ActivePbip, page: str,
                             model_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Verifica una pagina YA escrita: referencias y geometria."""
-    visuales = pbir_reader.list_visuals(active, page)
+    visuales = pbir_reader.list_visuals(active, page, strict=True)
     p = next((x for x in pbir_reader.list_pages(active)
               if x["name"] == page or x.get("display_name") == page), {})
     canvas = {"width": p.get("width", 1280), "height": p.get("height", 720)}

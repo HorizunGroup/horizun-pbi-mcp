@@ -178,14 +178,31 @@ def resolve_page_dir(active: ActivePbip, page: str) -> Path:
         details={"available": [p["name"] for p in list_pages(active)]})
 
 
-def list_visuals(active: ActivePbip, page: str) -> List[Dict[str, Any]]:
+def list_visuals(active: ActivePbip, page: str, *,
+                 strict: bool = False) -> List[Dict[str, Any]]:
+    """Lista visuales; con ``strict`` no oculta archivos que no pudo leer.
+
+    El modo tolerante mantiene el listado exploratorio existente. Los
+    verificadores posteriores a una escritura deben usar ``strict=True``: si
+    omiten un visual corrupto, pueden declarar válida una página incompleta.
+    """
     page_dir = resolve_page_dir(active, page)
     vdir = page_dir / "visuals"
     visuals = []
+    errores = []
     if vdir.exists():
         for vf in sorted(vdir.glob("*/visual.json")):
             try:
                 visuals.append(read_visual_file(vf))
             except Exception as exc:  # noqa: BLE001 - un visual corrupto no debe tumbar el listado
                 log.warning("Visual ilegible %s: %s", vf, exc)
+                errores.append({"visual_id": vf.parent.name,
+                                "file": str(vf),
+                                "error": f"{type(exc).__name__}: {exc}"})
+    if strict and errores:
+        raise ValidationError(
+            f"No se pudieron leer {len(errores)} visual(es) de la pagina "
+            f"'{page}'; no se puede declarar valida una pagina incompleta.",
+            details={"page": page, "unreadable_visuals": errores,
+                     "readable_count": len(visuals)})
     return visuals
