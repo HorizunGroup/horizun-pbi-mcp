@@ -29,24 +29,66 @@ def connect(model: ActiveModel) -> Iterator[Tuple[Any, Any, Any]]:
     TOM = load_tom()
     server = TOM.Server()
     try:
-        server.Connect(model.connection_string)
-    except Exception as exc:  # noqa: BLE001
-        msg = getattr(exc, "Message", None) or str(exc)
-        raise ConnectionFailedError(f"TOM no pudo conectar: {msg}") from exc
-    try:
+        try:
+            server.Connect(model.connection_string)
+        except Exception as exc:  # noqa: BLE001
+            from services import redaction
+
+            msg = getattr(exc, "Message", None) or str(exc)
+            raise ConnectionFailedError(
+                f"TOM no pudo conectar: {redaction.texto(msg)}") from exc
+
         db = None
         if model.catalog:
-            db = server.Databases.FindByName(model.catalog)
-        if db is None and server.Databases.Count > 0:
+            try:
+                db = server.Databases.FindByName(model.catalog)
+            except Exception as exc:  # noqa: BLE001
+                from services import redaction
+
+                msg = getattr(exc, "Message", None) or str(exc)
+                raise ConnectionFailedError(
+                    f"TOM no pudo buscar el catalogo '{model.catalog}': "
+                    f"{redaction.texto(msg)}"
+                ) from exc
+            # Nunca caer silenciosamente en Databases[0]. En una sesion cuyo
+            # puerto fue reciclado eso convertia una identidad obsoleta en una
+            # escritura valida, pero dirigida al modelo equivocado.
+            if db is None:
+                raise ConnectionFailedError(
+                    f"El catalogo activo '{model.catalog}' ya no existe en la "
+                    "instancia TOM. Selecciona de nuevo el modelo.",
+                    details={"catalog": model.catalog},
+                )
+        elif server.Databases.Count == 1:
             db = server.Databases[0]
+        elif server.Databases.Count > 1:
+            raise ConnectionFailedError(
+                "La instancia TOM sirve varias bases y la sesion no identifica "
+                "un catalogo. Selecciona el modelo de nuevo.",
+                details={"database_count": int(server.Databases.Count)},
+            )
         if db is None:
             raise ConnectionFailedError("No hay ninguna base de datos en la instancia.")
         yield server, db, db.Model
     finally:
+        # `Connect()` puede abrir recursos nativos y fallar despues. El
+        # context manager no alcanza el `yield` en ese caso, de modo que el
+        # cierre debe envolver tambien la fase de conexion.
         try:
             server.Disconnect()
         except Exception:  # pragma: no cover
             pass
+
+
+@contextmanager
+def lease_active_model(session: Session) -> Iterator[ActiveModel]:
+    """Usa el lease de Session; mantiene compatibles dobles unitarios minimos."""
+    lease = getattr(session, "active_model_lease", None)
+    if callable(lease):
+        with lease() as model:
+            yield model
+        return
+    yield session.require_active_model()
 
 
 def read_columns(table) -> List[Dict[str, Any]]:

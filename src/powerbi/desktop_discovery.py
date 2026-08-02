@@ -31,6 +31,7 @@ _SYS_TABLE_PREFIXES = ("LocalDateTable_", "DateTableTemplate_")
 #: sin este filtro se intentaba una conexion ADOMD completa contra cada puerto
 #: muerto, con su timeout largo.
 _TCP_PROBE_TIMEOUT = 0.5
+_LOCAL_HOST_ALIASES = {"localhost", "127.0.0.1", "::1"}
 
 
 class StaleSessionError(PowerBIMCPError):
@@ -111,18 +112,23 @@ def _workspace_port_files() -> List[Dict[str, Any]]:
         if not base.exists():
             continue
         for port_file in base.glob("*/Data/msmdsrv.port.txt"):
-            raw = None
+            port = None
             for enc in ("utf-16", "utf-8-sig", "utf-8"):
                 try:
                     raw = port_file.read_text(encoding=enc).strip()
-                    break
                 except (OSError, ValueError, UnicodeError):
                     continue
-            if raw is None:
-                continue
-            try:
-                port = int(raw)
-            except ValueError:
+                # Una secuencia UTF-8 de longitud par puede ser tambien UTF-16
+                # valido pero producir caracteres basura. Solo se acepta una
+                # codificacion cuando el contenido decodificado ES un puerto.
+                try:
+                    candidate = int(raw)
+                except ValueError:
+                    continue
+                if 1 <= candidate <= 65535:
+                    port = candidate
+                    break
+            if port is None:
                 continue
             out.append({"host": "localhost", "port": port, "pid": None,
                         "create_time": None, "source": "port_file",
@@ -152,7 +158,11 @@ def _enrich(host: str, port: int) -> Dict[str, Any]:
             if rows:
                 info["catalog"] = rows[0][0]
                 info["database_name"] = rows[0][0]
-            client.catalog = info["catalog"]
+            if info["catalog"]:
+                # Asignar el atributo no cambia la base de una conexion ya
+                # abierta. Sin ChangeDatabase, las DMVs siguientes dependian
+                # del catalogo por defecto del proveedor.
+                client.change_database(info["catalog"])
             # nombre de modelo (best-effort)
             try:
                 _, mrows, _, _ = client.execute_reader(
@@ -185,15 +195,29 @@ def discover_instances() -> List[Dict[str, Any]]:
     candidates: Dict[int, Dict[str, Any]] = {}
     for item in _ports_from_processes():
         candidates[item["port"]] = item
+
+    workspaces: Dict[int, List[Dict[str, Any]]] = {}
     for item in _workspace_port_files():
-        existing = candidates.get(item["port"])
+        workspaces.setdefault(item["port"], []).append(item)
+
+    for port, items in workspaces.items():
+        existing = candidates.get(port)
         if existing is None:
-            candidates[item["port"]] = item
-        elif item.get("workspace"):
+            # Varios archivos obsoletos pueden conservar el mismo puerto. Se
+            # crea un solo candidato sin inventar a que workspace pertenece.
+            candidates[port] = dict(items[0])
+            if len(items) > 1:
+                candidates[port].pop("workspace", None)
+                candidates[port]["workspace_ambiguous"] = len(items)
+        elif len(items) == 1 and items[0].get("workspace"):
             # El proceso aporta PID/hora de arranque y el archivo aporta el
             # workspace. Son piezas complementarias de una misma identidad;
             # `setdefault` descartaba la segunda y debilitaba la verificacion.
-            existing["workspace"] = item["workspace"]
+            existing["workspace"] = items[0]["workspace"]
+        elif len(items) > 1:
+            # Elegir "el ultimo" hacia depender la identidad del orden de
+            # glob y podia asociar un proceso actual con un workspace viejo.
+            existing["workspace_ambiguous"] = len(items)
 
     if not candidates:
         return []
@@ -219,6 +243,11 @@ def discover_instances() -> List[Dict[str, Any]]:
         enriched["source"] = meta.get("source")
         if meta.get("workspace"):
             enriched["workspace"] = meta["workspace"]
+        if meta.get("workspace_ambiguous"):
+            enriched.setdefault("warnings", []).append(
+                f"Hay {meta['workspace_ambiguous']} archivos de workspace "
+                f"para el puerto {port}; no se asigno uno arbitrariamente."
+            )
         if enriched.get("status") == "ok":
             enriched["session_fingerprint"] = session_fingerprint(enriched)
         results.append(enriched)
@@ -245,6 +274,29 @@ def session_fingerprint(instance: Dict[str, Any]) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
+def _connection_target(connection_string: str) -> Optional[tuple[str, int]]:
+    """Extrae host/puerto de Data Source sin exponer el resto de la cadena."""
+    if not isinstance(connection_string, str):
+        return None
+    value = None
+    for part in connection_string.split(";"):
+        if "=" not in part:
+            continue
+        key, candidate = part.split("=", 1)
+        if key.strip().casefold() in {"data source", "server"}:
+            value = candidate.strip().strip('"\'')
+            break
+    if not value:
+        return None
+    # ADOMD local usa host:port; se admite tambien host,port.
+    separator = ":" if ":" in value else ","
+    try:
+        host, raw_port = value.rsplit(separator, 1)
+        return host.strip("[]").casefold(), int(raw_port)
+    except (TypeError, ValueError):
+        return None
+
+
 def verify_model(model: ActiveModel) -> Dict[str, Any]:
     """Comprueba si la sesion persistida sigue siendo LA MISMA.
 
@@ -266,6 +318,20 @@ def verify_model(model: ActiveModel) -> Dict[str, Any]:
     if inst.get("status") != "ok":
         return {"status": "stale", "reason": (
             f"El puerto {model.port} no responde."), "instance": inst}
+
+    target = _connection_target(model.connection_string)
+    expected_host = str(inst.get("host") or model.host).casefold()
+    if target is None:
+        return {"status": "mismatch", "reason": (
+            "La connection string guardada no identifica un host/puerto local "
+            "valido."), "instance": inst}
+    target_host, target_port = target
+    hosts_match = (target_host == expected_host or
+                   {target_host, expected_host}.issubset(_LOCAL_HOST_ALIASES))
+    if target_port != int(model.port) or not hosts_match:
+        return {"status": "mismatch", "reason": (
+            "La connection string guardada apunta a otro host o puerto que la "
+            "identidad activa."), "instance": inst}
 
     recorded_pid = getattr(model, "pid", None)
     if recorded_pid is not None and inst.get("pid") is not None \

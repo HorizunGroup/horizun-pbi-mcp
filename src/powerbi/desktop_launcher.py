@@ -23,8 +23,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from logging_config import get_logger
-from powerbi.errors import PowerBIMCPError
+from powerbi.errors import PowerBIMCPError, ValidationError
 from powerbi import desktop_discovery
+from utils.validation import MAX_TIMEOUT_PERMITIDO, validate_limit
 
 log = get_logger("desktop_launcher")
 
@@ -36,6 +37,9 @@ _RUTAS_CONOCIDAS = (
 _INTERVALO_SONDEO = 2.0
 #: Margen tras ver el catalogo, por si el motor sigue asentando el modelo.
 _ESPERA_ESTABILIZACION = 1.5
+# Margen para correlacionar un puerto nuevo con el archivo/proceso que se acaba
+# de abrir. Evita escoger la apertura concurrente de otro usuario/hilo.
+_ESPERA_CORRELACION = 4.0
 
 
 class DesktopNotFoundError(PowerBIMCPError):
@@ -56,6 +60,8 @@ class OpenedPbix:
     #: True solo si el proceso lo arrancamos nosotros (y por tanto podemos cerrarlo).
     launched_by_us: bool
     waited_seconds: float
+    #: Hora de creacion del proceso Desktop; evita matar un PID reciclado.
+    desktop_started: Optional[float] = None
 
 
 def find_executable() -> Path:
@@ -103,6 +109,14 @@ def _procesos_desktop() -> List[Any]:
     return salida
 
 
+def _normalized_open_path(value: str | Path) -> str:
+    """Normaliza rutas de handles Windows, incluido el prefijo extendido."""
+    text = str(value)
+    if text.startswith("\\\\?\\"):
+        text = text[4:]
+    return os.path.normcase(os.path.normpath(text))
+
+
 def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
     """PID del Desktop que tiene ese .pbix abierto, si se puede averiguar.
 
@@ -112,11 +126,11 @@ def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
     """
     import psutil
 
-    objetivo = str(pbix.resolve()).lower()
+    objetivo = _normalized_open_path(pbix.resolve())
     for proc in _procesos_desktop():
         try:
             for archivo in proc.open_files():
-                if archivo.path.lower() == objetivo:
+                if _normalized_open_path(archivo.path) == objetivo:
                     return proc.pid
         except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
             continue
@@ -131,7 +145,7 @@ def _es_descendiente(pid: int, ancestro: int) -> bool:
         for padre in proc.parents():
             if padre.pid == ancestro:
                 return True
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
         return False
     return False
 
@@ -158,12 +172,30 @@ def _instancia_de_proceso(desktop_pid: int) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _process_started(pid: Optional[int]) -> Optional[float]:
+    if not pid:
+        return None
+    import psutil
+
+    try:
+        return float(psutil.Process(int(pid)).create_time())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+        return None
+
+
 def open_pbix(pbix_path: str | Path, timeout: int = 300,
               reuse_open: bool = True) -> OpenedPbix:
     """Deja el .pbix servido por un motor local y devuelve esa instancia."""
+    timeout = validate_limit(timeout, "timeout", MAX_TIMEOUT_PERMITIDO)
+    assert timeout is not None  # el parametro no es opcional
     pbix = Path(pbix_path).expanduser().resolve()
-    if not pbix.exists():
+    if not pbix.is_file():
         raise DesktopNotFoundError(f"El archivo .pbix no existe: {pbix}")
+    if pbix.suffix.casefold() not in {".pbix", ".pbip"}:
+        raise ValidationError(
+            "Power BI Desktop solo puede abrir aqui archivos .pbix o .pbip.",
+            details={"path": str(pbix), "extension": pbix.suffix},
+        )
 
     if reuse_open:
         pid_existente = proceso_con_archivo_abierto(pbix)
@@ -172,11 +204,15 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
             if instancia:
                 log.info("El .pbix ya estaba abierto en Desktop (pid %s, puerto %s)",
                          pid_existente, instancia["port"])
-                return OpenedPbix(str(pbix), instancia, pid_existente, False, 0.0)
+                return OpenedPbix(
+                    str(pbix), instancia, pid_existente, False, 0.0,
+                    desktop_started=_process_started(pid_existente))
             log.info("Desktop tiene el archivo abierto (pid %s) pero aun no hay "
                      "modelo servido; se espera.", pid_existente)
             instancia = _esperar_instancia_de(pid_existente, timeout)
-            return OpenedPbix(str(pbix), instancia, pid_existente, False, 0.0)
+            return OpenedPbix(
+                str(pbix), instancia, pid_existente, False, 0.0,
+                desktop_started=_process_started(pid_existente))
 
     ejecutable = find_executable()
     # La foto previa incluye TODOS los puertos, no solo los que ya sirven un
@@ -199,13 +235,31 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
         ) from exc
 
     inicio = time.monotonic()
-    instancia = _esperar_instancia_nueva(previas, timeout, pbix.name)
+    try:
+        instancia = _esperar_instancia_nueva(
+            previas, timeout, pbix.name, pbix_path=pbix,
+            launched_pid=proceso.pid)
+    except BaseException:
+        # Popen ya produjo un efecto externo. Si la espera falla o se
+        # interrumpe, no se deja un Desktop lanzado por nosotros sin dueño.
+        provisional = OpenedPbix(
+            str(pbix), {}, proceso.pid, True,
+            round(time.monotonic() - inicio, 1),
+            desktop_started=_process_started(proceso.pid))
+        try:
+            close(provisional)
+        except Exception as exc:                       # noqa: BLE001
+            log.warning("No se pudo compensar la apertura fallida de %s: %s",
+                        pbix, exc)
+        raise
     esperado = time.monotonic() - inicio
 
     # El proceso lanzado suele reexec-ar: el que sirve el modelo es el ancestro
     # real de msmdsrv, no necesariamente el pid que nos devolvio Popen.
     desktop_pid = _desktop_de_instancia(instancia) or proceso.pid
-    return OpenedPbix(str(pbix), instancia, desktop_pid, True, round(esperado, 1))
+    return OpenedPbix(
+        str(pbix), instancia, desktop_pid, True, round(esperado, 1),
+        desktop_started=_process_started(desktop_pid))
 
 
 def _estabilizar(instancia: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,7 +274,28 @@ def _estabilizar(instancia: Dict[str, Any]) -> Dict[str, Any]:
         actual = next((i for i in _instancias_utiles()
                        if i["port"] == anterior["port"]), None)
         if actual is None:
-            return anterior
+            raise DesktopTimeoutError(
+                f"El motor del puerto {anterior['port']} desaparecio mientras "
+                "Power BI Desktop terminaba de cargar el modelo.",
+                details={"port": anterior["port"],
+                         "phase": "stabilization"},
+            )
+        expected_pid = anterior.get("pid")
+        actual_pid = actual.get("pid")
+        expected_started = anterior.get("create_time")
+        actual_started = actual.get("create_time")
+        if ((expected_pid is not None and actual_pid is not None and
+             int(expected_pid) != int(actual_pid)) or
+                (expected_started is not None and actual_started is not None and
+                 abs(float(expected_started) - float(actual_started)) > 1.0)):
+            raise DesktopTimeoutError(
+                f"El puerto {anterior['port']} cambio de proceso mientras "
+                "Power BI Desktop terminaba de cargar el modelo.",
+                details={"port": anterior["port"],
+                         "phase": "stabilization_identity",
+                         "expected_pid": expected_pid,
+                         "actual_pid": actual_pid},
+            )
         if actual.get("table_count") == anterior.get("table_count"):
             return actual
         anterior = actual
@@ -228,16 +303,48 @@ def _estabilizar(instancia: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _esperar_instancia_nueva(previas: set, timeout: int,
-                             nombre: str) -> Dict[str, Any]:
+                             nombre: str, *,
+                             pbix_path: Optional[Path] = None,
+                             launched_pid: Optional[int] = None) -> Dict[str, Any]:
     limite = time.monotonic() + timeout
+    candidate = None
+    candidate_since = None
     while time.monotonic() < limite:
         time.sleep(_INTERVALO_SONDEO)
-        for instancia in _instancias_utiles():
-            if instancia["port"] not in previas:
-                instancia = _estabilizar(instancia)
+
+        # Correlacion fuerte 1: Desktop mantiene abierto el archivo exacto.
+        if pbix_path is not None:
+            exact_pid = proceso_con_archivo_abierto(pbix_path)
+            if exact_pid:
+                exact = _instancia_de_proceso(exact_pid)
+                if exact:
+                    return _estabilizar(exact)
+
+        nuevas = [i for i in _instancias_utiles() if i["port"] not in previas]
+
+        # Correlacion fuerte 2: el motor desciende del proceso que lanzamos.
+        if launched_pid is not None:
+            exact = next((i for i in nuevas if i.get("pid") and
+                          _es_descendiente(int(i["pid"]), launched_pid)), None)
+            if exact:
+                return _estabilizar(exact)
+
+        # Si Windows impide leer handles/arbol, se conserva el fallback solo
+        # cuando hay UN candidato estable. Con varios no se elige al azar.
+        if len(nuevas) == 1:
+            current = nuevas[0]
+            if candidate is None or candidate.get("port") != current.get("port"):
+                candidate = current
+                candidate_since = time.monotonic()
+            elif (candidate_since is not None and
+                  time.monotonic() - candidate_since >= _ESPERA_CORRELACION):
+                instancia = _estabilizar(current)
                 log.info("Motor listo para %s en el puerto %s (%s tablas)",
                          nombre, instancia["port"], instancia.get("table_count"))
                 return instancia
+        else:
+            candidate = None
+            candidate_since = None
     raise DesktopTimeoutError(
         f"Power BI Desktop no llego a servir el modelo de '{nombre}' con datos "
         f"en {timeout} s. Revisa la ventana de Desktop: puede estar pidiendo "
@@ -271,7 +378,7 @@ def _desktop_de_instancia(instancia: Dict[str, Any]) -> Optional[int]:
         for padre in psutil.Process(int(pid)).parents():
             if padre.name().lower() == "pbidesktop.exe":
                 return padre.pid
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
         return None
     return None
 
@@ -295,6 +402,25 @@ def close(opened: OpenedPbix, force: bool = False) -> Dict[str, Any]:
     except psutil.NoSuchProcess:
         return {"closed": True, "reason": "el proceso ya no existia"}
 
+    # El PID puede reciclarse entre apertura y cierre. Nunca terminar un
+    # proceso distinto solo porque Windows le asigno el mismo numero.
+    try:
+        if opened.desktop_started is None:
+            return {"closed": False,
+                    "reason": "desktop_identity_unverifiable",
+                    "pid": opened.desktop_pid}
+        if proceso.name().casefold() != "pbidesktop.exe":
+            return {"closed": False, "reason": "desktop_pid_reused",
+                    "pid": opened.desktop_pid}
+        if (opened.desktop_started is not None and
+                abs(float(proceso.create_time()) -
+                    float(opened.desktop_started)) > 1.0):
+            return {"closed": False, "reason": "desktop_pid_reused",
+                    "pid": opened.desktop_pid}
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+        return {"closed": False, "reason": "desktop_identity_unverifiable",
+                "pid": opened.desktop_pid}
+
     hijos = []
     try:
         hijos = proceso.children(recursive=True)
@@ -306,12 +432,16 @@ def close(opened: OpenedPbix, force: bool = False) -> Dict[str, Any]:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     _, vivos = psutil.wait_procs([*hijos, proceso], timeout=15)
+    kill_requested = 0
     for objetivo in vivos:
         try:
             objetivo.kill()
+            kill_requested += 1
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+    _, supervivientes = psutil.wait_procs(vivos, timeout=5)
 
     log.info("Cerrada la sesion de Desktop (pid %s)", opened.desktop_pid)
-    return {"closed": True, "pid": opened.desktop_pid,
-            "killed": len(vivos), "children": len(hijos)}
+    return {"closed": not supervivientes, "pid": opened.desktop_pid,
+            "killed": kill_requested, "children": len(hijos),
+            "survivors": [p.pid for p in supervivientes]}

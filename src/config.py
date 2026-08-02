@@ -14,9 +14,10 @@ import json
 import os
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 try:
     from dotenv import load_dotenv
@@ -145,6 +146,9 @@ class Session:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._lock = threading.RLock()
+        # Serializa exclusivamente seleccion/mutaciones live. No se reutiliza
+        # `_lock`: un refresh largo no debe bloquear operaciones PBIP en disco.
+        self._model_operation_lock = threading.RLock()
         self._active_model: Optional[ActiveModel] = None
         self._active_pbip: Optional[ActivePbip] = None
         # Huella ya verificada en este proceso. Una sesion recargada de disco
@@ -162,13 +166,14 @@ class Session:
             return self._active_model
 
     def set_active_model(self, model: ActiveModel) -> None:
-        with self._lock:
-            self._active_model = model
-            # Se acaba de descubrir: cuenta como verificada en este proceso.
-            self._verified_fingerprint = model.session_fingerprint
-            self._verified_identity = self._model_identity(model)
-            self._verified_at_monotonic = time.monotonic()
-            self._persist()
+        with self._model_operation_lock:
+            with self._lock:
+                self._active_model = model
+                # Se acaba de descubrir: cuenta como verificada en este proceso.
+                self._verified_fingerprint = model.session_fingerprint
+                self._verified_identity = self._model_identity(model)
+                self._verified_at_monotonic = time.monotonic()
+                self._persist()
 
     @staticmethod
     def _model_identity(model: ActiveModel) -> tuple[Any, ...]:
@@ -260,6 +265,20 @@ class Session:
             self._verified_at_monotonic = time.monotonic()
         return model
 
+    @contextmanager
+    def active_model_lease(self) -> Iterator[ActiveModel]:
+        """Fija la seleccion activa durante una operacion live mutante.
+
+        `require_active_model()` devuelve una foto segura, pero otro hilo podia
+        ejecutar `set_active_model()` entre esa llamada y `SaveChanges()`. La
+        mutacion terminaba entonces sobre un modelo que ya no era el activo.
+        Mantener el lock de operaciones hasta salir serializa seleccion y
+        escrituras TOM, sin bloquear PBIP ni lecturas DAX concurrentes.
+        """
+        with self._model_operation_lock:
+            model = self.require_active_model()
+            yield model
+
     # -- proyecto pbip activo --
     @property
     def active_pbip(self) -> Optional[ActivePbip]:
@@ -289,9 +308,12 @@ class Session:
         }
         try:
             self._session_file.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._session_file.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, self._session_file)
+            from services.txn import durable_write
+
+            durable_write(
+                self._session_file,
+                json.dumps(data, indent=2, ensure_ascii=False,
+                           allow_nan=False).encode("utf-8"))
         except OSError:
             pass
 

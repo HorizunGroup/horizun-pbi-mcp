@@ -12,8 +12,9 @@ from config import Session
 from logging_config import get_logger
 from powerbi.clr_bootstrap import load_tom
 from powerbi.errors import (MeasureExistsError, MeasureNotFoundError,
-                            PowerBIMCPError, TableNotFoundError)
-from powerbi.model_reader import connect
+                            PowerBIMCPError, TableNotFoundError,
+                            ValidationError)
+from powerbi.model_reader import connect, lease_active_model
 from utils.validation import validate_measure_expression, validate_object_name
 
 log = get_logger("model_writer")
@@ -36,8 +37,9 @@ LIVE_NOTE = (
 
 
 def _find_table(mdl, table_name: str):
+    wanted = table_name.casefold()
     for t in mdl.Tables:
-        if t.Name == table_name:
+        if str(t.Name).casefold() == wanted:
             return t
     available = [t.Name for t in mdl.Tables]
     raise TableNotFoundError(
@@ -88,6 +90,46 @@ def _snapshot(measure) -> Dict[str, Any]:
     }
 
 
+def _save_changes(mdl, operation: str, **details: Any) -> None:
+    """Guarda una mutacion TOM y normaliza las excepciones .NET crudas."""
+    try:
+        mdl.SaveChanges()
+    except Exception as exc:  # noqa: BLE001
+        from services import redaction
+
+        msg = getattr(exc, "Message", None) or str(exc)
+        raise LiveWriteError(
+            f"El motor rechazo la operacion '{operation}' al guardar: "
+            f"{redaction.texto(msg)}",
+            details={"operation": operation,
+                     "original_type": type(exc).__name__, **details},
+        ) from exc
+
+
+def _validate_column_entries(entries: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    if not isinstance(entries, list):
+        raise ValidationError("entries debe ser una lista de tablas/columnas.")
+    normalized = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValidationError(
+                f"entries[{index}] debe ser un objeto con table y column.",
+                details={"parameter": "entries", "index": index},
+            )
+        missing = [key for key in ("table", "column") if key not in entry]
+        if missing:
+            raise ValidationError(
+                f"entries[{index}] no incluye: {', '.join(missing)}.",
+                details={"parameter": "entries", "index": index,
+                         "missing": missing},
+            )
+        normalized.append({
+            "table": validate_object_name(entry["table"], "tabla"),
+            "column": validate_object_name(entry["column"], "columna"),
+        })
+    return normalized
+
+
 def create_measure(
     session: Session,
     table: str,
@@ -99,10 +141,11 @@ def create_measure(
     overwrite: bool = False,
     data_category: Optional[str] = None,
 ) -> Dict[str, Any]:
+    table = validate_object_name(table, "tabla")
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
-    model = session.require_active_model()
-    with connect(model) as (_server, db, mdl):
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, db, mdl):
         target = _find_table(mdl, table)
         owner, existing = _find_measure_anywhere(mdl, name)
         before = None
@@ -113,6 +156,15 @@ def create_measure(
                     f"La medida '{name}' ya existe en la tabla '{owner.Name}'. "
                     "Usa overwrite=true para reemplazarla.",
                     details={"table": owner.Name},
+                )
+            if str(owner.Name).casefold() != str(target.Name).casefold():
+                # `table` forma parte del contrato. overwrite no autoriza a
+                # modificar una homonima que vive en otra tabla.
+                raise MeasureExistsError(
+                    f"La medida '{name}' ya existe en la tabla '{owner.Name}', "
+                    f"no en la tabla solicitada '{target.Name}'.",
+                    details={"table": target.Name,
+                             "existing_table": owner.Name},
                 )
             before = _snapshot(existing)
             existing.Expression = expression
@@ -140,9 +192,10 @@ def create_measure(
             if data_category:
                 measure.DataCategory = data_category
             target.Measures.Add(measure)
-        mdl.SaveChanges()
+        _save_changes(mdl, "create_measure", table=target.Name, measure=name)
         after = _snapshot(measure)
-    return {"action": action, "table": table, "before": before, "after": after, "note": LIVE_NOTE}
+    return {"action": action, "table": target.Name, "before": before,
+            "after": after, "note": LIVE_NOTE}
 
 
 def update_measure(
@@ -154,11 +207,12 @@ def update_measure(
     description: Optional[str] = None,
     display_folder: Optional[str] = None,
 ) -> Dict[str, Any]:
+    table = validate_object_name(table, "tabla")
     name = validate_object_name(name, "medida")
     if expression is not None:
         expression = validate_measure_expression(expression)
-    model = session.require_active_model()
-    with connect(model) as (_server, db, mdl):
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, db, mdl):
         owner = _find_table(mdl, table)
         measure = _find_measure_in_table(mdl, owner, name)
         before = _snapshot(measure)
@@ -170,7 +224,7 @@ def update_measure(
             measure.Description = description
         if display_folder is not None:
             measure.DisplayFolder = display_folder
-        mdl.SaveChanges()
+        _save_changes(mdl, "update_measure", table=owner.Name, measure=name)
         after = _snapshot(measure)
     return {"action": "updated", "table": owner.Name, "before": before, "after": after,
             "note": LIVE_NOTE}
@@ -178,12 +232,14 @@ def update_measure(
 
 def set_column_hidden(session: Session, table: str, column: str,
                       hidden: bool = True) -> Dict[str, Any]:
-    model = session.require_active_model()
-    with connect(model) as (_server, _db, mdl):
+    table = validate_object_name(table, "tabla")
+    column = validate_object_name(column, "columna")
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, _db, mdl):
         t = _find_table(mdl, table)
         col = None
         for c in t.Columns:
-            if c.Name == column:
+            if str(c.Name).casefold() == column.casefold():
                 col = c
                 break
         if col is None:
@@ -192,7 +248,7 @@ def set_column_hidden(session: Session, table: str, column: str,
                 details={"available": [c.Name for c in t.Columns]})
         before = bool(col.IsHidden)
         col.IsHidden = bool(hidden)
-        mdl.SaveChanges()
+        _save_changes(mdl, "set_column_hidden", table=t.Name, column=col.Name)
     return {"table": table, "column": column, "before_hidden": before,
             "after_hidden": bool(hidden), "note": LIVE_NOTE}
 
@@ -207,7 +263,7 @@ def _find_column(mdl, table_name: str, column_name: str, index: int):
             details={"index": index, "table": table_name, "column": column_name,
                      **exc.details}) from exc
     for c in t.Columns:
-        if c.Name == column_name:
+        if str(c.Name).casefold() == column_name.casefold():
             return c
     raise TableNotFoundError(
         f"Entrada {index} ({table_name}[{column_name}]): la columna "
@@ -222,10 +278,11 @@ def validate_columns_live(session: Session, entries: List[Dict[str, str]]) -> No
     Se usa antes de un `mode='both'`: si el modelo en vivo no admite el lote,
     conviene saberlo ANTES de escribir en disco, para no tener que compensar.
     """
+    entries = _validate_column_entries(entries)
     if not entries:
         return
-    model = session.require_active_model()
-    with connect(model) as (_server, _db, mdl):
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, _db, mdl):
         for idx, e in enumerate(entries):
             _find_column(mdl, e["table"], e["column"], idx)
 
@@ -245,11 +302,12 @@ def set_columns_hidden_bulk(session: Session, entries: List[Dict[str, str]],
     Lo que si se garantiza es que no hay escrituras parciales por nuestra parte
     (un unico SaveChanges) y que una validacion fallida no persiste nada.
     """
+    entries = _validate_column_entries(entries)
     if not entries:
         return {"changed": 0, "results": [], "save_changes_calls": 0}
 
-    model = session.require_active_model()
-    with connect(model) as (_server, _db, mdl):
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, _db, mdl):
         # --- 1. Validar TODAS las entradas antes de tocar nada -------------
         objetivos = []
         for idx, e in enumerate(entries):
@@ -268,17 +326,7 @@ def set_columns_hidden_bulk(session: Session, entries: List[Dict[str, str]],
             })
 
         # --- 3. Un unico SaveChanges para todo el lote ---------------------
-        try:
-            mdl.SaveChanges()
-        except Exception as exc:  # noqa: BLE001
-            # El motor puede lanzar una excepcion .NET cruda. Se envuelve como
-            # error de dominio para que quien coordina un modo 'both' pueda
-            # distinguirla y compensar lo ya escrito en disco.
-            msg = getattr(exc, "Message", None) or str(exc)
-            raise LiveWriteError(
-                f"El motor rechazo el lote al guardar: {msg}",
-                details={"columns": len(entries),
-                         "original_type": type(exc).__name__}) from exc
+        _save_changes(mdl, "set_columns_hidden_bulk", columns=len(entries))
 
     return {"changed": sum(1 for r in resultados if r["changed"]),
             "results": resultados, "save_changes_calls": 1, "note": LIVE_NOTE}
@@ -287,22 +335,26 @@ def set_columns_hidden_bulk(session: Session, entries: List[Dict[str, str]],
 def set_relationship_crossfilter(session: Session, from_table: str, to_table: str,
                                  direction: str = "single") -> Dict[str, Any]:
     """direction: 'single' (OneDirection) o 'both' (BothDirections)."""
+    from_table = validate_object_name(from_table, "tabla de origen")
+    to_table = validate_object_name(to_table, "tabla de destino")
+    if not isinstance(direction, str):
+        raise ValidationError("direction debe ser 'single' o 'both'.")
     direction = direction.lower()
     if direction not in ("single", "both"):
-        from powerbi.errors import ValidationError
         raise ValidationError("direction debe ser 'single' o 'both'.")
     TOM = load_tom()
     target = (TOM.CrossFilteringBehavior.BothDirections if direction == "both"
               else TOM.CrossFilteringBehavior.OneDirection)
-    model = session.require_active_model()
-    wanted = {from_table, to_table}
+    wanted = {from_table.casefold(), to_table.casefold()}
     matched = 0
     changes = []
-    with connect(model) as (_server, _db, mdl):
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, _db, mdl):
         for r in mdl.Relationships:
             ft = getattr(r.FromTable, "Name", None)
             tt = getattr(r.ToTable, "Name", None)
-            if {ft, tt} == wanted:
+            actual = {str(ft).casefold(), str(tt).casefold()}
+            if actual == wanted:
                 matched += 1
                 before = str(r.CrossFilteringBehavior)
                 r.CrossFilteringBehavior = target
@@ -311,17 +363,20 @@ def set_relationship_crossfilter(session: Session, from_table: str, to_table: st
         if matched == 0:
             raise TableNotFoundError(
                 f"No se encontro relacion entre '{from_table}' y '{to_table}'.")
-        mdl.SaveChanges()
+        _save_changes(mdl, "set_relationship_crossfilter",
+                      from_table=from_table, to_table=to_table)
     return {"matched": matched, "direction": direction, "changes": changes,
             "note": LIVE_NOTE}
 
 
 def delete_measure(session: Session, table: str, name: str) -> Dict[str, Any]:
-    model = session.require_active_model()
-    with connect(model) as (_server, db, mdl):
+    table = validate_object_name(table, "tabla")
+    name = validate_object_name(name, "medida")
+    with lease_active_model(session) as model, \
+            connect(model) as (_server, db, mdl):
         owner = _find_table(mdl, table)
         measure = _find_measure_in_table(mdl, owner, name)
         before = _snapshot(measure)
         owner.Measures.Remove(measure)
-        mdl.SaveChanges()
+        _save_changes(mdl, "delete_measure", table=owner.Name, measure=name)
     return {"action": "deleted", "table": owner.Name, "before": before, "note": LIVE_NOTE}

@@ -6,6 +6,7 @@ tipos Python serializables en JSON. Soporta consultas DAX (EVALUATE ...) y DMVs
 """
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, List, Optional, Tuple
 
@@ -23,7 +24,15 @@ def _with_connect_timeout(connection_string: str, seconds: int) -> str:
     Evita que la conexion se cuelgue indefinidamente al intentar un puerto muerto
     (p.ej. archivos de puerto obsoletos de un Desktop que crasheo).
     """
-    if "timeout" in connection_string.lower():
+    # `Command Timeout`, una contrasena o cualquier valor que contenga la
+    # palabra "timeout" no configura el tiempo de CONEXION. Comprobar la
+    # subcadena completa hacia que un puerto muerto pudiera esperar el timeout
+    # largo del proveedor.
+    keys = {
+        part.split("=", 1)[0].strip().casefold()
+        for part in connection_string.split(";") if "=" in part
+    }
+    if keys.intersection({"connect timeout", "connection timeout"}):
         return connection_string
     sep = "" if connection_string.rstrip().endswith(";") else ";"
     return f"{connection_string}{sep}Connect Timeout={int(seconds)}"
@@ -80,6 +89,7 @@ class AdomdClient:
         #: Timeout por comando; si es None se usa el de la configuracion.
         self.command_timeout = command_timeout
         self._conn = None
+        self.last_truncation_reason: Optional[str] = None
 
     def __enter__(self) -> "AdomdClient":
         self.open()
@@ -99,6 +109,9 @@ class AdomdClient:
             from services import redaction
 
             msg = getattr(exc, "Message", None) or str(exc)
+            # Si Open alcanzo a crear el canal y ChangeDatabase fallo,
+            # __enter__ nunca termina y por tanto __exit__ no lo cerraria.
+            self.close()
             raise ConnectionFailedError(
                 f"No se pudo conectar al modelo local: {redaction.texto(msg)}",
                 # Solo el destino (localhost:puerto). La connection string
@@ -116,8 +129,28 @@ class AdomdClient:
                 pass
             self._conn = None
 
+    def change_database(self, catalog: str) -> None:
+        """Cambia el catalogo de una conexion ya abierta, con error de dominio."""
+        if self._conn is None:
+            self.catalog = catalog
+            self.open()
+            return
+        try:
+            self._conn.ChangeDatabase(catalog)
+            self.catalog = catalog
+        except Exception as exc:  # noqa: BLE001
+            from services import redaction
+
+            msg = getattr(exc, "Message", None) or str(exc)
+            raise ConnectionFailedError(
+                f"No se pudo activar el catalogo solicitado: "
+                f"{redaction.texto(msg)}",
+                details={"catalog": catalog},
+            ) from exc
+
     def execute_reader(
-        self, query: str, max_rows: Optional[int] = None
+        self, query: str, max_rows: Optional[int] = None,
+        max_bytes: Optional[int] = None,
     ) -> Tuple[List[str], List[List[Any]], bool, float]:
         """Ejecuta una consulta y devuelve (columnas, filas, truncado, ms).
 
@@ -127,7 +160,9 @@ class AdomdClient:
         if self._conn is None:
             self.open()
         start = time.perf_counter()
+        self.last_truncation_reason = None
         reader = None
+        cmd = None
         try:
             cmd = self._conn.CreateCommand()
             cmd.CommandText = query
@@ -141,9 +176,11 @@ class AdomdClient:
             columns = [reader.GetName(i) for i in range(field_count)]
             rows: List[List[Any]] = []
             truncated = False
+            bytes_used = 2  # corchetes del array JSON exterior
             while reader.Read():
                 if max_rows is not None and len(rows) >= max_rows:
                     truncated = True
+                    self.last_truncation_reason = "rows"
                     break
                 row = []
                 for i in range(field_count):
@@ -151,6 +188,16 @@ class AdomdClient:
                         row.append(None)
                     else:
                         row.append(_convert(reader.GetValue(i)))
+                if max_bytes is not None:
+                    row_bytes = len(json.dumps(
+                        row, ensure_ascii=False, separators=(",", ":"),
+                        default=str).encode("utf-8"))
+                    cost = row_bytes + (1 if rows else 0)
+                    if bytes_used + cost > max_bytes:
+                        truncated = True
+                        self.last_truncation_reason = "bytes"
+                        break
+                    bytes_used += cost
                 rows.append(row)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             return columns, rows, truncated, elapsed_ms
@@ -171,6 +218,11 @@ class AdomdClient:
                 try:
                     reader.Close()
                 except Exception:  # pragma: no cover
+                    pass
+            if cmd is not None:
+                try:
+                    cmd.Dispose()
+                except Exception:  # pragma: no cover - algunos dobles/API viejas
                     pass
 
     def execute_scalar(self, query: str) -> Any:
