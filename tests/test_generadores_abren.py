@@ -167,6 +167,22 @@ CAMPOS = {
                   "values": ["Ventas[Importe Total]"]},
     "pieChart": {"category": ["Regiones[Zona]"],
                  "values": ["Ventas[Importe Total]"]},
+    "gauge": {"values": ["Ventas[Importe Total]"]},
+    "kpi": {"values": ["Ventas[Importe Total]"]},
+    "donutChart": {"category": ["Regiones[Zona]"],
+                   "values": ["Ventas[Importe Total]"]},
+    "areaChart": {"category": ["Regiones[Zona]"],
+                  "values": ["Ventas[Importe Total]"]},
+    "scatterChart": {"x": ["Ventas[Importe]"], "y": ["Ventas[Unidades]"]},
+    "treemap": {"category": ["Regiones[Zona]"],
+                "values": ["Ventas[Importe Total]"]},
+    "funnel": {"category": ["Regiones[Zona]"],
+               "values": ["Ventas[Importe Total]"]},
+    "waterfallChart": {"category": ["Regiones[Zona]"],
+                       "values": ["Ventas[Importe Total]"]},
+    "multiRowCard": {"values": ["Ventas[Importe Total]"]},
+    "ribbonChart": {"category": ["Regiones[Zona]"],
+                    "values": ["Ventas[Importe Total]"]},
 }
 
 
@@ -469,6 +485,22 @@ def test_cardVisual_usa_Data_y_no_Values():
     q = visual_factory._build_query(
         "cardVisual", {"values": ["Ventas[Importe]"]}, {}, [])
     assert list(q["queryState"]) == ["Data"]
+
+
+@pytest.mark.parametrize("tipo", [
+    "barChart", "columnChart", "clusteredBarChart", "clusteredColumnChart",
+    "lineChart", "pieChart", "donutChart", "areaChart", "scatterChart",
+    "treemap", "funnel", "waterfallChart", "gauge", "ribbonChart",
+])
+def test_los_visuales_con_tooltip_exponen_el_rol_oficial(tipo):
+    assert visual_factory.roles_de(tipo)["tooltips"] == "Tooltips"
+
+
+def test_linea_y_area_exponen_eje_secundario_y_small_multiples():
+    for tipo in ("lineChart", "areaChart"):
+        roles = visual_factory.roles_de(tipo)
+        assert roles["y2"] == "Y2"
+        assert roles["rows"] == "Rows"
 
 
 @pytest.mark.abre

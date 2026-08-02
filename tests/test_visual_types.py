@@ -117,6 +117,8 @@ def test_los_tipos_en_camelcase_del_reporte(tipo, esperado):
     ("pieChart", "pieChart"),
     ("slicer", "slicer"),
     ("htmlcontent", visual_factory.HTML_CONTENT_TYPE),
+    ("donut", "donutChart"),
+    ("waterfall", "waterfallChart"),
     (visual_factory.HTML_CONTENT_TYPE, visual_factory.HTML_CONTENT_TYPE),
 ])
 def test_los_alias_de_siempre_siguen_valiendo(alias, esperado):
