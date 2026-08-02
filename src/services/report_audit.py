@@ -352,38 +352,75 @@ def plan_fixes(active: ActivePbip, auditoria: Dict[str, Any],
 
 
 def apply_fixes(active: ActivePbip, acciones: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Aplica las acciones de un plan de correccion, una por una y verificadas."""
+    """Compila y aplica TODO el plan en una sola transaccion.
+
+    Un plan es una unidad logica: si la ultima accion no existe o una escritura
+    falla, ninguna de las anteriores puede quedar confirmada. Antes cada helper
+    abria su propia transaccion y el bucle ocultaba las excepciones, por lo que
+    la tool devolvia exito parcial sobre un informe a medio corregir.
+    """
     from pbip import pbir_writer
-    from services import pbir_edit
+    from services import pbir_edit, txn as txn_service
 
-    aplicadas, fallidas = [], []
-    for a in acciones:
-        try:
-            if a["action"] == "set_visual_title":
-                r = pbir_edit.set_visual_title(active, a["page"], a["visual_id"],
-                                               a["new_title"])
-                aplicadas.append({**a, "result": {"before": r["before"],
-                                                  "after": r["after"]}})
-            elif a["action"] == "normalize_layout":
-                visuales = pbir_reader.list_visuals(active, a["page"])
-                p = next((x for x in pbir_reader.list_pages(active)
-                          if x["name"] == a["page"]), {})
-                nuevas = layout_doctor.normalize(
-                    visuales, {"width": p.get("width"), "height": p.get("height")})
-                if not nuevas:
-                    aplicadas.append({**a, "result": {"moved": 0}})
-                    continue
-                r = pbir_writer.update_visuals_bulk(
-                    active, a["page"], nuevas, tool="pbi_apply_audit_fixes")
-                aplicadas.append({**a, "result": {"moved": r["moved"]}})
-            else:
-                fallidas.append({**a, "error": "accion desconocida"})
-        except Exception as exc:  # noqa: BLE001
-            fallidas.append({**a, "error": f"{type(exc).__name__}: {exc}"})
+    permitidas = {"set_visual_title", "normalize_layout"}
+    desconocidas = [a for a in acciones if a.get("action") not in permitidas]
+    if desconocidas:
+        raise ValidationError(
+            "El plan contiene acciones desconocidas; no se aplico ninguna.",
+            details={"actions": [a.get("action") for a in desconocidas],
+                     "available": sorted(permitidas)})
 
-    return {"applied": len(aplicadas), "failed": len(fallidas),
-            "actions_applied": aplicadas, "actions_failed": fallidas,
-            "warnings": ([f"{len(fallidas)} accion(es) fallaron"] if fallidas else [])}
+    documentos: Dict[Any, Dict[str, Any]] = {}
+    resultados: Dict[int, Dict[str, Any]] = {}
+
+    # Primero se compilan los titulos. Si el mismo visual tambien se mueve, su
+    # posicion se fusiona despues sobre ESTE documento, no sobre otra lectura
+    # del original que borraria el titulo nuevo.
+    for indice, a in enumerate(acciones):
+        if a["action"] != "set_visual_title":
+            continue
+        plan = pbir_edit.plan_set_visual_title(
+            active, a["page"], a["visual_id"], a["new_title"])
+        existente = documentos.get(plan["path"])
+        if existente is None:
+            documentos[plan["path"]] = plan["data"]
+        else:
+            pbir_edit._fijar_titulo(existente, a["new_title"])  # noqa: SLF001
+        resultados[indice] = {"before": plan["before"],
+                              "after": plan["after"]}
+
+    paginas = {p["name"]: p for p in pbir_reader.list_pages(active)}
+    for indice, a in enumerate(acciones):
+        if a["action"] != "normalize_layout":
+            continue
+        visuales = pbir_reader.list_visuals(active, a["page"])
+        p = paginas.get(a["page"], {})
+        nuevas = layout_doctor.normalize(
+            visuales, {"width": p.get("width"), "height": p.get("height")})
+        planes = pbir_writer.plan_visuals_bulk(active, a["page"], nuevas)
+        for plan in planes:
+            documento = documentos.setdefault(plan["path"], plan["data"])
+            documento["position"] = plan["after"]
+        resultados[indice] = {"moved": len(planes)}
+
+    aplicadas = [{**a, "result": resultados[i]}
+                 for i, a in enumerate(acciones)]
+    if not documentos:
+        return {"applied": len(aplicadas), "failed": 0,
+                "actions_applied": aplicadas, "actions_failed": [],
+                "warnings": [], "transaction": None, "backup": None}
+
+    pbir_edit.assert_escritura_pbir(active, "Aplicar correcciones de auditoria")
+    cm = txn_service.project_transaction(
+        active, list(documentos), tool="pbi_apply_audit_fixes")
+    with cm as tx:
+        for ruta, datos in documentos.items():
+            tx.write_json(ruta, datos)
+
+    return {"applied": len(aplicadas), "failed": 0,
+            "actions_applied": aplicadas, "actions_failed": [],
+            "warnings": [], "backup": cm.result["journal"],
+            "transaction": cm.result}
 
 
 # ----------------------------------------------------------------- salidas ---

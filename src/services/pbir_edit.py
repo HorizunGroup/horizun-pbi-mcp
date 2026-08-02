@@ -270,19 +270,29 @@ def _fijar_titulo(datos: Dict[str, Any], titulo: str) -> None:
 def set_visual_title(active: ActivePbip, page: str, visual_id: str,
                      title: str) -> Dict[str, Any]:
     """Cambia el titulo de un visual, preservando su formato."""
+    plan = plan_set_visual_title(active, page, visual_id, title)
+
+    assert_escritura_pbir(active, operation="Cambiar el titulo de un visual")
+    cm = txn_service.project_transaction(
+        active, [plan["path"]], tool="pbi_set_visual_title")
+    with cm as t:
+        t.write_json(plan["path"], plan["data"])
+    return {"visual_id": visual_id, "page": page, "before": plan["before"],
+            "after": title, "backup": cm.result["journal"],
+            "transaction": cm.result}
+
+
+def plan_set_visual_title(active: ActivePbip, page: str, visual_id: str,
+                          title: str) -> Dict[str, Any]:
+    """Calcula el visual final sin escribir ni abrir una transaccion."""
     ruta = _visual_file(active, page, visual_id)
     if not ruta.exists():
         raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
     datos = read_json(ruta)
     antes = pbir_reader.read_visual_file(ruta).get("title")
     _fijar_titulo(datos, title)
-
-    assert_escritura_pbir(active, operation="Cambiar el titulo de un visual")
-    cm = txn_service.project_transaction(active, [ruta], tool="pbi_set_visual_title")
-    with cm as t:
-        t.write_json(ruta, datos)
-    return {"visual_id": visual_id, "page": page, "before": antes, "after": title,
-            "backup": cm.result["journal"], "transaction": cm.result}
+    return {"visual_id": visual_id, "page": page, "path": ruta,
+            "data": datos, "before": antes, "after": title}
 
 
 def set_conditional_format(active: ActivePbip, page: str, visual_id: str,

@@ -202,16 +202,46 @@ def test_aplicar_corrige_y_mejora_el_puntaje(proyecto):
     assert not any(h["rule"] == "layout_out_of_canvas" for h in despues["findings"])
 
 
-def test_una_accion_fallida_no_detiene_las_demas(proyecto):
+def test_una_accion_invalida_rechaza_el_plan_entero(proyecto):
     active, md, project = proyecto
     degradar(active, project)
     a = report_audit.audit_project(active, md)
     plan = report_audit.plan_fixes(active, a, ["report_visual_without_title"])
     acciones = plan["actions"] + [{"rule": "x", "action": "accion_inventada",
                                    "page": P, "reason": "-"}]
-    r = report_audit.apply_fixes(active, acciones)
-    assert r["applied"] >= 1 and r["failed"] == 1
-    assert r["warnings"], "el fallo debe reportarse, no ocultarse"
+    antes = huella(project)
+    with pytest.raises(ValidationError):
+        report_audit.apply_fixes(active, acciones)
+    assert huella(project) == antes
+
+
+def test_fallo_despues_de_escribir_revierte_todo_el_plan(proyecto, monkeypatch):
+    from services import txn as txn_service
+
+    active, md, project = proyecto
+    degradar(active, project)
+    auditoria = report_audit.audit_project(active, md)
+    plan = report_audit.plan_fixes(
+        active, auditoria,
+        ["report_visual_without_title", "layout_out_of_canvas"])
+    assert len(plan["actions"]) >= 2
+    antes = huella(project)
+    original = txn_service.Transaction.write_json
+    llamadas = {"n": 0}
+
+    def fallar_despues_de_escribir(self, target, data):
+        llamadas["n"] += 1
+        resultado = original(self, target, data)
+        if llamadas["n"] == 1:
+            raise OSError("fallo inyectado despues de escribir")
+        return resultado
+
+    monkeypatch.setattr(txn_service.Transaction, "write_json",
+                        fallar_despues_de_escribir)
+    with pytest.raises(OSError, match="despues de escribir"):
+        report_audit.apply_fixes(active, plan["actions"])
+
+    assert huella(project) == antes
 
 
 @pytest.mark.real_project_state
@@ -224,8 +254,8 @@ def test_los_autofixes_respetan_la_politica_estricta(proyecto, monkeypatch):
     monkeypatch.setattr(project_state, "detect",
                         lambda x, **k: project_state.ProjectOpenState(
                             project_state.OPEN, "high", "abierto"))
-    r = report_audit.apply_fixes(active, plan["actions"])
-    assert r["applied"] == 0 and r["failed"] >= 1
+    with pytest.raises(project_state.ProjectOpenInDesktopError):
+        report_audit.apply_fixes(active, plan["actions"])
     assert huella(project) == antes, "con Desktop abierto no se escribe nada"
 
 
