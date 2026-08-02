@@ -34,7 +34,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -185,11 +187,48 @@ def _version_node() -> Optional[int]:
         return None
 
 
+_ESTADO_CACHE_TTL = 5.0
+_estado_cache: Dict[tuple, tuple[float, Dict[str, Any]]] = {}
+_estado_cache_lock = threading.Lock()
+
+
+def _fingerprint(ruta: Optional[str | Path]) -> tuple:
+    """Huella barata que invalida la cache si cambia un binario instalado."""
+    if not ruta:
+        return (None,)
+    path = Path(ruta)
+    try:
+        st = path.stat()
+        return (str(path.resolve()), st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (str(path), None, None)
+
+
+def invalidate_state_cache() -> None:
+    """Fuerza una nueva deteccion; util tras instalar/reparar el runtime."""
+    with _estado_cache_lock:
+        _estado_cache.clear()
+
+
 def estado() -> Dict[str, Any]:
     """Diagnostico del backend. No lanza: lo usan doctor y capabilities."""
     node = _node()
-    mayor = _version_node() if node else None
     cli = localizar()
+
+    # Consultar las versiones lanza dos procesos externos. Una transaccion PBIR
+    # valida antes y despues de escribir, y un flujo puede abrir varias
+    # transacciones; repetir esos procesos no aporta frescura. La clave incluye
+    # ruta, tamano y mtime de ambos binarios, ademas de la identidad de las
+    # funciones (para que los dobles de prueba nunca reutilicen estado real).
+    clave = (id(_node), id(_version_node), id(localizar), id(_version_cli),
+             _fingerprint(node), _fingerprint(cli), VERSION_REQUERIDA)
+    ahora = time.monotonic()
+    with _estado_cache_lock:
+        hit = _estado_cache.get(clave)
+        if hit and ahora - hit[0] < _ESTADO_CACHE_TTL:
+            return dict(hit[1])
+
+    mayor = _version_node() if node else None
 
     disponible = bool(node and cli and mayor and mayor >= NODE_MINIMO)
     version = ""
@@ -210,11 +249,18 @@ def estado() -> Dict[str, Any]:
     else:
         motivo = "disponible"
 
-    return {"available": disponible and compatible, "node": bool(node),
-            "node_major": mayor, "cli_path": str(cli) if cli else None,
-            "version": version, "expected_version": VERSION_REQUERIDA,
-            "compatible": compatible, "reason": motivo,
-            "install_hint": "python scripts/fetch_report_validator.py"}
+    resultado = {"available": disponible and compatible, "node": bool(node),
+                 "node_major": mayor, "cli_path": str(cli) if cli else None,
+                 "version": version, "expected_version": VERSION_REQUERIDA,
+                 "compatible": compatible, "reason": motivo,
+                 "install_hint": "python scripts/fetch_report_validator.py"}
+    with _estado_cache_lock:
+        # Evita crecimiento si las pruebas o una reparacion cambian muchas
+        # rutas. Solo hacen falta las huellas recientes.
+        if len(_estado_cache) >= 16:
+            _estado_cache.clear()
+        _estado_cache[clave] = (ahora, dict(resultado))
+    return resultado
 
 
 def _version_cli(cli: Path) -> Optional[str]:
@@ -266,7 +312,7 @@ def validar_informe(report_dir: Path, *, timeout: int = TIMEOUT_SEGUNDOS,
             details={"report_dir": str(raiz)})
 
     cli = Path(est["cli_path"])
-    salida_json = raiz.parent / f".hz_validate_{os.getpid()}.json"
+    salida_json = _ruta_salida_temporal(raiz)
     # Lista de argumentos, sin shell. `--no-schema`: una mutacion no puede
     # depender de que haya red.
     argumentos = [_node(), str(cli), "validate", str(raiz),
@@ -323,6 +369,13 @@ def validar_informe(report_dir: Path, *, timeout: int = TIMEOUT_SEGUNDOS,
         diagnostics=diags,
         duration_ms=(time.perf_counter() - inicio) * 1000,
         detail=str(datos.get("result", "")))
+
+
+def _ruta_salida_temporal(report_dir: Path) -> Path:
+    """Reserva un nombre no compartido por hilos ni validaciones anidadas."""
+    return (report_dir.parent /
+            f".hz_validate_{os.getpid()}_{threading.get_ident()}_"
+            f"{uuid.uuid4().hex}.json")
 
 
 def _leer_salida(salida_json: Path, proc) -> Optional[Dict[str, Any]]:

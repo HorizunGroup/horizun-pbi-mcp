@@ -51,6 +51,49 @@ def visual(nombre="x", **extra):
     return doc
 
 
+def test_validador_disponible_pero_inoperable_bloquea_antes_de_escribir(
+        entorno, monkeypatch):
+    from services import report_validator as rv
+
+    project, backups = entorno
+    target = _visual(project)
+    antes = target.read_bytes()
+    monkeypatch.setattr(rv, "estado", lambda: {"available": True})
+    monkeypatch.setattr(
+        rv, "validar_informe",
+        lambda _ruta: rv.Resultado(status=rv.UNAVAILABLE,
+                                   detail="fallo inyectado"))
+
+    with pytest.raises(rv.ReportValidationFailed):
+        with transaction(project, backups, [target], tool="prueba",
+                         report_dir=project / "Demo.Report") as tx:
+            tx.write_json(target, visual("nuevo"))
+
+    assert target.read_bytes() == antes
+
+
+def test_validador_que_falla_despues_de_escribir_fuerza_rollback(
+        entorno, monkeypatch):
+    from services import report_validator as rv
+
+    project, backups = entorno
+    target = _visual(project)
+    antes = target.read_bytes()
+    resultados = iter([
+        rv.Resultado(status=rv.PASSED),
+        rv.Resultado(status=rv.UNAVAILABLE, detail="fallo post-escritura"),
+    ])
+    monkeypatch.setattr(rv, "estado", lambda: {"available": True})
+    monkeypatch.setattr(rv, "validar_informe", lambda _ruta: next(resultados))
+
+    with pytest.raises(rv.ReportValidationFailed):
+        with transaction(project, backups, [target], tool="prueba",
+                         report_dir=project / "Demo.Report") as tx:
+            tx.write_json(target, visual("nuevo"))
+
+    assert target.read_bytes() == antes
+
+
 # --------------------------------------------------------- escritura durable ---
 def test_durable_write_escribe_y_no_deja_temporal(tmp_path):
     destino = tmp_path / "x.json"

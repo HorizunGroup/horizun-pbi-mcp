@@ -719,10 +719,18 @@ class transaction:
         if not rv.estado()["available"]:
             return None
         try:
-            return rv.validar_informe(self._report_dir).diagnostics
+            resultado = rv.validar_informe(self._report_dir)
         except Exception as exc:                        # noqa: BLE001
-            log.debug("No se pudo tomar el baseline del validador: %s", exc)
-            return None
+            raise rv.ReportValidationFailed(
+                "El validador oficial fallo antes de escribir; no se inicia "
+                "una operacion cuyo resultado no se podria comprobar.",
+                details={"cause": f"{type(exc).__name__}: {exc}"}) from exc
+        if resultado.status in (rv.UNAVAILABLE, rv.TIMEOUT):
+            raise rv.ReportValidationFailed(
+                "El validador oficial no pudo establecer el estado inicial "
+                "del informe; no se escribio ningun archivo.",
+                details=resultado.to_envelope())
+        return resultado.diagnostics
 
     def _validar_informe(self) -> None:
         """Valida el `.Report` tras escribir el lote y ANTES de confirmar.
@@ -736,13 +744,10 @@ class transaction:
         from services import report_validator as rv
 
         resultado = rv.validar_informe(self._report_dir)
-        if resultado.status in (rv.UNAVAILABLE,):
-            self.validation = resultado.to_envelope()
-            return
-        if resultado.status == rv.TIMEOUT:
+        if resultado.status in (rv.UNAVAILABLE, rv.TIMEOUT):
             raise rv.ReportValidationFailed(
-                "El validador oficial no respondio a tiempo; no se confirma un "
-                "cambio que no se ha podido comprobar.",
+                "El validador oficial no pudo comprobar el informe despues "
+                "de escribir; el cambio se revierte.",
                 details=resultado.to_envelope())
 
         comparacion = rv.comparar(self._baseline, resultado.diagnostics)

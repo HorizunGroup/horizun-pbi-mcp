@@ -118,6 +118,32 @@ def test_version_incorrecta_no_vale(monkeypatch, tmp_path):
     assert "0.0.1" in est["reason"]
 
 
+def test_estado_no_relanzar_procesos_si_los_binarios_no_cambiaron(
+        monkeypatch, tmp_path):
+    cli = tmp_path / "cli.js"
+    cli.write_text("x", encoding="utf-8")
+    llamadas = {"node": 0, "cli": 0}
+
+    monkeypatch.setattr(rv, "_node", lambda: sys.executable)
+    monkeypatch.setattr(rv, "localizar", lambda: cli)
+
+    def version_node():
+        llamadas["node"] += 1
+        return 22
+
+    def version_cli(_ruta):
+        llamadas["cli"] += 1
+        return rv.VERSION_REQUERIDA
+
+    monkeypatch.setattr(rv, "_version_node", version_node)
+    monkeypatch.setattr(rv, "_version_cli", version_cli)
+    rv.invalidate_state_cache()
+
+    assert rv.estado()["available"] is True
+    assert rv.estado()["available"] is True
+    assert llamadas == {"node": 1, "cli": 1}
+
+
 def test_no_se_busca_en_el_path(monkeypatch, tmp_path):
     """Un ejecutable ajeno con ese nombre no puede acabar procesando el .pbip."""
     import inspect
@@ -219,6 +245,13 @@ def test_no_queda_el_archivo_temporal(con_cli_falso, informe):
     rv.validar_informe(informe)
     restos = list(informe.parent.glob(".hz_validate_*.json"))
     assert not restos, f"quedaron temporales: {restos}"
+
+
+def test_cada_validacion_tiene_una_salida_temporal_propia(informe):
+    primera = rv._ruta_salida_temporal(informe)
+    segunda = rv._ruta_salida_temporal(informe)
+    assert primera != segunda
+    assert primera.parent == informe.parent == segunda.parent
 
 
 def test_ruta_con_espacios(con_cli_falso, tmp_path):
