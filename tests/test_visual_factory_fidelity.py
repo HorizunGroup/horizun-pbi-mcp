@@ -61,6 +61,27 @@ def test_title_none_no_hereda_el_titulo_de_la_plantilla(proyecto_con_plantillas)
     assert "title" not in vco
 
 
+def test_build_visual_de_extremo_a_extremo_aplica_marco_de_color(
+        proyecto_con_plantillas):
+    """No solo la funcion interna: el camino completo (clonar plantilla +
+    _rutas_formato_generadas + el guardian de formato) tiene que aceptar el
+    marco sin lanzar FormatOracleMismatch."""
+    salida = visual_factory.build_visual(
+        proyecto_con_plantillas, "card", {"values": ["[Ratio Pct]"]}, POS,
+        title="KPI", measure_index={"Ratio Pct": "Fact"},
+        options={"background_color": "#FDECDD", "border_color": "#F47920",
+                 "border_radius": 10, "bold_value": True})
+
+    vco = salida["visual"]["visual"]["visualContainerObjects"]
+    assert vco["background"][0]["properties"]["show"]["expr"]["Literal"]["Value"] == "true"
+    assert vco["border"][0]["properties"]["radius"]["expr"]["Literal"]["Value"] == "10.0D"
+    # El titulo y el valor en negrita, pedidos en la MISMA llamada, sobreviven
+    # junto al marco nuevo: uno no debe pisar al otro.
+    assert vco["title"][0]["properties"]["text"]["expr"]["Literal"]["Value"] == "'KPI'"
+    assert salida["visual"]["visual"]["objects"]["labels"][0]["properties"]["bold"][
+        "expr"]["Literal"]["Value"] == "true"
+
+
 def test_clon_descarta_selectores_que_apuntan_al_campo_anterior(
         proyecto_con_plantillas):
     plantilla = visual_factory.find_template(proyecto_con_plantillas, "card")

@@ -268,7 +268,7 @@ def register(mcp) -> None:
     def pbi_add_table_from_file(path: str, table_name: str = "",
                                 sheet: str = "", culture: str = "",
                                 description: str = "", overwrite: bool = False,
-                                dry_run: bool = False,
+                                dry_run: bool = False, table_id: str = "",
                                 request_id: str = "") -> Dict[str, Any]:
         """Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.
 
@@ -278,8 +278,23 @@ def register(mcp) -> None:
         'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y
         editar en el editor sin que desentone.
 
-        Admite .csv, .txt, .tsv, .xlsx, .xlsm y .json. Sin dependencias
-        nuevas: el .xlsx se lee como lo que es, un zip con XML.
+        Admite .csv, .txt, .tsv, .xlsx, .xlsm, .json, .html/.htm y '.xls'.
+        Sin dependencias nuevas: el .xlsx se lee como lo que es, un zip con
+        XML, y el HTML con `html.parser` de la biblioteca estandar.
+
+        Un '.xls' NO se toma por la extension: se mira la firma real del
+        archivo. En la practica, casi ningun '.xls' que exportan los ERPs es
+        el binario OLE2 que la extension promete -- es una tabla HTML con esa
+        extension porque Excel la abre igual. Si de verdad es OLE2 (Excel
+        97-2003), se rechaza con un mensaje claro en vez de leerlo mal; si es
+        un .xlsx renombrado, se lee como .xlsx.
+
+        Para HTML: si el archivo trae varias `<table>`, se elige la mas
+        grande y se avisa (usa `table_id` para elegir una en concreto, el
+        `id` HTML de la tabla). Los encabezados solo se promueven si la
+        tabla usa `<th>`; un reporte sin esa marca (el caso normal en un
+        reporte de ERP, donde la fila 1 es el titulo del reporte, no un
+        encabezado) carga con columnas 'Column1', 'Column2'...
 
         **La cultura se deduce del archivo**, mirando como escribe los
         decimales, y se emite SIEMPRE explicita en la consulta. Asumir la del
@@ -291,7 +306,7 @@ def register(mcp) -> None:
         no abre.
 
         `dry_run=true` devuelve el TMDL y la M sin escribir nada.
-        `sheet`: hoja del libro; si se omite, la primera.
+        `sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.
 
         Escribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.
         """
@@ -301,7 +316,7 @@ def register(mcp) -> None:
             _proyecto_activo(), path, table_name=table_name,
             sheet=sheet or None, culture=culture or None,
             description=description or None, overwrite=overwrite,
-            dry_run=dry_run))
+            dry_run=dry_run, table_id=table_id or None))
 
     @mcp.tool()
     def pbi_set_storage_mode(table: str, mode: str,

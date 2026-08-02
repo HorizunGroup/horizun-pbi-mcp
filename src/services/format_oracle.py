@@ -34,8 +34,10 @@ _MAX_CATALOG_BYTES = 8 * 1024 * 1024
 # Node solo para comprobar VCO compartidos como title.show/title.text.
 _SHARED_VCO = {
     "title": {"show": {"type": "bool"}, "text": {"type": "text"}},
-    "background": {"show": {"type": "bool"}},
-    "border": {"show": {"type": "bool"}},
+    "background": {"show": {"type": "bool"}, "color": {"type": "fill"},
+                   "transparency": {"type": "numeric"}},
+    "border": {"show": {"type": "bool"}, "color": {"type": "fill"},
+               "radius": {"type": "numeric"}},
     "visualLink": {
         "show": {"type": "bool"},
         "type": {"type": "enum", "values": [

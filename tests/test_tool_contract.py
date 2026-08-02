@@ -163,10 +163,18 @@ DISENO_TOOLS = [
     "pbi_compose_page",
 ]
 
+#: Filtrar un visual EXISTENTE sin escribir `filterConfig` a mano.
+#: `filter_builder` (alias del filtro, valores tipados) llevaba tiempo
+#: existiendo sin ninguna tool que lo expusiera para un visual ya escrito.
+FILTRO_VISUAL_TOOLS = [
+    "pbi_set_visual_filter",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
-                + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS)
+                + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS
+                + FILTRO_VISUAL_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 
@@ -427,7 +435,8 @@ def test_el_catalogo_declara_el_numero_real_de_tools():
     doc = (Path(__file__).resolve().parents[1] / "docs" / "TOOL_CATALOG.md"
            ).read_text(encoding="utf-8")
 
-    cabecera = re.search(r"# Cat[aá]logo de tools\s*[—-]\s*(\d+)", doc)
+    cabecera = re.search(
+        r"# (?:Cat[aá]logo de tools|Tool catalog)\s*[—-]\s*(\d+)", doc)
     assert cabecera, "el catalogo no declara un numero en su titulo"
     assert int(cabecera.group(1)) == EXPECTED_COUNT, (
         f"el catalogo dice {cabecera.group(1)} y hay {EXPECTED_COUNT}")
