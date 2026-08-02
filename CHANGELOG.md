@@ -19,6 +19,51 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Five gaps found while using the server on a real case (building a
+construction-budget dashboard from scratch, with data from an external ERP),
+not invented ones: each one cost real session time before being worked
+around by hand, and this delivery keeps the next case from paying the same
+price.
+
+### Added
+
+- **`options` in `pbi_create_visual`**: the tool never exposed the parameter
+  even though `visual_factory.build_visual` already supported it for
+  shape/card visuals; now `pbi_apply_page_spec` and `pbi_create_visual` share
+  the same capability.
+- **Color frame for any visual** (`background_color`, `border_color`,
+  `border_radius`, `background_transparency` inside `options`): it previously
+  only existed to turn the frame off (`show=False`) on composition elements;
+  there was no way to ask for a colored background/border on a card, a chart
+  or a table without hand-writing `visualContainerObjects`. Verified against
+  real shapes captured from Power BI Desktop
+  (`tests/fixtures/synthetic/format_objects_corpus.json`), not just against
+  the schema.
+- **`references` in `pbi_validate_pbip_project`**: cross-checks every
+  `Measure`/`Column` that a `visual.json` or its `filterConfig` cites against
+  the real TMDL. The official validator certifies the JSON's SHAPE; it had no
+  way to know whether a mistyped measure name actually exists. A report could
+  pass with 0 errors and open in Desktop with a silently blank card.
+- **`pbi_set_visual_filter`**: filters an ALREADY-WRITTEN visual without
+  hand-editing `filterConfig`. `pbip.filter_builder` (filter alias, typed
+  values, stable name) had existed for a while with no tool exposing it for
+  an existing visual, only for new specs.
+- **`pbi_add_table_from_file` reads HTML disguised as `.xls`**: a common ERP
+  export pattern (`Excel.Workbook` fails outright on these files). The
+  `.xls` extension is no longer taken at face value: the real file signature
+  is sniffed (OLE2 is rejected with a clear message; ZIP is read as
+  `.xlsx`; anything else is profiled as an HTML table). Repeats a `colspan`
+  cell's value across every column it spans, detects the declared encoding
+  (`<meta charset>`), only promotes headers if the table actually uses
+  `<th>`, and fixes column names by position in the M query
+  (`Table.FromRows` + `Table.ToRows`) instead of trusting how `Web.Page`
+  names them at refresh time — that naming isn't predictable from Python
+  when there is no `<th>`.
+
+---
+
 ## [1.0.0] — 2026-08-02
 
 First stable release of the official repository. **117 tools, 1542 tests

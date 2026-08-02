@@ -774,6 +774,43 @@ def _aplicar_opciones_de_tarjeta(vis: Dict[str, Any], actual_type: str,
         vis.pop("objects", None)
 
 
+def _aplicar_estilo_contenedor(vis: Dict[str, Any], opciones: Dict[str, Any]) -> None:
+    """Fondo y borde del MARCO: aplica a cualquier tipo de visual.
+
+    Es el panel General > Efectos de Power BI Desktop (Fondo / Borde), no el
+    relleno propio de una forma (`_build_shape`) ni el color de un valor de
+    tarjeta (`_aplicar_opciones_de_tarjeta`). Antes no habia forma de pedir
+    esto por 'options': `_sin_marco()` solo sabia APAGARLO (`show=False`) en
+    los elementos de composicion, y encenderlo con un color exigia escribir
+    `visualContainerObjects` a mano fuera de esta fabrica.
+
+    `background_color` / `border_color`: hex ('#RRGGBB'). Sin ellos, no se
+    toca nada (no se inventa un marco que nadie pidio).
+    """
+    color_fondo = opciones.get("background_color")
+    color_borde = opciones.get("border_color")
+    if not color_fondo and not color_borde:
+        return
+
+    contenedor = vis.setdefault("visualContainerObjects", {})
+
+    if color_fondo:
+        contenedor["background"] = [{"properties": {
+            "show": _lit(True),
+            "color": {"solid": {"color": _lit(color_fondo)}},
+            "transparency": _lit(float(opciones.get("background_transparency", 0))),
+        }}]
+
+    if color_borde:
+        props: Dict[str, Any] = {
+            "show": _lit(True),
+            "color": {"solid": {"color": _lit(color_borde)}},
+        }
+        if opciones.get("border_radius") is not None:
+            props["radius"] = _lit(float(opciones["border_radius"]))
+        contenedor["border"] = [{"properties": props}]
+
+
 def _build_shape(opciones: Dict[str, Any]) -> Dict[str, Any]:
     forma = opciones.get("shape", "rectangle")
     if forma not in FORMAS:
@@ -926,6 +963,15 @@ def _rutas_formato_generadas(vis: Dict[str, Any], *, completas: bool,
     if title is not None:
         rutas.extend([("visualContainerObjects", "title", "text"),
                       ("visualContainerObjects", "title", "show")])
+    if opciones.get("background_color"):
+        rutas.extend([("visualContainerObjects", "background", "show"),
+                      ("visualContainerObjects", "background", "color"),
+                      ("visualContainerObjects", "background", "transparency")])
+    if opciones.get("border_color"):
+        rutas.extend([("visualContainerObjects", "border", "show"),
+                      ("visualContainerObjects", "border", "color")])
+        if opciones.get("border_radius") is not None:
+            rutas.append(("visualContainerObjects", "border", "radius"))
     if actual_type in ("card", "cardVisual"):
         etiqueta = "label" if actual_type == "cardVisual" else "categoryLabels"
         valor = "value" if actual_type == "cardVisual" else "labels"
@@ -1002,6 +1048,7 @@ def build_visual(
         if title is not None and opciones.get("show_title"):
             vis.setdefault("visualContainerObjects", {})["title"] = [
                 {"properties": {"show": _lit(True), "text": _lit(title)}}]
+        _aplicar_estilo_contenedor(vis, opciones)
         if actual_type == "textbox":
             _ajustar_alto_de_texto(pos, opciones, warnings)
         documento = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
@@ -1034,6 +1081,7 @@ def build_visual(
         _quitar_selectores_de_campos_obsoletos(vis, query, warnings)
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
+        _aplicar_estilo_contenedor(vis, options or {})
         origin = f"clonado de {template}"
     else:
         vis = {
@@ -1045,6 +1093,7 @@ def build_visual(
             _set_title(vis, title)
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
+        _aplicar_estilo_contenedor(vis, options or {})
         data = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
         origin = "plantilla minima (validar en Power BI Desktop)"
         warnings.append(

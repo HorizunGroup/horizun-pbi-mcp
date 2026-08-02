@@ -253,15 +253,49 @@ def validate_project(session: Session) -> Dict[str, Any]:
             warnings.append(f"No se pudo validar el TMDL: {exc}")
             valid = False
 
+    # El esquema (arriba) y la sintaxis TMDL (arriba) pueden ser perfectos y
+    # el informe seguir citando una medida que ya no existe: ninguno de los
+    # dos sabe que hay DENTRO del otro archivo. Solo tiene sentido comparar
+    # si el TMDL se pudo leer bien; contra un modelo a medio parsear el
+    # resultado seria ruido, no una comprobacion.
+    references: Dict[str, Any] = {
+        "checked": False,
+        "reason": "el TMDL no es valido o el proyecto no tiene TMDL: no se "
+                 "compara un informe contra un modelo que no abre"}
+    if checks["has_tmdl"] and active.has_pbir and tmdl.get("valid"):
+        from pbip import tmdl_reader  # perezoso: evita un ciclo de import
+        from services import reference_audit
+
+        try:
+            model_data = tmdl_reader.read_semantic_model(active, strict=False)
+            references = reference_audit.check_report_references(active, model_data)
+            if not references["valid"]:
+                valid = False
+                for r in references["broken_references"]:
+                    warnings.append(
+                        f"Referencia: {r['kind']} '{r['property']}' de "
+                        f"'{r['table']}' no existe en el modelo (visual "
+                        f"'{r['visual_id']}' en pagina '{r['page']}').")
+                for u in references["unreadable_files"]:
+                    warnings.append(f"No se pudo leer {u['file']}: {u['error']}")
+        except Exception as exc:  # noqa: BLE001
+            references = {"checked": False, "reason": str(exc)}
+            warnings.append(f"No se pudieron comprobar las referencias del informe: {exc}")
+            valid = False
+
     checks["tmdl_valid"] = tmdl.get("valid") if tmdl.get("checked") else None
     checks["pbir_valid"] = (
         False if report_parse_errors else report_validation.get("valid"))
+    checks["references_valid"] = (
+        references.get("valid") if references.get("checked") else None)
 
     return {"valid": bool(valid), "checks": checks, "warnings": warnings,
             "tmdl": tmdl,
             "report": {**report_validation,
                        "parse_errors": report_parse_errors},
+            "references": references,
             "fully_validated": bool(
                 valid and tmdl.get("parse_checked")
-                and report_validation.get("checked")),
+                and report_validation.get("checked")
+                and references.get("checked")),
             "project": active.to_dict()}

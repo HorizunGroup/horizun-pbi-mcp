@@ -31,6 +31,7 @@ import re
 import unicodedata
 import uuid
 import zipfile
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,9 +46,32 @@ class TableFromFileError(PowerBIMCPError):
 
 
 #: Extensiones que sabemos cargar. Lo demas se rechaza por su nombre, para que
-#: el mensaje diga QUE formato es y no un generico "no soportado".
+#: el mensaje diga QUE formato es y no un generico "no soportado". '.xls' NO
+#: mapea directo a un formato fijo: hay que mirar los primeros bytes (ver
+#: `_formato_real_de_xls`), porque en la practica un '.xls' casi nunca es el
+#: binario OLE2 que la extension promete.
 _FORMATOS = {".csv": "csv", ".txt": "csv", ".tsv": "csv",
-             ".xlsx": "xlsx", ".xlsm": "xlsx", ".json": "json"}
+             ".xlsx": "xlsx", ".xlsm": "xlsx", ".json": "json",
+             ".html": "html", ".htm": "html"}
+
+#: Firma de un .xls binario de verdad (Excel 97-2003, formato OLE2/CFB).
+_MAGIC_OLE2 = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+#: Firma de un .xlsx/.xlsm real (son un .zip), aunque venga con extension .xls.
+_MAGIC_ZIP = b"PK\x03\x04"
+
+#: Juegos de caracteres declarados en <meta charset> -> codec de Python. Los
+#: reportes de ERPs casi nunca declaran UTF-8 de verdad: 'windows-1252' e
+#: 'iso-8859-1' son el caso normal, no la excepcion.
+_CHARSET_A_CODEC = {
+    "utf-8": "utf-8", "utf8": "utf-8",
+    "windows-1252": "cp1252", "cp1252": "cp1252",
+    "iso-8859-1": "cp1252", "latin1": "cp1252", "latin-1": "cp1252",
+    "iso-8859-15": "cp1252",
+}
+#: codec de Python -> textEncoding de Power Query (`Text.FromBinary`). Son los
+#: dos unicos que este cargador necesita distinguir; falta cualquier otro se
+#: trata como 1252 porque es el fallback mas comun en reportes latinoamericanos.
+_CODEC_A_TEXTENCODING = {"utf-8": 65001, "cp1252": 1252}
 
 _DELIMITADORES = (",", ";", "\t", "|")
 
@@ -326,24 +350,191 @@ def _perfilar_json(ruta: Path, muestra: int) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# '.xls' que en realidad es HTML (el caso normal en exportaciones de ERP)
+# ---------------------------------------------------------------------------
+
+def _formato_real_de_xls(ruta: Path) -> str:
+    """Mira los primeros bytes: la extension '.xls' no dice la verdad.
+
+    Un ERP casi nunca exporta el binario OLE2 que la extension promete;
+    exporta una tabla HTML y la nombra '.xls' porque Excel la abre igual.
+    Tratarlo como el .xls real (`Excel.Workbook`) falla en seco; tratarlo
+    siempre como HTML rompe el .xls autentico que si aparezca. Se decide
+    mirando la firma, no la extension.
+    """
+    cabecera = ruta.read_bytes()[:8]
+    if cabecera.startswith(_MAGIC_OLE2):
+        raise TableFromFileError(
+            f"'{ruta.name}' es un .xls binario real (formato Excel 97-2003, "
+            "OLE2). Este cargador no lo lee: convierte el archivo a .xlsx "
+            "desde Excel y vuelve a intentarlo.",
+            details={"path": str(ruta), "detected": "ole2"})
+    if cabecera.startswith(_MAGIC_ZIP):
+        return "xlsx"  # un .xlsx/.xlsm real, solo que renombrado a .xls
+    return "html"  # el caso normal: tabla HTML con extension .xls
+
+
+def _detectar_codec(crudo: bytes) -> str:
+    """Codec de Python a partir de un <meta charset> o Content-Type.
+
+    Se busca en los primeros 4KB decodificados como latin-1 (que nunca falla
+    y conserva cada byte 1 a 1): los <meta> siempre estan en ASCII puro, asi
+    que buscarlos ahi es seguro sin importar la codificacion real del resto.
+    """
+    cabecera = crudo[:4096].decode("latin-1")
+    m = re.search(r'charset\s*=\s*"?\'?([\w-]+)', cabecera, re.I)
+    declarado = (m.group(1).lower() if m else None)
+    return _CHARSET_A_CODEC.get(declarado or "", "cp1252")
+
+
+class _TablaHTML(HTMLParser):
+    """Extrae todas las <table> de un HTML, con celdas colspan repetidas.
+
+    Repetir el valor de una celda `colspan=N` en las N columnas que ocupa es
+    el MISMO criterio que usa `Web.Page` de Power Query al aplanar una fila:
+    reproducirlo aqui es lo que permite que el indice/id de tabla que se
+    calcula en Python siga significando lo mismo dentro de la consulta M.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tablas: List[Dict[str, Any]] = []
+        self._pila_tablas: List[int] = []
+        self._fila_actual: Optional[List[Tuple[str, int]]] = None
+        self._celda_actual: Optional[List[str]] = None
+
+    def handle_starttag(self, tag, attrs):
+        atributos = dict(attrs)
+        if tag == "table":
+            self.tablas.append({"id": atributos.get("id"), "rows": [],
+                                "has_th": False})
+            self._pila_tablas.append(len(self.tablas) - 1)
+        elif tag == "tr" and self._pila_tablas:
+            self._fila_actual = []
+        elif tag in ("td", "th") and self._fila_actual is not None:
+            if tag == "th" and self._pila_tablas:
+                self.tablas[self._pila_tablas[-1]]["has_th"] = True
+            try:
+                colspan = max(1, int(atributos.get("colspan", 1)))
+            except ValueError:
+                colspan = 1
+            self._celda_actual = []
+            self._colspan_actual = colspan
+
+    def handle_data(self, data):
+        if self._celda_actual is not None:
+            self._celda_actual.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in ("td", "th") and self._celda_actual is not None:
+            texto = "".join(self._celda_actual).replace("\xa0", " ").strip()
+            self._fila_actual.extend([texto] * self._colspan_actual)
+            self._celda_actual = None
+        elif tag == "tr" and self._fila_actual is not None and self._pila_tablas:
+            self.tablas[self._pila_tablas[-1]]["rows"].append(self._fila_actual)
+            self._fila_actual = None
+        elif tag == "table" and self._pila_tablas:
+            self._pila_tablas.pop()
+
+
+def _elegir_tabla(tablas: List[Dict[str, Any]], table_id: Optional[str]
+                  ) -> Tuple[Dict[str, Any], int, List[str]]:
+    """Devuelve (tabla, indice, avisos). Sin `table_id`, la mas grande gana."""
+    avisos: List[str] = []
+    if table_id is not None:
+        for i, t in enumerate(tablas):
+            if t["id"] == table_id:
+                return t, i, avisos
+        disponibles = [t["id"] for t in tablas if t["id"]]
+        raise TableFromFileError(
+            f"No hay ninguna <table id=\"{table_id}\"> en el archivo.",
+            details={"requested_id": table_id, "available_ids": disponibles})
+
+    no_vacias = [(i, t) for i, t in enumerate(tablas) if t["rows"]]
+    if not no_vacias:
+        raise TableFromFileError("El archivo no contiene ninguna tabla HTML "
+                                 "con filas.")
+    indice, tabla = max(no_vacias, key=lambda par: len(par[1]["rows"]))
+    if tabla["id"] is None:
+        avisos.append(
+            f"Se eligio la tabla mas grande ({len(tabla['rows'])} filas, "
+            f"posicion {indice}) porque ninguna <table> tiene 'id'. Sin un "
+            "id, la consulta M selecciona por POSICION: si el archivo cambia "
+            "de estructura en el proximo reporte, puede dejar de apuntar a "
+            "la tabla correcta. Verificalo en el editor de Power Query.")
+    return tabla, indice, avisos
+
+
+def _perfilar_html(ruta: Path, muestra: int, table_id: Optional[str] = None
+                   ) -> Dict[str, Any]:
+    crudo = ruta.read_bytes()
+    codec = _detectar_codec(crudo)
+    texto = crudo.decode(codec, errors="replace")
+
+    parser = _TablaHTML()
+    parser.feed(texto)
+    tabla, indice, avisos = _elegir_tabla(parser.tablas, table_id)
+    filas = tabla["rows"]
+
+    ancho = max((len(f) for f in filas), default=0)
+    if ancho == 0:
+        raise TableFromFileError(f"La tabla elegida no tiene columnas: {ruta}")
+    filas = [f + [""] * (ancho - len(f)) for f in filas]  # rellena filas cortas
+
+    # Un reporte de ERP casi nunca tiene una fila 1 que sirva de encabezado
+    # (suele ser el titulo del reporte). Solo se promueve si ESTA tabla usa
+    # <th> en algun punto: adivinarlo a partir del texto de la fila 1 seria
+    # inventar una estructura que el archivo no afirma tener.
+    promover = bool(tabla["rows"]) and tabla.get("has_th", False)
+    if promover:
+        encabezados = [c or f"Column{i + 1}" for i, c in enumerate(filas[0])]
+        datos = filas[1:muestra + 1]
+    else:
+        encabezados = [f"Column{i + 1}" for i in range(ancho)]
+        datos = filas[:muestra]
+
+    columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
+                        for i in range(ancho)]
+    sep = _separador_decimal([v for col in columnas_valores for v in col])
+
+    return {
+        "format": "html", "path": str(ruta), "sheet": None, "delimiter": None,
+        "encoding": _CODEC_A_TEXTENCODING.get(codec, 1252), "has_bom": False,
+        "decimal_separator": sep, "row_sample": len(datos),
+        "table_id": tabla["id"], "table_index": indice,
+        "promote_headers": promover, "warnings": avisos,
+        "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
+                    for n, v in zip(encabezados, columnas_valores)],
+    }
+
+
 def perfilar(path: Path | str, sheet: Optional[str] = None,
-             muestra: int = 200) -> Dict[str, Any]:
+             muestra: int = 200, table_id: Optional[str] = None) -> Dict[str, Any]:
     """Mira dentro del archivo y deduce columnas, tipos y cultura."""
     ruta = Path(path).expanduser()
     if not ruta.exists():
         raise TableFromFileError(f"El archivo no existe: {ruta}",
                                  details={"path": str(ruta)})
-    formato = _FORMATOS.get(ruta.suffix.lower())
+    if ruta.suffix.lower() == ".xls":
+        # '.xls' no se toma por su palabra: se mira la firma real del
+        # archivo (ver `_formato_real_de_xls`).
+        formato = _formato_real_de_xls(ruta)
+    else:
+        formato = _FORMATOS.get(ruta.suffix.lower())
     if formato is None:
         raise TableFromFileError(
             f"No se sabe cargar un '{ruta.suffix}'. Formatos admitidos: "
-            f"{', '.join(sorted(_FORMATOS))}.",
+            f"{', '.join(sorted(_FORMATOS))}, .xls (si es HTML o un .xlsx "
+            "renombrado).",
             details={"path": str(ruta), "suffix": ruta.suffix})
 
     if formato == "csv":
         perfil = _perfilar_csv(ruta, muestra)
     elif formato == "xlsx":
         perfil = _perfilar_xlsx(ruta, sheet, muestra)
+    elif formato == "html":
+        perfil = _perfilar_html(ruta, muestra, table_id)
     else:
         perfil = _perfilar_json(ruta, muestra)
 
@@ -429,12 +620,46 @@ def construir_m(perfil: Dict[str, Any], culture: Optional[str] = None) -> str:
             f'    #"Navegación" = Origen{{[Item = {_literal_m(perfil["sheet"])}, '
             'Kind = "Sheet"]}[Data],')
         anterior = '#"Navegación"'
+    elif perfil["format"] == "html":
+        # Web.Page no toma codificacion: hay que decodificar ANTES con
+        # Text.FromBinary y darle texto, no bytes. Es la diferencia entre
+        # 'Cimentación' y 'CimentaciÃ³n' con signos de interrogación.
+        pasos.append(
+            f'    Origen = Web.Page(Text.FromBinary(File.Contents({ruta}), '
+            f'{perfil["encoding"]})),')
+        if perfil.get("table_id"):
+            pasos.append(
+                f'    #"Tabla" = Origen{{[Id = {_literal_m(perfil["table_id"])}]}}[Data],')
+        else:
+            # Sin id, se selecciona por POSICION: el mismo orden en que el
+            # extractor de Python encontro las <table> (ver `_elegir_tabla`
+            # y el aviso que ya viaja en `perfil["warnings"]`).
+            pasos.append(f'    #"Tabla" = Origen{{{perfil["table_index"]}}}[Data],')
+        anterior = '#"Tabla"'
+        if perfil.get("promote_headers"):
+            pasos.append(f'    #"Fila de titulo quitada" = Table.Skip({anterior}, 1),')
+            anterior = '#"Fila de titulo quitada"'
+        # Web.Page NO nombra las columnas "Column1", "Column2"... como Csv o
+        # Excel.Workbook sin encabezados: cuando la tabla no trae <th> les
+        # pone un nombre propio deducido de lo que ve en cada columna, y ese
+        # nombre no es predecible desde Python. Fijarlos aqui por POSICION
+        # (Table.FromRows + Table.ToRows) es lo que hace que
+        # Table.TransformColumnTypes, mas abajo, encuentre columnas que de
+        # verdad existen.
+        nombres_fijos = "{" + ", ".join(
+            _literal_m(c["name"]) for c in perfil["columns"]) + "}"
+        pasos.append(
+            f'    #"Encabezados fijados" = Table.FromRows(Table.ToRows('
+            f'{anterior}), {nombres_fijos}),')
+        anterior = '#"Encabezados fijados"'
     else:
         pasos.append(f'    Origen = Json.Document(File.Contents({ruta})),')
         pasos.append('    #"Convertida en tabla" = Table.FromRecords(Origen),')
         anterior = '#"Convertida en tabla"'
 
-    if perfil["format"] != "json":
+    if perfil["format"] == "html":
+        pass  # los nombres ya quedaron fijados arriba: promover aqui los duplicaria
+    elif perfil["format"] != "json":
         pasos.append(f'    #"Encabezados promovidos" = Table.PromoteHeaders('
                      f'{anterior}, [PromoteAllScalars = true]),')
         anterior = '#"Encabezados promovidos"'
@@ -502,13 +727,19 @@ def construir_tmdl(nombre: str, perfil: Dict[str, Any],
 def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   sheet: Optional[str] = None, culture: Optional[str] = None,
                   description: Optional[str] = None, overwrite: bool = False,
-                  dry_run: bool = False, muestra: int = 200) -> Dict[str, Any]:
-    """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre."""
+                  dry_run: bool = False, muestra: int = 200,
+                  table_id: Optional[str] = None) -> Dict[str, Any]:
+    """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre.
+
+    `table_id`: solo para HTML/'.xls' que en realidad es HTML. El `id` de la
+    `<table>` a leer, cuando el archivo trae varias. Sin el, se elige la mas
+    grande y se avisa (`perfil["warnings"]`).
+    """
     from pbip.model_author import ModelAuthorError, resolver_destino_tabla
     from utils.validation import validate_object_name
 
     ruta = Path(path).expanduser()
-    perfil = perfilar(ruta, sheet=sheet, muestra=muestra)
+    perfil = perfilar(ruta, sheet=sheet, muestra=muestra, table_id=table_id)
 
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
     try:
@@ -525,6 +756,12 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
         "columns": perfil["columns"], "column_count": len(perfil["columns"]),
         "rows_sampled": perfil["row_sample"],
     }
+    if perfil["format"] == "html":
+        resumen["table_id"] = perfil.get("table_id")
+        resumen["table_index"] = perfil.get("table_index")
+        resumen["promoted_headers"] = perfil.get("promote_headers")
+        if perfil.get("warnings"):
+            resumen["warnings"] = perfil["warnings"]
     if dry_run:
         return {**resumen, "dry_run": True, "tmdl": texto, "m": construir_m(perfil, culture)}
 
