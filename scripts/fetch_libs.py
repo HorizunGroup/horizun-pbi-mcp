@@ -139,26 +139,21 @@ def dlls_del_paquete(datos: bytes, pid: str) -> Dict[str, bytes]:
     return salida
 
 
-def estado() -> Dict[str, Any]:
-    """Que hay instalado y si coincide con el manifiesto. No lanza."""
-    try:
-        m = leer_manifiesto()
-    except LibsError as exc:
-        return {"ready": False, "reason": str(exc), "missing": [], "mismatch": []}
-
+def _estado_directorio(directorio: Path, m: Dict[str, Any]) -> Dict[str, Any]:
+    """Comprueba un directorio concreto contra un manifiesto ya leido."""
     faltan, distintos = [], []
     for nombre, esperado in m["files"].items():
-        f = LIBS / nombre
+        f = directorio / nombre
         if not f.exists():
             faltan.append(nombre)
             continue
         if hashlib.sha256(f.read_bytes()).hexdigest() != esperado["sha256"]:
             distintos.append(nombre)
 
-    obligatorias_ok = all((LIBS / d).exists() for d in DLLS_OBLIGATORIAS)
+    obligatorias_ok = all((directorio / d).exists() for d in DLLS_OBLIGATORIAS)
     return {
         "ready": not faltan and not distintos and obligatorias_ok,
-        "dir": str(LIBS), "expected": len(m["files"]),
+        "dir": str(directorio), "expected": len(m["files"]),
         "missing": faltan, "mismatch": distintos,
         "pinned_version": VERSION_FIJADA,
         "required_present": obligatorias_ok,
@@ -166,6 +161,128 @@ def estado() -> Dict[str, Any]:
                    f"{len(faltan)} ausente(s), {len(distintos)} con hash "
                    "distinto"),
     }
+
+
+def estado() -> Dict[str, Any]:
+    """Que hay instalado y si coincide con el manifiesto. No lanza."""
+    try:
+        m = leer_manifiesto()
+        return _estado_directorio(LIBS, m)
+    except (LibsError, OSError) as exc:
+        return {"ready": False, "reason": str(exc), "missing": [], "mismatch": []}
+
+
+def _existe(path: Path) -> bool:
+    """Incluye enlaces simbolicos rotos, que ``Path.exists`` oculta."""
+    return path.exists() or path.is_symlink()
+
+
+def _eliminar_directorio(path: Path) -> None:
+    """Elimina solo el artefacto indicado, sin seguir enlaces simbolicos."""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _ruta_anterior() -> Path:
+    return LIBS.with_name(f".{LIBS.name}.previous")
+
+
+def _recuperar_interrupcion(m: Dict[str, Any]) -> None:
+    """Resuelve el estado dejado por un corte entre los dos renombres.
+
+    El respaldo tiene nombre fijo para que una ejecucion nueva pueda encontrarlo.
+    Solo se restaura si coincide por completo con el manifiesto.
+    """
+    anterior = _ruta_anterior()
+    if not _existe(anterior):
+        return
+    if anterior.is_symlink() or not anterior.is_dir():
+        raise LibsError(f"Respaldo de instalacion inseguro: {anterior}")
+
+    if not _existe(LIBS):
+        if not _estado_directorio(anterior, m)["ready"]:
+            raise LibsError(
+                f"Hay un respaldo incompleto en {anterior}; no se restaura.")
+        try:
+            anterior.replace(LIBS)
+        except OSError as exc:
+            raise LibsError(
+                f"No se pudo restaurar la instalacion anterior: {exc}") from exc
+        return
+
+    if LIBS.is_symlink() or not LIBS.is_dir():
+        raise LibsError(f"Destino de instalacion inseguro: {LIBS}")
+    if _estado_directorio(LIBS, m)["ready"]:
+        _eliminar_directorio(anterior)
+        return
+
+    if not _estado_directorio(anterior, m)["ready"]:
+        raise LibsError(
+            "La instalacion y su respaldo estan incompletos; no se sobrescribe "
+            "ninguno automaticamente.")
+
+    fallida = LIBS.with_name(f".{LIBS.name}.interrupted")
+    if _existe(fallida):
+        raise LibsError(f"Ya existe un artefacto de recuperacion: {fallida}")
+    try:
+        LIBS.replace(fallida)
+        anterior.replace(LIBS)
+    except OSError as exc:
+        if not _existe(LIBS) and _existe(fallida):
+            try:
+                fallida.replace(LIBS)
+            except OSError:
+                pass
+        raise LibsError(f"No se pudo recuperar la instalacion: {exc}") from exc
+    _eliminar_directorio(fallida)
+
+
+def _promover_directorio(staging: Path, m: Dict[str, Any]) -> None:
+    """Sustituye ``libs/`` por un staging completo y compensa cualquier fallo."""
+    anterior = _ruta_anterior()
+    if _existe(anterior):
+        raise LibsError(f"Respaldo pendiente sin recuperar: {anterior}")
+    if _existe(LIBS) and (LIBS.is_symlink() or not LIBS.is_dir()):
+        raise LibsError(f"Destino de instalacion inseguro: {LIBS}")
+
+    habia_anterior = _existe(LIBS)
+    promovido = False
+    fallida = staging.with_name(staging.name + ".failed")
+    try:
+        if habia_anterior:
+            LIBS.replace(anterior)
+        staging.replace(LIBS)
+        promovido = True
+        final = _estado_directorio(LIBS, m)
+        if not final["ready"]:
+            raise LibsError(
+                f"Tras instalar, la verificacion falla: {final['reason']}")
+    except Exception as exc:  # noqa: BLE001 - frontera de compensacion
+        rollback_error = None
+        try:
+            if promovido and _existe(LIBS):
+                LIBS.replace(fallida)
+            if habia_anterior and _existe(anterior) and not _existe(LIBS):
+                anterior.replace(LIBS)
+            if _existe(fallida):
+                _eliminar_directorio(fallida)
+        except Exception as rollback_exc:  # noqa: BLE001
+            rollback_error = rollback_exc
+
+        if rollback_error is not None:
+            raise LibsError(
+                "Fallo al instalar y al restaurar. El respaldo se conserva en "
+                f"{anterior}: {rollback_error}") from exc
+        if isinstance(exc, LibsError):
+            raise
+        raise LibsError(
+            f"No se pudo promover la instalacion; se restauro la anterior: {exc}"
+        ) from exc
+
+    if _existe(anterior):
+        _eliminar_directorio(anterior)
 
 
 def construir_manifiesto() -> Dict[str, Any]:
@@ -207,9 +324,14 @@ def construir_manifiesto() -> Dict[str, Any]:
 def instalar() -> Dict[str, Any]:
     """Descarga, verifica y solo entonces toca `libs/`."""
     m = leer_manifiesto()
+    LIBS.parent.mkdir(parents=True, exist_ok=True)
+    _recuperar_interrupcion(m)
     esperado_paquete = {p["id"]: p for p in m["packages"]}
 
-    tmp = Path(tempfile.mkdtemp(prefix="hz_libs_"))
+    # Mismo volumen que el destino: el renombre final es una operacion atomica
+    # del sistema de archivos y no puede degradarse a una copia parcial.
+    tmp = Path(tempfile.mkdtemp(
+        prefix=f".{LIBS.name}.stage_", dir=str(LIBS.parent)))
     try:
         extraidas: Dict[str, bytes] = {}
         for paquete in PAQUETES:
@@ -251,11 +373,14 @@ def instalar() -> Dict[str, Any]:
         for nombre, contenido in extraidas.items():
             (tmp / nombre).write_bytes(contenido)
 
-        LIBS.mkdir(parents=True, exist_ok=True)
-        for f in tmp.iterdir():
-            shutil.copy2(f, LIBS / f.name)
+        staged = _estado_directorio(tmp, m)
+        if not staged["ready"]:
+            raise LibsError(
+                f"El staging no supera la verificacion: {staged['reason']}")
+        _promover_directorio(tmp, m)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        if _existe(tmp):
+            _eliminar_directorio(tmp)
 
     final = estado()
     if not final["ready"]:

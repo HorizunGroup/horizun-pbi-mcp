@@ -230,6 +230,53 @@ def test_un_fallo_a_medias_no_deja_mezcla(fl, con_paquete, monkeypatch):
     assert despues == antes, "libs/ quedo con una mezcla de dos versiones"
 
 
+def test_fallo_al_promover_restaura_directorio_anterior(
+        fl, con_paquete, monkeypatch):
+    """El corte entre los renombres no deja ``libs/`` ausente o mezclado."""
+    generar(fl, con_paquete)
+    fl.instalar()
+    antes = {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")}
+
+    replace_real = fl.Path.replace
+    fallo_inyectado = False
+
+    def replace_con_fallo(path, target):
+        nonlocal fallo_inyectado
+        if (not fallo_inyectado
+                and path.name.startswith(f".{fl.LIBS.name}.stage_")
+                and fl.Path(target) == fl.LIBS):
+            fallo_inyectado = True
+            raise OSError("fallo de promocion inyectado")
+        return replace_real(path, target)
+
+    monkeypatch.setattr(fl.Path, "replace", replace_con_fallo)
+    with pytest.raises(fl.LibsError) as exc:
+        fl.instalar()
+
+    assert "se restauro la anterior" in str(exc.value)
+    assert {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")} == antes
+    assert not fl._ruta_anterior().exists()
+    assert not list(fl.LIBS.parent.glob(f".{fl.LIBS.name}.stage_*"))
+
+
+def test_reintento_recupera_corte_tras_apartar_version_anterior(
+        fl, con_paquete):
+    generar(fl, con_paquete)
+    fl.instalar()
+    antes = {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")}
+
+    # Estado exacto que deja una terminacion abrupta entre old -> previous y
+    # stage -> libs. La ejecucion siguiente debe reconocerlo antes de descargar.
+    fl.LIBS.replace(fl._ruta_anterior())
+    assert not fl.LIBS.exists()
+
+    fl.instalar()
+
+    assert fl.estado()["ready"] is True
+    assert {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")} == antes
+    assert not fl._ruta_anterior().exists()
+
+
 def test_el_estado_detecta_una_dll_alterada(fl, con_paquete):
     generar(fl, con_paquete)
     fl.instalar()
