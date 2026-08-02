@@ -98,7 +98,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 | `visualContainer/2.10.0` y `bookmarks/2.0.0` sin publicar | 404 en el origen oficial; el CLI de Microsoft tampoco los valida |
 | **G10** parcialmente cerrado | Consecuencia directa de lo anterior |
 | **R15** abierto, `both` bloqueado | Precondiciones mutuamente excluyentes ([`DUAL_MODE.md`](DUAL_MODE.md)) |
-| **El bloque `objects` de un visual no lo valida nadie** | El esquema oficial lo declara `additionalProperties: {}`. Ahí viven formato condicional, tipografías y colores: el único detector es abrir y mirar |
+| **Equivalencia completa del bloque `objects` de un visual pendiente** | Una barrera local detecta las formas mal anidadas que generamos (`solid.color`, expresiones y `FillRule`), pero el esquema oficial deja el bloque abierto. Sigue faltando un corpus exportado de Desktop para probar equivalencia de propiedades y combinaciones |
 | Errores preexistentes del informe del usuario | No se corrigen automáticamente, nunca |
 | Dos pruebas omitidas | Requieren Desktop abierto o una precondición del modelo |
 

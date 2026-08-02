@@ -206,6 +206,52 @@ def test_regla_oficial_tipo_anidado_invalido():
     assert any("visualType" in r for r in rutas)
 
 
+def _campo_de_prueba():
+    return {"Measure": {"Expression": {"SourceRef": {"Entity": "qa"}},
+                        "Property": "Puntaje"}}
+
+
+def test_el_formato_condicional_que_generamos_pasa_la_barrera_de_objects():
+    """La forma buena viene del escritor, no de un JSON montado por la prueba."""
+    from pbip import conditional_format
+
+    documento = visual_valido()
+    conditional_format.apply_to_visual(documento, _campo_de_prueba(),
+                                       "#FFFFFF", "#2A78D6")
+
+    assert pbir_schema.validar(documento)["validated"] is True
+
+
+def test_un_color_solido_sin_nivel_color_se_bloquea_aunque_el_schema_lo_acepte():
+    """Regresion del defecto visual: ``solid: {expr: ...}`` no pinta nada.
+
+    `formattingObjectDefinitions` deja `objects` abierto, asi que el schema
+    oficial no llega a esta profundidad. Esta prueba debe fallar contra
+    0a4ed77: antes la validacion devolvia `validated=True`.
+    """
+    documento = visual_valido()
+    documento["visual"]["objects"] = {
+        "values": [{"properties": {
+            "backColor": {"solid": {"expr": {"FillRule": {
+                "Input": _campo_de_prueba(),
+                "FillRule": {"linearGradient2": {
+                    "min": {"color": {"Literal": {"Value": "'#FFFFFF'"}}},
+                    "max": {"color": {"Literal": {"Value": "'#2A78D6'"}}},
+                }},
+            }}}},
+        }}]}
+
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(documento)
+
+    assert exc.value.details["rule"] == "format_objects"
+    assert exc.value.details["errors"] == [{
+        "path": "$.visual.objects.values[0].properties.backColor.solid.color",
+        "rule": "format_solid_color",
+        "error": "La estructura de formato PBIR no tiene la forma esperada.",
+    }]
+
+
 def test_regla_oficial_pattern_o_enum_en_page():
     """`page.json` restringe `displayOption` a un conjunto."""
     doc = {"$schema": PAGE, "name": "p1", "displayName": "P",

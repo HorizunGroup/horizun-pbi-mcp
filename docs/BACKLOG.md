@@ -11,7 +11,7 @@ sabemos que falta, con evidencia.
 
 ## 1. El bloque `objects` de un visual no lo valida nadie
 
-**Estado:** abierto. Declarado como excepción en
+**Estado:** parcialmente cerrado. Declarado como limitación en
 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
 El esquema oficial `formattingObjectDefinitions` declara
@@ -24,12 +24,19 @@ vida del proyecto —faltaba el nivel `color`— y pasó el validador oficial de
 Microsoft con cero errores. Solo se vio abriendo el informe y viendo una tabla
 sin colorear.
 
-**Único detector hoy:** una persona mirando la pantalla.
+**Barrera actual:** `services.pbir_schema.validar_objetos_visual()` comprueba
+antes de cada escritura la gramática de los envoltorios que el servidor
+produce: grupos de formato, `solid.color`, expresiones, y los gradientes
+`FillRule`. Con ello una forma como `solid: {expr: ...}` se bloquea y revierte
+la transacción, aunque el esquema oficial la acepte. La regresión se ejecuta
+contra el commit anterior y falla allí.
 
-**Qué haría falta:** un oráculo propio para ese bloque. La forma más barata es
-un corpus de visuales reales exportados de Power BI Desktop, y comparar la
-estructura que generamos contra la que produce la herramienta. No es
-validación de esquema; es equivalencia con lo que hace el producto.
+**Lo que aún falta:** un oráculo de equivalencia para el bloque completo. La
+forma más barata es un corpus anonimizado de visuales reales exportados de
+Power BI Desktop, y comparar la estructura que generamos contra la que produce
+la herramienta. No es validación de esquema; es equivalencia con el producto.
+La barrera actual no puede descubrir una propiedad nueva, una combinación que
+Desktop ignora, ni demostrar que un visual se pinta como se espera.
 
 ---
 

@@ -368,6 +368,147 @@ def _ruta_json(err) -> str:
     return "".join(partes)
 
 
+def _ruta_hija(ruta: str, clave: Any) -> str:
+    """Ruta JSON sin interpolar claves del informe como si fueran codigo."""
+    texto = str(clave)
+    return f"{ruta}.{texto}" if texto.isidentifier() else f"{ruta}[{texto!r}]"
+
+
+def _error_formato(ruta: str, regla: str) -> Dict[str, str]:
+    """Diagnostico estructural sin copiar valores potencialmente sensibles."""
+    return {"path": ruta, "rule": regla,
+            "error": "La estructura de formato PBIR no tiene la forma esperada."}
+
+
+def _validar_expresion_formato(valor: Any, ruta: str,
+                               errores: List[Dict[str, str]]) -> None:
+    """Comprueba las expresiones de formato que produce este servidor.
+
+    El esquema oficial deja ``objects`` abierto, por lo que aceptaba incluso
+    ``solid: {expr: ...}``: JSON valido que Desktop ignora. No se intenta
+    enumerar todos los objetos que pueda introducir una version futura de
+    Power BI; se comprueban solo los centinelas de las formas que escribimos.
+    """
+    if not isinstance(valor, dict):
+        errores.append(_error_formato(ruta, "format_expression_object"))
+        return
+
+    literal = valor.get("Literal")
+    if literal is not None:
+        if not isinstance(literal, dict) or not isinstance(literal.get("Value"), str):
+            errores.append(_error_formato(ruta, "format_literal_value"))
+
+    regla = valor.get("FillRule")
+    if regla is None:
+        return
+    if not isinstance(regla, dict):
+        errores.append(_error_formato(ruta, "format_fill_rule_object"))
+        return
+    if not isinstance(regla.get("Input"), dict):
+        errores.append(_error_formato(_ruta_hija(ruta, "FillRule"),
+                                      "format_fill_rule_input"))
+
+    gradientes = regla.get("FillRule")
+    ruta_gradientes = _ruta_hija(_ruta_hija(ruta, "FillRule"), "FillRule")
+    if not isinstance(gradientes, dict):
+        errores.append(_error_formato(ruta_gradientes, "format_fill_rule_gradient"))
+        return
+    nombres = [n for n in ("linearGradient2", "linearGradient3") if n in gradientes]
+    if len(nombres) != 1 or not isinstance(gradientes[nombres[0]], dict):
+        errores.append(_error_formato(ruta_gradientes, "format_fill_rule_gradient"))
+        return
+
+    gradiente = gradientes[nombres[0]]
+    paradas = ("min", "max") if nombres[0] == "linearGradient2" else ("min", "mid", "max")
+    for parada in paradas:
+        color = gradiente.get(parada)
+        ruta_color = _ruta_hija(_ruta_hija(ruta_gradientes, nombres[0]), parada)
+        if not isinstance(color, dict) or not isinstance(color.get("color"), dict):
+            errores.append(_error_formato(ruta_color, "format_gradient_color"))
+            continue
+        literal_color = color["color"].get("Literal")
+        if (not isinstance(literal_color, dict)
+                or not isinstance(literal_color.get("Value"), str)):
+            errores.append(_error_formato(_ruta_hija(ruta_color, "color"),
+                                          "format_gradient_color_literal"))
+
+
+def _validar_valor_formato(valor: Any, ruta: str,
+                            errores: List[Dict[str, str]]) -> None:
+    """Busca envoltorios de color/expresion mal anidados sin vetar extensiones."""
+    if isinstance(valor, list):
+        for indice, hijo in enumerate(valor):
+            _validar_valor_formato(hijo, f"{ruta}[{indice}]", errores)
+        return
+    if not isinstance(valor, dict):
+        return
+
+    if "solid" in valor:
+        solido = valor["solid"]
+        ruta_solido = _ruta_hija(ruta, "solid")
+        if not isinstance(solido, dict) or not isinstance(solido.get("color"), dict):
+            errores.append(_error_formato(_ruta_hija(ruta_solido, "color"),
+                                          "format_solid_color"))
+        else:
+            color = solido["color"]
+            if "expr" in color:
+                _validar_expresion_formato(color["expr"],
+                                            _ruta_hija(_ruta_hija(ruta_solido, "color"), "expr"),
+                                            errores)
+
+    if "expr" in valor:
+        _validar_expresion_formato(valor["expr"], _ruta_hija(ruta, "expr"), errores)
+
+    for clave, hijo in valor.items():
+        if clave in {"solid", "expr"}:
+            continue
+        _validar_valor_formato(hijo, _ruta_hija(ruta, clave), errores)
+
+
+def _validar_bloque_objetos(objetos: Any, ruta: str,
+                             errores: List[Dict[str, str]]) -> None:
+    """Valida el armazon comun de ``objects`` y ``visualContainerObjects``."""
+    if not isinstance(objetos, dict):
+        errores.append(_error_formato(ruta, "format_objects_object"))
+        return
+    for grupo, bloques in objetos.items():
+        ruta_grupo = _ruta_hija(ruta, grupo)
+        if not isinstance(bloques, list):
+            errores.append(_error_formato(ruta_grupo, "format_object_group_array"))
+            continue
+        for indice, bloque in enumerate(bloques):
+            ruta_bloque = f"{ruta_grupo}[{indice}]"
+            if not isinstance(bloque, dict) or not isinstance(bloque.get("properties"), dict):
+                errores.append(_error_formato(ruta_bloque, "format_object_properties"))
+                continue
+            selector = bloque.get("selector")
+            if selector is not None and not isinstance(selector, dict):
+                errores.append(_error_formato(_ruta_hija(ruta_bloque, "selector"),
+                                              "format_selector_object"))
+            for propiedad, valor in bloque["properties"].items():
+                _validar_valor_formato(valor,
+                                       _ruta_hija(_ruta_hija(ruta_bloque, "properties"), propiedad),
+                                       errores)
+
+
+def validar_objetos_visual(datos: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Reglas estructurales que el schema oficial omite dentro de un visual.
+
+    Es una barrera deliberadamente acotada: detecta formas imposibles que
+    generan nuestras propias rutas de formato, sin fingir que reemplaza un
+    corpus exportado de Power BI Desktop. Ese corpus sigue siendo necesario
+    para conocer propiedades y combinaciones que aun no escribimos.
+    """
+    visual = datos.get("visual")
+    if not isinstance(visual, dict):
+        return []
+    errores: List[Dict[str, str]] = []
+    for clave in ("objects", "visualContainerObjects"):
+        if clave in visual:
+            _validar_bloque_objetos(visual[clave], f"$.visual.{clave}", errores)
+    return errores
+
+
 def es_documento_pbir(archivo: Optional[Any]) -> bool:
     """Si la ruta esta dentro de un arbol de informe PBIR (`*.Report/`).
 
@@ -482,6 +623,22 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
                      "schema": url, "checked_against": comprobado_con,
                      "draft": esquema.get("$schema"),
                      "errors": detalle, "error_count": len(errores)})
+
+    # `formattingObjectDefinitions` deja este bloque con
+    # `additionalProperties: {}`. La validacion oficial no puede distinguir un
+    # color solido de una expresion mal anidada, pero Desktop si: la ignora.
+    # Estas reglas cubren los envoltorios que escribimos sin intentar inventar
+    # un catalogo de propiedades que Microsoft no publica.
+    errores_formato = validar_objetos_visual(datos)
+    if errores_formato:
+        raise SchemaValidationFailed(
+            f"{len(errores_formato)} error(es) estructural(es) de formato en "
+            f"{Path(archivo).name if archivo else 'el visual'}.",
+            details={"file": str(archivo) if archivo else None,
+                     "schema": url, "checked_against": comprobado_con,
+                     "errors": errores_formato[:20],
+                     "error_count": len(errores_formato),
+                     "rule": "format_objects"})
 
     salida = {"validated": True, "schema": url, "draft": esquema.get("$schema"),
               "validator": Validador.__name__}
