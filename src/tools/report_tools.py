@@ -329,7 +329,8 @@ def register(mcp) -> None:
                 raise ValidationError(f"No se encontro la pagina '{page}'.")
             informes, total = [], 0
             for p in paginas:
-                visuales = pbir_reader.list_visuals(active, p["name"])
+                visuales = pbir_reader.list_visuals(
+                    active, p["name"], strict=True)
                 r = layout_doctor.detect_issues(
                     visuales, {"width": p.get("width"), "height": p.get("height")})
                 r["page"] = p["name"]
@@ -350,7 +351,7 @@ def register(mcp) -> None:
         """
         def _impl():
             active = _active()
-            visuales = pbir_reader.list_visuals(active, page)
+            visuales = pbir_reader.list_visuals(active, page, strict=True)
             p = next((x for x in pbir_reader.list_pages(active)
                       if x["name"] == page or x.get("display_name") == page), {})
             nuevas = layout_doctor.align(
@@ -371,7 +372,7 @@ def register(mcp) -> None:
         """
         def _impl():
             active = _active()
-            visuales = pbir_reader.list_visuals(active, page)
+            visuales = pbir_reader.list_visuals(active, page, strict=True)
             nuevas = layout_doctor.distribute(visuales, visual_ids, axis)
             res = pbir_writer.update_visuals_bulk(active, page, nuevas,
                                                   tool="pbi_distribute_visuals")
@@ -390,7 +391,7 @@ def register(mcp) -> None:
         """
         def _impl():
             active = _active()
-            visuales = pbir_reader.list_visuals(active, page)
+            visuales = pbir_reader.list_visuals(active, page, strict=True)
             p = next((x for x in pbir_reader.list_pages(active)
                       if x["name"] == page or x.get("display_name") == page), {})
             canvas = {"width": p.get("width"), "height": p.get("height")}

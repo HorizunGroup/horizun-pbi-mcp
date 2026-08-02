@@ -46,7 +46,7 @@ def create_stage(base_dir: Path | str) -> Path:
         details={"base_dir": str(base)})
 
 
-def discard_stage(stage: Path | str) -> None:
+def discard_stage(stage: Path | str) -> bool:
     """Elimina exclusivamente un staging creado por :func:`create_stage`."""
     ruta = Path(stage).resolve()
     if not ruta.name.startswith(_STAGE_PREFIX):
@@ -54,7 +54,18 @@ def discard_stage(stage: Path | str) -> None:
             "Se rechazo eliminar una carpeta que no es un staging de Horizun.",
             details={"stage": str(ruta)})
     if ruta.exists():
-        shutil.rmtree(ruta)
+        try:
+            shutil.rmtree(ruta)
+        except OSError as exc:
+            # Es limpieza auxiliar. Si la publicacion ya se confirmo, convertir
+            # este fallo en el resultado de la tool haria creer que el proyecto
+            # no se creo e invitaria a sobrescribirlo en un reintento.
+            from logging_config import get_logger
+
+            get_logger("project_publish").warning(
+                "No se pudo retirar staging %s: %s", ruta, exc)
+            return False
+    return True
 
 
 def _files(root: Path) -> Dict[str, Path]:

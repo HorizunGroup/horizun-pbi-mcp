@@ -17,6 +17,8 @@ del usuario.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import uuid
 import zipfile
 from datetime import datetime
@@ -33,6 +35,7 @@ from utils.file_utils import copy_tree, timestamp
 log = get_logger("backup")
 
 MANIFEST_NAME = "manifest.json"
+_STAGE_PREFIX = ".hz_backup_tmp_"
 
 
 def _source_dirs(active: ActivePbip, scope: str) -> List[Path]:
@@ -84,6 +87,11 @@ def backup_project(session: Session, mode: str = "folder",
     - mode: "folder" (copia) o "zip".
     - scope: "report", "model" o "both".
     """
+    if mode not in ("folder", "zip"):
+        raise BackupError("mode debe ser 'folder' o 'zip'.")
+    if scope not in ("report", "model", "both"):
+        raise BackupError("scope debe ser 'report', 'model' o 'both'.")
+
     active = session.require_active_pbip()
     sources = _source_dirs(active, scope)
     if not sources:
@@ -94,28 +102,56 @@ def backup_project(session: Session, mode: str = "folder",
     stamp = f"{timestamp()}_{uuid.uuid4().hex[:6]}"
     manifest = _build_manifest(active, sources, scope, mode)
 
+    stage_name = f"{_STAGE_PREFIX}{stamp}"
+    stage: Optional[Path] = None
     try:
         if mode == "zip":
             dest = root / f"{stamp}.zip"
-            with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+            stage = root / f"{stage_name}.zip"
+            with zipfile.ZipFile(stage, "w", zipfile.ZIP_DEFLATED) as zf:
                 for src in sources:
                     for path in src.rglob("*"):
                         if path.is_file():
                             zf.write(path, path.relative_to(src.parent))
                 zf.writestr(MANIFEST_NAME,
                             json.dumps(manifest, indent=2, ensure_ascii=False))
+            _verify_zip(stage, manifest)
+            os.replace(stage, dest)
             backup_path = dest
         else:
             dest = root / stamp
-            dest.mkdir(parents=True, exist_ok=True)
+            stage = root / stage_name
+            stage.mkdir(parents=True, exist_ok=False)
             for src in sources:
-                copy_tree(src, dest / src.name)
-            (dest / MANIFEST_NAME).write_text(
-                json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                encoding="utf-8")
+                copy_tree(src, stage / src.name)
+            from services.txn import durable_write
+
+            durable_write(
+                stage / MANIFEST_NAME,
+                (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+                 ).encode("utf-8"))
+            comprobacion = verify_backup(stage)
+            if not comprobacion["clean"]:
+                raise BackupError(
+                    "La copia del backup no coincide con el origen; no se "
+                    "publica un respaldo parcial.", details=comprobacion)
+            os.replace(stage, dest)
             backup_path = dest
-    except OSError as exc:
+    except BackupError:
+        raise
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
         raise BackupError(f"No se pudo crear el backup: {exc}") from exc
+    finally:
+        # El destino solo se hace visible al final. Cualquier fallo anterior
+        # deja exclusivamente este staging reconocible, que se retira aqui.
+        if stage is not None and stage.exists():
+            if stage.is_dir():
+                shutil.rmtree(stage, ignore_errors=True)
+            else:
+                try:
+                    stage.unlink()
+                except OSError:                       # pragma: no cover
+                    pass
 
     log.info("Backup creado: %s (%d archivos)", backup_path, len(manifest["files"]))
     return {
@@ -127,6 +163,27 @@ def backup_project(session: Session, mode: str = "folder",
         "file_count": len(manifest["files"]),
         "project_id": manifest["project_id"],
     }
+
+
+def _verify_zip(path: Path, manifest: Dict[str, Any]) -> None:
+    """Relee el ZIP terminado y verifica tamaño y sha256 de cada entrada."""
+    import hashlib
+
+    with zipfile.ZipFile(path, "r") as zf:
+        nombres = {n.replace("\\", "/"): n for n in zf.namelist()}
+        for entry in manifest["files"]:
+            clave = str(entry["path"]).replace("\\", "/")
+            real = nombres.get(clave)
+            if real is None:
+                raise BackupError(
+                    "El ZIP de backup quedo incompleto; no se publica.",
+                    details={"missing": clave})
+            datos = zf.read(real)
+            if (len(datos) != entry.get("size") or
+                    hashlib.sha256(datos).hexdigest() != entry.get("sha256")):
+                raise BackupError(
+                    "El ZIP de backup no coincide con el origen; no se publica.",
+                    details={"mismatch": clave})
 
 
 def backup_before_edit(active: ActivePbip, target: str = "report") -> Optional[str]:

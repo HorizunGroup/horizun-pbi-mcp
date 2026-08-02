@@ -321,6 +321,9 @@ def audit(model_data: Dict[str, Any], *,
                            key=lambda h: (-orden[h["severity"]], h["rule"])),
         "rules_run": [r.rule for r in seleccion],
         "rule_errors": errores_regla,
+        "warnings": ([f"{len(errores_regla)} regla(s) no se pudieron ejecutar; "
+                      "el resultado de la auditoria es parcial."]
+                     if errores_regla else []),
         "auto_fixable": sorted({h["rule"] for h in hallazgos
                                 if h["auto_fix_available"]}),
     }

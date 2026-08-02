@@ -481,11 +481,20 @@ def diff_against_page(active: ActivePbip, compilado: Dict[str, Any],
                       page: Optional[str] = None) -> Dict[str, Any]:
     """Compara el spec compilado con una pagina existente."""
     objetivo = page or compilado["page_name"]
-    try:
-        actuales = pbir_reader.list_visuals(active, objetivo)
-        existe = True
-    except Exception:                                   # noqa: BLE001
-        actuales, existe = [], False
+    # Un fallo al leer una pagina/visual existente no significa que la pagina
+    # no exista. Confundir ambos estados convertia corrupcion en un plan de
+    # creacion y podia sobrescribir metadatos al aplicar el spec.
+    paginas = pbir_reader.list_pages(active)
+    clave = str(objetivo).casefold()
+    pagina_actual = next(
+        (p for p in paginas
+         if str(p.get("name", "")).casefold() == clave
+         or str(p.get("display_name", "")).casefold() == clave),
+        None,
+    )
+    existe = pagina_actual is not None
+    actuales = (pbir_reader.list_visuals(
+        active, pagina_actual["name"], strict=True) if pagina_actual else [])
 
     if not existe:
         return {"page": objetivo, "page_exists": False,
@@ -561,8 +570,8 @@ def apply_spec(active: ActivePbip, compilado: Dict[str, Any], *,
                     _Path(ruta).parent.rmdir()
             except OSError:                           # pragma: no cover
                 pass
-    for d in plan["ensure_dirs"]:
-        _Path(d).mkdir(parents=True, exist_ok=True)
+        for d in plan["ensure_dirs"]:
+            t.ensure_directory(_Path(d))
 
     return {"change": plan["change"], "page_id": plan["page_id"],
             "created": plan["change"] == page_update.CREATE,

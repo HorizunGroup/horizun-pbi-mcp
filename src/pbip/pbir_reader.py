@@ -116,7 +116,13 @@ def read_visual_file(path: Path) -> Dict[str, Any]:
     }
 
 
-def list_pages(active: ActivePbip) -> List[Dict[str, Any]]:
+def list_pages(active: ActivePbip, *, strict: bool = True) -> List[Dict[str, Any]]:
+    """Lista paginas; por defecto falla si una carpeta de pagina es ilegible.
+
+    Devolverla con ``display_name=None`` hacia que auditorias y mutaciones
+    siguieran sobre una foto incompleta del informe y acabaran contestando
+    ``ok:true``. El modo tolerante queda solo para diagnosticos de arranque.
+    """
     pdir = pages_dir(active)
     order: List[str] = []
     active_page = None
@@ -131,6 +137,7 @@ def list_pages(active: ActivePbip) -> List[Dict[str, Any]]:
     ordered_ids += [pid for pid in page_dirs if pid not in ordered_ids]
 
     pages = []
+    errores = []
     for pid in ordered_ids:
         pjson = page_dirs[pid] / "page.json"
         info: Dict[str, Any] = {"name": pid}
@@ -140,12 +147,24 @@ def list_pages(active: ActivePbip) -> List[Dict[str, Any]]:
                 info["display_name"] = d.get("displayName")
                 info["width"] = d.get("width")
                 info["height"] = d.get("height")
-            except ValidationError:
+            except ValidationError as exc:
                 info["display_name"] = None
+                errores.append({"page": pid, "file": str(pjson),
+                                "error": f"{type(exc).__name__}: {exc}"})
+        else:
+            info["display_name"] = None
+            errores.append({"page": pid, "file": str(pjson),
+                            "error": "falta page.json"})
         vdir = page_dirs[pid] / "visuals"
         info["visual_count"] = sum(1 for _ in vdir.glob("*/visual.json")) if vdir.exists() else 0
         info["is_active"] = (pid == active_page)
         pages.append(info)
+    if strict and errores:
+        raise ValidationError(
+            f"No se pudieron leer {len(errores)} pagina(s); no se puede "
+            "trabajar sobre un inventario incompleto del informe.",
+            details={"unreadable_pages": errores,
+                     "readable_count": len(pages) - len(errores)})
     return pages
 
 

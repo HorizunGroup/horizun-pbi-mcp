@@ -74,7 +74,7 @@ def _contar_modelo(active) -> Dict[str, Any]:
     try:
         from pbip import tmdl_reader
 
-        modelo = tmdl_reader.read_semantic_model(active)
+        modelo = tmdl_reader.read_semantic_model(active, strict=False)
         return {"tables": len(modelo.get("tables") or []),
                 "measures": len(modelo.get("measures") or [])}
     except Exception as exc:                                 # noqa: BLE001
@@ -92,7 +92,7 @@ def _contar_informe(active) -> Dict[str, Any]:
     try:
         from pbip import pbir_reader
 
-        paginas = pbir_reader.list_pages(active)
+        paginas = pbir_reader.list_pages(active, strict=False)
         visuales = 0
         for p in paginas:
             try:

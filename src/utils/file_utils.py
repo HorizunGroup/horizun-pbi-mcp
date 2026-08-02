@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -12,8 +13,12 @@ PathLike = Union[str, Path]
 
 
 def timestamp() -> str:
-    """Marca de tiempo apta para nombres de archivo: YYYYmmdd_HHMMSS."""
-    return datetime.now().strftime("%Y%m%d_%H%M%S")
+    """Marca unica apta para archivos: fecha, microsegundos y token aleatorio.
+
+    Con precision de segundos, dos exports consecutivos reutilizaban la misma
+    ruta y el segundo sobrescribia silenciosamente el artefacto del primero.
+    """
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f_") + uuid.uuid4().hex[:8]
 
 
 def iso_now() -> str:

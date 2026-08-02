@@ -171,6 +171,11 @@ def profile_model(session: Session, *, tables: Optional[List[str]] = None,
                         for s in ("error", "warning", "info")},
         "unreadable": ilegibles,
         "profiles": perfiles,
+        "warnings": (
+            ([f"{len(ilegibles)} columna(s) no se pudieron perfilar."]
+             if ilegibles else [])
+            + ([f"{omitidas} columna(s) se omitieron por max_columns."]
+               if omitidas else [])),
         "note": ("Perfilado de VALORES, complementario a pbi_audit_model, que "
                  "revisa la estructura. Un porcentaje negativo no es un defecto "
                  "del modelo sino de los datos, y solo se ve consultandolos."),

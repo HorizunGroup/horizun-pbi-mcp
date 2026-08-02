@@ -1,6 +1,7 @@
 """Validaciones de entrada y seguridad de rutas (Fase 11)."""
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 from typing import Any, Dict, Union
@@ -84,6 +85,8 @@ def validate_position(pos: Dict[str, Any]) -> Dict[str, float]:
             out[key] = float(pos[key])
         except (TypeError, ValueError):
             raise ValidationError(f"position.{key} debe ser numerico.")
+        if not math.isfinite(out[key]):
+            raise ValidationError(f"position.{key} debe ser un numero finito.")
     if out["width"] <= 0 or out["height"] <= 0:
         raise ValidationError("width y height deben ser mayores que 0.")
     if "z" in pos and pos["z"] is not None:
@@ -91,6 +94,8 @@ def validate_position(pos: Dict[str, Any]) -> Dict[str, float]:
             out["z"] = float(pos["z"])
         except (TypeError, ValueError):
             raise ValidationError("position.z debe ser numerico.")
+        if not math.isfinite(out["z"]):
+            raise ValidationError("position.z debe ser un numero finito.")
     return out
 
 

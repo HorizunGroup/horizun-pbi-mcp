@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import ActivePbip
 from logging_config import get_logger
-from powerbi.errors import PbipStructureError, TableNotFoundError
+from powerbi.errors import PbipStructureError, TableNotFoundError, ValidationError
 
 log = get_logger("tmdl_reader")
 
@@ -247,12 +247,13 @@ def _parse_relationships(path: Path) -> List[Dict[str, Any]]:
     return rels
 
 
-def read_semantic_model(active: ActivePbip) -> Dict[str, Any]:
-    """Lee todo el modelo TMDL desde disco."""
+def read_semantic_model(active: ActivePbip, *, strict: bool = True) -> Dict[str, Any]:
+    """Lee todo el TMDL; por defecto no oculta tablas que no pudo parsear."""
     definition = _definition_dir(active)
     tables_dir = definition / "tables"
     tables: List[Dict[str, Any]] = []
     all_measures: List[Dict[str, Any]] = []
+    ilegibles = []
     if tables_dir.exists():
         for tf in sorted(tables_dir.glob("*.tmdl")):
             try:
@@ -261,6 +262,15 @@ def read_semantic_model(active: ActivePbip) -> Dict[str, Any]:
                 all_measures.extend(parsed["measures"])
             except Exception as exc:  # noqa: BLE001
                 log.warning("No se pudo parsear %s: %s", tf, exc)
+                ilegibles.append({"file": str(tf),
+                                  "error": f"{type(exc).__name__}: {exc}"})
+
+    if strict and ilegibles:
+        raise ValidationError(
+            f"No se pudieron leer {len(ilegibles)} tabla(s) TMDL; no se "
+            "trabaja sobre un modelo incompleto.",
+            details={"unreadable_tables": ilegibles,
+                     "readable_count": len(tables)})
 
     relationships = _parse_relationships(definition / "relationships.tmdl")
 
@@ -279,6 +289,9 @@ def read_semantic_model(active: ActivePbip) -> Dict[str, Any]:
         "measures": all_measures,
         "relationships": relationships,
         "source": "tmdl",
+        "unreadable_tables": ilegibles,
+        "warnings": ([f"{len(ilegibles)} tabla(s) TMDL no se pudieron leer; "
+                      "el modelo es parcial."] if ilegibles else []),
     }
 
 

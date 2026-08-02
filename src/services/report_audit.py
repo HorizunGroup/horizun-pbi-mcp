@@ -39,7 +39,7 @@ def audit_report(active: ActivePbip,
 
     for p in paginas:
         pid = p["name"]
-        visuales = pbir_reader.list_visuals(active, pid)
+        visuales = pbir_reader.list_visuals(active, pid, strict=True)
         canvas = {"width": p.get("width", 1280), "height": p.get("height", 720)}
 
         if not visuales:
@@ -173,7 +173,8 @@ def _objetos_evaluados(active: ActivePbip,
     del_modelo = scoring.contar_objetos_modelo(model_data)
     try:
         paginas = pbir_reader.list_pages(active)
-        visuales = sum(len(pbir_reader.list_visuals(active, p["display_name"]))
+        visuales = sum(len(pbir_reader.list_visuals(
+            active, p["display_name"], strict=True))
                        for p in paginas)
     except Exception:                                   # noqa: BLE001
         paginas, visuales = [], 0
@@ -198,10 +199,12 @@ def audit_project(active: ActivePbip, model_data: Optional[Dict[str, Any]],
     """Auditoria integral: modelo + informe + layout, con puntaje por dominio."""
     hallazgos: List[Dict[str, Any]] = []
     dominios: Dict[str, Dict[str, Any]] = {}
+    avisos: List[str] = []
 
     if model_data:
         modelo = model_audit.audit(model_data, rules=rules, min_severity=min_severity)
         hallazgos.extend(modelo["findings"])
+        avisos.extend(modelo.get("warnings") or [])
 
     informe = audit_report(active, model_data)
     orden = {INFO: 0, WARNING: 1, ERROR: 2}
@@ -251,6 +254,7 @@ def audit_project(active: ActivePbip, model_data: Optional[Dict[str, Any]],
         "auto_fixable": sorted({h["rule"] for h in hallazgos
                                 if h["auto_fix_available"]}),
         "executive_summary": _resumen(global_sev, dominios, prioritarios),
+        "warnings": avisos,
     }
 
 
@@ -326,7 +330,7 @@ def plan_fixes(active: ActivePbip, auditoria: Dict[str, Any],
     for h in seleccion:
         obj = h["object"]
         if h["rule"] == "report_visual_without_title":
-            v = pbir_reader.list_visuals(active, obj["page"])
+            v = pbir_reader.list_visuals(active, obj["page"], strict=True)
             actual = next((x for x in v if x["id"] == obj["id"]), None)
             if actual is None:
                 continue
@@ -393,7 +397,7 @@ def apply_fixes(active: ActivePbip, acciones: List[Dict[str, Any]]) -> Dict[str,
     for indice, a in enumerate(acciones):
         if a["action"] != "normalize_layout":
             continue
-        visuales = pbir_reader.list_visuals(active, a["page"])
+        visuales = pbir_reader.list_visuals(active, a["page"], strict=True)
         p = paginas.get(a["page"], {})
         nuevas = layout_doctor.normalize(
             visuales, {"width": p.get("width"), "height": p.get("height")})

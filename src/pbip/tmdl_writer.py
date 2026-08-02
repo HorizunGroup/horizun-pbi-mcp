@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import ActivePbip
 from logging_config import get_logger
-from powerbi.errors import MeasureExistsError, MeasureNotFoundError
+from powerbi.errors import MeasureExistsError, MeasureNotFoundError, ValidationError
 from pbip.tmdl_reader import _first_token, _indent, _unquote, find_table_file, parse_table_file
 from services import project_state
 from services import txn as txn_service
@@ -34,6 +34,14 @@ def _build_measure_block(
     description: Optional[str],
     data_category: Optional[str] = None,
 ) -> List[str]:
+    for etiqueta, valor in (("format_string", format_string),
+                            ("display_folder", display_folder),
+                            ("data_category", data_category)):
+        if valor is not None and any(ord(c) < 32 for c in str(valor)):
+            raise ValidationError(
+                f"{etiqueta} contiene caracteres de control; no se inserta "
+                "texto capaz de crear propiedades TMDL adicionales.",
+                details={"parameter": etiqueta})
     qname = tmdl_quote_name(name)
     lines: List[str] = []
     # En TMDL la descripcion es un doc-comment /// ENCIMA de la declaracion

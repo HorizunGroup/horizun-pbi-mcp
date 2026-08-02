@@ -325,10 +325,9 @@ def create_page_with_visuals(
         t.write_json(pages_json_path, materializado["files"][pages_json_path])
         for p in planificados:
             t.write_json(p["path"], p["visual"])
+        for d in materializado["ensure_dirs"]:
+            t.ensure_directory(Path(d))
         result = t.summary()
-
-    for d in materializado["ensure_dirs"]:
-        Path(d).mkdir(parents=True, exist_ok=True)
 
     creados = [{"id": p["id"], "file": str(p["path"]), **p["meta"]}
                for p in planificados]
@@ -509,6 +508,10 @@ def create_page(
         meta = read_json(pages_json_path)
     else:
         meta = {"$schema": SCHEMA_PAGES, "pageOrder": [], "activePageName": page_id}
+    # Los proyectos PBIR antiguos pueden no declararlo. Al reescribir el
+    # documento hay que normalizarlo igual que hace ``_pages_metadata``;
+    # conservar la omision impide validar la escritura y bloquea la pagina.
+    meta.setdefault("$schema", SCHEMA_PAGES)
     meta.setdefault("pageOrder", [])
     if page_id not in meta["pageOrder"]:
         meta["pageOrder"].append(page_id)
@@ -517,6 +520,7 @@ def create_page(
     def _apply(t: txn_service.Transaction) -> None:
         t.write_json(page_json_path, page_json)
         t.write_json(pages_json_path, meta)
+        t.ensure_directory(pdir / page_id / "visuals")
 
     if tx is not None:
         _apply(tx)
@@ -528,10 +532,6 @@ def create_page(
                 tool="pbi_create_page") as t:
             _apply(t)
             result = t.summary()
-
-    # La carpeta de visuales se crea siempre: es un directorio vacio, no
-    # participa de la transaccion de archivos.
-    (pdir / page_id / "visuals").mkdir(parents=True, exist_ok=True)
 
     if do_backup and result:
         record_change("pbi_create_page",

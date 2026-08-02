@@ -180,7 +180,7 @@ def repair_broken_references(active, model_data, *, mapping: Optional[Dict[str, 
     indice = model_explorer.build_index(model_data)
     rotas: List[Dict[str, Any]] = []
     for p in pbir_reader.list_pages(active):
-        for v in pbir_reader.list_visuals(active, p["name"]):
+        for v in pbir_reader.list_visuals(active, p["name"], strict=True):
             for ref in list(v.get("measures", [])) + list(v.get("columns", [])):
                 if not model_explorer.resolve_reference(ref, indice)["exists"]:
                     rotas.append({"page": p["name"], "visual_id": v["id"],
@@ -261,7 +261,7 @@ def normalize_report(active, model_data, *, dry_run: bool = True) -> Dict[str, A
 
     plan = []
     for p in paginas:
-        visuales = pbir_reader.list_visuals(active, p["name"])
+        visuales = pbir_reader.list_visuals(active, p["name"], strict=True)
         canvas = {"width": p.get("width"), "height": p.get("height")}
         nuevas = layout_doctor.normalize(visuales, canvas)
         if nuevas:
@@ -408,7 +408,7 @@ def generate_technical_documentation(active, model_data) -> str:
     for p in paginas:
         lineas += ["", f"### {p.get('display_name')}", "",
                    "| Visual | Tipo | Campos |", "|---|---|---|"]
-        for v in pbir_reader.list_visuals(active, p["name"]):
+        for v in pbir_reader.list_visuals(active, p["name"], strict=True):
             campos = ", ".join((v.get("measures") or []) + (v.get("columns") or []))
             lineas.append(f"| {v.get('title') or '(sin titulo)'} | "
                           f"{v.get('type')} | {campos or '-'} |")

@@ -13,10 +13,28 @@ from typing import Any, Dict, List, Optional
 import branding
 from config import get_session, get_settings
 from logging_config import get_logger
-from powerbi.errors import ValidationError
+from powerbi.errors import PowerBIMCPError, ValidationError
 from services import dual_mode, operations, planning, project_state
 from services import txn as txn_service
 from tools._common import guard, guard_mutation
+
+
+class PurgeFailedError(PowerBIMCPError):
+    code = "bulk_apply_failed"
+
+
+class PurgePartialError(PurgeFailedError):
+    code = "bulk_partially_applied"
+
+
+def _exigir_purga_completa(resultado: Dict[str, Any]) -> Dict[str, Any]:
+    fallos = resultado.get("failed") or []
+    if not fallos:
+        return resultado
+    error = PurgePartialError if resultado.get("deleted_count") else PurgeFailedError
+    raise error(
+        f"No se pudieron eliminar {len(fallos)} journal(s) de backup.",
+        details=resultado)
 
 log = get_logger("ops_tools")
 
@@ -345,9 +363,10 @@ def register(mcp) -> None:
         def _impl():
             from services import recovery
 
-            return recovery.purge(get_session().require_active_pbip(),
-                                  days=days, max_journals=max_journals,
-                                  confirm=confirm)
+            resultado = recovery.purge(
+                get_session().require_active_pbip(), days=days,
+                max_journals=max_journals, confirm=confirm)
+            return _exigir_purga_completa(resultado)
         return guard_mutation(_impl)
 
     @mcp.tool()

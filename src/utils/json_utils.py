@@ -33,7 +33,7 @@ def read_json(path: PathLike) -> Any:
 
 def dumps(data: Any) -> str:
     """Serializa a string JSON con el formato estandar del proyecto."""
-    return json.dumps(data, indent=2, ensure_ascii=False)
+    return json.dumps(data, indent=2, ensure_ascii=False, allow_nan=False)
 
 
 def write_json(path: PathLike, data: Any) -> Path:

@@ -148,6 +148,9 @@ def validate_project(session: Session) -> Dict[str, Any]:
         "page_count": None,
     }
     warnings = []
+    report_validation: Dict[str, Any] = {
+        "checked": False, "valid": None, "errors": []}
+    report_parse_errors = []
 
     if report_dir and (report_dir / "definition.pbir").exists():
         try:
@@ -157,14 +160,50 @@ def validate_project(session: Session) -> Dict[str, Any]:
             checks["enhanced_report_format"] = "definitionProperties" in schema
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"No se pudo leer definition.pbir: {exc}")
+            report_parse_errors.append({
+                "file": str(report_dir / "definition.pbir"),
+                "error": f"{type(exc).__name__}: {exc}"})
 
     if active.has_pbir:
         pages_dir = report_dir / "definition" / "pages"
         try:
-            checks["page_count"] = sum(
-                1 for d in pages_dir.iterdir() if d.is_dir())
-        except OSError:
-            pass
+            from pbip import pbir_reader
+
+            checks["page_count"] = len(pbir_reader.list_pages(active))
+            for archivo in sorted((report_dir / "definition").rglob("*.json")):
+                try:
+                    read_json(archivo)
+                except Exception as exc:              # noqa: BLE001
+                    report_parse_errors.append({
+                        "file": str(archivo),
+                        "error": f"{type(exc).__name__}: {exc}"})
+        except Exception as exc:                       # noqa: BLE001
+            report_parse_errors.append({
+                "file": str(pages_dir),
+                "error": f"{type(exc).__name__}: {exc}"})
+
+        # Si esta instalado, el CLI oficial cubre referencias cruzadas que un
+        # simple parseo JSON no ve. Su ausencia queda explicita: no se inventa
+        # que la validacion fue completa.
+        try:
+            from services import report_validator
+
+            informe = report_validator.validar_informe(report_dir)
+            if informe.status == report_validator.UNAVAILABLE:
+                report_validation = {
+                    "checked": False, "valid": None,
+                    "reason": informe.detail, "errors": []}
+            else:
+                errores = [d.__dict__ for d in informe.diagnostics
+                           if d.severity == "error"]
+                report_validation = {
+                    "checked": True, "valid": not errores,
+                    "status": informe.status, "errors": errores,
+                    "warnings": informe.warnings}
+        except Exception as exc:                       # noqa: BLE001
+            report_validation = {
+                "checked": False, "valid": False,
+                "reason": f"{type(exc).__name__}: {exc}", "errors": []}
     else:
         warnings.append(
             "Sin PBIR: las tools de visuales (listar/crear/acomodar) no funcionaran.")
@@ -173,6 +212,13 @@ def validate_project(session: Session) -> Dict[str, Any]:
         warnings.append("Sin TMDL: no se pueden editar medidas por archivo (modo pbip).")
 
     valid = checks["pbip_exists"] and checks["report_dir_exists"]
+    if report_parse_errors or report_validation.get("valid") is False:
+        valid = False
+    if report_parse_errors:
+        warnings.append(
+            f"PBIR: {len(report_parse_errors)} archivo(s) no se pudieron leer.")
+    for error in report_validation.get("errors") or []:
+        warnings.append(f"PBIR: {error.get('code') or error.get('message')}")
 
     # El TMDL se valida de verdad, no solo se comprueba que exista. Antes esta
     # funcion devolvia valid:true sobre modelos que Power BI Desktop se negaba
@@ -205,8 +251,17 @@ def validate_project(session: Session) -> Dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             tmdl = {"checked": False, "reason": str(exc)}
             warnings.append(f"No se pudo validar el TMDL: {exc}")
+            valid = False
 
     checks["tmdl_valid"] = tmdl.get("valid") if tmdl.get("checked") else None
+    checks["pbir_valid"] = (
+        False if report_parse_errors else report_validation.get("valid"))
 
     return {"valid": bool(valid), "checks": checks, "warnings": warnings,
-            "tmdl": tmdl, "project": active.to_dict()}
+            "tmdl": tmdl,
+            "report": {**report_validation,
+                       "parse_errors": report_parse_errors},
+            "fully_validated": bool(
+                valid and tmdl.get("parse_checked")
+                and report_validation.get("checked")),
+            "project": active.to_dict()}

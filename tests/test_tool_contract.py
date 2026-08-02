@@ -249,6 +249,22 @@ def test_every_tool_has_a_useful_description(snapshot):
     assert not too_short, f"Descripciones demasiado cortas para decidir uso: {too_short}"
 
 
+def test_create_visual_description_matches_supported_catalog(snapshot):
+    """El contrato no puede anunciar solo el catalogo antiguo de visuales."""
+    from pbip.visual_factory import SUPPORTED
+
+    tool = next(t for t in snapshot["tools"] if t["name"] == "pbi_create_visual")
+    description = tool["description"]
+    missing = [visual_type for visual_type in SUPPORTED
+               if visual_type not in description]
+    assert not missing, f"pbi_create_visual no documenta estos tipos: {missing}"
+    for validation in ("roles obligatorios", "cardinalidad maxima",
+                       "tipo de campo", "Grouping", "Measure",
+                       "GroupingOrMeasure"):
+        assert validation in description, (
+            f"pbi_create_visual no documenta la validacion '{validation}'")
+
+
 def test_every_tool_declares_an_output_shape(snapshot):
     missing = [t["name"] for t in snapshot["tools"] if not t.get("output_shape")]
     assert not missing, f"Tools sin outputSchema declarado: {missing}"

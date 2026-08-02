@@ -63,6 +63,7 @@ def building_blocks(active: ActivePbip, model_data: Optional[Dict[str, Any]]) ->
 
     catalog: Dict[str, Any] = {}
     pages_info = []
+    avisos: List[str] = []
     try:
         for page in pbir_reader.list_pages(active):
             pages_info.append({"id": page["name"], "name": page.get("display_name"),
@@ -78,6 +79,9 @@ def building_blocks(active: ActivePbip, model_data: Optional[Dict[str, Any]]) ->
                                         "page": page.get("display_name")}
     except Exception as exc:  # noqa: BLE001
         log.warning("No se pudo leer el catalogo de visuales: %s", exc)
+        avisos.append(
+            "No se pudo leer completo el catalogo de visuales: "
+            f"{type(exc).__name__}: {exc}")
 
     return {
         "canvas": _detect_canvas(active),
@@ -85,6 +89,7 @@ def building_blocks(active: ActivePbip, model_data: Optional[Dict[str, Any]]) ->
         "visual_catalog": catalog,
         "existing_pages": pages_info,
         "supported_visual_types": visual_factory.SUPPORTED,
+        "warnings": avisos,
         "hint": "Arma un spec con page_name, canvas y visuals[{type,title,fields,position}]. "
                 "Omite position para auto-acomodar con 'layout'.",
     }
@@ -296,7 +301,7 @@ def render_html(title: str, canvas: Dict[str, int], visuals: List[Dict[str, Any]
 
 def page_to_html(active: ActivePbip, page: str, standalone: bool = True) -> str:
     """Maqueta HTML de una pagina EXISTENTE."""
-    visuals = pbir_reader.list_visuals(active, page)
+    visuals = pbir_reader.list_visuals(active, page, strict=True)
     page_dir = pbir_reader.resolve_page_dir(active, page)
     from utils.json_utils import read_json
     pj = page_dir / "page.json"

@@ -396,7 +396,13 @@ class Transaction:
         # Si falla, la excepcion sale de la transaccion y se revierte el lote.
         self._validar_esquema(target, data)
 
-        text = json.dumps(data, indent=2, ensure_ascii=False)
+        try:
+            text = json.dumps(
+                data, indent=2, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                f"No se pudo serializar JSON valido: {exc}",
+                details={"file": str(target)}) from exc
         # Power BI escribe los JSON del PBIR con CRLF. Reescribir con LF deja el
         # contenido identico pero el ARCHIVO distinto, y entonces una huella deja
         # de servir para demostrar que no se toco nada.

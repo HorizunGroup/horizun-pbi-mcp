@@ -236,6 +236,20 @@ def test_diff_detecta_visuales_que_sobran(proyecto):
     assert len(d["removed"]) == 2
 
 
+def test_diff_no_confunde_visual_corrupto_con_pagina_inexistente(proyecto):
+    active, md, _p, _s = proyecto
+    compilado = page_spec.compile_spec(active, spec_base(), md, seed="x")
+    aplicado = page_spec.apply_spec(active, compilado)
+    pagina = pbir_reader.resolve_page_dir(active, aplicado["page_id"])
+    visual_json = next((pagina / "visuals").glob("*/visual.json"))
+    visual_json.write_text("{json roto", encoding="utf-8")
+
+    with pytest.raises(ValidationError) as exc:
+        page_spec.diff_against_page(active, compilado, aplicado["page_id"])
+
+    assert "No se pudieron leer" in exc.value.message
+
+
 # ================================================================== apply ====
 def test_apply_crea_la_pagina_en_una_transaccion(proyecto):
     active, md, project, settings = proyecto

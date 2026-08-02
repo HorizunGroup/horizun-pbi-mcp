@@ -146,11 +146,18 @@ def list_resources(active: ActivePbip) -> Dict[str, Any]:
             if paquete.get("type") == "RegisteredResources":
                 declarados = list(paquete.get("items") or [])
     rutas = {i.get("path") for i in declarados}
+    no_declarados = [f for f in en_disco if f not in rutas]
+    faltantes = [p for p in rutas if p and p not in en_disco]
     return {
         "declared": declarados,
         "on_disk": en_disco,
         # Un archivo sin declarar no lo encuentra Power BI; una declaracion sin
         # archivo deja el visual vacio. Los dos casos son invisibles al abrir.
-        "undeclared_files": [f for f in en_disco if f not in rutas],
-        "missing_files": [p for p in rutas if p and p not in en_disco],
+        "undeclared_files": no_declarados,
+        "missing_files": faltantes,
+        "warnings": (
+            ([f"{len(no_declarados)} recurso(s) estan en disco pero no "
+              "declarados."] if no_declarados else [])
+            + ([f"{len(faltantes)} recurso(s) declarados no existen en disco."]
+               if faltantes else [])),
     }

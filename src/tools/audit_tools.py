@@ -16,6 +16,52 @@ def _active():
     return get_session().require_active_pbip()
 
 
+def _guardar_formatos(resultado: Dict[str, Any], formatos: List[str]) -> None:
+    """Valida todo el lote antes de escribir y explicita fallos de artefactos."""
+    normalizados = [str(fmt).lower() for fmt in formatos]
+    invalidos = [f for f in normalizados
+                 if f not in ("markdown", "md", "html", "json")]
+    if invalidos:
+        raise ValidationError(
+            f"Formato no soportado: '{invalidos[0]}'. Usa markdown|html|json.")
+
+    sello = timestamp()
+    salidas: Dict[str, str] = {}
+    fallos = []
+    planes = []
+    for f in normalizados:
+        clave = "markdown" if f in ("markdown", "md") else f
+        if any(p[0] == clave for p in planes):       # alias/repetido, una sola vez
+            continue
+        if clave == "markdown":
+            ruta = get_settings().outputs_dir / f"audit_{sello}.md"
+            contenido = report_audit.to_markdown(resultado)
+        elif clave == "html":
+            ruta = get_settings().outputs_dir / f"audit_{sello}.html"
+            contenido = report_audit.to_html(resultado)
+        else:
+            ruta = get_settings().outputs_dir / f"audit_{sello}.json"
+            contenido = json.dumps(
+                resultado, indent=2, ensure_ascii=False, default=str)
+        planes.append((clave, ruta, contenido))
+
+    # Todas las serializaciones terminaron antes de tocar el primer archivo.
+    for clave, ruta, contenido in planes:
+        try:
+            atomic_write_text(ruta, contenido)
+            salidas[clave] = str(ruta)
+        except OSError as exc:
+            fallos.append({"format": clave, "path": str(ruta),
+                           "error": f"{type(exc).__name__}: {exc}"})
+    if salidas:
+        resultado["outputs"] = salidas
+    if fallos:
+        resultado["output_failures"] = fallos
+        resultado.setdefault("warnings", []).append(
+            f"La auditoria termino, pero {len(fallos)} formato(s) no se "
+            "pudieron guardar; revisa output_failures.")
+
+
 def register(mcp) -> None:
 
     @mcp.tool()
@@ -57,28 +103,7 @@ def register(mcp) -> None:
             resultado = report_audit.audit_project(
                 active, _model_data(), rules=rules, min_severity=min_severity)
 
-            salidas = {}
-            for fmt in (formats or []):
-                f = fmt.lower()
-                if f not in ("markdown", "md", "html", "json"):
-                    raise ValidationError(
-                        f"Formato no soportado: '{fmt}'. Usa markdown|html|json.")
-                sello = timestamp()
-                if f in ("markdown", "md"):
-                    ruta = get_settings().outputs_dir / f"audit_{sello}.md"
-                    atomic_write_text(ruta, report_audit.to_markdown(resultado))
-                    salidas["markdown"] = str(ruta)
-                elif f == "html":
-                    ruta = get_settings().outputs_dir / f"audit_{sello}.html"
-                    atomic_write_text(ruta, report_audit.to_html(resultado))
-                    salidas["html"] = str(ruta)
-                else:
-                    ruta = get_settings().outputs_dir / f"audit_{sello}.json"
-                    atomic_write_text(ruta, json.dumps(
-                        resultado, indent=2, ensure_ascii=False, default=str))
-                    salidas["json"] = str(ruta)
-            if salidas:
-                resultado["outputs"] = salidas
+            _guardar_formatos(resultado, list(formats or []))
             return resultado
         return guard(_impl)
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from config import get_session
 from pbip import backup, project_locator
 from services import tmdl_validate
-from tools._common import guard
+from tools._common import guard, guard_mutation
 
 
 def register(mcp) -> None:
@@ -57,10 +57,23 @@ def register(mcp) -> None:
                 out_dir, name, culture=culture, width=width, height=height,
                 page_name=page_name, overwrite=overwrite)
             if open_project:
-                salida["active"] = project_locator.open_project(
-                    get_session(), salida["pbip_path"])
+                try:
+                    salida["active"] = project_locator.open_project(
+                        get_session(), salida["pbip_path"])
+                except Exception as exc:                    # noqa: BLE001
+                    # La publicacion ya se confirmo y fue validada. Fallar al
+                    # seleccionarla en la sesion es auxiliar: devolver error
+                    # afirmaria falsamente que no se creo, invitando a un
+                    # reintento con overwrite. Se conserva el resultado y se
+                    # hace explicita la seleccion pendiente.
+                    salida["active"] = None
+                    salida.setdefault("warnings", []).append(
+                        "El proyecto se creo y valido, pero no se pudo dejar "
+                        "activo en esta sesion: "
+                        f"{type(exc).__name__}: {exc}. Abrelo con "
+                        "pbi_open_pbip_project.")
             return salida
-        return guard(_impl)
+        return guard_mutation(_impl)
 
     @mcp.tool()
     def pbi_validate_tmdl(path: str = "",
@@ -101,9 +114,11 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def pbi_backup_pbip_project(mode: str = "folder",
-                                scope: str = "both") -> Dict[str, Any]:
+                                scope: str = "both",
+                                request_id: str = "") -> Dict[str, Any]:
         """Crea un backup con timestamp del proyecto .pbip activo.
 
         `mode`: folder | zip. `scope`: report | model | both. Devuelve la ruta.
         """
-        return guard(lambda: backup.backup_project(get_session(), mode, scope))
+        return guard_mutation(
+            lambda: backup.backup_project(get_session(), mode, scope))

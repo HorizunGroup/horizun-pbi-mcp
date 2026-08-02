@@ -87,11 +87,14 @@ def list_bookmarks(active: ActivePbip) -> Dict[str, Any]:
         indexados = list(read_json(indice_path).get("items") or [])
 
     en_disco = []
+    ilegibles = []
     if carpeta.exists():
         for f in sorted(carpeta.glob("*.bookmark.json")):
             try:
                 d = read_json(f)
-            except Exception:                                  # noqa: BLE001
+            except Exception as exc:                           # noqa: BLE001
+                ilegibles.append({"file": str(f),
+                                  "error": f"{type(exc).__name__}: {exc}"})
                 continue
             en_disco.append({"name": d.get("name"),
                              "display_name": d.get("displayName"),
@@ -105,6 +108,9 @@ def list_bookmarks(active: ActivePbip) -> Dict[str, Any]:
         "not_indexed": [b for b in en_disco if b["name"] not in nombres_indice],
         "missing_files": [n for n in nombres_indice
                           if n and n not in {b["name"] for b in en_disco}],
+        "unreadable": ilegibles,
+        "warnings": ([f"{len(ilegibles)} marcador(es) no se pudieron leer; "
+                      "el inventario es parcial."] if ilegibles else []),
     }
 
 
@@ -142,7 +148,8 @@ def create_bookmark(active: ActivePbip, display_name: str, page: str, *,
                                    for p in paginas.values()]})
 
     if target_visuals:
-        existentes = {v["id"] for v in pbir_reader.list_visuals(active, page)}
+        existentes = {v["id"] for v in pbir_reader.list_visuals(
+            active, page, strict=True)}
         faltan = [v for v in target_visuals if v not in existentes]
         if faltan:
             raise BookmarkError(

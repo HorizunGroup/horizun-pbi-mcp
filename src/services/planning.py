@@ -194,9 +194,8 @@ def aplicar_archivos_del_sobre(session, active, sobre: Dict[str, Any],
                     ruta.parent.rmdir()
             except OSError:                           # pragma: no cover
                 pass
-
-    for d in sobre.get("expected_effects", {}).get("ensure_dirs", []):
-        Path(d).mkdir(parents=True, exist_ok=True)
+        for d in sobre.get("expected_effects", {}).get("ensure_dirs", []):
+            t.ensure_directory(Path(d))
 
     return {"applied": len(cambiantes), "status": "applied", "operation": operacion,
             "files": [str(x) for x in destinos],

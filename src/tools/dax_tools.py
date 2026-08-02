@@ -72,11 +72,19 @@ def register(mcp) -> None:
                 "selected": False,
             }
             if select:
-                session = get_session()
-                model = desktop_discovery.select_model(
-                    session, port=abierto.instance.get("port"))
-                salida["active_model"] = model.to_dict()
-                salida["selected"] = True
+                try:
+                    session = get_session()
+                    model = desktop_discovery.select_model(
+                        session, port=abierto.instance.get("port"))
+                    salida["active_model"] = model.to_dict()
+                    salida["selected"] = True
+                except BaseException:
+                    # Si esta llamada abrio Desktop y luego no pudo dejar la
+                    # sesion utilizable, compensa el efecto. Una tool que
+                    # devuelve error no debe dejar una ventana nueva a medias.
+                    if abierto.launched_by_us:
+                        desktop_launcher.close(abierto)
+                    raise
             return salida
         return guard(_impl)
 

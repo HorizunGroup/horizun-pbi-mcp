@@ -41,7 +41,13 @@ def _model_data() -> Optional[Dict[str, Any]]:
         if session.active_model:
             return model_reader.read_model(session)
     except Exception as exc:  # noqa: BLE001
-        log.warning("No se pudo leer el modelo para resolver campos: %s", exc)
+        # Si hay una fuente autoritativa pero esta rota, None significaria
+        # falsamente "no hay modelo para comprobar" y los escritores seguirian
+        # con referencias inventadas. Se falla cerrado con la causa original.
+        raise ValidationError(
+            "No se pudo leer el modelo autoritativo para validar los campos; "
+            "no se genera ningun visual.",
+            details={"cause": f"{type(exc).__name__}: {exc}"}) from exc
     return None
 
 
@@ -56,14 +62,11 @@ def _measure_index(model_data: Optional[Dict[str, Any]]) -> Dict[str, str]:
 
 
 def _detect_canvas(active) -> Dict[str, int]:
-    try:
-        pages = pbir_reader.list_pages(active)
-        widths = [p.get("width") for p in pages if p.get("width")]
-        heights = [p.get("height") for p in pages if p.get("height")]
-        if widths and heights:
-            return {"width": max(widths), "height": max(heights)}
-    except Exception:  # noqa: BLE001
-        pass
+    pages = pbir_reader.list_pages(active)
+    widths = [p.get("width") for p in pages if p.get("width")]
+    heights = [p.get("height") for p in pages if p.get("height")]
+    if widths and heights:
+        return {"width": max(widths), "height": max(heights)}
     return {"width": 1280, "height": 720}
 
 
@@ -85,7 +88,7 @@ def register(mcp) -> None:
         """
         def _impl():
             active = get_session().require_active_pbip()
-            visuals = pbir_reader.list_visuals(active, page)
+            visuals = pbir_reader.list_visuals(active, page, strict=True)
             return {"page": page, "count": len(visuals), "visuals": visuals}
         return guard(_impl)
 
@@ -96,7 +99,8 @@ def register(mcp) -> None:
             active = get_session().require_active_pbip()
             pages = pbir_reader.list_pages(active)
             for p in pages:
-                p["visuals"] = pbir_reader.list_visuals(active, p["name"])
+                p["visuals"] = pbir_reader.list_visuals(
+                    active, p["name"], strict=True)
             md = document_layout_markdown(active.to_dict(), pages)
             out_path = get_settings().outputs_dir / f"report_layout_{timestamp()}.md"
             atomic_write_text(out_path, md)
@@ -113,7 +117,20 @@ def register(mcp) -> None:
     request_id: str = "") -> Dict[str, Any]:
         """Crea un visual PBIR en una pagina.
 
-        `visual_type`: card|table|matrix|slicer|barChart|columnChart|lineChart|pieChart.
+        `visual_type` acepta: actionButton, areaChart, barChart, button, card,
+        cardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,
+        donutChart, funnel, gauge, htmlContent,
+        htmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,
+        matrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,
+        rectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,
+        text, textbox, treemap, waterfall y waterfallChart.
+
+        Para visuales con datos, valida antes de escribir los roles obligatorios,
+        la cardinalidad maxima de cada rol y el tipo de campo admitido: dimension
+        (`Grouping`), medida (`Measure`) o cualquiera de ambos
+        (`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,
+        navegador y boton) rechazan `fields` porque no llevan consulta.
+
         `fields`: rol -> campos, p.ej. {"category":"Tabla[Col]",
                   "values":["[Medida]"], "legend":"Tabla[Col]"}.
 
@@ -227,7 +244,7 @@ def register(mcp) -> None:
         """
         def _impl():
             active = get_session().require_active_pbip()
-            visuals = pbir_reader.list_visuals(active, page)
+            visuals = pbir_reader.list_visuals(active, page, strict=True)
             items = [{"visual_id": v["id"], "type": v["type"]} for v in visuals]
             if visual_ids:
                 wanted = set(visual_ids)

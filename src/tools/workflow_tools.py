@@ -24,40 +24,46 @@ def register(mcp) -> None:
     def pbi_build_dashboard(name: str, measures: List[str],
                             category: Optional[str] = None,
                             preset: str = "executive", seed: str = "",
-                            dry_run: bool = True) -> Dict[str, Any]:
+                            dry_run: bool = True,
+                            request_id: str = "") -> Dict[str, Any]:
         """Construye un dashboard completo desde un objetivo, no desde primitivas.
 
         Analiza el modelo, compone el spec segun el preset, calcula el layout,
         genera preview, aplica en una transaccion y verifica el resultado.
         `dry_run=true` (por defecto) se detiene tras el preview.
         """
-        return guard(lambda: workflows.build_dashboard(
+        ejecutar = lambda: workflows.build_dashboard(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
-            category=category, preset=preset, seed=seed, dry_run=dry_run))
+            category=category, preset=preset, seed=seed, dry_run=dry_run)
+        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
 
     @mcp.tool()
     def pbi_build_executive_page(measures: List[str],
                                  name: str = "Resumen ejecutivo",
                                  category: Optional[str] = None,
                                  seed: str = "",
-                                 dry_run: bool = True) -> Dict[str, Any]:
+                                 dry_run: bool = True,
+                                 request_id: str = "") -> Dict[str, Any]:
         """Pagina de resumen ejecutivo: fila de KPIs y grafico protagonista."""
-        return guard(lambda: workflows.build_executive_page(
+        ejecutar = lambda: workflows.build_executive_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
-            category=category, seed=seed, dry_run=dry_run))
+            category=category, seed=seed, dry_run=dry_run)
+        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
 
     @mcp.tool()
     def pbi_build_evm_page(measures: List[str], name: str = "EVM",
                            category: Optional[str] = None, seed: str = "",
-                           dry_run: bool = True) -> Dict[str, Any]:
+                           dry_run: bool = True,
+                           request_id: str = "") -> Dict[str, Any]:
         """Pagina EVM (Earned Value Management).
 
         Espera medidas del tipo PV, EV, AC, CPI y SPI; si no las reconoce, lo
         avisa en vez de generar una pagina que no significa nada.
         """
-        return guard(lambda: workflows.build_evm_page(
+        ejecutar = lambda: workflows.build_evm_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
-            category=category, seed=seed, dry_run=dry_run))
+            category=category, seed=seed, dry_run=dry_run)
+        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
 
     @mcp.tool()
     def pbi_repair_broken_references(mapping: Optional[Dict[str, str]] = None,

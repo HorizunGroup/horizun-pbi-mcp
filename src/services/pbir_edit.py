@@ -161,7 +161,7 @@ def report_capabilities(active: ActivePbip) -> Dict[str, Any]:
 
     tipos: Dict[str, Dict[str, Any]] = {}
     for pagina in pbir_reader.list_pages(active):
-        for v in pbir_reader.list_visuals(active, pagina["name"]):
+        for v in pbir_reader.list_visuals(active, pagina["name"], strict=True):
             t = v.get("type") or "?"
             entrada = tipos.setdefault(t, {"count": 0, "template": None})
             entrada["count"] += 1
@@ -343,7 +343,7 @@ def set_visual_z_order(active: ActivePbip, page: str,
     `order`: ids de MENOR a MAYOR z (el ultimo queda encima). Los visuales no
     mencionados conservan su z relativo, por encima de los ordenados.
     """
-    visuales = pbir_reader.list_visuals(active, page)
+    visuales = pbir_reader.list_visuals(active, page, strict=True)
     existentes = {v["id"] for v in visuales}
     desconocidos = [v for v in order if v not in existentes]
     if desconocidos:
@@ -635,7 +635,7 @@ def duplicate_page(active: ActivePbip, page: str,
 
     # Mapa completo old_id -> new_id ANTES de tocar ningun documento: hay que
     # conocerlo entero para poder remapear referencias cruzadas entre visuales.
-    visuales = pbir_reader.list_visuals(active, page)
+    visuales = pbir_reader.list_visuals(active, page, strict=True)
     mapa, _ = page_clone.construir_mapa(visuales, nuevo_page_id)
     mapa_pagina = {origen_dir.name: nuevo_page_id}
 
@@ -689,7 +689,7 @@ def duplicate_page(active: ActivePbip, page: str,
     with cm as t:
         for ruta, datos in escrituras.items():
             t.write_json(ruta, datos)
-    (pdir / nuevo_page_id / "visuals").mkdir(parents=True, exist_ok=True)
+        t.ensure_directory(pdir / nuevo_page_id / "visuals")
 
     return {"source_page": page, "page_id": nuevo_page_id, "display_name": new_name,
             "visuals_copied": copiados, "count": len(copiados),

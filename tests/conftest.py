@@ -98,24 +98,52 @@ def sample_pbip(tmp_path):
     rep = proj / "MyReport.Report"
     pages = rep / "definition" / "pages"
     (pages / "pg1" / "visuals").mkdir(parents=True)
+    (rep / ".platform").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/"
+                   "gitIntegration/platformProperties/2.0.0/schema.json",
+        "metadata": {"type": "Report", "displayName": "MyReport"},
+        "config": {"version": "2.0", "logicalId":
+                   "00000000-0000-0000-0000-000000000010"},
+    }), encoding="utf-8")
     (rep / "definition.pbir").write_text(json.dumps({
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/"
                    "definitionProperties/2.0.0/schema.json",
         "version": "4.0",
         "datasetReference": {"byPath": {"path": "../MyReport.SemanticModel"}},
     }), encoding="utf-8")
+    (rep / "definition" / "version.json").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/"
+                   "report/definition/versionMetadata/1.0.0/schema.json",
+        "version": "2.0.0",
+    }), encoding="utf-8")
     (pages / "pages.json").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/"
+                   "report/definition/pagesMetadata/1.1.0/schema.json",
         "pageOrder": ["pg1"], "activePageName": "pg1"}), encoding="utf-8")
     (rep / "definition" / "report.json").write_text(json.dumps({
         "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/"
                    "definition/report/2.0.0/schema.json",
         "themeCollection": {}, "publicCustomVisuals": []}), encoding="utf-8")
     (pages / "pg1" / "page.json").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/"
+                   "report/definition/page/2.1.0/schema.json",
         "name": "pg1", "displayName": "P1", "width": 1280, "height": 720}), encoding="utf-8")
 
     sm = proj / "MyReport.SemanticModel"
     tables = sm / "definition" / "tables"
     tables.mkdir(parents=True)
+    (sm / ".platform").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/"
+                   "gitIntegration/platformProperties/2.0.0/schema.json",
+        "metadata": {"type": "SemanticModel", "displayName": "MyReport"},
+        "config": {"version": "2.0", "logicalId":
+                   "00000000-0000-0000-0000-000000000011"},
+    }), encoding="utf-8")
+    (sm / "definition.pbism").write_text(json.dumps({
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/"
+                   "semanticModel/definitionProperties/1.0.0/schema.json",
+        "version": "4.2", "settings": {},
+    }), encoding="utf-8")
     # `ref table` no es decorativo: sin esa linea la tabla esta en disco pero
     # no forma parte del modelo. Un fixture sin ella no representa un .pbip
     # real y dejaria pasar justo ese fallo.

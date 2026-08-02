@@ -109,8 +109,15 @@ def _revisar_informe(report_dir: Path) -> Dict[str, Any]:
 
     try:
         resultado = report_validator.validar_informe(report_dir)
-    except Exception as exc:  # noqa: BLE001 - la falta del CLI no debe tumbar esto
-        return {"checked": False, "reason": str(exc)}
+    except Exception as exc:                           # noqa: BLE001
+        # La ausencia normal del CLI se expresa con status=UNAVAILABLE. Una
+        # excepcion aqui es un fallo real del verificador; tratarla como "no
+        # instalado" publicaba un proyecto que no llego a comprobarse.
+        raise ScaffoldError(
+            "El validador oficial fallo al comprobar el informe generado; no "
+            "se publica el proyecto.",
+            details={"cause": f"{type(exc).__name__}: {exc}",
+                     "report_dir": str(report_dir)}) from exc
 
     if resultado.status == report_validator.UNAVAILABLE:
         return {"checked": False,
@@ -263,6 +270,7 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
             "reemplazarlo.", details={"project_dir": str(raiz)})
 
     stage = project_publish.create_stage(base)
+    limpio = True
     try:
         construido = _construir_proyecto(
             stage, name, culture=culture, width=width, height=height,
@@ -270,12 +278,15 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         publicacion = project_publish.publish_tree(
             stage, raiz, overwrite=overwrite, tool="pbi_create_pbip_project")
     finally:
-        project_publish.discard_stage(stage)
+        limpio = project_publish.discard_stage(stage)
 
     report_dir = raiz / f"{name}.Report"
     model_dir = raiz / f"{name}.SemanticModel"
     log.info("Proyecto .pbip creado en %s (%sx%s, cultura %s)",
              raiz, width, height, culture)
+    avisos = ([] if limpio else [
+        "El proyecto se publico, pero no se pudo retirar su carpeta temporal "
+        "de staging; puede limpiarse manualmente cuando deje de estar en uso."])
     return {
         "report_validation": construido["report_validation"],
         "publication": publicacion,
@@ -287,4 +298,5 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         "canvas": {"width": width, "height": height},
         "culture": culture,
         "created": True,
+        "warnings": avisos,
     }

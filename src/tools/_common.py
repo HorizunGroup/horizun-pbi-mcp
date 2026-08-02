@@ -139,15 +139,46 @@ def guard_mutation(fn: Callable[[], Any]) -> Dict[str, Any]:
     except PowerBIMCPError as exc:
         return envelope.failure(exc.code, exc.message, exc.details,
                                 operation=op, request_id=rid, duration_ms=0)
+    except Exception as exc:                           # noqa: BLE001
+        # Todavia no se ejecuto la mutacion: es seguro fallar cerrado.
+        log.exception("No se pudo iniciar la idempotencia de %s", op)
+        salida = envelope.failure(
+            "idempotency_unavailable",
+            f"No se pudo reservar request_id antes de escribir: {exc}",
+            {"original_type": type(exc).__name__}, operation=op,
+            request_id=rid, duration_ms=0)
+        salida["safe_to_retry"] = True
+        return salida
     if previo is not None:
         return previo
 
     salida = guard(fn, operation=op, request_id=rid)
     if salida.get("ok"):
-        idempotency.terminar_ok(store, rid, op, payload, salida)
+        try:
+            idempotency.terminar_ok(store, rid, op, payload, salida)
+        except Exception as exc:                       # noqa: BLE001
+            # La mutacion YA termino. Propagar esta excepcion haria que el
+            # cliente creyera que fallo y la repitiera, duplicando paginas o
+            # reemplazando de nuevo un proyecto que si se confirmo.
+            log.exception("La mutacion %s se aplico, pero no se pudo guardar "
+                          "su registro de idempotencia", op)
+            salida.setdefault("warnings", []).append(
+                "El cambio se aplico, pero no se pudo persistir su registro "
+                "de idempotencia. No reintentes automaticamente esta misma "
+                f"peticion: {type(exc).__name__}: {exc}")
+            salida["status"] = envelope.WARNING
+            salida["idempotency_persisted"] = False
+            salida["safe_to_retry"] = False
     else:
         seguro = _es_seguro_reintentar(salida)
         salida["safe_to_retry"] = seguro
-        idempotency.terminar_error(store, rid, op, payload, salida,
-                                   safe_to_retry=seguro)
+        try:
+            idempotency.terminar_error(store, rid, op, payload, salida,
+                                       safe_to_retry=seguro)
+        except Exception as exc:                       # noqa: BLE001
+            log.exception("No se pudo persistir el fallo de %s", op)
+            salida.setdefault("warnings", []).append(
+                "No se pudo guardar el registro de idempotencia del fallo: "
+                f"{type(exc).__name__}: {exc}")
+            salida["idempotency_persisted"] = False
     return salida

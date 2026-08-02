@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pbip import pbix_reader, pbix_to_pbip
+from powerbi.errors import PowerBIMCPError
 from tools._common import guard, guard_mutation
 
 
@@ -20,6 +21,30 @@ def _resumen_lote(resultado: Dict[str, Any]) -> Dict[str, Any]:
         for c in convertidos if c["warnings"] or c["dropped"]
     ]
     return resultado
+
+
+class BatchConversionError(PowerBIMCPError):
+    """Un lote no puede presentarse como exito si una conversion fallo."""
+
+    code = "bulk_apply_failed"
+
+
+class BatchConversionPartialError(BatchConversionError):
+    """Al menos un proyecto se publico y al menos otro fallo."""
+
+    code = "bulk_partially_applied"
+
+
+def _exigir_lote_completo(resultado: Dict[str, Any]) -> Dict[str, Any]:
+    fallos = int(resultado.get("failed_count") or 0)
+    if not fallos:
+        return resultado
+    detalle = _resumen_lote(resultado)
+    error = (BatchConversionPartialError if detalle.get("ok_count")
+             else BatchConversionError)
+    raise error(
+        f"Fallaron {fallos} de {detalle.get('total', fallos)} conversion(es).",
+        details=detalle)
 
 
 def register(mcp) -> None:
@@ -85,7 +110,7 @@ def register(mcp) -> None:
                 resultado = pbix_to_pbip.convert(
                     archivos[0], out_dir, project_name=project_name, **opciones)
                 return resultado.to_dict()
-            return _resumen_lote(
+            return _exigir_lote_completo(
                 pbix_to_pbip.convert_many(archivos, out_dir, **opciones))
 
         return guard_mutation(_impl)
@@ -129,6 +154,9 @@ def register(mcp) -> None:
                                      if i["report_format"] == "layout"),
                 "items": items,
                 "unreadable": errores,
+                "warnings": ([f"{len(errores)} archivo(s) no se pudieron "
+                              "inspeccionar; el listado es parcial."]
+                             if errores else []),
             }
 
         return guard(_impl)

@@ -260,5 +260,22 @@ def assert_operacion(sobre: Dict[str, Any], esperada: str) -> None:
 
 
 def rutas(sobre: Dict[str, Any]) -> List[Path]:
-    """Rutas afectadas, en el orden del plan."""
-    return [Path(e["path"]) for e in sobre["affected_files"]]
+    """Rutas escritas Y borradas, en el orden del plan y sin duplicados.
+
+    La huella inicial incluye ambos grupos. Recalcularla solo con las
+    escrituras hacia que todo plan ``sync_mode=replace`` pareciera obsoleto
+    incluso sin cambios y, peor aun, no vigilaba el archivo que se iba a
+    eliminar.
+    """
+    candidatos = [e["path"] for e in sobre["affected_files"]]
+    candidatos += list(
+        (sobre.get("expected_effects") or {}).get("files_deleted") or [])
+    salida: List[Path] = []
+    vistos = set()
+    for candidato in candidatos:
+        ruta = Path(candidato)
+        clave = normalizar_ruta(ruta)
+        if clave not in vistos:
+            vistos.add(clave)
+            salida.append(ruta)
+    return salida

@@ -144,7 +144,7 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
     from utils.json_utils import read_json
 
     actual_pagina = read_json(page_json)
-    existentes = pbir_reader.list_visuals(active, page_id)
+    existentes = pbir_reader.list_visuals(active, page_id, strict=True)
 
     # Emparejado por firma. Cada existente se consume una sola vez, para que
     # dos visuales identicos no se emparejen ambos con el mismo del spec.
