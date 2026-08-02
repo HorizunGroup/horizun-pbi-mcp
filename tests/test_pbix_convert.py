@@ -682,6 +682,7 @@ def test_respuesta_del_modelo_no_apunta_al_staging_eliminado(
     assert Path(resultado.model["path"]).is_dir()
     assert resultado.model["path"] == str(
         Path(resultado.semantic_model_dir) / "definition")
+    assert len(resultado.files_written) == resultado.publication["files"]
 
 
 def test_exportar_modelo_declara_el_diagrama_que_escribe(
