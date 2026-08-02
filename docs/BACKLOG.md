@@ -57,11 +57,14 @@ cardinalidades y clase de campo (`Grouping`, `Measure` o
 aceptaba el archivo pero dejaba un visual vacío o semánticamente incorrecto.
 Los roles viven fuera de `objects` y se validan por separado.
 
-**Lo que aún falta:** el oráculo cubre solo las rutas que este servidor escribe;
-no pretende rechazar extensiones conservadas al clonar una plantilla ni probar
-cada combinación posible de propiedades. La equivalencia estructural tampoco
-demuestra por sí sola que un visual se pinte como se espera: eso pertenece a la
-comprobación renderizada del punto siguiente.
+**Cierre adicional:** cuando está instalado el CLI oficial, cada escritura PBIR
+vuelve a comparar **todas** las propiedades presentes en `objects` y
+`visualContainerObjects` del visual contra `effective-properties`, incluidas
+las heredadas de una plantilla. Una propiedad o grupo desconocido bloquea la
+transacción con `format_oracle`. Sin el CLI se conserva la barrera estructural
+offline y no se finge equivalencia completa. La comprobación estructural
+tampoco demuestra por sí sola que un visual se pinte como se espera: eso
+pertenece a la comprobación renderizada del punto siguiente.
 
 ---
 

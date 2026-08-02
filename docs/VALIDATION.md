@@ -60,19 +60,19 @@ Se invoca **siempre con `--no-schema`**: por defecto el CLI descarga esquemas po
 ## Oráculo de las rutas de formato administradas
 
 `services/format_oracle.py` consulta `formatting effective-properties` del CLI
-fijado y valida las rutas `(scope, group, property)` que Horizun acaba de
-generar, incluidos el tipo de valor y los enums. Un snapshot mínimo permite la
-misma barrera offline y una prueba viva comprueba que no se separe del catálogo
-oficial.
+fijado y valida las rutas `(scope, group, property)` del visual completo,
+incluidas las heredadas de una plantilla, con su tipo de valor y sus enums. Un
+snapshot mínimo permite la misma barrera offline para las rutas administradas y
+una prueba viva comprueba que no se separe del catálogo oficial.
 
 El fixture sintético `format_objects_corpus.json` añade evidencia independiente
 de visuales exportados por Desktop: conserva solo claves estructurales y tokens
 de tipo. No contiene datos, identificadores, nombres, rutas ni conteos de los
 informes de origen.
 
-El alcance es deliberado: no rechaza propiedades ajenas conservadas al clonar
-una plantilla y no afirma que una estructura válida produzca una composición
-visualmente buena. Para comprobar que Desktop renderiza el archivo existe
+Sin el CLI oficial no se finge equivalencia completa; se conserva la barrera
+estructural local. El oráculo tampoco afirma que una estructura válida produzca
+una composición visualmente buena. Para comprobar que Desktop renderiza el archivo existe
 `pbi_validate_desktop_render`; la evaluación estética/semántica de la captura
 sigue siendo una capa distinta.
 
