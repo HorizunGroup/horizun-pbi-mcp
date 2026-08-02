@@ -5,7 +5,7 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ---
 
-## [Sin publicar]
+## [1.0.1] — 2026-08-02
 
 ### Corregido
 

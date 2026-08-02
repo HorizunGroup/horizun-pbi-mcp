@@ -106,7 +106,7 @@ Sobre una **copia** fuera de OneDrive, nunca sobre el original:
 
 ## Etiquetado
 
-La versión estable es **`v1.0.0`**. Las excepciones de abajo son límites
+La versión estable es **`v1.0.1`**. Las excepciones de abajo son límites
 documentados del producto, no errores ocultos ni criterios omitidos.
 
 La versión declarada en `branding.VERSION` / `pyproject.toml` debe coincidir con el tag **antes** de etiquetar. Instalar desde un tag y obtener un paquete que reporta otra versión es exactamente lo que estas comprobaciones existen para evitar.
