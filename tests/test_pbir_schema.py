@@ -223,23 +223,19 @@ def test_el_formato_condicional_que_generamos_pasa_la_barrera_de_objects():
     assert pbir_schema.validar(documento)["validated"] is True
 
 
-def test_un_color_solido_sin_nivel_color_se_bloquea_aunque_el_schema_lo_acepte():
-    """Regresion del defecto visual: ``solid: {expr: ...}`` no pinta nada.
+def test_un_expr_solido_que_no_es_fillrule_se_bloquea_aunque_el_schema_lo_acepte():
+    """Un ``solid.expr`` literal no es un formato condicional valido.
 
-    `formattingObjectDefinitions` deja `objects` abierto, asi que el schema
-    oficial no llega a esta profundidad. Esta prueba debe fallar contra
-    0a4ed77: antes la validacion devolvia `validated=True`.
+    Desktop reserva ``solid.expr`` para ``FillRule``; un color literal debe
+    vivir en ``solid.color.expr``. El esquema oficial deja ambos caminos
+    abiertos, por eso esta barrera es necesaria.
     """
     documento = visual_valido()
     documento["visual"]["objects"] = {
         "values": [{"properties": {
-            "backColor": {"solid": {"expr": {"FillRule": {
-                "Input": _campo_de_prueba(),
-                "FillRule": {"linearGradient2": {
-                    "min": {"color": {"Literal": {"Value": "'#FFFFFF'"}}},
-                    "max": {"color": {"Literal": {"Value": "'#2A78D6'"}}},
-                }},
-            }}}},
+            "backColor": {"solid": {"expr": {
+                "Literal": {"Value": "'#FFFFFF'"},
+            }}},
         }}]}
 
     with pytest.raises(SchemaValidationFailed) as exc:

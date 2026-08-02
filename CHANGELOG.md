@@ -7,7 +7,7 @@ Versionado semántico. **El contrato de las 34 tools originales nunca se rompe.*
 
 ## [1.0.0] — 2026-08-02
 
-Primera versión estable del repositorio oficial. **117 tools, 1540 pruebas
+Primera versión estable del repositorio oficial. **117 tools, 1542 pruebas
 aprobadas y 3 omitidas por condiciones externas documentadas.**
 
 ### Incluye
