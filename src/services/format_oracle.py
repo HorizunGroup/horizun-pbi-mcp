@@ -198,7 +198,7 @@ def _matches_kind(value: Any, definition: Dict[str, Any]) -> bool:
         # oficiales del mismo tipo ``fill``.
         color = solid.get("color")
         if isinstance(color, dict) and "expr" in color:
-            return True
+            return isinstance(color["expr"], dict) and bool(color["expr"])
         expr = solid.get("expr")
         return isinstance(expr, dict) and isinstance(expr.get("FillRule"), dict)
     if kind == "image":
@@ -340,6 +340,17 @@ def compare_all_managed_objects(document: Dict[str, Any]) -> Dict[str, Any]:
     rutas = all_object_paths(document)
     if not rutas:
         return {"available": False, "source": "none", "errors": []}
+    visual = document.get("visual") if isinstance(document, dict) else None
+    visual_type = visual.get("visualType") if isinstance(visual, dict) else None
+    catalogo_oficial = (_load_catalog(visual_type)
+                        if isinstance(visual_type, str) and visual_type else None)
+    if catalogo_oficial is not None:
+        resultado = compare_managed_paths(
+            document, rutas, catalog=catalogo_oficial)
+        resultado["source"] = "official_cli"
+        resultado["equivalence_checked"] = True
+        return resultado
+
     resultado = compare_managed_paths(document, rutas)
     if resultado.get("source") != "official_cli":
         resultado = dict(resultado)

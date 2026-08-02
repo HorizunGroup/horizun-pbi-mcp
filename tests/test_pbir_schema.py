@@ -249,6 +249,21 @@ def test_un_expr_solido_que_no_es_fillrule_se_bloquea_aunque_el_schema_lo_acepte
     }]
 
 
+def test_un_expr_vacio_se_bloquea_aunque_el_schema_lo_acepte():
+    documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
+    documento["visual"]["objects"] = {
+        "values": [{"properties": {
+            "backColor": {"solid": {"color": {"expr": {}}}},
+        }}]}
+
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(documento)
+
+    assert exc.value.details["rule"] == "format_objects"
+    assert exc.value.details["errors"][0]["rule"] == "format_expression_empty"
+
+
 def test_el_oraculo_completo_bloquea_propiedad_desconocida(monkeypatch):
     """El esquema acepta ``objects`` abierto, Desktop no debe hacerlo."""
     from services import format_oracle
@@ -301,6 +316,16 @@ def test_version_futura_de_otra_mayor_se_bloquea():
     futuro["$schema"] = VISUAL.replace("2.7.0", "9.9.0")
     with pytest.raises(SchemaUnsupported) as exc:
         pbir_schema.validar(futuro)
+    assert exc.value.code == "schema_unsupported"
+
+
+def test_version_futura_inventada_de_la_misma_mayor_se_bloquea():
+    futuro = visual_valido()
+    futuro["$schema"] = VISUAL.replace("2.7.0", "2.999.999")
+
+    with pytest.raises(SchemaUnsupported) as exc:
+        pbir_schema.validar(futuro)
+
     assert exc.value.code == "schema_unsupported"
 
 

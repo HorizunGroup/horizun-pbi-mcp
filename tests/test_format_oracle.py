@@ -127,6 +127,30 @@ def test_oraculo_puede_comprobar_todas_las_propiedades_del_visual(monkeypatch):
     assert [e["rule"] for e in result["errors"]] == ["format_property_unknown"]
 
 
+def test_oraculo_completo_consulta_cli_si_el_visual_solo_tiene_vco(monkeypatch):
+    monkeypatch.setattr(format_oracle, "_load_catalog", lambda _vt: CATALOGO)
+    doc = _visual(vcos={"grupoInventado": [{"properties": {
+        "propiedadInventada": _lit("true"),
+    }}]})
+
+    result = format_oracle.compare_all_managed_objects(doc)
+
+    assert result["source"] == "official_cli"
+    assert result["equivalence_checked"] is True
+    assert [e["rule"] for e in result["errors"]] == ["format_group_unknown"]
+
+
+def test_oraculo_rechaza_expr_vacio_en_un_fill():
+    doc = _visual({"value": [{"properties": {
+        "fontColor": {"solid": {"color": {"expr": {}}}},
+    }}]})
+
+    result = format_oracle.compare_managed_paths(
+        doc, [("objects", "value", "fontColor")], catalog=CATALOGO)
+
+    assert [e["rule"] for e in result["errors"]] == ["format_property_shape"]
+
+
 def test_oraculo_acepta_fillrule_exportado_por_desktop():
     doc = _visual({"value": [{"properties": {
         "fontColor": {"solid": {"expr": {"FillRule": {}}}},
