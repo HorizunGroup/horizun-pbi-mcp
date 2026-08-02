@@ -654,6 +654,35 @@ def test_no_sobrescribe_sin_permiso(tmp_path, pbix_heredado):
     assert "overwrite" in exc.value.message
 
 
+def test_respuesta_del_modelo_no_apunta_al_staging_eliminado(
+        tmp_path, pbix_heredado, monkeypatch):
+    monkeypatch.setattr(
+        pbix_to_pbip, "_validar_informe_convertido",
+        lambda _ruta: {"checked": False, "reason": "fixture"})
+
+    def exportar(_pbix, destino, nombre, _contents, **_kwargs):
+        definicion = Path(destino) / f"{nombre}.SemanticModel" / "definition"
+        definicion.mkdir(parents=True)
+        (definicion / "model.tmdl").write_text(
+            "model Model\n", encoding="utf-8")
+        return {
+            "semantic_model_dir": str(definicion.parent),
+            "path": str(definicion),
+            "status": "exported",
+            "warnings": [],
+            "written": [f"{nombre}.SemanticModel/definition/model.tmdl"],
+        }
+
+    monkeypatch.setattr(pbix_to_pbip, "_exportar_modelo", exportar)
+    resultado = pbix_to_pbip.convert(
+        pbix_heredado, tmp_path / "out", include_model=True)
+
+    assert ".hz_stage_" not in resultado.model["path"]
+    assert Path(resultado.model["path"]).is_dir()
+    assert resultado.model["path"] == str(
+        Path(resultado.semantic_model_dir) / "definition")
+
+
 @pytest.mark.parametrize("nombre", ["CON", "nul.json", "AUX"])
 def test_nombre_de_proyecto_reservado_se_rechaza_sin_escribir(
         tmp_path, pbix_heredado, nombre):

@@ -581,6 +581,14 @@ def _construir_en_stage(
         modelo.pop("semantic_model_dir", None)          # apuntaba al staging
         resultado.semantic_model_dir = str(
             destino_final / f"{nombre}.SemanticModel")
+        # `tmdl_export` devuelve también la carpeta `definition` en `path`.
+        # Construimos dentro del staging, pero esa carpeta se elimina justo
+        # después de publicar: exponerla en la respuesta entregaba una ruta
+        # aparentemente válida que ya no existía. Toda ruta pública debe
+        # señalar al árbol final, no a la implementación transitoria.
+        if "path" in modelo:
+            modelo["path"] = str(
+                Path(resultado.semantic_model_dir) / "definition")
         resultado.model_status = modelo.pop("status", "skipped")
         resultado.model = modelo
         resultado.warnings.extend(modelo.pop("warnings", []))
