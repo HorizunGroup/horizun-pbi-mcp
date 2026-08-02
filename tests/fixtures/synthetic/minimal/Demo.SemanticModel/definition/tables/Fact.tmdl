@@ -1,0 +1,46 @@
+table Fact
+
+	/// Suma del importe. Medida de referencia usada por los visuales plantilla.
+	measure TotalAmount = SUM(Fact[Amount])
+		formatString: #,0.00
+		displayFolder: Base
+		lineageTag: 11111111-1111-1111-1111-111111111101
+
+	measure 'Ratio Pct' =
+			VAR num = [TotalAmount]
+
+			VAR den = CALCULATE([TotalAmount], ALL(Fact))
+			RETURN
+				DIVIDE(num, den)
+		formatString: 0.0%
+		displayFolder: Base
+		lineageTag: 11111111-1111-1111-1111-111111111102
+
+	column Amount
+		dataType: double
+		summarizeBy: sum
+		sourceColumn: Amount
+		lineageTag: 11111111-1111-1111-1111-111111111201
+
+	column DateKey
+		dataType: dateTime
+		formatString: General Date
+		summarizeBy: none
+		sourceColumn: DateKey
+		lineageTag: 11111111-1111-1111-1111-111111111202
+
+	column FactID
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: FactID
+		lineageTag: 11111111-1111-1111-1111-111111111203
+
+	partition Fact = m
+		mode: import
+		source =
+				let
+					Origen = Table.FromRows({})
+				in
+					Origen
+
+	annotation PBI_ResultType = Table

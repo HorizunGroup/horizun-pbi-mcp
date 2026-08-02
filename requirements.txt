@@ -1,0 +1,31 @@
+# Horizun PBI MCP — dependencias de runtime.
+#
+# Este archivo DEBE declarar exactamente lo mismo que `project.dependencies` de
+# `pyproject.toml`, topes incluidos. `tests/test_packaging.py` lo comprueba.
+#
+# Por que importa: el README ofrece `pip install -r requirements.txt` como
+# primera opcion, y este archivo se habia quedado atras en las SEIS
+# dependencias. Sin tope, `mcp>=1.10` instalaba la 2.0.0 —donde
+# `mcp.server.fastmcp` ya no existe— y el servidor no llegaba ni a importar.
+# `jsonschema` y `referencing` faltaban del todo, asi que toda escritura PBIR
+# fallaba con `schema_unavailable`. Se descubrio instalando en limpio.
+
+# Servidor MCP (incluye FastMCP en mcp.server.fastmcp).
+# Acotado por arriba a proposito: el servidor fija la version del producto con
+# `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`. Es API
+# privada, asi que un salto mayor podria retirarla.
+mcp>=1.28.1,<2
+
+# Interop .NET para cargar ADOMD.NET (DAX) y TOM (modelo).
+pythonnet>=3.0.5,<4
+
+# Descubrimiento de procesos/puertos de Power BI Desktop (msmdsrv).
+psutil>=5.9,<8
+
+# Carga de configuracion desde .env.
+python-dotenv>=1.0,<2
+
+# Validacion PBIR contra los esquemas OFICIALES. Sin estas dos, toda escritura
+# en el informe falla con `schema_unavailable`.
+jsonschema>=4.20,<5
+referencing>=0.30,<1
