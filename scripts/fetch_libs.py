@@ -28,11 +28,14 @@ redistribuirlos.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import shutil
+import socket
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -75,6 +78,14 @@ TIEMPO_LIMITE = 300
 #: Un .nupkg de estos ronda los 10 MB; 200 es un tope generoso y finito.
 MAX_BYTES = 200 * 1024 * 1024
 
+#: nuget.org resuelve via una cadena CNAME larga (Azure Traffic Manager) sin
+#: registro AAAA. `getaddrinfo` con AF_UNSPEC pide IPv4 e IPv6 a la vez, y la
+#: rama IPv6 (que no tiene a donde ir) a veces tira toda la consulta aunque un
+#: segundo despues el mismo lookup funcione. Forzar IPv4 quita esa carrera; los
+#: reintentos cubren el resto de cortes transitorios.
+INTENTOS_DESCARGA = 4
+ESPERA_ENTRE_INTENTOS = 0.3
+
 
 class LibsError(RuntimeError):
     pass
@@ -84,17 +95,46 @@ def url_de(paquete: Dict[str, str]) -> str:
     return f"{ORIGEN}{paquete['id']}/{paquete['version']}"
 
 
+@contextlib.contextmanager
+def _resolver_solo_ipv4():
+    """Fuerza IPv4 en `getaddrinfo` solo mientras dura la descarga.
+
+    Se restaura en el `finally`: no dejamos el proceso entero forzado a IPv4
+    despues de esta llamada.
+    """
+    original = socket.getaddrinfo
+
+    def solo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+        return original(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = solo_ipv4
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
+
+
 def descargar(url: str) -> bytes:
     if not url.startswith(ORIGEN):
         raise LibsError(f"Origen no permitido: {url}")
-    try:
-        with urllib.request.urlopen(url, timeout=TIEMPO_LIMITE) as r:
-            datos = r.read(MAX_BYTES + 1)
-    except OSError as exc:
-        # URLError es OSError, pero urlopen tambien lanza OSError a secas
-        # (socket cerrado, DNS, timeout del sistema). Capturar solo URLError
-        # dejaba escapar la mitad de los cortes de red.
-        raise LibsError(f"No se pudo descargar {url}: {exc}") from exc
+    ultimo_error: Exception | None = None
+    for intento in range(1, INTENTOS_DESCARGA + 1):
+        try:
+            with _resolver_solo_ipv4():
+                with urllib.request.urlopen(url, timeout=TIEMPO_LIMITE) as r:
+                    datos = r.read(MAX_BYTES + 1)
+            break
+        except OSError as exc:
+            # URLError es OSError, pero urlopen tambien lanza OSError a secas
+            # (socket cerrado, DNS, timeout del sistema). Capturar solo
+            # URLError dejaba escapar la mitad de los cortes de red.
+            ultimo_error = exc
+            if intento < INTENTOS_DESCARGA:
+                time.sleep(ESPERA_ENTRE_INTENTOS)
+    else:
+        raise LibsError(
+            f"No se pudo descargar {url} tras {INTENTOS_DESCARGA} intentos "
+            f"(forzando IPv4): {ultimo_error}") from ultimo_error
     if len(datos) > MAX_BYTES:
         raise LibsError(f"El paquete supera {MAX_BYTES} bytes: {url}")
     if len(datos) < 1024:

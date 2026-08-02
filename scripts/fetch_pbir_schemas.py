@@ -25,11 +25,14 @@ anterior queda intacto.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import shutil
+import socket
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -71,6 +74,13 @@ PREFIJO_PERMITIDO = "https://developer.microsoft.com/json-schemas/fabric/"
 
 TIEMPO_LIMITE = 30
 
+#: developer.microsoft.com tiene la misma carrera IPv4/IPv6 que nuget.org (ver
+#: fetch_libs.py): getaddrinfo con AF_UNSPEC pierde a veces la rama IPv6, que
+#: no tiene registro AAAA, y tira toda la consulta. Forzar IPv4 la evita; los
+#: reintentos cubren el resto de cortes transitorios.
+INTENTOS_DESCARGA = 4
+ESPERA_ENTRE_INTENTOS = 0.3
+
 
 class SchemaFetchError(RuntimeError):
     pass
@@ -82,17 +92,48 @@ def nombre_local(url: str) -> str:
     return resto.replace("/", "__").replace("#", "_")
 
 
+@contextlib.contextmanager
+def _resolver_solo_ipv4():
+    """Fuerza IPv4 en `getaddrinfo` solo mientras dura la descarga.
+
+    Se restaura en el `finally`: no dejamos el proceso entero forzado a IPv4
+    despues de esta llamada.
+    """
+    original = socket.getaddrinfo
+
+    def solo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+        return original(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = solo_ipv4
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = original
+
+
 def descargar(url: str) -> bytes:
     if not url.startswith(PREFIJO_PERMITIDO):
         raise SchemaFetchError(
             f"Referencia fuera del origen permitido: {url}\n"
             f"Solo se descarga de {PREFIJO_PERMITIDO}")
     req = urllib.request.Request(url, headers={"User-Agent": "horizun-pbi-mcp"})
-    try:
-        with urllib.request.urlopen(req, timeout=TIEMPO_LIMITE) as r:
-            return r.read()
-    except urllib.error.URLError as exc:
-        raise SchemaFetchError(f"No se pudo descargar {url}: {exc}") from exc
+    ultimo_error: Exception | None = None
+    for intento in range(1, INTENTOS_DESCARGA + 1):
+        try:
+            with _resolver_solo_ipv4():
+                with urllib.request.urlopen(req, timeout=TIEMPO_LIMITE) as r:
+                    return r.read()
+        except urllib.error.HTTPError as exc:
+            # Respuesta real del servidor (404 de un esquema no publicado):
+            # no es un corte de red, reintentar no cambia el resultado.
+            raise SchemaFetchError(f"No se pudo descargar {url}: {exc}") from exc
+        except OSError as exc:
+            ultimo_error = exc
+            if intento < INTENTOS_DESCARGA:
+                time.sleep(ESPERA_ENTRE_INTENTOS)
+    raise SchemaFetchError(
+        f"No se pudo descargar {url} tras {INTENTOS_DESCARGA} intentos "
+        f"(forzando IPv4): {ultimo_error}") from ultimo_error
 
 
 def refs_de(doc, base_url: str) -> Set[str]:
@@ -188,13 +229,35 @@ def cache_dir() -> Path:
     return resolver()
 
 
+def _ya_instalado(destino: Path, entrada: Dict) -> bool:
+    archivo = destino / entrada["file"]
+    if not archivo.exists():
+        return False
+    return hashlib.sha256(archivo.read_bytes()).hexdigest() == entrada["sha256"]
+
+
 def instalar(manifiesto: Dict, destino: Path) -> Dict:
-    """Descarga, VERIFICA y luego instala. Si un hash no cuadra, no toca nada."""
+    """Descarga, VERIFICA y luego instala. Si un hash no cuadra, no toca nada.
+
+    Idempotente: un documento que ya esta en `destino` con el hash correcto no
+    se vuelve a descargar. Antes, un solo corte de red a mitad del proceso
+    tiraba el paso completo desde cero, aunque 35 de 36 esquemas ya estuvieran
+    validos en disco de una corrida anterior.
+    """
     esperado = {e["url"]: e for e in manifiesto["documents"]}
+    destino.mkdir(parents=True, exist_ok=True)
+    faltantes = {url: entrada for url, entrada in esperado.items()
+                 if not _ya_instalado(destino, entrada)}
+
+    if not faltantes:
+        (destino / "_manifest.json").write_text(
+            json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
+        return {"installed": 0, "skipped": len(esperado), "dir": str(destino)}
+
     tmp = Path(tempfile.mkdtemp(prefix="pbir_schemas_"))
     try:
         descargados = {}
-        for url, entrada in esperado.items():
+        for url, entrada in faltantes.items():
             datos = descargar(url)
             real = hashlib.sha256(datos).hexdigest()
             if real != entrada["sha256"]:
@@ -207,12 +270,12 @@ def instalar(manifiesto: Dict, destino: Path) -> Dict:
             (tmp / entrada["file"]).write_bytes(datos)
             descargados[url] = entrada["file"]
 
-        destino.mkdir(parents=True, exist_ok=True)
         for archivo in tmp.iterdir():
             shutil.copy2(archivo, destino / archivo.name)
         (destino / "_manifest.json").write_text(
             json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
-        return {"installed": len(descargados), "dir": str(destino)}
+        return {"installed": len(descargados),
+                "skipped": len(esperado) - len(faltantes), "dir": str(destino)}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -247,7 +310,8 @@ def main() -> int:
     except SchemaFetchError as exc:
         print(f"FALLO: {exc}", file=sys.stderr)
         return 1
-    print(f"{r['installed']} esquema(s) verificados e instalados en {r['dir']}")
+    print(f"{r['installed']} esquema(s) verificados e instalados en {r['dir']} "
+          f"({r['skipped']} ya estaban correctos)")
     return 0
 
 
