@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
+from horizun_pbi_mcp.services import redaction
 
 log = get_logger("report_validator")
 
@@ -88,20 +89,30 @@ class Diagnostico:
     """Un hallazgo, normalizado para poder compararlo antes y despues.
 
     NO se compara el mensaje humano: lleva rutas absolutas y texto variable.
-    Se comparan codigo, archivo relativo, ruta JSON y severidad.
+    Se comparan codigo, archivo relativo, ruta JSON y severidad. Pero el
+    mensaje SI se conserva y se devuelve: sin el, un informe con ocho errores
+    solo dice que hay ocho, y ocho errores que no se pueden leer no se pueden
+    corregir. Se redacta antes de salir, como todo lo que viene del CLI.
     """
 
     code: str
     severity: str
     file: str = ""
     path: str = ""
+    message: str = ""
 
     def clave(self) -> tuple:
+        # El mensaje queda FUERA de la clave a proposito: cambia entre
+        # versiones del CLI y arrastra rutas absolutas. Meterlo aqui haria que
+        # el mismo defecto pareciera nuevo tras actualizar el validador.
         return (self.code, self.severity, self.file, self.path)
 
     def to_dict(self) -> Dict[str, str]:
-        return {"code": self.code, "severity": self.severity,
-                "file": self.file, "path": self.path}
+        salida = {"code": self.code, "severity": self.severity,
+                  "file": self.file, "path": self.path}
+        if self.message:
+            salida["message"] = self.message
+        return salida
 
 
 @dataclass
@@ -118,7 +129,13 @@ class Resultado:
     detail: str = ""
 
     def to_envelope(self) -> Dict[str, Any]:
-        """Campos ADITIVOS para la respuesta MCP. No cambia la forma existente."""
+        """Campos ADITIVOS para la respuesta MCP. No cambia la forma existente.
+
+        `diagnostics` es la razon de ser de esto. Antes se devolvia
+        `"errors": 8` y nada mas: ni regla, ni archivo, ni ruta JSON, ni
+        mensaje. Ocho errores que no se pueden leer no se pueden corregir, y lo
+        unico que quedaba era entregar el proyecto sabiendo que estaba mal.
+        """
         return {
             "validation_backend": self.backend,
             "validator_name": self.validator_name,
@@ -127,6 +144,7 @@ class Resultado:
             "validation_status": self.status,
             "errors": self.errors,
             "warnings": self.warnings,
+            "diagnostics": [d.to_dict() for d in self.diagnostics],
             "duration_ms": round(self.duration_ms, 1),
             "detail": self.detail,
         }
@@ -286,10 +304,13 @@ def _normalizar(datos: Dict[str, Any], raiz: Path) -> List[Diagnostico]:
                 relativo = str(Path(bruto).resolve().relative_to(raiz.resolve()))
             except (ValueError, OSError):
                 relativo = Path(bruto).name if bruto else ""
+            crudo = (item.get("message") or info.get("message")
+                     or info.get("description") or "")
             salida.append(Diagnostico(
                 code=str(codigo), severity=severidad,
                 file=relativo.replace("\\", "/"),
-                path=str(item.get("jsonPath") or item.get("path") or "")))
+                path=str(item.get("jsonPath") or item.get("path") or ""),
+                message=redaction.texto(str(crudo)) if crudo else ""))
     return salida
 
 
@@ -451,6 +472,12 @@ def comparar(antes: List[Diagnostico],
 
     return {
         "preexisting_diagnostics": len(antes),
+        # El recuento sin el detalle era el caso concreto que dejaba a un
+        # informe con ocho errores imposibles de corregir: `preexisting` no
+        # bloquea, asi que nadie los listaba, y sin regla ni archivo ni ruta no
+        # hay por donde empezar. Van aparte para no cambiar el tipo de
+        # `preexisting_diagnostics`, que sigue siendo un numero.
+        "preexisting_diagnostics_detail": [d.to_dict() for d in antes],
         "new_diagnostics": [d.to_dict() for d in nuevos],
         "new_error_count": sum(1 for d in nuevos if d.severity == "error"),
         "introduced_diagnostics": [d.to_dict() for d in introducidos],
