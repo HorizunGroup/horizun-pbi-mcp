@@ -86,8 +86,25 @@ def resolver_auto(session: Any) -> str:
     """
     from horizun_pbi_mcp.services import project_state
 
-    hay_modelo = getattr(session, "active_model", None) is not None
     activo = getattr(session, "active_pbip", None)
+
+    # "Hay modelo" no es "hay un modelo GUARDADO": la sesion se restaura de
+    # outputs/session.json al arrancar, asi que active_model puede apuntar a
+    # un Desktop que se cerro hace dias. Y el escenario tipico de `auto` es
+    # exactamente ese: se trabajo en live, se cerro Desktop -que es el estado
+    # REQUERIDO para escribir pbip- y se pide crear una medida. Resolver
+    # `live` por la sesion fantasma acabaria en StaleSessionError ordenando
+    # reabrir, cuando `pbip` era viable y era lo que el estado real permitia.
+    # Por eso aqui se VERIFICA, no se mira si el campo esta relleno.
+    hay_modelo = False
+    if getattr(session, "active_model", None) is not None:
+        try:
+            session.require_active_model()
+            hay_modelo = True
+        except Exception:                                # noqa: BLE001
+            # Sesion obsoleta o inverificable: para `auto` equivale a que no
+            # hay live. Quien quiera el error detallado pide mode='live'.
+            hay_modelo = False
 
     if hay_modelo:
         return LIVE

@@ -43,16 +43,25 @@ class _Modelo:
 class _Sesion:
     active_pbip = None
 
-    def require_active_model(self):
-        return type("M", (), {"connection_string": "cs", "catalog": "cat"})()
+
+class _ModeloActivo:
+    """Lo que entrega el lease de verdad: identidad + conexion del modelo."""
+
+    connection_string = "cs"
+    catalog = "cat"
 
 
 @pytest.fixture
 def motor(monkeypatch):
-    """Sustituye TOM y ADOMD por dobles: aqui no se prueba el motor."""
+    """Sustituye TOM y ADOMD por dobles: aqui no se prueba el motor.
+
+    El lease entrega un modelo CON connection_string, como el real: el conteo
+    se conecta con el modelo del lease, no con el de la sesion -es el arreglo
+    de la carrera con pbi_select_model concurrente-.
+    """
     @contextlib.contextmanager
     def _lease(_s):
-        yield object()
+        yield _ModeloActivo()
 
     @contextlib.contextmanager
     def _connect(_m):

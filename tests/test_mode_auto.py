@@ -22,9 +22,22 @@ from horizun_pbi_mcp.services import dual_mode
 
 
 class _Sesion:
-    def __init__(self, modelo=None, pbip=None):
+    """Doble que modela lo que `resolver_auto` consulta de verdad.
+
+    `viva=False` reproduce la sesion FANTASMA: `active_model` relleno -la
+    sesion se restaura de outputs/session.json al arrancar- pero el Desktop al
+    que apunta ya no existe, asi que verificarla lanza.
+    """
+
+    def __init__(self, modelo=None, pbip=None, viva=True):
         self.active_model = modelo
         self.active_pbip = pbip
+        self._viva = viva
+
+    def require_active_model(self):
+        if self.active_model is None or not self._viva:
+            raise RuntimeError("stale_session: ese Desktop ya no existe")
+        return self.active_model
 
 
 # ------------------------------------------------------------- se acepta ---
@@ -67,6 +80,23 @@ def test_si_los_dos_son_posibles_gana_live(monkeypatch):
     monkeypatch.setattr(project_state, "detect", lambda _a: {"state": "closed"})
     sesion = _Sesion(modelo=object(), pbip=object())
     assert dual_mode.resolver_auto(sesion) == "live"
+
+
+def test_una_sesion_guardada_pero_muerta_no_resuelve_a_live(monkeypatch):
+    """La regresion del revisor: `active_model` relleno no es `live` viable.
+
+    El escenario tipico de `auto` es exactamente este: se trabajo en live, se
+    cerro Desktop -el estado REQUERIDO para escribir pbip- y se pide crear una
+    medida. Resolver `live` por la sesion fantasma acabaria en
+    StaleSessionError ordenando reabrir, cuando `pbip` era viable y era lo que
+    el estado real permitia. `auto` promete mirar el estado REAL: se verifica,
+    no se mira si el campo esta relleno.
+    """
+    from horizun_pbi_mcp.services import project_state
+
+    monkeypatch.setattr(project_state, "detect", lambda _a: {"state": "closed"})
+    sesion = _Sesion(modelo=object(), pbip=object(), viva=False)
+    assert dual_mode.resolver_auto(sesion) == "pbip"
 
 
 # ------------------------------------------------------- falla explicando ---

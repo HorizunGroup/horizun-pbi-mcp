@@ -93,6 +93,9 @@ def refresh_model(
                     mdl.RequestRefresh(rt)
                     refreshed = ["<todo el modelo>"]
                 mdl.SaveChanges()  # dispara el refresh de forma sincrona
+                objetivo_conteo = (_nombres_de_tablas(mdl)
+                                   if refreshed == ["<todo el modelo>"]
+                                   else list(refreshed))
         except (TableNotFoundError, ValidationError):
             raise
         except Exception as exc:  # noqa: BLE001
@@ -104,8 +107,14 @@ def refresh_model(
                 details={"refresh_type": _TYPE_ALIASES[key], "tables": tables},
             ) from exc
 
-    duration_s = round(time.perf_counter() - start, 2)
-    conteos, avisos_conteo = _contar_filas(session, refreshed)
+        # El conteo va DENTRO del lease y contra el MISMO modelo que se
+        # refresco. Fuera, otra llamada concurrente a pbi_select_model podia
+        # cambiar la sesion entre el SaveChanges y el conteo, y rows_by_table
+        # habria listado las tablas de un modelo que jamas se refresco,
+        # presentado como verificacion del refresh. Es la carrera exacta que
+        # el lease existe para impedir.
+        duration_s = round(time.perf_counter() - start, 2)
+        conteos, avisos_conteo = _contar_filas(model, objetivo_conteo)
     salida = {
         "status": "ok",
         "refresh_type": _TYPE_ALIASES[key],
@@ -131,7 +140,7 @@ def _nombres_de_tablas(model) -> List[str]:
     return [str(t.Name) for t in model.Tables]
 
 
-def _contar_filas(session: Session, refrescadas: List[str]):
+def _contar_filas(modelo, objetivo: List[str]):
     """Filas por tabla despues del refresh. `(conteos|None, avisos)`.
 
     Por que existe: un refresh puede terminar en `success` y haber cargado
@@ -140,6 +149,12 @@ def _contar_filas(session: Session, refrescadas: List[str]):
     "ok" sin mirar el resultado es justo lo que el servidor promete no hacer:
     no reportar trabajo que no se verifico.
 
+    `modelo` es el ActiveModel DEL LEASE bajo el que se refresco, y `objetivo`
+    los nombres ya resueltos contra ese mismo modelo: esta funcion no vuelve a
+    consultar la sesion a proposito, porque entre el SaveChanges y el conteo la
+    sesion puede haber cambiado de modelo y el conteo debe ser del que se
+    refresco, no del que este activo ahora.
+
     Nunca lanza. Si no se puede contar, se devuelve `None` y un aviso: es
     preferible admitir que no se comprobo a inventarse un numero, y desde
     luego a tumbar un refresh que si funciono.
@@ -147,19 +162,6 @@ def _contar_filas(session: Session, refrescadas: List[str]):
     from horizun_pbi_mcp.powerbi.adomd_client import AdomdClient
 
     avisos: List[str] = []
-    try:
-        modelo = session.require_active_model()
-    except Exception as exc:                             # noqa: BLE001
-        return None, [f"No se pudieron contar las filas: {type(exc).__name__}."]
-
-    try:
-        with connect(modelo) as (_s, _d, mdl):
-            objetivo = ([t for t in _nombres_de_tablas(mdl)]
-                        if refrescadas == ["<todo el modelo>"] else list(refrescadas))
-    except Exception as exc:                             # noqa: BLE001
-        return None, [f"No se pudo listar las tablas para contarlas: "
-                      f"{type(exc).__name__}."]
-
     if not objetivo:
         return {}, avisos
 
