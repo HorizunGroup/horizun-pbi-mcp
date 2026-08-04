@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from services import format_oracle
+from horizun_pbi_mcp.services import format_oracle
 
 
 CATALOGO = {
@@ -92,7 +92,7 @@ def test_oraculo_no_afirma_equivalencia_si_no_hay_ninguna_fuente(monkeypatch):
 
 
 def test_fallo_del_cli_se_cachea_por_tipo(monkeypatch):
-    from services import report_validator
+    from horizun_pbi_mcp.services import report_validator
 
     calls = {"estado": 0}
     def unavailable():
@@ -163,7 +163,7 @@ def test_oraculo_acepta_fillrule_exportado_por_desktop():
 @pytest.mark.live_validator
 def test_snapshot_administrado_es_subconjunto_del_catalogo_oficial():
     """Impide que el fallback offline se separe silenciosamente de Desktop."""
-    from services import report_validator
+    from horizun_pbi_mcp.services import report_validator
 
     if not report_validator.estado()["available"]:
         pytest.skip("hace falta el CLI oficial")

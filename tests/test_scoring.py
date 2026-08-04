@@ -15,7 +15,7 @@ import copy
 
 import pytest
 
-from services import model_audit, scoring
+from horizun_pbi_mcp.services import model_audit, scoring
 
 
 def hallazgo(regla, severidad="warning"):

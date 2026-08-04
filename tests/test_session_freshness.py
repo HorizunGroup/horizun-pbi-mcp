@@ -10,12 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import config as config_module
-from config import ActiveModel
-from powerbi import desktop_discovery
-from powerbi import model_writer
-from powerbi.desktop_discovery import StaleSessionError
-from powerbi.errors import NoActiveModelError
+import horizun_pbi_mcp.config as config_module
+from horizun_pbi_mcp.config import ActiveModel
+from horizun_pbi_mcp.powerbi import desktop_discovery
+from horizun_pbi_mcp.powerbi import model_writer
+from horizun_pbi_mcp.powerbi.desktop_discovery import StaleSessionError
+from horizun_pbi_mcp.powerbi.errors import NoActiveModelError
 
 
 def instancia(port=50000, pid=111, create_time=1000.0, catalog="cat-A",
@@ -233,7 +233,7 @@ def test_sin_modelo_activo_el_mensaje_sigue_siendo_el_de_siempre(session):
 
 def test_una_sesion_cargada_de_disco_arranca_sin_verificar(isolated_settings):
     """No se confia en lo que quedo guardado en session.json."""
-    from config import Session
+    from horizun_pbi_mcp.config import Session
 
     s = Session(isolated_settings)
     assert s._verified_fingerprint is None

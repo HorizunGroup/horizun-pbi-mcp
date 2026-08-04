@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from services import operations, page_spec, page_update, planning
-from services.page_update import PageConflict
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.services import operations, page_spec, page_update, planning
+from horizun_pbi_mcp.services.page_update import PageConflict
 from tests.fixtures import synthetic
 
 
@@ -92,7 +92,7 @@ def test_update_conserva_el_id_de_la_pagina(proyecto):
 
 def test_conflicto_si_el_nombre_no_es_univoco(proyecto):
     _s, active, md, _r = proyecto
-    from services import pbir_edit
+    from horizun_pbi_mcp.services import pbir_edit
 
     origen = pagina_existente(active)["display_name"]
     pbir_edit.duplicate_page(active, origen, "Duplicada")
@@ -228,7 +228,7 @@ def test_fallo_intermedio_revierte_todo(proyecto, monkeypatch):
     existente = pagina_existente(active)
     antes = huella(raiz)
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     original = txn_service.Transaction.write_json
     estado = {"n": 0}

@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 118,
+  "tool_count": 119,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -26,6 +26,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -63,11 +69,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_add_table_from_file",
-      "description": "Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.\n\nEl mismo recorrido de Power Query —Obtener datos, promover encabezados,\ncambiar tipos, Cargar— pero escrito directo en el proyecto. Los pasos\nde la consulta se llaman como los pone Power BI ('Origen',\n'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y\neditar en el editor sin que desentone.\n\nAdmite .csv, .txt, .tsv, .xlsx, .xlsm, .json, .html/.htm y '.xls'.\nSin dependencias nuevas: el .xlsx se lee como lo que es, un zip con\nXML, y el HTML con `html.parser` de la biblioteca estandar.\n\nUn '.xls' NO se toma por la extension: se mira la firma real del\narchivo. En la practica, casi ningun '.xls' que exportan los ERPs es\nel binario OLE2 que la extension promete -- es una tabla HTML con esa\nextension porque Excel la abre igual. Si de verdad es OLE2 (Excel\n97-2003), se rechaza con un mensaje claro en vez de leerlo mal; si es\nun .xlsx renombrado, se lee como .xlsx.\n\nPara HTML: si el archivo trae varias `<table>`, se elige la mas\ngrande y se avisa (usa `table_id` para elegir una en concreto, el\n`id` HTML de la tabla). Los encabezados solo se promueven si la\ntabla usa `<th>`; un reporte sin esa marca (el caso normal en un\nreporte de ERP, donde la fila 1 es el titulo del reporte, no un\nencabezado) carga con columnas 'Column1', 'Column2'...\n\n**La cultura se deduce del archivo**, mirando como escribe los\ndecimales, y se emite SIEMPRE explicita en la consulta. Asumir la del\nmodelo es lo que convierte 10527.52 en diez millones sin que nada\nfalle: un informe que abre, pinta y miente. `culture` permite forzarla.\n\nLo escrito se valida antes de darlo por bueno: si el TMDL generado no\npasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que\nno abre.\n\n`dry_run=true` devuelve el TMDL y la M sin escribir nada.\n`sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
+      "description": "Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.\n\nEl mismo recorrido de Power Query —Obtener datos, promover encabezados,\ncambiar tipos, Cargar— pero escrito directo en el proyecto. Los pasos\nde la consulta se llaman como los pone Power BI ('Origen',\n'Encabezados promovidos', 'Tipo cambiado'), asi que se puede abrir y\neditar en el editor sin que desentone.\n\nAdmite .csv, .txt, .tsv, .xlsx, .xlsm, .json, .html/.htm y '.xls'.\nSin dependencias nuevas: el .xlsx se lee como lo que es, un zip con\nXML, y el HTML con `html.parser` de la biblioteca estandar.\n\nUn '.xls' NO se toma por la extension: se mira la firma real del\narchivo. En la practica, casi ningun '.xls' que exportan los ERPs es\nel binario OLE2 que la extension promete -- es una tabla HTML con esa\nextension porque Excel la abre igual. Si de verdad es OLE2 (Excel\n97-2003), se rechaza con un mensaje claro en vez de leerlo mal; si es\nun .xlsx renombrado, se lee como .xlsx.\n\nPara HTML: si el archivo trae varias `<table>`, se elige la mas\ngrande y se avisa (usa `table_id` para elegir una en concreto, el\n`id` HTML de la tabla). Los encabezados solo se promueven si la\ntabla usa `<th>`; un reporte sin esa marca (el caso normal en un\nreporte de ERP, donde la fila 1 es el titulo del reporte, no un\nencabezado) carga con columnas 'Column1', 'Column2'...\n\n**La cultura se deduce del archivo**, mirando como escribe los\ndecimales, y se emite SIEMPRE explicita en la consulta. Asumir la del\nmodelo es lo que convierte 10527.52 en diez millones sin que nada\nfalle: un informe que abre, pinta y miente. `culture` permite forzarla.\n\nLo escrito se valida antes de darlo por bueno: si el TMDL generado no\npasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que\nno abre.\n\n**Filas de basura antes del encabezado**: es el patron de export mas\ncomun de un ERP -fila 1 con el titulo del reporte y el resto de la\nfila vacia, encabezado real en la fila 2-. Por defecto se AUTODETECTA\nla primera fila que pueda ser encabezado (sin huecos y sin nombres\nrepetidos) y se dice cual se eligio en `warnings`. `skip_rows` fuerza\ncuantas saltar cuando la deteccion no acierta; `skip_rows=0` obliga a\nusar la fila 1 tal cual. Aplica a csv y xlsx.\n\n`dry_run=true` devuelve el TMDL y la M sin escribir nada.\n`sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.\n\nEscribe en TMDL: requiere el proyecto CERRADO en Power BI Desktop.",
       "params": {
         "culture": {
           "required": false,
@@ -103,6 +115,11 @@
           "type": "string",
           "default": ""
         },
+        "skip_rows": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        },
         "table_id": {
           "required": false,
           "type": "string",
@@ -125,6 +142,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -162,6 +185,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -183,6 +212,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -215,6 +248,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -242,6 +281,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -289,6 +334,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -326,6 +377,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -362,6 +419,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -414,6 +477,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -445,6 +514,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -476,6 +549,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -491,6 +570,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -522,6 +605,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -574,6 +663,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -621,6 +716,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -668,6 +769,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -683,6 +790,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -715,6 +826,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -730,6 +845,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -797,6 +916,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -864,6 +989,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -906,6 +1037,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -968,6 +1105,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1040,6 +1183,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1087,6 +1236,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1139,6 +1294,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1181,11 +1342,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_create_measure",
-      "description": "Crea (o reemplaza con overwrite=true) una medida DAX.\n\nValida que la tabla exista y que la medida no exista salvo overwrite.\n`data_category`: opcional, p.ej. \"ImageUrl\" para medidas que devuelven un\ndata-URI SVG (Power BI las renderiza como imagen en tablas/matrices).\nDevuelve el diff antes/despues.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "description": "Crea (o reemplaza con overwrite=true) una medida DAX.\n\nValida que la tabla exista y que la medida no exista salvo overwrite.\n`data_category`: opcional, p.ej. \"ImageUrl\" para medidas que devuelven un\ndata-URI SVG (Power BI las renderiza como imagen en tablas/matrices).\nDevuelve el diff antes/despues.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
         "data_category": {
           "required": false,
@@ -1248,6 +1415,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1275,6 +1448,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1337,6 +1516,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1409,11 +1594,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_create_visual",
-      "description": "Crea un visual PBIR en una pagina.\n\n`visual_type` acepta: actionButton, areaChart, barChart, button, card,\ncardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,\ndonutChart, funnel, gauge, htmlContent,\nhtmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,\nmatrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,\nrectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,\ntext, textbox, treemap, waterfall y waterfallChart.\n\nPara visuales con datos, valida antes de escribir los roles obligatorios,\nla cardinalidad maxima de cada rol y el tipo de campo admitido: dimension\n(`Grouping`), medida (`Measure`) o cualquiera de ambos\n(`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,\nnavegador y boton) rechazan `fields` porque no llevan consulta.\n\n`fields`: rol -> campos, p.ej. {\"category\":\"Tabla[Col]\",\n          \"values\":[\"[Medida]\"], \"legend\":\"Tabla[Col]\"}.\n\nEl rol se reconoce escrito como sea: el logico (`values`), el nombre\nque usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,\n`Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede\nser `\"Tabla[Campo]\"` o el objeto que devuelve `pbi_list_visuals`, para\npoder leer una pagina y rehacerla sin traducir nada.\n\nUn rol que ese tipo de visual no tiene se RECHAZA con la lista de los\nvalidos. Antes se descartaba en silencio y el visual salia sin datos.\n\n`options`: formato adicional. Llaves reconocidas (una clave no\nreconocida se ignora, no se rechaza; ver `pbi_get_visual` para\ncomprobar que quedo escrito):\n- `background_color`, `border_color` ('#RRGGBB'), `background_transparency`\n  (0-100), `border_radius` (px): el marco de CUALQUIER visual (panel\n  General > Efectos de Desktop). Sin `background_color`/`border_color`\n  no se toca el marco.\n- `card`/`cardVisual`: `show_category_label`, `value_font_size`,\n  `bold_value`, `value_color`.\n- `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.\n- `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.\n\n`position`: {x, y, width, height} (z opcional).\nClona un visual del mismo tipo como plantilla si existe. Hace backup.",
+      "description": "Crea un visual PBIR en una pagina.\n\n`visual_type` acepta: actionButton, areaChart, barChart, button, card,\ncardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,\ndonutChart, funnel, gauge, htmlContent,\nhtmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,\nmatrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,\nrectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,\ntext, textbox, treemap, waterfall y waterfallChart.\n\nPara visuales con datos, valida antes de escribir los roles obligatorios,\nla cardinalidad maxima de cada rol y el tipo de campo admitido: dimension\n(`Grouping`), medida (`Measure`) o cualquiera de ambos\n(`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,\nnavegador y boton) rechazan `fields` porque no llevan consulta.\n\n`fields`: rol -> campos, p.ej. {\"category\":\"Tabla[Col]\",\n          \"values\":[\"[Medida]\"], \"legend\":\"Tabla[Col]\"}.\n\nEl rol se reconoce escrito como sea: el logico (`values`), el nombre\nque usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,\n`Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede\nser `\"Tabla[Campo]\"` o el objeto que devuelve `pbi_list_visuals`, para\npoder leer una pagina y rehacerla sin traducir nada.\n\nUn rol que ese tipo de visual no tiene se RECHAZA con la lista de los\nvalidos. Antes se descartaba en silencio y el visual salia sin datos.\n\n`options`: formato adicional. Llaves reconocidas (una clave no\nreconocida se ignora, no se rechaza; ver `pbi_get_visual` para\ncomprobar que quedo escrito):\n- `background_color`, `border_color` ('#RRGGBB'), `background_transparency`\n  (0-100), `border_radius` (px): el marco de CUALQUIER visual (panel\n  General > Efectos de Desktop). Sin `background_color`/`border_color`\n  no se toca el marco.\n- `card`/`cardVisual`: `show_category_label`, `value_font_size`,\n  `bold_value`, `value_color`.\n- `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.\n- `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.\n  El texto va en `options.text`, NO en `fields` ni en la raiz:\n  {\"type\": \"textbox\", \"options\": {\"text\": \"Resumen\", \"font_size\": 20}}.\n- `image`: `resource` (ItemName ya registrado con\n  `pbi_add_image_resource`), `name`, `scaling`.\n- `pageNavigator`: `show_hidden`, `show_current`.\n- `actionButton`: `action`, `icon`, `target_page`, `text`.\n- `format`: formato del VISUAL, no del contenedor. `mode`\n  (segmentador: Dropdown, List, Between...), `dataLabels` (bool),\n  `legend` (bool), `legendPosition` (Top, Bottom, Left, Right...). Una\n  clave desconocida aqui SE RECHAZA con la lista de las validas: un\n  formato que se pide y no se aplica deja el informe distinto de lo que\n  se penso sin decir por que.\n\n`position`: {x, y, width, height} (z opcional).\nClona un visual del mismo tipo como plantilla si existe. Hace backup.",
       "params": {
         "fields": {
           "required": true,
@@ -1461,6 +1652,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1493,11 +1690,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_delete_measure",
-      "description": "Elimina una medida. Operacion destructiva: requiere confirm=true.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "description": "Elimina una medida. Operacion destructiva: requiere confirm=true.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
         "confirm": {
           "required": false,
@@ -1535,6 +1738,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1567,6 +1776,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1604,6 +1819,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1625,6 +1846,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1652,6 +1877,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1678,6 +1907,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1715,6 +1950,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1741,6 +1982,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1756,6 +2003,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1788,6 +2041,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1840,6 +2099,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1862,6 +2127,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1909,6 +2180,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1956,6 +2231,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1971,6 +2252,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2003,6 +2290,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2030,6 +2321,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2045,11 +2340,15 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_hide_columns",
-      "description": "Oculta/muestra VARIAS columnas como un solo lote.\n\n`columns`: lista de {\"table\": ..., \"column\": ...}.\n\nValida todas las entradas antes de escribir: si alguna tabla o columna\nno existe, no se modifica nada y el error indica el indice. Los archivos\nTMDL se escriben en una sola transaccion y el modelo en vivo con un solo\nSaveChanges. `count` es el numero de entradas SOLICITADAS (incluidos\nduplicados); `results` trae una entrada por cada una, en el mismo orden.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "description": "Oculta/muestra VARIAS columnas como un solo lote.\n\n`columns`: lista de {\"table\": ..., \"column\": ...}.\n\nValida todas las entradas antes de escribir: si alguna tabla o columna\nno existe, no se modifica nada y el error indica el indice. Los archivos\nTMDL se escriben en una sola transaccion y el modelo en vivo con un solo\nSaveChanges. `count` es el numero de entradas SOLICITADAS (incluidos\nduplicados); `results` trae una entrada por cada una, en el mismo orden.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
         "columns": {
           "required": true,
@@ -2082,6 +2381,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2104,6 +2409,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2126,6 +2435,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2141,6 +2454,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2156,6 +2473,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2171,6 +2492,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2198,6 +2523,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2219,6 +2548,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2234,6 +2567,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2255,16 +2592,30 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_list_measures",
-      "description": "Lista medidas con tabla, expresion DAX, formato, descripcion y carpeta.",
+      "description": "Lista medidas con tabla, expresion DAX, formato, descripcion y carpeta.\n\n**Empieza por `detail='summary'`.** Omite la expresion DAX, que es el\ngrueso del peso y rara vez hace falta para orientarse; para leer el DAX\nde una medida concreta usa `pbi_get_object`, y para buscar dentro del\nDAX, `pbi_search_model`. `detail='full'` sigue siendo el valor por\ndefecto por compatibilidad.\n\n`tables`: acota a las medidas de esas tablas.",
       "params": {
+        "detail": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        },
         "source": {
           "required": false,
           "type": "string",
           "default": "live"
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
         }
       },
       "required": [],
@@ -2276,6 +2627,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2291,6 +2646,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2312,6 +2671,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2333,6 +2696,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2354,6 +2721,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2375,6 +2746,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2390,6 +2765,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2405,6 +2784,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2426,16 +2809,30 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_list_tables",
-      "description": "Lista tablas con columnas, tipos, visibilidad y conteos.\n\n`source`: 'live' (modelo abierto, por defecto) o 'pbip' (archivos TMDL).",
+      "description": "Lista tablas con columnas, tipos, visibilidad y conteos.\n\n`source`: 'live' (modelo abierto, por defecto) o 'pbip' (archivos TMDL).\n\n**Empieza por `detail='summary'`.** Devuelve nombre, visibilidad y\nrecuentos, sin la lista de columnas. Con `detail='full'` (por defecto,\npor compatibilidad) un modelo de siete tablas ocupa ~28.000 caracteres y\nuno corporativo puede llenar buena parte de la ventana de contexto en\nuna sola llamada.\n\n`tables`: acota a esas tablas por nombre. Es lo que se usa despues del\nresumen para pedir el detalle solo de las que interesan. Un nombre que\nno existe falla y devuelve los disponibles, en vez de una lista vacia.",
       "params": {
+        "detail": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        },
         "source": {
           "required": false,
           "type": "string",
           "default": "live"
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
         }
       },
       "required": [],
@@ -2447,6 +2844,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2462,6 +2863,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2484,6 +2889,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2516,6 +2925,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2537,6 +2950,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2569,6 +2986,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2595,6 +3018,65 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_open_and_refresh",
+      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        },
+        "type": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2632,6 +3114,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2654,6 +3142,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2669,6 +3161,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2696,6 +3192,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2723,6 +3223,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2749,6 +3253,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2776,6 +3286,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2798,6 +3314,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2824,6 +3346,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2839,6 +3367,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2875,6 +3407,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2912,11 +3450,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_refresh_model",
-      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nDevuelve estado y duracion. Los errores de credenciales/origen se reportan.",
+      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
       "params": {
         "request_id": {
           "required": false,
@@ -2943,6 +3487,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2975,6 +3525,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3002,6 +3558,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3033,6 +3595,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3075,6 +3643,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3090,6 +3664,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3132,6 +3710,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3169,6 +3753,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3195,6 +3783,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3210,11 +3802,15 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_set_column_visibility",
-      "description": "Oculta o muestra una columna del modelo (p.ej. ocultar columnas de ID).\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "description": "Oculta o muestra una columna del modelo (p.ej. ocultar columnas de ID).\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
         "column": {
           "required": true,
@@ -3252,6 +3848,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3314,6 +3916,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3356,6 +3964,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3388,6 +4002,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3425,6 +4045,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3462,6 +4088,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3494,11 +4126,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento doce tools con buen nombre siguen siendo ciento doce tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento diecinueve tools con buen nombre siguen siendo ciento diecinueve tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,
@@ -3515,6 +4153,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3530,11 +4172,15 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_update_measure",
-      "description": "Actualiza una medida existente. Lo no especificado se conserva.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip'.",
+      "description": "Actualiza una medida existente. Lo no especificado se conserva.\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
         "description": {
           "required": false,
@@ -3587,6 +4233,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3644,6 +4296,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3681,6 +4339,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3703,6 +4367,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3725,6 +4393,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3747,6 +4419,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3762,6 +4438,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3788,6 +4468,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     }
   ]

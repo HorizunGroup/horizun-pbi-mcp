@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-import config
-from config import ActivePbip, Session, Settings
+from horizun_pbi_mcp import config
+from horizun_pbi_mcp.config import ActivePbip, Session, Settings
 
 
 def pytest_configure(config):
@@ -70,7 +70,7 @@ def proyecto_cerrado(monkeypatch, request):
     BI Desktop abierto en ese momento. Las pruebas que SI quieren ejercitar el
     detector se marcan con `@pytest.mark.real_project_state`.
     """
-    from services import project_state
+    from horizun_pbi_mcp.services import project_state
 
     project_state.invalidate_cache()
     if "real_project_state" in request.keywords:

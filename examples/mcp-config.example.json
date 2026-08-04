@@ -11,9 +11,10 @@
       "type": "stdio",
       "command": "<PYTHON_EXE>",
       "args": [
-        "<PROJECT_ROOT>/src/server.py"
+        "-m", "horizun_pbi_mcp.server"
       ],
       "env": {
+        "PYTHONPATH": "<PROJECT_ROOT>/src",
         "HORIZUN_PBI_MCP_LOG_LEVEL": "INFO"
       }
     }

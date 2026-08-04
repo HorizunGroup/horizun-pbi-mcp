@@ -21,9 +21,9 @@ from pathlib import Path
 
 import pytest
 
-import branding
+from horizun_pbi_mcp import branding
 from mcp.server.fastmcp import FastMCP
-from server import build_server
+from horizun_pbi_mcp.server import build_server
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -43,6 +43,43 @@ def test_el_atributo_privado_sigue_existiendo():
         "version y anunciaria la de la libreria mcp.")
     assert hasattr(servidor._mcp_server, "version"), (
         "El servidor interno ya no tiene 'version'.")
+
+
+def test_el_gestor_de_tools_sigue_permitiendo_anotarlas():
+    """La segunda dependencia sobre API privada: `mcp._tool_manager`.
+
+    `server._anotar_riesgo()` recorre ahi las tools ya registradas para
+    declararles su clase de riesgo, en vez de repetir el argumento en las 118
+    firmas. Si una version futura de `mcp` renombra el gestor o deja de
+    devolver los objetos vivos, el servidor arrancaria igual pero las tools
+    saldrian SIN annotations: el cliente perderia la senal de que distingue una
+    lectura de un borrado, y nadie se enteraria.
+    """
+    servidor = FastMCP("sonda")
+
+    @servidor.tool()
+    def pbi_sonda() -> dict:
+        """Tool de prueba."""
+        return {}
+
+    assert hasattr(servidor, "_tool_manager"), (
+        "FastMCP ya no expone _tool_manager: migra server._anotar_riesgo() a "
+        "la API publica.")
+    registradas = servidor._tool_manager.list_tools()
+    assert registradas, "_tool_manager.list_tools() ya no devuelve las tools"
+    assert hasattr(registradas[0], "annotations"), (
+        "las tools del gestor ya no tienen 'annotations'")
+
+    # Los objetos tienen que ser los VIVOS: si list_tools() empezara a
+    # devolver copias, anotarlas no tendria ningun efecto sobre el handshake.
+    registradas[0].annotations = None
+    from mcp.types import ToolAnnotations
+
+    registradas[0].annotations = ToolAnnotations(readOnlyHint=True)
+    publicadas = asyncio.run(servidor.list_tools())
+    assert publicadas[0].annotations is not None, (
+        "anotar lo que devuelve _tool_manager.list_tools() ya no llega al "
+        "handshake: _anotar_riesgo() no surtiria efecto.")
 
 
 def test_el_servidor_anuncia_la_version_del_producto():

@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbip_scaffold, project_locator, table_from_file
-from services import tmdl_validate
+from horizun_pbi_mcp.pbip import pbip_scaffold, project_locator, table_from_file
+from horizun_pbi_mcp.services import tmdl_validate
 
 
 def test_crea_la_estructura_completa(tmp_path):
@@ -209,7 +209,7 @@ def test_overwrite_reemplaza_el_arbol_entero_y_respalda_lo_anterior(tmp_path):
 
 @pytest.mark.real_project_state
 def test_overwrite_no_reemplaza_un_proyecto_abierto(tmp_path, monkeypatch):
-    from services import project_state
+    from horizun_pbi_mcp.services import project_state
 
     primero = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
     raiz = Path(primero["project_dir"])

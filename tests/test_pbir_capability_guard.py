@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import pbir_edit
-from services.pbir_edit import PbirVersionUnsupported
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import pbir_edit
+from horizun_pbi_mcp.services.pbir_edit import PbirVersionUnsupported
 from tests.fixtures import synthetic
 
 
@@ -152,7 +152,8 @@ def test_todas_las_escrituras_pbir_invocan_el_guard():
 
     exentas = {"assert_escritura_pbir", "assert_pbir_soportado"}
     fallos = []
-    for archivo in ("src/services/pbir_edit.py", "src/pbip/pbir_writer.py"):
+    for archivo in ("src/horizun_pbi_mcp/services/pbir_edit.py",
+                    "src/horizun_pbi_mcp/pbip/pbir_writer.py"):
         texto = pathlib.Path(archivo).read_text(encoding="utf-8")
         for nodo in ast.walk(ast.parse(texto)):
             if not isinstance(nodo, ast.FunctionDef) or nodo.name in exentas:
@@ -174,7 +175,7 @@ def test_el_formato_se_comprueba_antes_que_desktop(proyecto, monkeypatch):
     active, _raiz = proyecto
     poner_version(active, "9.9")
 
-    from services import project_state
+    from horizun_pbi_mcp.services import project_state
 
     llamadas = []
     original = project_state.assert_writable

@@ -1,8 +1,8 @@
 """Pruebas del motor de layout (geometria pura)."""
 import pytest
 
-from pbip.layout_engine import compute_layout
-from powerbi.errors import ValidationError
+from horizun_pbi_mcp.pbip.layout_engine import compute_layout
+from horizun_pbi_mcp.powerbi.errors import ValidationError
 
 CANVAS = {"width": 1280, "height": 720}
 

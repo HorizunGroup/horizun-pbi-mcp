@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import recovery
-from services import txn as txn_service
-from services.recovery import RecoveryConflict, RecoveryError, UnsafePurgeRoot
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import recovery
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.recovery import RecoveryConflict, RecoveryError, UnsafePurgeRoot
 from tests.fixtures import synthetic
 
 
@@ -38,7 +38,7 @@ def proyecto(session, tmp_path, isolated_settings):
 
 def una_edicion(active):
     """Hace un cambio real y devuelve (journal, huella previa)."""
-    from services import pbir_edit
+    from horizun_pbi_mcp.services import pbir_edit
 
     pagina = pbir_reader.list_pages(active)[0]
     r = pbir_edit.rename_page(active, pagina["display_name"], "Renombrada")
@@ -110,7 +110,7 @@ def test_fallo_durante_la_recuperacion_revierte_el_intento(
 
 def test_recrea_los_directorios_eliminados(proyecto):
     """F2: al borrar el ultimo visual desaparece su carpeta."""
-    from services import pbir_edit
+    from horizun_pbi_mcp.services import pbir_edit
 
     active, raiz, _s = proyecto
     pagina = pbir_reader.list_pages(active)[0]

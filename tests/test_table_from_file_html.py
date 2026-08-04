@@ -23,9 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import project_locator, table_from_file
-from pbip.table_from_file import TableFromFileError, _TablaHTML
-from services import tmdl_validate
+from horizun_pbi_mcp.pbip import project_locator, table_from_file
+from horizun_pbi_mcp.pbip.table_from_file import TableFromFileError, _TablaHTML
+from horizun_pbi_mcp.services import tmdl_validate
 
 
 @pytest.fixture

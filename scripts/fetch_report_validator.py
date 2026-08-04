@@ -107,7 +107,7 @@ def instalar(destino: Path) -> dict:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    from services import report_validator as rv
+    from horizun_pbi_mcp.services import report_validator as rv
 
     cli = rv.localizar()
     if cli is None:
@@ -127,7 +127,7 @@ def main() -> int:
                    help="solo informar del estado, sin instalar")
     args = p.parse_args()
 
-    from services import report_validator as rv
+    from horizun_pbi_mcp.services import report_validator as rv
 
     if args.check:
         print(json.dumps(rv.estado(), indent=2, ensure_ascii=False))

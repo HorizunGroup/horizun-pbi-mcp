@@ -35,6 +35,13 @@ The **34** baseline tools are frozen in `tests/golden/tools_v1.json`.
 - adding new fields to the response dict
 - improving descriptions
 
+**Adding a tool also means classifying it** in `src/tools/risk.py`. The suite
+fails if you don't: an unclassified tool is announced to the client as
+destructive — which is the safe default, but the table has to say so out loud.
+Never declare as `read_only` anything that calls `guard_mutation` or writes a
+file; `tests/test_tool_annotations.py` checks that against the code, not
+against the docs.
+
 Check at any time:
 
 ```bash

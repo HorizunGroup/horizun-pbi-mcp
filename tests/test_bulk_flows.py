@@ -17,11 +17,11 @@ from pathlib import Path
 
 import pytest
 
-from pbip import page_builder, pbir_reader, pbir_writer, project_locator, visual_factory
-from powerbi.errors import ValidationError
-from services import project_state
-from services import txn as txn_service
-from services.txn import RollbackIncompleteError
+from horizun_pbi_mcp.pbip import page_builder, pbir_reader, pbir_writer, project_locator, visual_factory
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import project_state
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.txn import RollbackIncompleteError
 from tests.fixtures import synthetic
 
 

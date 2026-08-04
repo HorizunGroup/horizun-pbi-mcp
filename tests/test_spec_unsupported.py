@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from services import page_spec
-from services.page_spec import UnsupportedSpecFeature
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.services import page_spec
+from horizun_pbi_mcp.services.page_spec import UnsupportedSpecFeature
 from tests.fixtures import synthetic
 
 
@@ -118,8 +118,8 @@ def test_un_spec_sin_filtros_sigue_creando_la_pagina(proyecto):
 
 def test_la_tool_de_validacion_lo_reporta_como_etapa(proyecto, monkeypatch, gate):
     """pbi_validate_page_spec no puede decir 'valido' y luego fallar al aplicar."""
-    import config as cfg
-    from server import build_server
+    import horizun_pbi_mcp.config as cfg
+    from horizun_pbi_mcp.server import build_server
     import asyncio
 
     active, _md, _raiz = proyecto

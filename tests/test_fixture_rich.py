@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import pbir_schema
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import pbir_schema
 from tests.fixtures import rich
 
 

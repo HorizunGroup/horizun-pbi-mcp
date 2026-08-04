@@ -22,14 +22,14 @@ from pathlib import Path
 
 import pytest
 
-from config import ActiveModel
-from pbip import model_edit, project_locator, tmdl_writer
-from powerbi import model_writer
-from services import dual_mode, project_state
-from services.dual_mode import DualModeNotAvailableError
+from horizun_pbi_mcp.config import ActiveModel
+from horizun_pbi_mcp.pbip import model_edit, project_locator, tmdl_writer
+from horizun_pbi_mcp.powerbi import model_writer
+from horizun_pbi_mcp.services import dual_mode, project_state
+from horizun_pbi_mcp.services.dual_mode import DualModeNotAvailableError
 from tests.fixtures import synthetic
-from tools._common import guard
-from tools import model_edit_tools
+from horizun_pbi_mcp.tools._common import guard
+from horizun_pbi_mcp.tools import model_edit_tools
 
 # Las seis tools con parametro `mode`.
 TOOLS_DUALES = [
@@ -86,7 +86,7 @@ def espia(monkeypatch, tmp_path):
 
     monkeypatch.setattr(model_writer, "connect", fake_connect)
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
     original = txn_service.durable_write
 
     def contar_escritura(path, data, validator=None):
@@ -95,7 +95,7 @@ def espia(monkeypatch, tmp_path):
 
     monkeypatch.setattr(txn_service, "durable_write", contar_escritura)
 
-    from utils import change_log
+    from horizun_pbi_mcp.utils import change_log
     monkeypatch.setattr(change_log, "record_change",
                         lambda *a, **k: c.__setattr__("change_log", c.change_log + 1))
     for modulo in (model_edit, tmdl_writer, model_edit_tools):
@@ -149,7 +149,7 @@ def test_el_mensaje_explica_las_cuatro_cosas():
 
 
 def test_modo_invalido_sigue_siendo_error_de_validacion():
-    from powerbi.errors import ValidationError
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
     with pytest.raises(ValidationError):
         dual_mode.assert_mode_is_safely_executable("modo_inexistente")
 
@@ -175,7 +175,7 @@ def test_run_dual_no_ejecuta_los_dos_lados():
 
 def test_run_dual_propaga_el_error_en_vez_de_marcar_inconsistente():
     """Antes, un fallo en un lado se convertia en `consistent: False`."""
-    from powerbi.errors import ValidationError
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
 
     def explota():
         raise ValidationError("fallo del destino")
@@ -210,8 +210,8 @@ def tools_registradas(sesion_realista, monkeypatch):
     import sys
 
     sys.path.insert(0, "src")
-    import config as cfg
-    from server import build_server
+    import horizun_pbi_mcp.config as cfg
+    from horizun_pbi_mcp.server import build_server
 
     session, _project = sesion_realista
     monkeypatch.setattr(cfg, "_session", session)
@@ -351,7 +351,7 @@ def test_las_seis_tools_siguen_aceptando_el_parametro_mode():
     import sys
 
     sys.path.insert(0, "src")
-    from server import build_server
+    from horizun_pbi_mcp.server import build_server
 
     tools = {t.name: t for t in asyncio.run(build_server().list_tools())}
     for nombre in TOOLS_DUALES:
@@ -367,7 +367,7 @@ def test_las_descripciones_avisan_de_la_limitacion():
     import sys
 
     sys.path.insert(0, "src")
-    from server import build_server
+    from horizun_pbi_mcp.server import build_server
 
     tools = {t.name: t for t in asyncio.run(build_server().list_tools())}
     for nombre in TOOLS_DUALES:

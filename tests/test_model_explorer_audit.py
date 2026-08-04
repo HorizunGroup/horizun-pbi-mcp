@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from pbip import project_locator, tmdl_reader
-from powerbi.errors import MeasureNotFoundError, TableNotFoundError, ValidationError
-from services import model_audit, model_explorer
+from horizun_pbi_mcp.pbip import project_locator, tmdl_reader
+from horizun_pbi_mcp.powerbi.errors import MeasureNotFoundError, TableNotFoundError, ValidationError
+from horizun_pbi_mcp.services import model_audit, model_explorer
 from tests.fixtures import synthetic
 
 

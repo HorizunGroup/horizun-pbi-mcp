@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import idempotency
-from services.idempotency import Store
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import idempotency
+from horizun_pbi_mcp.services.idempotency import Store
 from tests.fixtures import synthetic
 
 
@@ -209,7 +209,7 @@ def test_escritura_atomica_no_deja_registros_a_medias(store, monkeypatch):
     idempotency.comenzar(store, "r1", "op", PAYLOAD)
     idempotency.terminar_ok(store, "r1", "op", PAYLOAD, {"ok": True, "v": 1})
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     def revienta(*a, **k):
         raise OSError("proceso interrumpido")
@@ -225,7 +225,7 @@ def test_escritura_atomica_no_deja_registros_a_medias(store, monkeypatch):
 
 def test_request_id_malicioso_no_escribe_fuera(store):
     """El request_id viene del cliente: nunca se concatena sin validar."""
-    from powerbi.errors import PathSecurityError
+    from horizun_pbi_mcp.powerbi.errors import PathSecurityError
 
     for veneno in ("../fuera", "..\\fuera", "a/b", "C:\\evil"):
         with pytest.raises((PathSecurityError, Exception)):
@@ -254,8 +254,8 @@ def proyecto(session, tmp_path, isolated_settings):
 @pytest.fixture
 def mcp(proyecto, monkeypatch):
     """Servidor real, con la sesion del fixture. Se llama por el canal MCP."""
-    import config as cfg
-    from server import build_server
+    import horizun_pbi_mcp.config as cfg
+    from horizun_pbi_mcp.server import build_server
 
     session, _active, _raiz = proyecto
     monkeypatch.setattr(cfg, "_session", session)

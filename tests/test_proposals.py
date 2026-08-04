@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from services import proposals
+from horizun_pbi_mcp.services import proposals
 
 
 def modelo(**extra):

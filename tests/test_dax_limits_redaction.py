@@ -16,9 +16,9 @@ import json
 
 import pytest
 
-from powerbi.errors import ValidationError
-from services import redaction
-from utils import validation
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import redaction
+from horizun_pbi_mcp.utils import validation
 
 
 # =========================================================== H1: los limites ==
@@ -63,7 +63,7 @@ def test_valores_validos_pasan():
 
 def test_run_dax_valida_antes_de_conectar(session, monkeypatch):
     """Un limite invalido no puede llegar a abrir una conexion."""
-    from powerbi import dax_runner
+    from horizun_pbi_mcp.powerbi import dax_runner
 
     abiertas = []
 
@@ -139,7 +139,7 @@ def test_el_cliente_adomd_no_filtra_en_sus_errores(monkeypatch):
     """Los dos puntos de fuga reales, en su sitio."""
     import inspect
 
-    from powerbi import adomd_client
+    from horizun_pbi_mcp.powerbi import adomd_client
 
     fuente = inspect.getsource(adomd_client)
     assert "details={\"connection_string\": self.connection_string}" not in fuente, (
@@ -152,7 +152,7 @@ def test_el_cliente_adomd_no_filtra_en_sus_errores(monkeypatch):
 
 # ============================================ H2: la exportacion es honesta ===
 def test_la_exportacion_declara_si_esta_truncada(isolated_settings):
-    from powerbi import dax_runner
+    from horizun_pbi_mcp.powerbi import dax_runner
 
     ruta = dax_runner._exportar(                       # noqa: SLF001
         'EVALUATE Tabla', ["a"], [[1], [2]],
@@ -166,7 +166,7 @@ def test_la_exportacion_declara_si_esta_truncada(isolated_settings):
 
 
 def test_la_exportacion_completa_lo_dice(isolated_settings):
-    from powerbi import dax_runner
+    from horizun_pbi_mcp.powerbi import dax_runner
 
     ruta = dax_runner._exportar(                       # noqa: SLF001
         'EVALUATE Tabla', ["a"], [[1]],

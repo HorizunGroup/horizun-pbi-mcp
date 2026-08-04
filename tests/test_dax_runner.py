@@ -5,10 +5,10 @@ solas cuando no hay ningun motor sirviendo un modelo.
 """
 import pytest
 
-from powerbi import dax_runner, desktop_discovery
-from powerbi.errors import NoActiveModelError, ValidationError
-from reporting import analyze_model_quality, document_model_markdown
-from utils.validation import validate_dax_query
+from horizun_pbi_mcp.powerbi import dax_runner, desktop_discovery
+from horizun_pbi_mcp.powerbi.errors import NoActiveModelError, ValidationError
+from horizun_pbi_mcp.reporting import analyze_model_quality, document_model_markdown
+from horizun_pbi_mcp.utils.validation import validate_dax_query
 
 
 def test_run_dax_without_active_model(session):
@@ -108,7 +108,7 @@ def test_la_ruta_live_usa_la_api_que_existe():
                            "`python -m pytest -m live`.")
 def test_run_dax_live(isolated_settings):
     """DAX de solo lectura contra el motor real. No muta nada."""
-    from config import Session, Settings
+    from horizun_pbi_mcp.config import Session, Settings
 
     # Settings aisladas (la session.json de la prueba va a tmp_path, no a las
     # outputs/ del usuario) pero con las DLL de verdad: `libs_dir` del fixture

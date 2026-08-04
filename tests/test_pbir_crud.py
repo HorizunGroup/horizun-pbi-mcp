@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from powerbi.errors import ValidationError
-from services import layout_doctor, pbir_edit, project_state
-from services import txn as txn_service
-from services.pbir_edit import UnsupportedPbirFeature
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import layout_doctor, pbir_edit, project_state
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.pbir_edit import UnsupportedPbirFeature
 from tests.fixtures import synthetic
 
 P = synthetic.PAGE_ID
@@ -163,7 +163,7 @@ def test_set_visual_title_preserva_formato(proyecto):
 
 def test_formato_condicional_devuelve_aviso_de_contraste_del_tema(
         proyecto, monkeypatch):
-    from pbip import theme
+    from horizun_pbi_mcp.pbip import theme
 
     active, _p, _s = proyecto
     monkeypatch.setattr(
@@ -539,7 +539,7 @@ def test_se_conserva_el_final_de_linea_del_archivo(proyecto, tmp_path):
     `pages.json` dejaba de coincidir en huella, que es justo lo que se usa para
     demostrar que no se toco nada.
     """
-    from utils.json_utils import detect_newline, write_json
+    from horizun_pbi_mcp.utils.json_utils import detect_newline, write_json
 
     _active, project, _s = proyecto
     crlf = tmp_path / "crlf.json"
@@ -558,6 +558,6 @@ def test_se_conserva_el_final_de_linea_del_archivo(proyecto, tmp_path):
 
 def test_un_archivo_nuevo_usa_crlf(tmp_path):
     """Por defecto se escribe como escribe Power BI."""
-    from utils.json_utils import detect_newline
+    from horizun_pbi_mcp.utils.json_utils import detect_newline
 
     assert detect_newline(tmp_path / "no_existe.json") == b"\r\n"
