@@ -33,7 +33,8 @@
         "-m", "horizun_pbi_mcp.server"
       ],
       "env": {
-        "HORIZUN_PBI_MCP_LOG_LEVEL": "INFO"
+        "HORIZUN_PBI_MCP_LOG_LEVEL": "INFO",
+        "PYTHONPATH": "<PROJECT_ROOT>/src"
       }
     }
   }

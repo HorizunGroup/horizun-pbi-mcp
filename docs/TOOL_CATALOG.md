@@ -179,7 +179,7 @@ Close two gaps of the same kind: having the pieces isn't the same as knowing how
 
 ## Risk classes
 
-Every tool declares its class in [`src/tools/risk.py`](../src/tools/risk.py),
+Every tool declares its class in [`src/tools/risk.py`](../src/horizun_pbi_mcp/tools/risk.py),
 and the server translates it into the MCP `annotations` (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) so the client can decide
 what to run without asking and what to warn about. The table is contrasted

@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.0.1** — 117 tools, 1547 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
+**v1.1.0** — 119 tools, 1699 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
 
 | Layer | For what | How |
 |---|---|---|
@@ -22,7 +22,7 @@
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 118 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 119 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -92,7 +92,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 When the first session opens, the plugin runs the full setup automatically in
 the background. Check `pbi_install_status`; once it finishes, restart the
-client and the 117 `pbi_*` tools will be available. There are no downloads or
+client and the 119 `pbi_*` tools will be available. There are no downloads or
 additional scripts the user needs to run manually.
 
 > **Honest technical limit:** there's no dedicated executable, but you do need
@@ -142,8 +142,8 @@ For a quick test without MCP, in Python:
 
 ```python
 import sys; sys.path.insert(0, "src")
-from config import get_session
-from powerbi import desktop_discovery, dax_runner
+from horizun_pbi_mcp.config import get_session
+from horizun_pbi_mcp.powerbi import desktop_discovery, dax_runner
 s = get_session()
 print(desktop_discovery.discover_instances())
 desktop_discovery.select_model(s)
@@ -190,7 +190,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 
 ---
 
-## Available tools (117)
+## Available tools (119)
 
 > Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -332,13 +332,15 @@ They are **rejected** with `unsupported_feature` indicating the exact JSON path.
 
 ```
 horizun-pbi-mcp/
-├─ src/
+├─ src/horizun_pbi_mcp/    # single installable package
 │  ├─ server.py            # FastMCP + tool registration
 │  ├─ config.py            # settings + session (active model/pbip)
 │  ├─ logging_config.py
 │  ├─ reporting.py         # Markdown documentation + quality
+│  ├─ branding.py          # product identity and version
 │  ├─ powerbi/             # live layer (ADOMD/TOM)
 │  ├─ pbip/                # on-disk layer (TMDL/PBIR)
+│  ├─ services/            # security, validation, audit, workflows
 │  ├─ tools/               # MCP tools by area
 │  └─ utils/               # JSON, files, validation, change_log
 ├─ scripts/fetch_libs.py   # downloads Analysis Services DLLs
@@ -352,7 +354,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**1262 tests, 3 skipped.** The skip is environmental and says how to run it:
+**1699 tests, 3 skipped.** The skip is environmental and says how to run it:
 
 | Skipped | Condition |
 |---|---|
@@ -367,7 +369,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 118 tools are frozen):
+Verify the MCP contract (the 119 tools are frozen):
 
 ```bash
 python -m tests.contract_utils

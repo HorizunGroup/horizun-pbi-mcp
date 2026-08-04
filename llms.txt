@@ -9,7 +9,7 @@
 - Repository: https://github.com/HorizunGroup/horizun-pbi-mcp
 - Latest stable release: https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest
 - Installation and client setup: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/INSTALL.md
-- Full tool catalogue (117 tools): https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/TOOL_CATALOG.md
+- Full tool catalogue (119 tools): https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/TOOL_CATALOG.md
 - Architecture and invariants: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/ARCHITECTURE.md
 - Security model: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/SECURITY.md
 - Tutorial, install to first dashboard: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/TUTORIAL.md
@@ -29,7 +29,7 @@ model; visuals, pages and layout are never touched through it or through any
 live API — those are edited exclusively through PBIR files. The server
 enforces that separation instead of trying to move visuals live.
 
-v1.0.1 ships 117 tools, backed by 1547 passing tests (3 skipped, each with
+v1.1.0 ships 119 tools, backed by 1699 passing tests (3 skipped, each with
 its documented condition). Two validation layers check every PBIR edit
 before it is written, and non-read-only DAX is blocked by a fail-closed
 classifier.

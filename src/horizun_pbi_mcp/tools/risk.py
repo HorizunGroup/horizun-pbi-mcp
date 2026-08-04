@@ -46,7 +46,7 @@ llamadas iguales a `pbi_create_visual` crean dos visuales. Anunciar
 `idempotent=True` seria prometer una garantia que depende de que quien llama haga
 su parte.
 
-`openWorldHint` es `False` en las 118: este servidor habla con el disco local y
+`openWorldHint` es `False` en las 119: este servidor habla con el disco local y
 con un Power BI Desktop local. No hay dominio abierto.
 """
 from __future__ import annotations

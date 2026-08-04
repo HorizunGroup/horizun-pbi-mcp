@@ -5,27 +5,15 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [1.0.1] — 2026-08-02
+## [1.1.0] — 2026-08-03
 
-### Fixed
-
-- The official oracle now also checks visuals that only contain
-  `visualContainerObjects`; it no longer falls back to the partial snapshot in that case.
-- Empty format expressions (`expr: {}`) are rejected before writing.
-- Downgrading to an earlier PBIR schema is limited to versions the
-  manifest expressly identifies as not published by Microsoft.
-- An already-open PBIP session can be reused without first validating a
-  different or incomplete copy of the model saved on disk.
-
----
-
-## [Unreleased]
-
-Five gaps found while using the server on a real case (building a
-construction-budget dashboard from scratch, with data from an external ERP),
-not invented ones: each one cost real session time before being worked
-around by hand, and this delivery keeps the next case from paying the same
-price.
+Everything here came out of real use, not a roadmap: five gaps hit while
+building a construction-budget dashboard end to end (PR #5), and fourteen
+limitations written down during a second full session — each one cost real
+time before being worked around by hand. The common thread of the fixes: the
+server used to KNOW the answer and not say it (a note, a hint, an error
+count, a mode that always failed). One new tool (`pbi_open_and_refresh`,
+118 → 119) and no breaking changes: the frozen contract holds.
 
 ### Added
 
@@ -92,6 +80,54 @@ price.
   doesn't exist, instead of returning an empty list that reads as "the model
   is empty". The default stays `full`: the contract is frozen and nobody's
   existing call changes behavior.
+
+- **Header-row autodetection and `skip_rows` in `pbi_add_table_from_file`**:
+  the most common ERP export pattern — row 1 holds the report title and six
+  empty cells, the real header sits in row 2 — used to die with "6 unnamed
+  column(s) in the header row" and force hand-writing the M partition and the
+  TMDL. Now the first plausible header row (no gaps, no duplicate names,
+  spanning the table's full width) is detected among the first ten, the choice
+  is announced in `warnings` with the parameter to override it, and — the part
+  that matters — **the generated M query skips the same rows**, otherwise the
+  TMDL would describe one set of columns and the refresh would load another.
+  Two defects found by the tests, not by reasoning: the CSV delimiter was
+  sniffed only on row 1 (a title row has no separators, so it always fell back
+  to comma), and a single-cell title row passed the heuristic — hence the
+  full-width requirement.
+
+- **`format` block per visual** (spec and `pbi_create_visual`): slicer `mode`
+  (Dropdown/List/Between…), `dataLabels`, `legend`, `legendPosition` — the
+  things that used to require hand-writing `objects` inside each
+  `visual.json`. The vocabulary is short on purpose: every entry is checked
+  against the official catalog, the written paths are declared to the format
+  oracle (it only checks what is declared — undeclared paths pass unseen,
+  which is how invalid `objects` slipped in historically), and an unknown key
+  **fails** instead of being ignored: a format that is asked for and not
+  applied leaves the report different from what was designed, silently.
+  Plus **incremental z-order**: every visual came out with `z: 0` and then
+  `pbi_detect_layout_issues` flagged `layout_z_order_duplicated` — the tool
+  generated the very problem its own auditor reported. Hand-set `z` values
+  are respected.
+
+- **`mode='auto'` on the six dual tools**: the historical default `live`
+  requires Desktop open, writing the model requires it closed, and `both` is
+  blocked — so in the build-from-scratch flow the default always failed.
+  `auto` resolves against the real state inside the same precondition that
+  blocks `both` (i.e., before any effect): live session → `live`; project on
+  disk and Desktop closed → `pbip`; both possible → `live`; neither → an
+  error that names the exact tool to run. The default itself is untouched:
+  changing a default breaks the frozen contract.
+
+- **`rows_by_table` in `pbi_refresh_model`**: a refresh can finish "ok" and
+  have loaded ZERO rows (credentials returning an empty set, a date filter
+  reaching nothing, a source that changed schema). Row counts are read back
+  from the model after the refresh; zero-row tables are additionally warned.
+  If counting fails, the response says so — inventing a zero would be worse
+  than not counting, because zero is precisely the alarm signal. And the new
+  **`pbi_open_and_refresh`** collapses the real working sequence (a freshly
+  opened `.pbip` has no data) into one call; on refresh failure the window is
+  deliberately left open, because closing it would destroy exactly the
+  context needed to see why.
 
 ### Changed
 
@@ -166,6 +202,53 @@ price.
   *less* cautious (gaining `readOnlyHint`, losing `destructiveHint`, losing
   the annotations entirely) is a **break**; becoming more cautious is a
   compatible change.
+
+- **The official validator reported errors without saying which**: after two
+  hand-edited `visual.json` files, every response carried
+  `{"errors": 8, "preexisting_diagnostics": 8}` and never listed a single
+  one — no rule, no file, no JSON path, no message. Eight unreadable errors
+  are eight uncorrectable errors. Two distinct holes: `to_envelope()` didn't
+  include `diagnostics` at all, and the before/after comparison returned
+  preexisting findings as a bare count (they don't block, so nobody ever
+  listed them — they were exactly those eight). The parser also used to throw
+  away the CLI's human message, which is usually the only thing that says
+  what's wrong; it is now kept, redacted like everything from an external
+  process, and deliberately excluded from the comparison key so a CLI update
+  doesn't make old defects look new.
+
+- **Three claims the server made that weren't true**: the refresh note said
+  "save in Desktop to persist" — false for `.pbip`, which stores definition,
+  not data (the note now depends on the actual project format, and when the
+  format is unknown it explains the difference instead of asserting either);
+  theme presets defined data-label color and size but never turned them on
+  (`"show": true` was missing, so charts shipped without numbers); and
+  `pbi_page_building_blocks` described a spec shape the validator rejects —
+  it now returns `example_spec`, a minimal spec the test runs through
+  `validate_schema()` rather than trusting the prose.
+
+- **`textbox` and `image` were announced but unusable**: the error said
+  "needs 'text'" without saying WHERE, so `fields` and the visual root were
+  tried and failed identically — a page title had to be faked with cards. The
+  errors now name `options.text` / `options.resource` and carry a complete
+  example in `details`. The dead `MODE_NOTE` constant (a second source of
+  truth about `mode` that no client ever read) was removed instead of left to
+  drift.
+
+---
+
+## [1.0.1] — 2026-08-02
+
+### Fixed
+
+- The official oracle now also checks visuals that only contain
+  `visualContainerObjects`; it no longer falls back to the partial snapshot in that case.
+- Empty format expressions (`expr: {}`) are rejected before writing.
+- Downgrading to an earlier PBIR schema is limited to versions the
+  manifest expressly identifies as not published by Microsoft.
+- An already-open PBIP session can be reused without first validating a
+  different or incomplete copy of the model saved on disk.
+
+---
 
 ---
 
