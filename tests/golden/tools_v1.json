@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 118,
+  "tool_count": 119,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -3027,6 +3027,59 @@
       }
     },
     {
+      "name": "pbi_open_and_refresh",
+      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.",
+      "params": {
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "reuse_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 300
+        },
+        "type": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_open_in_desktop",
       "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
       "params": {
@@ -3407,7 +3460,7 @@
     },
     {
       "name": "pbi_refresh_model",
-      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nDevuelve estado y duracion. Los errores de credenciales/origen se reportan.",
+      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
       "params": {
         "request_id": {
           "required": false,

@@ -200,8 +200,11 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_purge_backups": WRITE_DESTRUCTIVE,
     "pbi_recover_from_journal": WRITE_DESTRUCTIVE,
 
-    # -- write_irreversible (1) --
+    # -- write_irreversible (2) --
     "pbi_refresh_model": WRITE_IRREVERSIBLE,
+    # Abre Desktop Y refresca. Se clasifica por lo mas fuerte que hace, no por
+    # lo primero: el refresh no tiene vuelta atras.
+    "pbi_open_and_refresh": WRITE_IRREVERSIBLE,
 }
 
 
