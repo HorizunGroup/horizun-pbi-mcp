@@ -26,6 +26,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -63,6 +69,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -125,6 +137,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -162,6 +180,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -183,6 +207,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -215,6 +243,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -242,6 +276,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -289,6 +329,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -326,6 +372,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -362,6 +414,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -414,6 +472,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -445,6 +509,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -476,6 +544,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -491,6 +565,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -522,6 +600,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -574,6 +658,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -621,6 +711,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -668,6 +764,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -683,6 +785,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -715,6 +821,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -730,6 +840,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -797,6 +911,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -864,6 +984,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -906,6 +1032,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -968,6 +1100,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1040,6 +1178,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1087,6 +1231,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1139,6 +1289,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1181,6 +1337,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1248,6 +1410,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1275,6 +1443,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1337,6 +1511,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1409,6 +1589,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1461,6 +1647,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1493,6 +1685,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1535,6 +1733,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1567,6 +1771,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1604,6 +1814,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1625,6 +1841,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1652,6 +1872,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1678,6 +1902,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1715,6 +1945,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1741,6 +1977,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1756,6 +1998,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1788,6 +2036,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1840,6 +2094,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1862,6 +2122,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1909,6 +2175,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -1956,6 +2226,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -1971,6 +2247,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2003,6 +2285,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2030,6 +2316,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2045,6 +2335,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2082,6 +2376,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2104,6 +2404,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2126,6 +2430,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2141,6 +2449,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2156,6 +2468,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2171,6 +2487,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2198,6 +2518,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2219,6 +2543,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2234,6 +2562,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2255,16 +2587,30 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_list_measures",
-      "description": "Lista medidas con tabla, expresion DAX, formato, descripcion y carpeta.",
+      "description": "Lista medidas con tabla, expresion DAX, formato, descripcion y carpeta.\n\n**Empieza por `detail='summary'`.** Omite la expresion DAX, que es el\ngrueso del peso y rara vez hace falta para orientarse; para leer el DAX\nde una medida concreta usa `pbi_get_object`, y para buscar dentro del\nDAX, `pbi_search_model`. `detail='full'` sigue siendo el valor por\ndefecto por compatibilidad.\n\n`tables`: acota a las medidas de esas tablas.",
       "params": {
+        "detail": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        },
         "source": {
           "required": false,
           "type": "string",
           "default": "live"
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
         }
       },
       "required": [],
@@ -2276,6 +2622,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2291,6 +2641,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2312,6 +2666,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2333,6 +2691,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2354,6 +2716,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2375,6 +2741,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2390,6 +2760,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2405,6 +2779,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2426,16 +2804,30 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
       "name": "pbi_list_tables",
-      "description": "Lista tablas con columnas, tipos, visibilidad y conteos.\n\n`source`: 'live' (modelo abierto, por defecto) o 'pbip' (archivos TMDL).",
+      "description": "Lista tablas con columnas, tipos, visibilidad y conteos.\n\n`source`: 'live' (modelo abierto, por defecto) o 'pbip' (archivos TMDL).\n\n**Empieza por `detail='summary'`.** Devuelve nombre, visibilidad y\nrecuentos, sin la lista de columnas. Con `detail='full'` (por defecto,\npor compatibilidad) un modelo de siete tablas ocupa ~28.000 caracteres y\nuno corporativo puede llenar buena parte de la ventana de contexto en\nuna sola llamada.\n\n`tables`: acota a esas tablas por nombre. Es lo que se usa despues del\nresumen para pedir el detalle solo de las que interesan. Un nombre que\nno existe falla y devuelve los disponibles, en vez de una lista vacia.",
       "params": {
+        "detail": {
+          "required": false,
+          "type": "string",
+          "default": "full"
+        },
         "source": {
           "required": false,
           "type": "string",
           "default": "live"
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
         }
       },
       "required": [],
@@ -2447,6 +2839,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2462,6 +2858,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2484,6 +2884,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2516,6 +2920,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2537,6 +2945,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2569,6 +2981,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2595,6 +3013,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2632,6 +3056,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2654,6 +3084,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2669,6 +3103,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2696,6 +3134,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2723,6 +3165,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2749,6 +3195,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2776,6 +3228,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2798,6 +3256,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2824,6 +3288,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2839,6 +3309,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -2875,6 +3349,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2912,6 +3392,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2943,6 +3429,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -2975,6 +3467,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3002,6 +3500,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3033,6 +3537,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3075,6 +3585,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3090,6 +3606,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3132,6 +3652,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3169,6 +3695,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3195,6 +3725,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3210,6 +3744,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3252,6 +3790,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3314,6 +3858,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3356,6 +3906,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3388,6 +3944,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3425,6 +3987,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3462,6 +4030,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3494,11 +4068,17 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento doce tools con buen nombre siguen siendo ciento doce tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento dieciocho tools con buen nombre siguen siendo ciento dieciocho tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,
@@ -3515,6 +4095,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3530,6 +4114,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3587,6 +4175,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3644,6 +4238,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3681,6 +4281,12 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3703,6 +4309,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3725,6 +4335,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3747,6 +4361,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3762,6 +4380,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {
@@ -3788,6 +4410,10 @@
         "required": [
           "result"
         ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     }
   ]

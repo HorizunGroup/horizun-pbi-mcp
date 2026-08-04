@@ -62,6 +62,63 @@ price.
   names them at refresh time — that naming isn't predictable from Python
   when there is no `<th>`.
 
+- **Risk class declared to the client (`annotations`)**: the 118 tools reached
+  the client with no metadata at all, so `pbi_list_measures` and
+  `pbi_delete_page` were indistinguishable — an MCP client could neither
+  auto-allow a read nor warn differently before a deletion. Each tool now
+  declares its class in `tools/risk.py` (51 strictly read-only, 9 that emit a
+  file into `outputs/`, 2 that open Power BI Desktop, 47 reversible writes, 8
+  destructive and 1 irreversible), translated into `readOnlyHint`,
+  `destructiveHint`, `idempotentHint` and `openWorldHint`.
+
+  The table is written by hand **on purpose**, because erring on the easy side
+  — marking as read-only something that writes — is exactly the mistake a
+  client would turn into "this can run without asking".
+  `tests/test_tool_annotations.py` contrasts every entry against AST evidence
+  from the code: a tool that calls `guard_mutation` cannot be declared a read,
+  a `read_only` one cannot reach `atomic_write_text`, a destructive one must
+  take `confirm`, and an unclassified tool breaks the suite instead of
+  silently defaulting. `annotations_for()` fails closed: unknown means
+  destructive.
+
+- **`detail` and `tables` in `pbi_list_tables` and `pbi_list_measures`**: both
+  returned the entire inventory always, with no way to ask for less. Measured
+  on a real seven-table project, `pbi_list_tables` came to ~28,000 characters
+  (~7,000 tokens) in a single response; a forty-table corporate model eats a
+  large part of the context window before any work happens.
+  `detail='summary'` replaces the column list with its count (−98% in that
+  project) and drops the DAX expression from measures. `tables=[...]` narrows
+  to specific tables and **fails with the real names in view** when one
+  doesn't exist, instead of returning an empty list that reads as "the model
+  is empty". The default stays `full`: the contract is frozen and nobody's
+  existing call changes behavior.
+
+### Fixed
+
+- **Intermittent test in `test_hide_columns_bulk.py`**: the live-mode tests
+  install a fake model on port 1 and rely on the identity certified by
+  `set_active_model()` — which **expires after one second** by design
+  (`Session._MODEL_VERIFICATION_TTL_SECONDS`, so the server never trusts
+  indefinitely that Desktop is still alive). If more than a second passed
+  between that line and the operation — which happens in a loaded full-suite
+  run and never when running the file on its own — port 1 was re-verified,
+  nobody was listening, and `StaleSessionError` came out. A failure that
+  appeared and vanished depending on how busy the machine was.
+
+  Fixed by removing the clock from the equation, not by raising the TTL:
+  the fixture certifies the session identity explicitly, which is what those
+  tests assume anyway. Freshness itself is still exercised, untouched, in
+  `tests/test_session_freshness.py`. Verified by reproducing the failure with a
+  1.3 s delay and confirming the same case passes afterwards.
+
+- **The contract didn't compare `annotations`**: `contract_utils` recorded
+  them in the golden snapshot but `diff_snapshots` never looked at them, so a
+  tool's risk class could change — or disappear — without the frozen contract
+  saying a word. Now it's compared with the criterion that matters: becoming
+  *less* cautious (gaining `readOnlyHint`, losing `destructiveHint`, losing
+  the annotations entirely) is a **break**; becoming more cautious is a
+  compatible change.
+
 ---
 
 ## [1.0.0] — 2026-08-02

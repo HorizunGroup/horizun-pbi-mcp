@@ -1,15 +1,15 @@
-"""Por donde se empieza. Un punto de entrada para 112 tools.
+"""Por donde se empieza. Un punto de entrada para 118 tools.
 
 El problema que cierra
 ----------------------
-Ciento doce tools con buen nombre y buena descripcion siguen siendo ciento doce
-tools. Quien llega no sabe si primero abre un proyecto o primero carga datos, ni
+Ciento dieciocho tools con buen nombre y buena descripcion siguen siendo
+ciento dieciocho tools. Quien llega no sabe si primero abre un proyecto o primero carga datos, ni
 que la escritura de TMDL exige Power BI Desktop CERRADO —y eso no lo dice
 ninguna lista alfabetica—. El catalogo estaba completo y el camino no existia.
 
 Aqui no se documenta nada nuevo: se MIRA el estado real y se responde a «¿y
 ahora que?» con tres o cuatro pasos concretos, cada uno con el nombre exacto de
-la tool y el motivo. Una lista de 112 opciones no es una respuesta a esa
+la tool y el motivo. Una lista de 118 opciones no es una respuesta a esa
 pregunta; tres si.
 
 La regla que lo mantiene util

@@ -22,7 +22,7 @@
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 117 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 118 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -367,7 +367,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 117 tools are frozen):
+Verify the MCP contract (the 118 tools are frozen):
 
 ```bash
 python -m tests.contract_utils

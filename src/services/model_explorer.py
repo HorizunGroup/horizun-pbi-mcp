@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+from powerbi.errors import TableNotFoundError, ValidationError
 from services import dax_guard
 
 #: 'Tabla'[Columna] o Tabla[Columna]
@@ -308,6 +309,114 @@ def get_object(model_data: Dict[str, Any], kind: str, name: str) -> Dict[str, An
                 details={"available": sorted(indice["columns"])[:50]})
         return {"kind": "column", "object": c}
     raise ValidationError(f"kind invalido: '{kind}'. Usa table|column|measure.")
+
+
+#: Detalle admitido por las vistas de inventario.
+DETALLE_COMPLETO = "full"
+DETALLE_RESUMEN = "summary"
+DETALLES = (DETALLE_COMPLETO, DETALLE_RESUMEN)
+
+
+def _validar_detalle(detail: str) -> str:
+    if detail not in DETALLES:
+        raise ValidationError(
+            f"detail='{detail}' no existe. Usa {' o '.join(DETALLES)}.")
+    return detail
+
+
+def _filtrar_tablas(nombres_pedidos: Optional[Iterable[str]],
+                    disponibles: Iterable[str]) -> Optional[Set[str]]:
+    """Resuelve el filtro `tables`, fallando con los nombres reales a la vista.
+
+    Sin esto, pedir una tabla mal escrita devolvia una lista vacia y parecia que
+    el modelo no tenia nada. Un inventario vacio y un nombre equivocado tienen
+    que distinguirse.
+    """
+    if nombres_pedidos is None:
+        return None
+    disponibles = list(disponibles)
+    indice = {n.casefold(): n for n in disponibles}
+    resueltos, faltan = set(), []
+    for pedido in nombres_pedidos:
+        real = indice.get(str(pedido).casefold())
+        if real is None:
+            faltan.append(str(pedido))
+        else:
+            resueltos.add(real)
+    if faltan:
+        raise TableNotFoundError(
+            f"No existe(n) en el modelo: {faltan}.",
+            details={"available_tables": sorted(disponibles)})
+    return resueltos
+
+
+def tables_view(model_data: Dict[str, Any], *,
+                tables: Optional[Iterable[str]] = None,
+                detail: str = DETALLE_COMPLETO) -> Dict[str, Any]:
+    """Inventario de tablas, acotable por nombre y por nivel de detalle.
+
+    El motivo es de coste, no de estetica: con `detail='full'` un modelo de
+    siete tablas ocupa ~28.000 caracteres, y uno corporativo de cuarenta se come
+    una parte grande de la ventana de contexto en UNA llamada. `summary`
+    conserva la forma de la respuesta y sustituye la lista de columnas por su
+    recuento, que es lo que hace falta para decidir a que tabla entrar.
+
+    `count` sigue siendo el numero de tablas DEVUELTAS, como siempre. Cuando el
+    filtro recorta, `total_tables` dice cuantas hay en el modelo, para que no
+    parezca que el resto desaparecio.
+    """
+    _validar_detalle(detail)
+    todas = model_data.get("tables", [])
+    elegidas = _filtrar_tablas(tables, (t["name"] for t in todas))
+    salida = [t for t in todas if elegidas is None or t["name"] in elegidas]
+
+    if detail == DETALLE_RESUMEN:
+        salida = [{"name": t["name"],
+                   "is_hidden": t.get("is_hidden"),
+                   "column_count": t.get("column_count", len(t.get("columns", []))),
+                   "measure_count": t.get("measure_count", len(t.get("measures", [])))}
+                  for t in salida]
+
+    resultado: Dict[str, Any] = {"count": len(salida), "tables": salida,
+                                 "detail": detail}
+    if elegidas is not None:
+        resultado["total_tables"] = len(todas)
+    return resultado
+
+
+def measures_view(model_data: Dict[str, Any], *,
+                  tables: Optional[Iterable[str]] = None,
+                  detail: str = DETALLE_COMPLETO) -> Dict[str, Any]:
+    """Inventario de medidas, acotable por tabla y por nivel de detalle.
+
+    En `summary` se omite la expresion DAX, que es el grueso del peso y casi
+    nunca lo que se necesita para orientarse. Para leer el DAX de una medida
+    concreta esta `pbi_get_object`, y para buscar dentro del DAX,
+    `pbi_search_model`.
+    """
+    _validar_detalle(detail)
+    todas = model_data.get("measures", [])
+    if tables is not None:
+        # El universo de nombres validos son las TABLAS del modelo, no las que
+        # resulten tener medidas: pedir una tabla real y vacia no es un error.
+        elegidas = _filtrar_tablas(tables,
+                                   (t["name"] for t in model_data.get("tables", [])))
+        salida = [m for m in todas if m.get("table") in elegidas]
+    else:
+        salida = list(todas)
+
+    if detail == DETALLE_RESUMEN:
+        salida = [{"name": m["name"], "table": m.get("table"),
+                   "format_string": m.get("format_string"),
+                   "display_folder": m.get("display_folder"),
+                   "description": m.get("description")}
+                  for m in salida]
+
+    resultado: Dict[str, Any] = {"count": len(salida), "measures": salida,
+                                 "detail": detail}
+    if tables is not None:
+        resultado["total_measures"] = len(todas)
+    return resultado
 
 
 def summary(model_data: Dict[str, Any]) -> Dict[str, Any]:
