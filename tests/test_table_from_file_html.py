@@ -47,7 +47,7 @@ def _html(tmp_path: Path, nombre: str, cuerpo: str, *,
 #: "No." de detalle, SIN <th> en ningun lado.
 TABLA_REPORTE = (
     '<table id="registrosAprobacion">'
-    '<tr><td colspan="3">PRODESA Y CIA S.A.</td></tr>'
+    '<tr><td colspan="3">ACME Y CIA S.A.</td></tr>'
     '<tr><td colspan="3">Proyecto TRI D - ATRIO DE PANCE</td></tr>'
     '<tr><td>Capítulo</td><td>Valor</td><td>Porcentaje</td></tr>'
     '<tr><td>No. D003 CIMENTACIÓN</td><td>458.942,72</td><td>4,01%</td></tr>'
@@ -130,13 +130,13 @@ def test_columnas_resultantes_del_reporte_sin_th(tmp_path):
 
 
 def test_sin_th_no_se_promueve_la_fila_de_titulo(tmp_path):
-    """La fila 1 real de la tabla ('PRODESA Y CIA S.A.' con colspan=3) NO
+    """La fila 1 real de la tabla ('ACME Y CIA S.A.' con colspan=3) NO
     puede terminar siendo el nombre de una columna: es el titulo del reporte,
     no un encabezado."""
     ruta = _html(tmp_path, "reporte.xls", TABLA_REPORTE)
     perfil = table_from_file.perfilar(ruta)
     nombres = [c["name"] for c in perfil["columns"]]
-    assert "PRODESA Y CIA S.A." not in nombres
+    assert "ACME Y CIA S.A." not in nombres
     assert perfil["promote_headers"] is False
 
 

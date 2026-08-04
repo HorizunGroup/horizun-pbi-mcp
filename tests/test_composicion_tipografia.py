@@ -70,10 +70,10 @@ def test_se_puede_pedir_el_rotulo_a_proposito(proyecto):
 
 
 def test_una_imagen_tampoco_lleva_su_nombre_impreso(proyecto):
-    """Un logo con la palabra 'Logo Prodesa' escrita encima."""
+    """Un logo con la palabra 'Logo Acme' escrita encima."""
     salida = visual_factory.build_visual(
-        proyecto, "image", {}, POS, title="Logo Prodesa",
-        options={"resource": "prodesa-logo.png"})
+        proyecto, "image", {}, POS, title="Logo Acme",
+        options={"resource": "acme-logo.png"})
 
     assert _muestra_titulo(salida) is False
 

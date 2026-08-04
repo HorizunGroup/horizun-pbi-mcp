@@ -1136,7 +1136,7 @@ def build_visual(
         vis = _build_decorativo(actual_type, opciones)
         # En un elemento de composicion `title` es el NOMBRE del visual dentro
         # del spec, no una etiqueta para el lienzo: encenderlo imprimia
-        # "Titulo" sobre el titulo de una portada y "Logo Prodesa" sobre un
+        # "Titulo" sobre el titulo de una portada y "Logo Acme" sobre un
         # logo. Se muestra solo si se pide a proposito.
         if title is not None and opciones.get("show_title"):
             vis.setdefault("visualContainerObjects", {})["title"] = [

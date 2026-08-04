@@ -143,8 +143,14 @@ def test_no_contiene_nada_de_ningun_proyecto_real(proyecto):
                       for f in pbip.parent.rglob("*")
                       if f.is_file() and f.suffix in (".json", ".pbir", ".tmdl",
                                                       ".pbip"))
-    prohibidos = ["PB4", "FinSesion", "Prodesa", "Control Room", "speckle",
-                  "pablo", "OneDrive", "C:\\Users", "C:/Users"]
+    # Los nombres de cliente se importan de `test_sin_datos_de_empresa`, que es
+    # el UNICO fichero autorizado a escribirlos (se excluye a si mismo del
+    # barrido). Antes estaban aqui en claro: este test nombraba al cliente
+    # justamente para prohibirlo, y asi lo publicaba.
+    from tests.test_sin_datos_de_empresa import CLIENTES
+
+    prohibidos = ["PB4", "FinSesion", "Control Room", "speckle",
+                  "pablo", "OneDrive", "C:\\Users", "C:/Users", *CLIENTES]
     for p in prohibidos:
         assert p.lower() not in texto.lower(), (
             f"el fixture contiene '{p}', que procede de un proyecto real")

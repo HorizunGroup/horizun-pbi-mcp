@@ -512,7 +512,7 @@ schema validator: the JSON is correct in all three cases.
 - **`title` was being printed on the canvas.** In a spec, `title`
   identifies the visual; on a composition element it's not a label anyone
   wants to see. It came out as "Title" over a cover page's own title, and
-  would have come out as "Prodesa Logo" over a logo. Decorative elements
+  would have come out as "Acme Logo" over a logo. Decorative elements
   now only show it with `show_title: true`.
 
 - **And the reverse: asking for a title on a card didn't show it.** The
