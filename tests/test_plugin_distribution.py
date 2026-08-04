@@ -7,8 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import branding
-
+from horizun_pbi_mcp import branding
 REPO = Path(__file__).resolve().parent.parent
 
 

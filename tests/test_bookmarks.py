@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from pbip import bookmarks, project_locator
-from pbip.bookmarks import BookmarkError
+from horizun_pbi_mcp.pbip import bookmarks, project_locator
+from horizun_pbi_mcp.pbip.bookmarks import BookmarkError
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def proyecto(session, sample_pbip):
 
 
 def _pagina(activo) -> str:
-    from pbip import pbir_reader
+    from horizun_pbi_mcp.pbip import pbir_reader
 
     return pbir_reader.list_pages(activo)[0]["name"]
 
@@ -47,7 +47,7 @@ def test_se_escribe_el_marcador_y_su_indice(proyecto):
 
 def test_el_marcador_valida_contra_su_esquema_oficial(proyecto):
     """El esquema que falta es `bookmarks/` (plural); estos dos si estan."""
-    from services import pbir_schema
+    from horizun_pbi_mcp.services import pbir_schema
 
     if not pbir_schema.estado_cache()["ready"]:
         pytest.skip("los esquemas oficiales no estan instalados")
@@ -74,7 +74,7 @@ def test_el_filtro_de_un_marcador_usa_expression_no_field(proyecto):
 
 
 def test_acepta_el_titulo_de_la_pagina_ademas_del_id(proyecto):
-    from pbip import pbir_reader
+    from horizun_pbi_mcp.pbip import pbir_reader
 
     titulo = pbir_reader.list_pages(proyecto)[0]["display_name"]
     r = bookmarks.create_bookmark(proyecto, "Por titulo", titulo)
@@ -133,7 +133,7 @@ def test_borrar_lo_que_no_existe_lo_dice(proyecto):
 
 def test_fallo_al_indexar_revierte_el_marcador(proyecto, monkeypatch):
     """El archivo no puede sobrevivir si falla su entrada en el indice."""
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     carpeta = Path(proyecto.report_dir) / "definition" / "bookmarks"
     original = txn_service.Transaction.write_json
@@ -153,7 +153,7 @@ def test_fallo_al_indexar_revierte_el_marcador(proyecto, monkeypatch):
 
 
 def test_fallo_al_actualizar_indice_revierte_el_borrado(proyecto, monkeypatch):
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     creado = bookmarks.create_bookmark(proyecto, "V", _pagina(proyecto))
     archivo = Path(creado["file"])
@@ -176,7 +176,7 @@ def test_fallo_al_actualizar_indice_revierte_el_borrado(proyecto, monkeypatch):
 
 
 def test_borrar_marcador_no_admite_traversal(proyecto):
-    from powerbi.errors import PathSecurityError
+    from horizun_pbi_mcp.powerbi.errors import PathSecurityError
 
     victima = Path(proyecto.report_dir) / "fuera.bookmark.json"
     victima.write_bytes(b"NO TOCAR")
@@ -188,7 +188,7 @@ def test_borrar_marcador_no_admite_traversal(proyecto):
 @pytest.mark.real_project_state
 def test_marcadores_no_se_escriben_con_desktop_abierto(
         proyecto, monkeypatch):
-    from services import project_state
+    from horizun_pbi_mcp.services import project_state
 
     monkeypatch.setattr(
         project_state, "detect",

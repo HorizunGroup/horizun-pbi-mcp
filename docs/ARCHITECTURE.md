@@ -10,7 +10,7 @@ _Status verified on baseline commit `a304e33`. 4,982 lines of Python in `src/`._
                         MCP client (Claude Code / Desktop / Codex)
                                         │  JSON-RPC over stdio
                                         ▼
-                            src/server.py — build_server()
+                            src/horizun_pbi_mcp/server.py — build_server()
                                   FastMCP("horizun-pbi-mcp")
                                         │  register(mcp) × 8
         ┌───────────────┬───────────────┼───────────────┬───────────────┐

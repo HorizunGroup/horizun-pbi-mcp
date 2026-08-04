@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from pbip import filter_builder as fb
-from pbip.filter_builder import FilterBuildError
+from horizun_pbi_mcp.pbip import filter_builder as fb
+from horizun_pbi_mcp.pbip.filter_builder import FilterBuildError
 
 
 # ------------------------------------------------------------- filtros -------
@@ -105,8 +105,8 @@ def test_interaccion_incompleta_se_rechaza():
 
 # ---------------------------------------------------- integrado en el spec ---
 def test_el_visual_lleva_sus_propios_filtros(sample_pbip, session):
-    from pbip import project_locator, tmdl_reader
-    from services import page_spec
+    from horizun_pbi_mcp.pbip import project_locator, tmdl_reader
+    from horizun_pbi_mcp.services import page_spec
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()

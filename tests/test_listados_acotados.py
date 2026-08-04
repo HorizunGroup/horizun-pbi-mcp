@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import pytest
 
-from powerbi.errors import TableNotFoundError, ValidationError
-from services import model_explorer
+from horizun_pbi_mcp.powerbi.errors import TableNotFoundError, ValidationError
+from horizun_pbi_mcp.services import model_explorer
 
 
 @pytest.fixture
@@ -166,7 +166,7 @@ def test_las_tools_exponen_los_parametros_nuevos():
     src = str(Path(__file__).resolve().parent.parent / "src")
     if src not in sys.path:
         sys.path.insert(0, src)
-    from server import build_server
+    from horizun_pbi_mcp.server import build_server
 
     tools = {t.name: t for t in asyncio.run(build_server().list_tools())}
     for nombre in ("pbi_list_tables", "pbi_list_measures"):

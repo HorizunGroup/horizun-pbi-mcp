@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from pbip import pbir_reader, pbir_writer, project_locator
-from powerbi.errors import PathSecurityError, ValidationError
+from horizun_pbi_mcp.pbip import pbir_reader, pbir_writer, project_locator
+from horizun_pbi_mcp.powerbi.errors import PathSecurityError, ValidationError
 from tests.fixtures import synthetic
 
 
@@ -22,7 +22,7 @@ def proyecto(session, tmp_path):
 
 
 def _leer(active, page, visual_id):
-    from utils.json_utils import read_json
+    from horizun_pbi_mcp.utils.json_utils import read_json
     page_dir = pbir_reader.resolve_page_dir(active, page)
     return read_json(page_dir / "visuals" / visual_id / "visual.json")
 

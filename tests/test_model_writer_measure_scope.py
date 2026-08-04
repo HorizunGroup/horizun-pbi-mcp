@@ -5,8 +5,8 @@ from contextlib import contextmanager
 
 import pytest
 
-from powerbi import model_writer
-from powerbi.errors import MeasureNotFoundError
+from horizun_pbi_mcp.powerbi import model_writer
+from horizun_pbi_mcp.powerbi.errors import MeasureNotFoundError
 
 
 class FakeMeasure:

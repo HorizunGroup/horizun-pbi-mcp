@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from config import ActivePbip
-from pbip import tmdl_writer
-from powerbi.errors import MeasureExistsError
-from services import tmdl_validate
+from horizun_pbi_mcp.config import ActivePbip
+from horizun_pbi_mcp.pbip import tmdl_writer
+from horizun_pbi_mcp.powerbi.errors import MeasureExistsError
+from horizun_pbi_mcp.services import tmdl_validate
 from tests.fixtures import synthetic
 
 

@@ -12,8 +12,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
-from pbip import conditional_format, project_locator, visual_factory
-from services import pbir_edit
+from horizun_pbi_mcp.pbip import conditional_format, project_locator, visual_factory
+from horizun_pbi_mcp.services import pbir_edit
 
 from scripts import build_format_objects_corpus as corpus_builder
 
@@ -197,7 +197,7 @@ def test_pbir_edit_escribe_la_misma_forma_sin_tocar_el_fixture_versionado(
         session, tmp_path, monkeypatch):
     # sample_pbip es una copia mutable dentro de tmp_path. La prueba nunca
     # escribe sobre el corpus ni sobre un proyecto real.
-    from services import format_oracle
+    from horizun_pbi_mcp.services import format_oracle
     from tests.fixtures import synthetic
 
     sample_pbip = synthetic.materialize(tmp_path)

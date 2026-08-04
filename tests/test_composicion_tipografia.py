@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from pbip import project_locator, visual_factory
+from horizun_pbi_mcp.pbip import project_locator, visual_factory
 
 
 @pytest.fixture

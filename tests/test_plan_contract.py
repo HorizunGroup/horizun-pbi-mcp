@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from services import operations, plan_contract, planning
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.services import operations, plan_contract, planning
 from tests.fixtures import synthetic
 
 
@@ -219,7 +219,7 @@ def test_fallo_durante_apply_revierte_todo(proyecto, args_spec, monkeypatch):
     antes = huella(raiz)
     plan = planning.plan(session, "apply_page_spec", args_spec(spec_base()))
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     original = txn_service.Transaction.write_json
     estado = {"n": 0}

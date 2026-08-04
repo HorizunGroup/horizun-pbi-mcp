@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from powerbi.errors import ValidationError
-from services import pbir_edit, project_state, report_audit
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import pbir_edit, project_state, report_audit
 from tests.fixtures import synthetic
 
 P = synthetic.PAGE_ID
@@ -216,7 +216,7 @@ def test_una_accion_invalida_rechaza_el_plan_entero(proyecto):
 
 
 def test_fallo_despues_de_escribir_revierte_todo_el_plan(proyecto, monkeypatch):
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     active, md, project = proyecto
     degradar(active, project)

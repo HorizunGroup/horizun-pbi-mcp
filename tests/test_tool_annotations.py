@@ -24,10 +24,10 @@ from typing import Dict, Set
 
 import pytest
 
-from tools import risk
+from horizun_pbi_mcp.tools import risk
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-SRC = REPO_ROOT / "src"
+SRC = REPO_ROOT / "src" / "horizun_pbi_mcp"
 
 #: Marcador de escritura de fichero sin homonimo en la stdlib. Se eligio por eso:
 #: `write_text` o `replace` habrian dado falsos positivos (`str.replace`).
@@ -89,7 +89,7 @@ def anotaciones_publicadas() -> Dict[str, object]:
 
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
-    from server import build_server
+    from horizun_pbi_mcp.server import build_server
 
     tools = asyncio.run(build_server().list_tools())
     return {t.name: t.annotations for t in tools}

@@ -15,9 +15,9 @@ import ast
 
 import pytest
 
-from pbip import page_builder, project_locator, tmdl_reader, visual_factory
-from powerbi.errors import VisualFactoryError
-from services import page_spec
+from horizun_pbi_mcp.pbip import page_builder, project_locator, tmdl_reader, visual_factory
+from horizun_pbi_mcp.powerbi.errors import VisualFactoryError
+from horizun_pbi_mcp.services import page_spec
 
 
 def spec_con_tipo(tipo: str) -> dict:

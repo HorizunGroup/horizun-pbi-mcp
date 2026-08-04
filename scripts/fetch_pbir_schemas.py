@@ -183,7 +183,7 @@ def cache_dir() -> Path:
     """La MISMA resolucion que services.pbir_schema, para no instalar donde el
     servidor no va a buscar."""
     sys.path.insert(0, str(RAIZ_REPO / "src"))
-    from services.pbir_schema import cache_dir as resolver
+    from horizun_pbi_mcp.services.pbir_schema import cache_dir as resolver
 
     return resolver()
 

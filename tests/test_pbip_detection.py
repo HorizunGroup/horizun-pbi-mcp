@@ -1,7 +1,7 @@
 """Pruebas de deteccion/estructura de proyectos .pbip y round-trip TMDL/PBIR."""
 from pathlib import Path
 
-from pbip import pbir_reader, pbir_writer, project_locator, tmdl_reader, tmdl_writer, visual_factory
+from horizun_pbi_mcp.pbip import pbir_reader, pbir_writer, project_locator, tmdl_reader, tmdl_writer, visual_factory
 
 
 def test_open_project_detects_pbir_and_tmdl(session, sample_pbip):

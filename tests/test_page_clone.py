@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import page_clone, pbir_edit
-from services.page_clone import UnsupportedPageStructure
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import page_clone, pbir_edit
+from horizun_pbi_mcp.services.page_clone import UnsupportedPageStructure
 from tests.fixtures import synthetic
 
 
@@ -176,7 +176,7 @@ def test_un_fallo_al_duplicar_revierte_todo(proyecto, monkeypatch):
     pagina, _visuales = con_interacciones(active)
     antes = huella(raiz)
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     original = txn_service.Transaction.write_json
     estado = {"n": 0}

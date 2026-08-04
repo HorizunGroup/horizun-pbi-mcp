@@ -1,8 +1,8 @@
 """Pruebas de validaciones de entrada y seguridad de rutas."""
 import pytest
 
-from powerbi.errors import PathSecurityError, ValidationError
-from utils.validation import (
+from horizun_pbi_mcp.powerbi.errors import PathSecurityError, ValidationError
+from horizun_pbi_mcp.utils.validation import (
     ensure_within_base,
     tmdl_needs_quote,
     tmdl_quote_name,

@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator
-from services import pbir_schema
-from services import txn as txn_service
-from services.pbir_schema import (SchemaUnavailable, SchemaUnsupported,
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator
+from horizun_pbi_mcp.services import pbir_schema
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.pbir_schema import (SchemaUnavailable, SchemaUnsupported,
                                   SchemaValidationFailed)
 from tests.fixtures import synthetic
 
@@ -213,7 +213,7 @@ def _campo_de_prueba():
 
 def test_el_formato_condicional_que_generamos_pasa_la_barrera_de_objects():
     """La forma buena viene del escritor, no de un JSON montado por la prueba."""
-    from pbip import conditional_format
+    from horizun_pbi_mcp.pbip import conditional_format
 
     documento = visual_valido()
     documento["visual"]["visualType"] = "pivotTable"
@@ -266,7 +266,7 @@ def test_un_expr_vacio_se_bloquea_aunque_el_schema_lo_acepte():
 
 def test_el_oraculo_completo_bloquea_propiedad_desconocida(monkeypatch):
     """El esquema acepta ``objects`` abierto, Desktop no debe hacerlo."""
-    from services import format_oracle
+    from horizun_pbi_mcp.services import format_oracle
 
     documento = visual_valido()
     documento["visual"]["objects"] = {
@@ -459,7 +459,7 @@ def test_los_fixtures_cumplen_el_esquema_oficial(proyecto):
 
 def test_el_generador_produce_pbir_valido(proyecto, isolated_settings):
     """Lo que escribimos cumple el esquema oficial, no solo el de andar por casa."""
-    from services import pbir_edit
+    from horizun_pbi_mcp.services import pbir_edit
 
     active, _raiz = proyecto
     pagina = pbir_reader.list_pages(active)[0]["display_name"]
