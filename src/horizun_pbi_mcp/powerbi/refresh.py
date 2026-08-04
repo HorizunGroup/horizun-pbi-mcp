@@ -105,7 +105,8 @@ def refresh_model(
             ) from exc
 
     duration_s = round(time.perf_counter() - start, 2)
-    return {
+    conteos, avisos_conteo = _contar_filas(session, refreshed)
+    salida = {
         "status": "ok",
         "refresh_type": _TYPE_ALIASES[key],
         "tables": refreshed,
@@ -113,6 +114,74 @@ def refresh_model(
         "scope": "local (Power BI Desktop)",
         "note": _nota_de_persistencia(session),
     }
+    if conteos is not None:
+        salida["rows_by_table"] = conteos
+        vacias = sorted(t for t, n in conteos.items() if n == 0)
+        if vacias:
+            avisos_conteo.append(
+                "El refresh termino bien pero estas tablas cargaron CERO "
+                f"filas: {vacias}. Revisa el origen o el filtro de la consulta.")
+    if avisos_conteo:
+        salida["warnings"] = avisos_conteo
+    return salida
+
+
+def _nombres_de_tablas(model) -> List[str]:
+    """Tablas del modelo TOM, como texto."""
+    return [str(t.Name) for t in model.Tables]
+
+
+def _contar_filas(session: Session, refrescadas: List[str]):
+    """Filas por tabla despues del refresh. `(conteos|None, avisos)`.
+
+    Por que existe: un refresh puede terminar en `success` y haber cargado
+    CERO filas -credenciales que devuelven un conjunto vacio, un filtro de
+    fecha que no alcanza ninguna fila, un origen que cambio de esquema-. Decir
+    "ok" sin mirar el resultado es justo lo que el servidor promete no hacer:
+    no reportar trabajo que no se verifico.
+
+    Nunca lanza. Si no se puede contar, se devuelve `None` y un aviso: es
+    preferible admitir que no se comprobo a inventarse un numero, y desde
+    luego a tumbar un refresh que si funciono.
+    """
+    from horizun_pbi_mcp.powerbi.adomd_client import AdomdClient
+
+    avisos: List[str] = []
+    try:
+        modelo = session.require_active_model()
+    except Exception as exc:                             # noqa: BLE001
+        return None, [f"No se pudieron contar las filas: {type(exc).__name__}."]
+
+    try:
+        with connect(modelo) as (_s, _d, mdl):
+            objetivo = ([t for t in _nombres_de_tablas(mdl)]
+                        if refrescadas == ["<todo el modelo>"] else list(refrescadas))
+    except Exception as exc:                             # noqa: BLE001
+        return None, [f"No se pudo listar las tablas para contarlas: "
+                      f"{type(exc).__name__}."]
+
+    if not objetivo:
+        return {}, avisos
+
+    conteos: Dict[str, int] = {}
+    try:
+        with AdomdClient(modelo.connection_string, modelo.catalog) as cli:
+            for nombre in objetivo:
+                # Una consulta por tabla, no una UNION: si una falla -una tabla
+                # DirectQuery, una calculada con error- se pierde solo ese dato
+                # en vez de quedarnos sin ninguno.
+                escapado = str(nombre).replace("'", "''")
+                try:
+                    valor = cli.execute_scalar(
+                        f"EVALUATE ROW(\"n\", COUNTROWS('{escapado}'))")
+                except Exception:                        # noqa: BLE001
+                    avisos.append(f"No se pudo contar las filas de '{nombre}'.")
+                    continue
+                conteos[str(nombre)] = int(valor) if valor is not None else 0
+    except Exception as exc:                             # noqa: BLE001
+        return None, [f"No se pudieron contar las filas: {type(exc).__name__}."]
+
+    return conteos, avisos
 
 
 #: Lo que guardar SI persiste, segun el formato del proyecto abierto.

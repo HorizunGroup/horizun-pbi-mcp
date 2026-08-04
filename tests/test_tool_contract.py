@@ -170,11 +170,17 @@ FILTRO_VISUAL_TOOLS = [
     "pbi_set_visual_filter",
 ]
 
+#: Abrir y refrescar era siempre la misma secuencia de dos llamadas de ~14 s,
+#: porque un .pbip recien abierto trae el modelo sin datos.
+CICLO_TOOLS = [
+    "pbi_open_and_refresh",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
                 + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS
-                + FILTRO_VISUAL_TOOLS)
+                + FILTRO_VISUAL_TOOLS + CICLO_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

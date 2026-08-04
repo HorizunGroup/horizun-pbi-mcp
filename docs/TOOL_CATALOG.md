@@ -1,4 +1,4 @@
-# Tool catalog — 118
+# Tool catalog — 119
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -26,7 +26,8 @@ tools registered.
 | I — pre-delivery verification | 3 |
 | J — data loading | 2 |
 | L — design and entry point | 4 |
-| **Total** | **118** |
+| M — work cycle | 1 |
+| **Total** | **119** |
 
 ---
 
@@ -69,7 +70,8 @@ tools registered.
 | `pbi_delete_measure` | **Yes** (`confirm`) |
 | `pbi_set_column_visibility` · `pbi_hide_columns` | No |
 | `pbi_set_relationship_direction` · `pbi_disable_auto_date_time` | No |
-| `pbi_refresh_model` | Irreversible |
+| `pbi_refresh_model` | Irreversible. Devuelve `rows_by_table`: un refresh puede terminar en 'ok' y cargar CERO filas |
+| `pbi_open_and_refresh` | Irreversible. Abre en Desktop y refresca en una llamada: un `.pbip` recien abierto trae el modelo SIN datos |
 
 ## Project and plans
 
