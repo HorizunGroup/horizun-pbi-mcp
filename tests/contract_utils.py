@@ -246,7 +246,59 @@ def diff_snapshots(golden: Dict[str, Any],
                 f"{name}: forma de la respuesta modificada "
                 f"{g.get('output_shape')} -> {c.get('output_shape')}")
 
+        _diff_annotations(name, g.get("annotations") or {},
+                          c.get("annotations") or {}, breaking, compatible)
+
     return breaking, compatible
+
+
+def _diff_annotations(name: str, g: Dict[str, Any], c: Dict[str, Any],
+                      breaking: List[str], compatible: List[str]) -> None:
+    """Compara las `annotations`, que son una senal de RIESGO, no adorno.
+
+    Se guardaban en el golden desde el principio pero no se comparaban nunca:
+    la clase de riesgo de una tool podia cambiar —o desaparecer— sin que el
+    contrato dijera una palabra. Y esta senal es justo la que un cliente usa
+    para decidir si ejecuta algo sin preguntar.
+
+    El criterio de que es ruptura no es "cambio", sino "cambio que puede hacer
+    que un cliente sea MENOS prudente que antes":
+
+    - perder las anotaciones          -> ruptura (se pierde la senal)
+    - pasar a `readOnlyHint=True`     -> ruptura si antes escribia
+    - dejar de ser `destructiveHint`  -> ruptura
+
+    Lo contrario —volverse mas cauto— es compatible: como mucho el cliente
+    preguntara de mas.
+    """
+    if g and not c:
+        breaking.append(
+            f"{name}: se perdieron las annotations "
+            "(el cliente se queda sin la senal de riesgo)")
+        return
+    if c and not g:
+        compatible.append(f"{name}: annotations nuevas ({sorted(c)})")
+        return
+
+    if g.get("readOnlyHint") is not c.get("readOnlyHint"):
+        if c.get("readOnlyHint"):
+            breaking.append(
+                f"{name}: pasa a anunciarse readOnlyHint=True "
+                "(un cliente podria ejecutarla sin preguntar)")
+        else:
+            compatible.append(f"{name}: deja de anunciarse como solo lectura")
+
+    if g.get("destructiveHint") and not c.get("destructiveHint"):
+        breaking.append(
+            f"{name}: deja de anunciarse destructiveHint "
+            "(pierde la advertencia de borrado)")
+    elif c.get("destructiveHint") and not g.get("destructiveHint"):
+        compatible.append(f"{name}: pasa a anunciarse destructiveHint")
+
+    for clave in ("idempotentHint", "openWorldHint"):
+        if g.get(clave) != c.get(clave):
+            compatible.append(
+                f"{name}: {clave} {g.get(clave)!r} -> {c.get(clave)!r}")
 
 
 def format_diff(breaking: List[str], compatible: List[str]) -> str:

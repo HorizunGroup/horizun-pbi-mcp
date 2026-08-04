@@ -60,6 +60,25 @@ _TOOL_MODULES = (
 )
 
 
+def _anotar_riesgo(mcp: FastMCP, log) -> None:
+    """Declara la clase de riesgo de cada tool como `annotations` del MCP.
+
+    Se hace en un solo sitio, despues de registrar, en vez de repetir el
+    argumento en las 118 firmas: la fuente de verdad es `tools/risk.py` y asi no
+    puede divergir de si misma. `annotations_for()` falla cerrado, de modo que
+    una tool nueva sin clasificar se anuncia como destructiva —nunca como de
+    solo lectura— hasta que alguien la clasifique.
+    """
+    from mcp.types import ToolAnnotations
+
+    from tools.risk import annotations_for
+
+    for tool in mcp._tool_manager.list_tools():
+        tool.annotations = ToolAnnotations(**annotations_for(tool.name))
+    log.debug("Clase de riesgo declarada en %d tools.",
+              len(mcp._tool_manager.list_tools()))
+
+
 def build_server() -> FastMCP:
     settings = get_settings()
     setup_logging(settings.log_level, settings.log_file)
@@ -82,6 +101,7 @@ def build_server() -> FastMCP:
     mcp._mcp_server.version = branding.VERSION
     for module in _TOOL_MODULES:
         module.register(mcp)
+    _anotar_riesgo(mcp, log)
 
     log.info("%s %s listo. %d modulos de tools registrados.",
              branding.PRODUCT_NAME, branding.VERSION, len(_TOOL_MODULES))

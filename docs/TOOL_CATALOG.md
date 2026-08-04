@@ -177,10 +177,31 @@ Close two gaps of the same kind: having the pieces isn't the same as knowing how
 
 ## Risk classes
 
-| Class | Behavior |
-|---|---|
-| `read_only` | Doesn't modify anything of the user's |
-| `write_reversible` | Transaction with journal; rollback on failure |
-| `write_destructive` | Requires `confirm=true`: `pbi_delete_measure`, `pbi_delete_visual`, `pbi_delete_page`, `pbi_apply_audit_fixes` |
-| `write_irreversible` | `pbi_refresh_model` |
-| `unsupported` | `mode="both"` and cloud/Fabric — declared with their reason in `pbi_capabilities` |
+Every tool declares its class in [`src/tools/risk.py`](../src/tools/risk.py),
+and the server translates it into the MCP `annotations` (`readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint`) so the client can decide
+what to run without asking and what to warn about. The table is contrasted
+against the code by `tests/test_tool_annotations.py`: it is not documentation
+that can quietly drift.
+
+| Class | No. | Behavior | `readOnlyHint` |
+|---|---|---|---|
+| `read_only` | 51 | Doesn't modify anything of the user's and leaves no file behind | `true` |
+| `read_only_emits_file` | 9 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
+| `side_effect_external` | 2 | Opens — and sometimes closes — Power BI Desktop: `pbi_open_in_desktop`, `pbi_validate_desktop_render` | `false` |
+| `write_reversible` | 47 | Transaction with journal; rollback on failure | `false` |
+| `write_destructive` | 8 | Requires `confirm=true`: the four `pbi_delete_*`, `pbi_apply_audit_fixes`, `pbi_apply_plan`, `pbi_purge_backups`, `pbi_recover_from_journal` | `false`, `destructiveHint: true` |
+| `write_irreversible` | 1 | `pbi_refresh_model` | `false`, `destructiveHint: true` |
+| `unsupported` | — | `mode="both"` and cloud/Fabric — declared with their reason in `pbi_capabilities` | — |
+
+Two notes on why the boundary sits where it does:
+
+- **`read_only_emits_file` is not `read_only`.** `readOnlyHint` means the tool
+  doesn't modify its environment, and creating a file modifies it. Writing a
+  report into `outputs/` doesn't touch the user's project, but it isn't
+  "read-only" for the protocol either.
+- **`idempotentHint` is `false` on everything that writes**, even though the
+  server has idempotency by `request_id`. That protection is the client's
+  opt-in: with no `request_id`, two identical calls to `pbi_create_visual`
+  create two visuals. Announcing `true` would promise a guarantee that depends
+  on the caller doing their part.
