@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from pbip import project_locator
-from powerbi.errors import PowerBIMCPError, ValidationError
-from services import envelope, operations, planning, project_state, telemetry
-from services import txn as txn_service
+from horizun_pbi_mcp.pbip import project_locator
+from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.services import envelope, operations, planning, project_state, telemetry
+from horizun_pbi_mcp.services import txn as txn_service
 from tests.fixtures import synthetic
-from tools._common import guard
+from horizun_pbi_mcp.tools._common import guard
 
 
 @pytest.fixture(autouse=True)
@@ -262,8 +262,8 @@ def tools(session, monkeypatch):
     import sys
 
     sys.path.insert(0, "src")
-    import config as cfg
-    from server import build_server
+    import horizun_pbi_mcp.config as cfg
+    from horizun_pbi_mcp.server import build_server
 
     monkeypatch.setattr(cfg, "_session", session)
     return build_server()

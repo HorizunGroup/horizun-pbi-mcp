@@ -20,8 +20,8 @@ import json
 
 import pytest
 
-from pbip import theme, visual_factory
-from pbip.visual_factory import VisualFactoryError
+from horizun_pbi_mcp.pbip import theme, visual_factory
+from horizun_pbi_mcp.pbip.visual_factory import VisualFactoryError
 
 
 def _construir(active, tipo, opciones, pos=None):
@@ -53,7 +53,7 @@ def test_alias_comodos(alias, esperado):
 
 # ------------------------------------------------------- composicion ----------
 def test_textbox_lleva_su_texto_y_estilo(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -69,7 +69,7 @@ def test_textbox_lleva_su_texto_y_estilo(sample_pbip, session):
 
 
 def test_forma_con_relleno_y_literales_del_motor(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -84,7 +84,7 @@ def test_forma_con_relleno_y_literales_del_motor(sample_pbip, session):
 
 
 def test_boton_de_navegacion_apunta_a_la_pagina(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -98,7 +98,7 @@ def test_boton_de_navegacion_apunta_a_la_pagina(sample_pbip, session):
 
 
 def test_boton_de_pagina_sin_destino_falla_claro(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -109,7 +109,7 @@ def test_boton_de_pagina_sin_destino_falla_claro(sample_pbip, session):
 
 def test_composicion_no_admite_campos(sample_pbip, session):
     """Pedirle campos a un boton es un error de quien llama, no algo a ignorar."""
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -121,7 +121,7 @@ def test_composicion_no_admite_campos(sample_pbip, session):
 
 
 def test_textbox_sin_texto_falla(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -130,7 +130,7 @@ def test_textbox_sin_texto_falla(sample_pbip, session):
 
 
 def test_forma_desconocida_se_rechaza(sample_pbip, session):
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -146,7 +146,7 @@ def test_el_detector_no_se_queja_del_solape_de_una_portada():
     Antes cada portada generaba una veintena de avisos falsos y enterraba los
     de verdad.
     """
-    from services import layout_doctor
+    from horizun_pbi_mcp.services import layout_doctor
 
     visuales = [
         {"id": "fondo", "type": "shape",
@@ -164,7 +164,7 @@ def test_el_detector_no_se_queja_del_solape_de_una_portada():
 
 def test_el_detector_sigue_viendo_el_solape_entre_graficos():
     """La tolerancia es solo para composicion: dos graficos encimados siguen mal."""
-    from services import layout_doctor
+    from horizun_pbi_mcp.services import layout_doctor
 
     visuales = [
         {"id": "a", "type": "clusteredBarChart",
@@ -217,7 +217,7 @@ def test_paleta_propia_se_valida():
 
 def test_aplicar_tema_deja_los_tres_nombres_iguales(sample_pbip, session, tmp_path):
     """Nombre interno, archivo y report.json han de coincidir, extension incluida."""
-    from pbip import project_locator
+    from horizun_pbi_mcp.pbip import project_locator
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -245,8 +245,8 @@ def test_fallo_al_declarar_tema_revierte_el_archivo_y_report_json(
     """Si falla el segundo archivo, el tema no puede quedar huerfano."""
     from pathlib import Path
 
-    from pbip import project_locator
-    from services import txn as txn_service
+    from horizun_pbi_mcp.pbip import project_locator
+    from horizun_pbi_mcp.services import txn as txn_service
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -272,8 +272,8 @@ def test_fallo_al_declarar_tema_revierte_el_archivo_y_report_json(
 
 def test_nombre_de_archivo_de_tema_no_admite_traversal(
         sample_pbip, session, tmp_path):
-    from pbip import project_locator
-    from powerbi.errors import PathSecurityError
+    from horizun_pbi_mcp.pbip import project_locator
+    from horizun_pbi_mcp.powerbi.errors import PathSecurityError
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -291,8 +291,8 @@ def test_tema_no_se_escribe_con_desktop_abierto(
         sample_pbip, session, monkeypatch):
     from pathlib import Path
 
-    from pbip import project_locator
-    from services import project_state
+    from horizun_pbi_mcp.pbip import project_locator
+    from horizun_pbi_mcp.services import project_state
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -322,9 +322,9 @@ def test_el_tmdl_del_proyecto_manda_sobre_el_modelo_en_vivo(sample_pbip, session
     Desktop para que las medidas recien escritas en el TMDL se dieran por
     inexistentes y se rechazara la pagina entera.
     """
-    from config import ActiveModel
-    from pbip import project_locator
-    from tools import visual_tools
+    from horizun_pbi_mcp.config import ActiveModel
+    from horizun_pbi_mcp.pbip import project_locator
+    from horizun_pbi_mcp.tools import visual_tools
 
     project_locator.open_project(session, str(sample_pbip))
     session.set_active_model(ActiveModel(
@@ -352,7 +352,7 @@ def test_create_page_acepta_el_dialecto_del_constructor():
     un spec que pasaba la validacion rebotaba al crearlo, con un error que no
     mencionaba que existieran dos formatos.
     """
-    from tools.page_tools import normalizar_spec
+    from horizun_pbi_mcp.tools.page_tools import normalizar_spec
 
     nuevo = {"schema_version": "1.0",
              "page": {"name": "Portada", "width": 1280, "height": 720},
@@ -365,7 +365,7 @@ def test_create_page_acepta_el_dialecto_del_constructor():
 
 
 def test_el_dialecto_antiguo_pasa_intacto():
-    from tools.page_tools import normalizar_spec
+    from horizun_pbi_mcp.tools.page_tools import normalizar_spec
 
     viejo = {"page_name": "P", "canvas": {"width": 800, "height": 600},
              "visuals": []}
@@ -385,7 +385,7 @@ def _campo():
 
 
 def test_degradado_de_dos_paradas():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     r = cf.build_fill_rule(_campo(), "#D03B3B", "#0CA30C")
     regla = r["expr"]["FillRule"]
@@ -396,7 +396,7 @@ def test_degradado_de_dos_paradas():
 
 
 def test_degradado_de_tres_paradas_cuando_hay_punto_neutro():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     r = cf.build_fill_rule(_campo(), "#D03B3B", "#0CA30C", mid_color="#FAB219")
     assert "linearGradient3" in r["expr"]["FillRule"]["FillRule"]
@@ -404,7 +404,7 @@ def test_degradado_de_tres_paradas_cuando_hay_punto_neutro():
 
 def test_la_regla_se_aplica_a_todas_las_filas():
     """Sin el selector comodin el color solo pinta la primera fila."""
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C")
@@ -424,7 +424,7 @@ def test_una_segunda_regla_sobre_el_MISMO_campo_sustituye_a_la_primera():
     varias medidas; eso lo cubre
     `test_colorear_una_segunda_medida_no_borra_la_primera`.
     """
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#000000", "#111111")
@@ -438,7 +438,7 @@ def test_una_segunda_regla_sobre_el_MISMO_campo_sustituye_a_la_primera():
 
 
 def test_destino_y_colores_se_validan():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     with pytest.raises(cf.ConditionalFormatError) as exc:
         cf.apply_to_visual(_visual_matriz(), _campo(), "#FFF", "#000",
@@ -464,7 +464,7 @@ def test_colorear_una_segunda_medida_no_borra_la_primera():
     campo apuntaba. El rodeo conocido era dinamizar las metricas a filas para
     tener una sola medida; ya no hace falta.
     """
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo_de("Importe"), "#FFFFFF", "#2A78D6")
@@ -478,7 +478,7 @@ def test_colorear_una_segunda_medida_no_borra_la_primera():
 
 def test_repetir_el_mismo_campo_sustituye_su_regla_y_solo_la_suya():
     """Acumular tampoco puede significar dejar dos reglas del mismo campo."""
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo_de("Importe"), "#FFFFFF", "#FF0000")
@@ -500,7 +500,7 @@ def test_la_regla_se_acota_al_campo_con_metadata():
 
     Sin el, dos degradados sobre la misma propiedad no se pueden distinguir.
     """
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#FFFFFF", "#000000")
@@ -525,7 +525,7 @@ def test_la_referencia_del_campo_se_deduce_como_en_el_resto_del_servidor(
 
     Si no coinciden, la regla apunta a una columna que el visual no tiene.
     """
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     assert cf.query_ref(campo) == esperado
 
@@ -535,7 +535,7 @@ def test_la_referencia_del_campo_se_deduce_como_en_el_resto_del_servidor(
     ("font", "values", "fontColor"),
 ])
 def test_cada_destino_escribe_donde_toca(target, grupo, prop):
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target=target)
@@ -543,7 +543,7 @@ def test_cada_destino_escribe_donde_toca(target, grupo, prop):
 
 
 def test_barras_escribe_en_data_point_de_un_grafico_compatible():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = {"visual": {"visualType": "clusteredColumnChart"}}
     cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C", target="bars")
@@ -557,7 +557,7 @@ def test_barras_escribe_en_data_point_de_un_grafico_compatible():
 
 def test_aggregation_conserva_la_columna_interior_en_el_fill_rule():
     """Una columna resumida no se puede degradar como columna sin resumir."""
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     campo = {"Aggregation": {
         "Expression": {"Column": {
@@ -577,7 +577,7 @@ def test_aggregation_conserva_la_columna_interior_en_el_fill_rule():
 
 
 def test_reaplicar_dataPoint_reemplaza_la_regla_del_mismo_campo():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     campo = {"Aggregation": {
         "Expression": {"Column": {
@@ -597,7 +597,7 @@ def test_reaplicar_dataPoint_reemplaza_la_regla_del_mismo_campo():
 
 
 def test_resolver_proyeccion_reutiliza_aggregation_y_queryref():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     campo = {"Aggregation": {
         "Expression": {"Column": {
@@ -613,7 +613,7 @@ def test_resolver_proyeccion_reutiliza_aggregation_y_queryref():
 
 
 def test_resolver_proyeccion_rechaza_un_campo_que_el_visual_no_usa():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     visual = {"visual": {"query": {"queryState": {}}}}
     with pytest.raises(cf.ConditionalFormatError) as exc:
@@ -625,7 +625,7 @@ def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
     """El esquema oficial acepta cualquier `objects`; Desktop simplemente
     ignora un grupo que no pertenece al tipo. Hay que bloquearlo nosotros.
     """
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = _visual_matriz()
     with pytest.raises(cf.ConditionalFormatError) as exc:
@@ -636,7 +636,7 @@ def test_el_destino_de_formato_debe_existir_en_ese_tipo_de_visual():
 
 def test_fontColor_no_se_ofrece_en_la_matrix_clasica():
     """El grupo existe, la propiedad no: el catalogo distingue ambas cosas."""
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     vis = {"visual": {"visualType": "matrix"}}
     with pytest.raises(cf.ConditionalFormatError):
@@ -646,7 +646,7 @@ def test_fontColor_no_se_ofrece_en_la_matrix_clasica():
 
 
 def test_degradado_blanco_avisa_sobre_tema_oscuro():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     avisos = cf.contrast_warnings(
         "#FFFFFF", "#2A78D6", target="background",
@@ -656,7 +656,7 @@ def test_degradado_blanco_avisa_sobre_tema_oscuro():
 
 
 def test_degradado_con_contraste_suficiente_no_avisa():
-    from pbip import conditional_format as cf
+    from horizun_pbi_mcp.pbip import conditional_format as cf
 
     assert cf.contrast_warnings(
         "#000000", "#1A1A19", target="background",
@@ -679,7 +679,7 @@ def test_una_imagen_se_copia_y_se_declara(sample_pbip, session, tmp_path):
     """Copiarla sin declararla la deja invisible para Power BI."""
     from pathlib import Path
 
-    from pbip import project_locator, resources
+    from horizun_pbi_mcp.pbip import project_locator, resources
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -699,7 +699,7 @@ def test_una_imagen_se_copia_y_se_declara(sample_pbip, session, tmp_path):
 
 
 def test_no_pisa_un_recurso_existente(sample_pbip, session, tmp_path):
-    from pbip import project_locator, resources
+    from horizun_pbi_mcp.pbip import project_locator, resources
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -711,8 +711,8 @@ def test_no_pisa_un_recurso_existente(sample_pbip, session, tmp_path):
 def test_nombre_de_recurso_no_puede_escapar_del_informe(
         sample_pbip, session, tmp_path):
     """La prueba de traversal solo apunta a un marcador dentro de tmp_path."""
-    from pbip import project_locator, resources
-    from powerbi.errors import PathSecurityError
+    from horizun_pbi_mcp.pbip import project_locator, resources
+    from horizun_pbi_mcp.powerbi.errors import PathSecurityError
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -733,8 +733,8 @@ def test_fallo_al_registrar_recurso_revierte_la_copia(
     """Si falla el segundo archivo, ni la imagen ni report.json cambian."""
     from pathlib import Path
 
-    from pbip import project_locator, resources
-    from services import txn as txn_service
+    from horizun_pbi_mcp.pbip import project_locator, resources
+    from horizun_pbi_mcp.services import txn as txn_service
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -755,7 +755,7 @@ def test_fallo_al_registrar_recurso_revierte_la_copia(
 
 
 def test_extension_no_soportada_se_rechaza(sample_pbip, session, tmp_path):
-    from pbip import project_locator, resources
+    from horizun_pbi_mcp.pbip import project_locator, resources
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()
@@ -770,7 +770,7 @@ def test_listar_recursos_detecta_lo_que_no_cuadra(sample_pbip, session, tmp_path
     """Un archivo sin declarar y una declaracion sin archivo son invisibles."""
     from pathlib import Path
 
-    from pbip import project_locator, resources
+    from horizun_pbi_mcp.pbip import project_locator, resources
 
     project_locator.open_project(session, str(sample_pbip))
     activo = session.require_active_pbip()

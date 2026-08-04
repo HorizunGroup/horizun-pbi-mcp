@@ -8,8 +8,8 @@ import sys
 
 import pytest
 
-import branding
-from server import build_server
+from horizun_pbi_mcp import branding
+from horizun_pbi_mcp.server import build_server
 
 
 def test_identidad():
@@ -38,7 +38,7 @@ def test_todas_las_tools_conservan_el_prefijo():
 
 
 def test_el_logger_raiz_es_el_nuevo():
-    from logging_config import LOGGER_NAME, get_logger
+    from horizun_pbi_mcp.logging_config import LOGGER_NAME, get_logger
 
     assert LOGGER_NAME == "horizun_pbi_mcp"
     assert get_logger("x").name == "horizun_pbi_mcp.x"
@@ -60,8 +60,7 @@ def test_el_prefijo_antiguo_sigue_funcionando(monkeypatch):
 
 
 def test_settings_respeta_la_precedencia(monkeypatch, tmp_path):
-    import config
-
+    from horizun_pbi_mcp import config
     monkeypatch.setenv("HORIZUN_PBI_MCP_MAX_ROWS", "77")
     monkeypatch.setenv("PBI_MCP_MAX_ROWS", "99")
     monkeypatch.setattr(config, "_settings", None)
@@ -76,8 +75,7 @@ def test_sin_variables_se_usa_el_default(monkeypatch):
 
 # ------------------------------------------------------------ identidad ------
 def test_health_check_reporta_el_producto(session, monkeypatch):
-    import config as cfg
-
+    import horizun_pbi_mcp.config as cfg
     monkeypatch.setattr(cfg, "_session", session)
     mcp = build_server()
     res = asyncio.run(mcp.call_tool("pbi_health_check", {}))
@@ -89,8 +87,7 @@ def test_health_check_reporta_el_producto(session, monkeypatch):
 
 
 def test_capabilities_reporta_el_producto(session, monkeypatch):
-    import config as cfg
-
+    import horizun_pbi_mcp.config as cfg
     monkeypatch.setattr(cfg, "_session", session)
     mcp = build_server()
     res = asyncio.run(mcp.call_tool("pbi_capabilities", {}))

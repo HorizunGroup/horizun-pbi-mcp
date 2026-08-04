@@ -29,7 +29,17 @@ from pathlib import Path
 from typing import Dict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SERVER_PY = PROJECT_ROOT / "src" / "server.py"
+SERVER_PY = PROJECT_ROOT / "src" / "horizun_pbi_mcp" / "server.py"
+SRC_DIR = PROJECT_ROOT / "src"
+
+#: El servidor se arranca como MODULO, no por la ruta del fichero. Ejecutar
+#: `python src/horizun_pbi_mcp/server.py` pone en sys.path el directorio DEL
+#: FICHERO (src/horizun_pbi_mcp/), no `src/`, asi que `import horizun_pbi_mcp`
+#: no resuelve en un clon limpio. En la maquina de quien lo desarrolla suele
+#: funcionar igualmente, porque una instalacion editable deja un .pth con
+#: `src/` dentro: exactamente la clase de fallo que solo aparece en casa de
+#: otro. Con `-m` mas PYTHONPATH funciona en ambos casos.
+SERVER_ARGS = ["-m", "horizun_pbi_mcp.server"]
 SERVER_NAME = "horizun-pbi-mcp"
 
 
@@ -44,7 +54,8 @@ def _python_exe(override: str | None) -> str:
 
 def _env_block() -> Dict[str, str]:
     # Prefijo actual. Las PBI_MCP_* siguen funcionando con menor precedencia.
-    return {"HORIZUN_PBI_MCP_LOG_LEVEL": "INFO"}
+    return {"HORIZUN_PBI_MCP_LOG_LEVEL": "INFO",
+            "PYTHONPATH": _json_path(SRC_DIR)}
 
 
 # --------------------------------------------------------------- clientes ----
@@ -54,7 +65,7 @@ def cfg_claude_code(python_exe: str) -> str:
             SERVER_NAME: {
                 "type": "stdio",
                 "command": python_exe,
-                "args": [_json_path(SERVER_PY)],
+                "args": list(SERVER_ARGS),
                 "env": _env_block(),
             }
         }
@@ -67,7 +78,7 @@ def cfg_claude_desktop(python_exe: str) -> str:
         "mcpServers": {
             SERVER_NAME: {
                 "command": python_exe,
-                "args": [_json_path(SERVER_PY)],
+                "args": list(SERVER_ARGS),
                 "env": _env_block(),
             }
         }
@@ -92,7 +103,7 @@ def cfg_generic(python_exe: str) -> str:
         "name": SERVER_NAME,
         "transport": "stdio",
         "command": python_exe,
-        "args": [_json_path(SERVER_PY)],
+        "args": list(SERVER_ARGS),
         "env": _env_block(),
     }
     return json.dumps(payload, indent=2, ensure_ascii=False)
@@ -104,7 +115,7 @@ NOTES = {
         "expands_vars": "Si, admite ${VAR}. Aun asi este script emite rutas "
                         "absolutas: funcionan siempre, sin depender de la expansion.",
         "cwd": "Hereda el directorio desde el que arrancaste Claude Code. "
-               "El servidor no depende de ello: resuelve todo desde src/config.py.",
+               "El servidor no depende de ello: resuelve todo desde src/horizun_pbi_mcp/config.py.",
         "python": "No busca Python: usa exactamente el 'command' que le des.",
         "env": "Objeto 'env' dentro de la entrada del servidor.",
         "verify": "En Claude Code: /mcp   (debe aparecer 'horizun-pbi-mcp' conectado)",

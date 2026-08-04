@@ -49,8 +49,7 @@ def _identidad() -> dict:
     if str(SRC_DIR) not in sys.path:
         sys.path.insert(0, str(SRC_DIR))
     try:
-        import branding
-
+        from horizun_pbi_mcp import branding
         return branding.identity()
     except Exception:  # noqa: BLE001
         return {"product": "Horizun PBI MCP", "version": "?",
@@ -275,7 +274,7 @@ def check_pbir_schemas(rep: Report) -> None:
     if str(SRC_DIR) not in sys.path:
         sys.path.insert(0, str(SRC_DIR))
     try:
-        from services import pbir_schema
+        from horizun_pbi_mcp.services import pbir_schema
     except Exception as exc:  # noqa: BLE001
         rep.add("pbir_schemas", "Esquemas oficiales del PBIR", WARN,
                 f"no se pudo comprobar: {exc}", required=False)
@@ -308,7 +307,7 @@ def check_report_validator(rep: Report) -> None:
     if str(SRC_DIR) not in sys.path:
         sys.path.insert(0, str(SRC_DIR))
     try:
-        from services import report_validator as rv
+        from horizun_pbi_mcp.services import report_validator as rv
     except Exception as exc:  # noqa: BLE001
         rep.add("report_validator", "Validador PBIR oficial (Microsoft)", SKIP,
                 f"no se pudo comprobar: {exc}", required=False)
@@ -335,7 +334,7 @@ def check_server_boots(rep: Report) -> Optional[List[Any]]:
         sys.path.insert(0, str(SRC_DIR))
     try:
         import asyncio
-        from server import build_server
+        from horizun_pbi_mcp.server import build_server
         t0 = time.perf_counter()
         mcp = build_server()
         tools = asyncio.run(mcp.list_tools())
@@ -346,7 +345,8 @@ def check_server_boots(rep: Report) -> Optional[List[Any]]:
     except Exception as exc:  # noqa: BLE001
         rep.add("server_boot", "El servidor MCP arranca", FAIL,
                 f"{type(exc).__name__}: {exc}", required=True,
-                hint="Revisa el traceback ejecutando: python src/server.py")
+                hint="Revisa el traceback ejecutando: "
+                          "python -m horizun_pbi_mcp.server")
         return None
 
 
@@ -396,7 +396,7 @@ def check_desktop(rep: Report, require: bool) -> List[Dict[str, Any]]:
     if str(SRC_DIR) not in sys.path:
         sys.path.insert(0, str(SRC_DIR))
     try:
-        from powerbi import desktop_discovery
+        from horizun_pbi_mcp.powerbi import desktop_discovery
         instances = desktop_discovery.discover_instances()
     except Exception as exc:  # noqa: BLE001
         rep.add("desktop", "Power BI Desktop abierto", FAIL if require else WARN,
@@ -496,7 +496,7 @@ def check_dax(rep: Report, instances: List[Dict[str, Any]]) -> None:
         return
     inst = alive[0]
     try:
-        from powerbi.adomd_client import AdomdClient
+        from horizun_pbi_mcp.powerbi.adomd_client import AdomdClient
         with AdomdClient(inst["connection_string"], inst.get("catalog")) as client:
             cols, rows, _t, ms = client.execute_reader(
                 'EVALUATE ROW("ok", 1, "probe", "doctor")', max_rows=1)
@@ -516,8 +516,8 @@ def check_pbip(rep: Report, path: str) -> None:
         sys.path.insert(0, str(SRC_DIR))
     try:
         import tempfile
-        from config import Session, Settings
-        from pbip import pbir_reader, project_locator
+        from horizun_pbi_mcp.config import Session, Settings
+        from horizun_pbi_mcp.pbip import pbir_reader, project_locator
 
         # Sesion desechable en un temporal: no toca outputs/ del proyecto.
         tmp = Path(tempfile.mkdtemp(prefix="pbimcp_doctor_"))

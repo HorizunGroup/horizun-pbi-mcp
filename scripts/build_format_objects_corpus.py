@@ -30,9 +30,9 @@ from typing import Any, Dict, Iterable, List, Set, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from pbip import layout_to_pbir, visual_factory  # noqa: E402
-from pbip.pbix_reader import read_pbix  # noqa: E402
-from services import format_oracle  # noqa: E402
+from horizun_pbi_mcp.pbip import layout_to_pbir, visual_factory  # noqa: E402
+from horizun_pbi_mcp.pbip.pbix_reader import read_pbix  # noqa: E402
+from horizun_pbi_mcp.services import format_oracle  # noqa: E402
 
 TOKENS = frozenset({"<boolean>", "<number>", "<string>", "<null>"})
 FAMILIES = ("objects", "visualContainerObjects")

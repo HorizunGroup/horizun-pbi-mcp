@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import backup as backup_mod
-from services import txn as txn_service
-from services.txn import (COMMITTED, RESTORED, ROLLBACK_CONFLICT, ROLLBACK_FAILED,
+from horizun_pbi_mcp.pbip import backup as backup_mod
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.txn import (COMMITTED, RESTORED, ROLLBACK_CONFLICT, ROLLBACK_FAILED,
                           UNCHANGED, BackupDestinationError, RollbackIncompleteError,
                           Transaction, durable_write, fingerprint, transaction)
 from tests.fixtures import synthetic
@@ -53,7 +53,7 @@ def visual(nombre="x", **extra):
 
 def test_validador_disponible_pero_inoperable_bloquea_antes_de_escribir(
         entorno, monkeypatch):
-    from services import report_validator as rv
+    from horizun_pbi_mcp.services import report_validator as rv
 
     project, backups = entorno
     target = _visual(project)
@@ -74,7 +74,7 @@ def test_validador_disponible_pero_inoperable_bloquea_antes_de_escribir(
 
 def test_validador_que_falla_despues_de_escribir_fuerza_rollback(
         entorno, monkeypatch):
-    from services import report_validator as rv
+    from horizun_pbi_mcp.services import report_validator as rv
 
     project, backups = entorno
     target = _visual(project)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from pbip import visual_factory
+from horizun_pbi_mcp.pbip import visual_factory
 
 
 def test_sin_colores_no_toca_nada():

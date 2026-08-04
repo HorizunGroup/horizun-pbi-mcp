@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from pbip import model_author, project_locator, table_from_file
-from services import tmdl_validate
+from horizun_pbi_mcp.pbip import model_author, project_locator, table_from_file
+from horizun_pbi_mcp.services import tmdl_validate
 
 
 @pytest.fixture
@@ -30,8 +30,7 @@ def proyecto(session, sample_pbip):
 
 
 def _assert_tom_abre(proyecto):
-    import config
-
+    from horizun_pbi_mcp import config
     definition = Path(proyecto.semantic_model_dir) / "definition"
     settings = config.get_settings()
     anterior = settings.libs_dir
@@ -242,7 +241,7 @@ def test_la_tabla_escrita_pasa_el_validador(proyecto, tmp_path):
 
 def test_importacion_revierte_tabla_y_ref_si_falla_model_tmdl(
         proyecto, tmp_path, monkeypatch):
-    from services import txn
+    from horizun_pbi_mcp.services import txn
 
     origen = _csv(tmp_path, "costos.csv", CSV_PUNTO)
     definition = Path(proyecto.semantic_model_dir) / "definition"

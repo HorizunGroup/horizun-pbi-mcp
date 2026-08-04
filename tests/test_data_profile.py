@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from services import data_profile as dp
+from horizun_pbi_mcp.services import data_profile as dp
 
 
 @pytest.mark.parametrize("nombre,esperado", [

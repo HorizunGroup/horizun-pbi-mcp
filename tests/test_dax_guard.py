@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from services import dax_guard
-from services.dax_guard import DaxNotReadOnlyError
+from horizun_pbi_mcp.services import dax_guard
+from horizun_pbi_mcp.services.dax_guard import DaxNotReadOnlyError
 
 
 def permitida(q: str) -> bool:

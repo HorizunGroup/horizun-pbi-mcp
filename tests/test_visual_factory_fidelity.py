@@ -6,8 +6,8 @@ import math
 
 import pytest
 
-from pbip import pbir_reader, project_locator, visual_factory
-from powerbi.errors import VisualFactoryError
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, visual_factory
+from horizun_pbi_mcp.powerbi.errors import VisualFactoryError
 from tests.fixtures import synthetic
 
 

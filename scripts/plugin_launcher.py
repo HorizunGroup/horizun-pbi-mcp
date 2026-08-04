@@ -115,7 +115,10 @@ def main() -> int:
     p = bootstrap.paths()
     if status.get("ready") and status.get("version") == bootstrap.VERSION and p["python"].is_file():
         env = bootstrap.runtime_env(p)
-        command = [str(p["python"]), str(bootstrap.PLUGIN_ROOT / "src/server.py")]
+        # `-m` en vez de la ruta del fichero: el paquete se instala con pip en el
+        # entorno del plugin, asi que el arranque no depende de donde este el
+        # arbol de fuentes.
+        command = [str(p["python"]), "-m", "horizun_pbi_mcp.server"]
         if os.name == "nt":
             return subprocess.call(command, cwd=str(bootstrap.PLUGIN_ROOT), env=env)
         os.execve(str(p["python"]), command, env)

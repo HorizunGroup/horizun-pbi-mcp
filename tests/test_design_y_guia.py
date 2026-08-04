@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-from config import ActivePbip
-from pbip import pbip_scaffold, table_from_file, theme, tmdl_reader, tmdl_writer
-from services import design, guide, page_spec, report_validator, tmdl_validate
-from services.design import DesignError
+from horizun_pbi_mcp.config import ActivePbip
+from horizun_pbi_mcp.pbip import pbip_scaffold, table_from_file, theme, tmdl_reader, tmdl_writer
+from horizun_pbi_mcp.services import design, guide, page_spec, report_validator, tmdl_validate
+from horizun_pbi_mcp.services.design import DesignError
 
 from tests.test_generadores_abren import requiere_oraculos  # noqa: F401
 
@@ -140,7 +140,7 @@ def test_ningun_visual_se_solapa_con_otro(sistema):
 
 def test_el_titulo_tiene_el_alto_que_su_tamano_exige():
     """Por debajo del piso, Power BI corta el texto y mete barra de scroll."""
-    from pbip import visual_factory
+    from horizun_pbi_mcp.pbip import visual_factory
 
     for sistema in design.SISTEMAS:
         spec = design.componer(sistema, title="Un titulo")
@@ -236,7 +236,7 @@ def test_el_numero_del_indicador_lleva_el_tamano_del_sistema(sistema, tamano):
 
 def test_el_numero_cabe_en_la_banda_de_indicadores():
     """Un numero mas alto que su banda sale cortado."""
-    from pbip import visual_factory
+    from horizun_pbi_mcp.pbip import visual_factory
 
     for sistema, datos in design.SISTEMAS.items():
         piso = visual_factory.piso_de_texto(datos["tipografia"]["kpi"])
@@ -308,7 +308,10 @@ def test_la_guia_solo_nombra_tools_que_existen():
 
     reales = {t["name"] for t in contract_utils.snapshot_from_server()["tools"]}
     texto = Path(guide.__file__).read_text(encoding="utf-8")
-    nombradas = set(re.findall(r"pbi_[a-z0-9_]+", texto))
+    # `(?<![\w])` es obligatorio: sin el, el propio nombre del paquete
+    # (`horizun_pbi_mcp`) aporta un `pbi_mcp` que no es ninguna tool, y el test
+    # falla por su propia regex en vez de por un defecto de la guia.
+    nombradas = set(re.findall(r"(?<![\w])pbi_[a-z0-9_]+", texto))
 
     assert nombradas <= reales, sorted(nombradas - reales)
 

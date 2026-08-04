@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from powerbi.errors import ValidationError
-from services import pbir_edit, project_state, report_audit, workflows
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import pbir_edit, project_state, report_audit, workflows
 from tests.fixtures import synthetic
 
 P = synthetic.PAGE_ID
@@ -242,7 +242,7 @@ def test_los_workflows_no_llaman_tools_decoradas():
     import ast
     import pathlib
 
-    fuente = pathlib.Path("src/services/workflows.py").read_text(encoding="utf-8")
+    fuente = pathlib.Path("src/horizun_pbi_mcp/services/workflows.py").read_text(encoding="utf-8")
     arbol = ast.parse(fuente)
     llamadas = {n.func.id for n in ast.walk(arbol)
                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}

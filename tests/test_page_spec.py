@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from powerbi.errors import ValidationError
-from services import page_spec, project_state
-from services import txn as txn_service
-from services.page_spec import SpecValidationError
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.services import page_spec, project_state
+from horizun_pbi_mcp.services import txn as txn_service
+from horizun_pbi_mcp.services.page_spec import SpecValidationError
 from tests.fixtures import synthetic
 
 

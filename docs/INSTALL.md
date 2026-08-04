@@ -17,14 +17,14 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Setup starts automatically on the first session. While it progresses
 you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
-the client the 112 tools will appear. Nothing needs to be downloaded or run
+the client the 119 tools will appear. Nothing needs to be downloaded or run
 separately. The runtime and verified downloads stay in the plugin's local
 data, outside the repository and your projects.
 
 Python 3.10+ is still a requirement: it's the local process that talks to
 Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 
-Reproducible guide from scratch. At the end, an MCP client should see 112 `pbi_*` tools.
+Reproducible guide from scratch. At the end, an MCP client should see 119 `pbi_*` tools.
 
 ---
 
@@ -145,10 +145,13 @@ Paste the resulting TOML section into `~/.codex/config.toml`. It's **TOML**, not
 ```toml
 [mcp_servers.horizun-pbi-mcp]
 command = "C:/path/to/python.exe"
-args = ["C:/path/to/repository/src/server.py"]
+args = ["-m", "horizun_pbi_mcp.server"]
 
 [mcp_servers.horizun-pbi-mcp.env]
 HORIZUN_PBI_MCP_LOG_LEVEL = "INFO"
+# Required when running from a clone without installing the package:
+# executing the module needs src/ on the import path.
+PYTHONPATH = "C:/path/to/repository/src"
 ```
 
 Both paths must be **absolute**: Codex doesn't expand `${VAR}` nor look up the interpreter for you.

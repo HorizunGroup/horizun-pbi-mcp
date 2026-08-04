@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, pbir_writer, project_locator, tmdl_reader
-from services import pbir_edit, workflows
-from services import txn as txn_service
+from horizun_pbi_mcp.pbip import pbir_reader, pbir_writer, project_locator, tmdl_reader
+from horizun_pbi_mcp.services import pbir_edit, workflows
+from horizun_pbi_mcp.services import txn as txn_service
 from tests.fixtures import synthetic
 
 
@@ -359,7 +359,7 @@ def test_los_workflows_no_llaman_a_escritores_transaccionales_en_bucle():
             if "project_transaction(" in (ast.get_source_segment(texto, fn) or ""):
                 transaccionales.add(fn.name)
 
-    fuente = pathlib.Path("src/services/workflows.py").read_text(encoding="utf-8")
+    fuente = pathlib.Path("src/horizun_pbi_mcp/services/workflows.py").read_text(encoding="utf-8")
     arbol = ast.parse(fuente)
     fallos = []
     for bucle in [n for n in ast.walk(arbol) if isinstance(n, (ast.For, ast.While))]:

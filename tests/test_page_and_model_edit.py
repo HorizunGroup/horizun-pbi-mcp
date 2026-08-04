@@ -1,8 +1,8 @@
 """Pruebas de generacion de hojas (page_builder), edicion de modelo (model_edit)
 y preservacion de estilo del titulo al clonar visuales."""
-from pbip import model_edit, page_builder, pbir_reader, project_locator, tmdl_reader
-from pbip.tmdl_reader import _definition_dir
-from pbip.visual_factory import _set_title
+from horizun_pbi_mcp.pbip import model_edit, page_builder, pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.pbip.tmdl_reader import _definition_dir
+from horizun_pbi_mcp.pbip.visual_factory import _set_title
 
 
 def test_building_blocks(session, sample_pbip):

@@ -5,27 +5,15 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [1.0.1] — 2026-08-02
+## [1.1.0] — 2026-08-03
 
-### Fixed
-
-- The official oracle now also checks visuals that only contain
-  `visualContainerObjects`; it no longer falls back to the partial snapshot in that case.
-- Empty format expressions (`expr: {}`) are rejected before writing.
-- Downgrading to an earlier PBIR schema is limited to versions the
-  manifest expressly identifies as not published by Microsoft.
-- An already-open PBIP session can be reused without first validating a
-  different or incomplete copy of the model saved on disk.
-
----
-
-## [Unreleased]
-
-Five gaps found while using the server on a real case (building a
-construction-budget dashboard from scratch, with data from an external ERP),
-not invented ones: each one cost real session time before being worked
-around by hand, and this delivery keeps the next case from paying the same
-price.
+Everything here came out of real use, not a roadmap: five gaps hit while
+building a construction-budget dashboard end to end (PR #5), and fourteen
+limitations written down during a second full session — each one cost real
+time before being worked around by hand. The common thread of the fixes: the
+server used to KNOW the answer and not say it (a note, a hint, an error
+count, a mode that always failed). One new tool (`pbi_open_and_refresh`,
+118 → 119) and no breaking changes: the frozen contract holds.
 
 ### Added
 
@@ -61,6 +49,206 @@ price.
   (`Table.FromRows` + `Table.ToRows`) instead of trusting how `Web.Page`
   names them at refresh time — that naming isn't predictable from Python
   when there is no `<th>`.
+
+- **Risk class declared to the client (`annotations`)**: the 118 tools reached
+  the client with no metadata at all, so `pbi_list_measures` and
+  `pbi_delete_page` were indistinguishable — an MCP client could neither
+  auto-allow a read nor warn differently before a deletion. Each tool now
+  declares its class in `tools/risk.py` (51 strictly read-only, 9 that emit a
+  file into `outputs/`, 2 that open Power BI Desktop, 47 reversible writes, 8
+  destructive and 1 irreversible), translated into `readOnlyHint`,
+  `destructiveHint`, `idempotentHint` and `openWorldHint`.
+
+  The table is written by hand **on purpose**, because erring on the easy side
+  — marking as read-only something that writes — is exactly the mistake a
+  client would turn into "this can run without asking".
+  `tests/test_tool_annotations.py` contrasts every entry against AST evidence
+  from the code: a tool that calls `guard_mutation` cannot be declared a read,
+  a `read_only` one cannot reach `atomic_write_text`, a destructive one must
+  take `confirm`, and an unclassified tool breaks the suite instead of
+  silently defaulting. `annotations_for()` fails closed: unknown means
+  destructive.
+
+- **`detail` and `tables` in `pbi_list_tables` and `pbi_list_measures`**: both
+  returned the entire inventory always, with no way to ask for less. Measured
+  on a real seven-table project, `pbi_list_tables` came to ~28,000 characters
+  (~7,000 tokens) in a single response; a forty-table corporate model eats a
+  large part of the context window before any work happens.
+  `detail='summary'` replaces the column list with its count (−98% in that
+  project) and drops the DAX expression from measures. `tables=[...]` narrows
+  to specific tables and **fails with the real names in view** when one
+  doesn't exist, instead of returning an empty list that reads as "the model
+  is empty". The default stays `full`: the contract is frozen and nobody's
+  existing call changes behavior.
+
+- **Header-row autodetection and `skip_rows` in `pbi_add_table_from_file`**:
+  the most common ERP export pattern — row 1 holds the report title and six
+  empty cells, the real header sits in row 2 — used to die with "6 unnamed
+  column(s) in the header row" and force hand-writing the M partition and the
+  TMDL. Now the first plausible header row (no gaps, no duplicate names,
+  spanning the table's full width) is detected among the first ten, the choice
+  is announced in `warnings` with the parameter to override it, and — the part
+  that matters — **the generated M query skips the same rows**, otherwise the
+  TMDL would describe one set of columns and the refresh would load another.
+  Two defects found by the tests, not by reasoning: the CSV delimiter was
+  sniffed only on row 1 (a title row has no separators, so it always fell back
+  to comma), and a single-cell title row passed the heuristic — hence the
+  full-width requirement.
+
+- **`format` block per visual** (spec and `pbi_create_visual`): slicer `mode`
+  (Dropdown/List/Between…), `dataLabels`, `legend`, `legendPosition` — the
+  things that used to require hand-writing `objects` inside each
+  `visual.json`. The vocabulary is short on purpose: every entry is checked
+  against the official catalog, the written paths are declared to the format
+  oracle (it only checks what is declared — undeclared paths pass unseen,
+  which is how invalid `objects` slipped in historically), and an unknown key
+  **fails** instead of being ignored: a format that is asked for and not
+  applied leaves the report different from what was designed, silently.
+  Plus **incremental z-order**: every visual came out with `z: 0` and then
+  `pbi_detect_layout_issues` flagged `layout_z_order_duplicated` — the tool
+  generated the very problem its own auditor reported. Hand-set `z` values
+  are respected.
+
+- **`mode='auto'` on the six dual tools**: the historical default `live`
+  requires Desktop open, writing the model requires it closed, and `both` is
+  blocked — so in the build-from-scratch flow the default always failed.
+  `auto` resolves against the real state inside the same precondition that
+  blocks `both` (i.e., before any effect): live session → `live`; project on
+  disk and Desktop closed → `pbip`; both possible → `live`; neither → an
+  error that names the exact tool to run. The default itself is untouched:
+  changing a default breaks the frozen contract.
+
+- **`rows_by_table` in `pbi_refresh_model`**: a refresh can finish "ok" and
+  have loaded ZERO rows (credentials returning an empty set, a date filter
+  reaching nothing, a source that changed schema). Row counts are read back
+  from the model after the refresh; zero-row tables are additionally warned.
+  If counting fails, the response says so — inventing a zero would be worse
+  than not counting, because zero is precisely the alarm signal. And the new
+  **`pbi_open_and_refresh`** collapses the real working sequence (a freshly
+  opened `.pbip` has no data) into one call; on refresh failure the window is
+  deliberately left open, because closing it would destroy exactly the
+  context needed to see why.
+
+### Changed
+
+- **Everything now lives under a single package, `horizun_pbi_mcp`**: the wheel
+  used to install **ten** top-level names into `site-packages` — `config`,
+  `server`, `services`, `tools`, `utils`, `pbip`, `powerbi`, `reporting`,
+  `logging_config` and `branding`. Four of those are among the most common
+  names in Python: in any environment where another package — or the user's own
+  script — did `import config`, one of the two won and the other broke, in
+  whichever direction that day. Published on PyPI that stops being our problem
+  and becomes the problem of whoever installs it, and it can't be fixed later
+  without breaking everyone who already has it.
+
+  `test_el_wheel_solo_ocupa_un_nombre_de_primer_nivel` checks it against the
+  **built wheel**, not against `pyproject.toml`: what matters is what lands in
+  `site-packages`. It immediately earned its keep by catching a stale `build/`
+  directory that was poisoning the wheel with both layouts at once.
+
+  The command doesn't change (`horizun-pbi-mcp`). Launching from a clone is now
+  `python -m horizun_pbi_mcp.server` with `PYTHONPATH=<repo>/src`: running the
+  file directly puts *its own* directory on `sys.path`, not `src/`, so
+  `import horizun_pbi_mcp` doesn't resolve on a clean clone. On a developer
+  machine it appears to work anyway, because an editable install leaves a
+  `.pth` pointing at `src/` — exactly the class of failure that only shows up
+  on someone else's machine. `scripts/make_mcp_config.py` now emits the form
+  that works in both.
+
+- **`outputs/` and `backups/` no longer default inside the library tree**: they
+  were resolved relative to the *repository* root, computed from where
+  `config.py` sat. That works from a clone; installed with `pip`, `config.py`
+  lives in `site-packages/horizun_pbi_mcp/`, so that "root" was the virtualenv's
+  library tree — the user's Power BI project backups landed in
+  `<venv>/Lib/site-packages/backups` and vanished on the next reinstall. A backup
+  that deletes itself is not a backup.
+
+  `data_root()` now tells the two cases apart: from a clone the paths are
+  **exactly what they were** (nobody has to migrate anything); installed, it
+  uses the OS user-data directory (`%LOCALAPPDATA%`, or `XDG_DATA_HOME` /
+  `~/.local/share`). Environment variables still win over both.
+
+### Fixed
+
+- **The server died at startup in an environment with no user profile**: found
+  while making the change above. `Path.home()` *raises* `RuntimeError` when
+  there is no `USERPROFILE` or `HOME` — which is what an MCP server launched as
+  a service, or by a client that scrubs the environment, actually gets. The
+  exception killed the process before the first protocol message: the worst way
+  to fail, with no visible trace for whoever configured it. Caught by the
+  packaging test that launches the installed server with a deliberately emptied
+  environment; `data_root()` now never raises.
+
+- **Intermittent test in `test_hide_columns_bulk.py`**: the live-mode tests
+  install a fake model on port 1 and rely on the identity certified by
+  `set_active_model()` — which **expires after one second** by design
+  (`Session._MODEL_VERIFICATION_TTL_SECONDS`, so the server never trusts
+  indefinitely that Desktop is still alive). If more than a second passed
+  between that line and the operation — which happens in a loaded full-suite
+  run and never when running the file on its own — port 1 was re-verified,
+  nobody was listening, and `StaleSessionError` came out. A failure that
+  appeared and vanished depending on how busy the machine was.
+
+  Fixed by removing the clock from the equation, not by raising the TTL:
+  the fixture certifies the session identity explicitly, which is what those
+  tests assume anyway. Freshness itself is still exercised, untouched, in
+  `tests/test_session_freshness.py`. Verified by reproducing the failure with a
+  1.3 s delay and confirming the same case passes afterwards.
+
+- **The contract didn't compare `annotations`**: `contract_utils` recorded
+  them in the golden snapshot but `diff_snapshots` never looked at them, so a
+  tool's risk class could change — or disappear — without the frozen contract
+  saying a word. Now it's compared with the criterion that matters: becoming
+  *less* cautious (gaining `readOnlyHint`, losing `destructiveHint`, losing
+  the annotations entirely) is a **break**; becoming more cautious is a
+  compatible change.
+
+- **The official validator reported errors without saying which**: after two
+  hand-edited `visual.json` files, every response carried
+  `{"errors": 8, "preexisting_diagnostics": 8}` and never listed a single
+  one — no rule, no file, no JSON path, no message. Eight unreadable errors
+  are eight uncorrectable errors. Two distinct holes: `to_envelope()` didn't
+  include `diagnostics` at all, and the before/after comparison returned
+  preexisting findings as a bare count (they don't block, so nobody ever
+  listed them — they were exactly those eight). The parser also used to throw
+  away the CLI's human message, which is usually the only thing that says
+  what's wrong; it is now kept, redacted like everything from an external
+  process, and deliberately excluded from the comparison key so a CLI update
+  doesn't make old defects look new.
+
+- **Three claims the server made that weren't true**: the refresh note said
+  "save in Desktop to persist" — false for `.pbip`, which stores definition,
+  not data (the note now depends on the actual project format, and when the
+  format is unknown it explains the difference instead of asserting either);
+  theme presets defined data-label color and size but never turned them on
+  (`"show": true` was missing, so charts shipped without numbers); and
+  `pbi_page_building_blocks` described a spec shape the validator rejects —
+  it now returns `example_spec`, a minimal spec the test runs through
+  `validate_schema()` rather than trusting the prose.
+
+- **`textbox` and `image` were announced but unusable**: the error said
+  "needs 'text'" without saying WHERE, so `fields` and the visual root were
+  tried and failed identically — a page title had to be faked with cards. The
+  errors now name `options.text` / `options.resource` and carry a complete
+  example in `details`. The dead `MODE_NOTE` constant (a second source of
+  truth about `mode` that no client ever read) was removed instead of left to
+  drift.
+
+---
+
+## [1.0.1] — 2026-08-02
+
+### Fixed
+
+- The official oracle now also checks visuals that only contain
+  `visualContainerObjects`; it no longer falls back to the partial snapshot in that case.
+- Empty format expressions (`expr: {}`) are rejected before writing.
+- Downgrading to an earlier PBIR schema is limited to versions the
+  manifest expressly identifies as not published by Microsoft.
+- An already-open PBIP session can be reused without first validating a
+  different or incomplete copy of the model saved on disk.
+
+---
 
 ---
 

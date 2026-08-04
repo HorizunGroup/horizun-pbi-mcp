@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from services import tmdl_validate
+from horizun_pbi_mcp.services import tmdl_validate
 
 
 def _definition(tmp_path: Path, tablas: dict, relaciones: str = "",

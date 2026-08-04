@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from config import ActivePbip
-from services import project_state
-from services.project_state import (CLOSED, OPEN, UNKNOWN,
+from horizun_pbi_mcp.config import ActivePbip
+from horizun_pbi_mcp.services import project_state
+from horizun_pbi_mcp.services.project_state import (CLOSED, OPEN, UNKNOWN,
                                     ProjectOpenInDesktopError)
 from tests.fixtures import synthetic
 

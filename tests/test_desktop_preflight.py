@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from powerbi import desktop_launcher
+from horizun_pbi_mcp.powerbi import desktop_launcher
 
 
 def _pbip_con_modelo(tmp_path: Path) -> Path:

@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from powerbi import desktop_capture, desktop_launcher
-from powerbi.errors import ValidationError
-from tools import dax_tools
+from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.tools import dax_tools
 
 
 class _McpCaptura:
