@@ -85,6 +85,31 @@ def modelo_fake(monkeypatch):
     return _instalar, estado
 
 
+@pytest.fixture(autouse=True)
+def identidad_de_sesion_certificada(monkeypatch):
+    """Quita el reloj de en medio: aqui no se prueba la frescura de la sesion.
+
+    `set_active_model()` deja la identidad certificada, pero esa certificacion
+    **caduca al segundo** (`Session._MODEL_VERIFICATION_TTL_SECONDS`), a
+    proposito: el servidor no debe fiarse indefinidamente de que Desktop siga
+    vivo. Consecuencia para estas pruebas: instalan un modelo falso en el
+    puerto 1 y, si entre esa linea y la operacion pasa mas de un segundo —cosa
+    que ocurre en una suite completa cargada, nunca al ejecutar el fichero
+    suelto—, se revalida el puerto 1, no hay nadie escuchando y sale
+    `StaleSessionError`. Un fallo que aparece y desaparece segun lo ocupada que
+    este la maquina.
+
+    El arreglo no es subir el TTL ni dormir menos: es dejar de depender del
+    reloj. Se certifica la identidad de forma explicita, que es justo lo que
+    estas pruebas dan por supuesto. Quien SI prueba la frescura es
+    `tests/test_session_freshness.py`, y ahi no se toca nada.
+    """
+    from powerbi import desktop_discovery
+
+    monkeypatch.setattr(desktop_discovery, "verify_model",
+                        lambda modelo: {"status": "ok"})
+
+
 @pytest.fixture
 def sesion_viva(session):
     """Sesion con un modelo activo ya verificado (no consulta el sistema)."""
