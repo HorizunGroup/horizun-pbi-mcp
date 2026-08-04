@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 124,
+  "tool_count": 127,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -133,6 +133,99 @@
       },
       "required": [
         "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_add_table_from_source",
+      "description": "Crea una tabla apuntando a una BASE DE DATOS o API externa.\n\n`source`: sqlserver | postgresql | odata | web_json.\n- sqlserver/postgresql: `server` + `database` + (`schema`/`source_table`\n  o, solo en sqlserver, `native_query` con plegado activado).\n- odata: `url` del ENTITY SET (…/odata/Presupuestos), no la raiz.\n- web_json: `url` que devuelve un array de objetos; `json_path`\n  desciende hasta el ([\"data\",\"rows\"]). Tipado con cultura en-US fija:\n  JSON escribe numeros sin cultura, y la del sistema es el bug del\n  10527.52 que se vuelve diez millones.\n\n`columns` ([{name, type}]) es OBLIGATORIO: sin credenciales no se\npuede leer el esquema de la fuente, y las columnas no se inventan.\n\n**La verdad de las credenciales, por delante**: la consulta queda\nescrita y validada, pero el PRIMER refresh lo completa una persona en\nDesktop —pedira credenciales y nivel de privacidad, que viven en\nDesktop, no en el .pbip—. Hasta entonces la tabla existe sin datos y\neste servidor no puede verificar la conexion. Prometer otra cosa\nseria mentir.\n\nEscribe TMDL: requiere el proyecto CERRADO en Desktop.",
+      "params": {
+        "columns": {
+          "required": true,
+          "type": "array[object]"
+        },
+        "database": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "description": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "json_path": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "native_query": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "schema": {
+          "required": false,
+          "type": "string",
+          "default": "dbo"
+        },
+        "server": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "source": {
+          "required": true,
+          "type": "string"
+        },
+        "source_table": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table_name": {
+          "required": true,
+          "type": "string"
+        },
+        "url": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "columns",
+        "source",
+        "table_name"
       ],
       "output_shape": {
         "type": "object",
@@ -791,6 +884,41 @@
       "name": "pbi_capabilities",
       "description": "Que puede hacerse AHORA MISMO, y que no, con el motivo.\n\nUn agente deberia consultarla antes de planificar: dice si la capa en\nvivo esta disponible, si se puede escribir en el .pbip, y que\ncapacidades dependen de la version del motor.",
       "params": {},
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pbi_check_contract",
+      "description": "Valida contra el contrato del puerto: un archivo entrante o el modelo.\n\nCon `source_path` (+ `dataset`): el export de Revit/Navisworks/Project\nANTES de cargarlo — columnas que faltan, tipos incompatibles, llave\nausente. Chequeo ESTRUCTURAL y honesto: unicidad y huerfanas de la\nllave exigen los datos completos, y eso es pbi_diagnose_data con la\ntabla ya cargada; la respuesta lo dice en `not_checked`.\n\nSin `source_path`: el MODELO activo contra el contrato entero, y el\ncirculo que cierra todo: `suggested_critical_fields` — las llaves del\npuerto listas para pbi_define_brief, de modo que el diagnostico las\ntrate como criticas del dueño sin teclearlas dos veces.",
+      "params": {
+        "dataset": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "source_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
       "required": [],
       "output_shape": {
         "type": "object",
@@ -1759,6 +1887,44 @@
       "required": [
         "audience",
         "purpose"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_define_port_contract",
+      "description": "Escribe el CONTRATO del puerto del ecosistema (pbi-port-contract.json).\n\nEl puerto NO es un bus de APIs entre Revit/Navisworks/Project —eso es\nfragil sin arreglo—: es un contrato de datos. Cada herramienta EMITE\nun dataset normalizado con una llave compartida, y este MCP lo valida\ny lo consume.\n\n`datasets`: [{name, key, columns: [{name, type, required?}],\nemitted_by?, description?}]. La llave es obligatoria: es lo que\npermite cruzar los datasets entre si (p.ej. HRZ_COD_PRES entre el\nmodelo BIM, el presupuesto y el cronograma).\n\nVive versionado junto al .pbip, como el brief. Se valida con\npbi_check_contract: archivos entrantes antes de cargar, y el modelo\nactivo despues.",
+      "params": {
+        "datasets": {
+          "required": true,
+          "type": "array[object]"
+        },
+        "name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "datasets"
       ],
       "output_shape": {
         "type": "object",

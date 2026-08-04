@@ -197,12 +197,24 @@ DIAGNOSTICO_TOOLS = [
     "pbi_diagnose_data",
 ]
 
+#: Fase 3: fuentes externas (el M es facil; las credenciales viven en Desktop).
+FUENTES_TOOLS = [
+    "pbi_add_table_from_source",
+]
+
+#: Fase 4: el puerto del ecosistema como CONTRATO de datos, no bus de APIs.
+PUERTO_TOOLS = [
+    "pbi_define_port_contract",
+    "pbi_check_contract",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
                 + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS
                 + FILTRO_VISUAL_TOOLS + CICLO_TOOLS + REFACTOR_TOOLS
-                + CIERRE_TOOLS + BRIEF_TOOLS + DIAGNOSTICO_TOOLS)
+                + CIERRE_TOOLS + BRIEF_TOOLS + DIAGNOSTICO_TOOLS
+                + FUENTES_TOOLS + PUERTO_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

@@ -481,3 +481,47 @@ def register(mcp) -> None:
             return model_edit.set_auto_datetime_pbip(
                 session.require_active_pbip(), enabled)
         return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_add_table_from_source(source: str, table_name: str,
+                                  columns: List[Dict[str, Any]],
+                                  server: str = "", database: str = "",
+                                  schema: str = "dbo", source_table: str = "",
+                                  url: str = "",
+                                  native_query: Optional[str] = None,
+                                  json_path: Optional[List[str]] = None,
+                                  description: str = "",
+                                  overwrite: bool = False,
+                                  dry_run: bool = False,
+                                  request_id: str = "") -> Dict[str, Any]:
+        """Crea una tabla apuntando a una BASE DE DATOS o API externa.
+
+        `source`: sqlserver | postgresql | odata | web_json.
+        - sqlserver/postgresql: `server` + `database` + (`schema`/`source_table`
+          o, solo en sqlserver, `native_query` con plegado activado).
+        - odata: `url` del ENTITY SET (…/odata/Presupuestos), no la raiz.
+        - web_json: `url` que devuelve un array de objetos; `json_path`
+          desciende hasta el (["data","rows"]). Tipado con cultura en-US fija:
+          JSON escribe numeros sin cultura, y la del sistema es el bug del
+          10527.52 que se vuelve diez millones.
+
+        `columns` ([{name, type}]) es OBLIGATORIO: sin credenciales no se
+        puede leer el esquema de la fuente, y las columnas no se inventan.
+
+        **La verdad de las credenciales, por delante**: la consulta queda
+        escrita y validada, pero el PRIMER refresh lo completa una persona en
+        Desktop —pedira credenciales y nivel de privacidad, que viven en
+        Desktop, no en el .pbip—. Hasta entonces la tabla existe sin datos y
+        este servidor no puede verificar la conexion. Prometer otra cosa
+        seria mentir.
+
+        Escribe TMDL: requiere el proyecto CERRADO en Desktop.
+        """
+        from horizun_pbi_mcp.pbip import table_from_source
+
+        return guard_mutation(lambda: table_from_source.agregar_tabla_desde_fuente(
+            _proyecto_activo(), source, table_name, columns,
+            server=server, database=database, schema=schema,
+            source_table=source_table, url=url, native_query=native_query,
+            json_path=json_path, description=description or None,
+            overwrite=overwrite, dry_run=dry_run))

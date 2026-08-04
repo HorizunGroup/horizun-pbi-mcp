@@ -81,6 +81,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_detect_layout_issues": READ_ONLY,
     # DAX de solo lectura contra el modelo vivo; sin ficheros.
     "pbi_diagnose_data": READ_ONLY,
+    "pbi_check_contract": READ_ONLY,
     "pbi_diff_page_spec": READ_ONLY,
     "pbi_generate_page_spec": READ_ONLY,
     "pbi_get_object": READ_ONLY,
@@ -148,6 +149,9 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_add_custom_visual": WRITE_REVERSIBLE,
     "pbi_add_image_resource": WRITE_REVERSIBLE,
     "pbi_add_table_from_file": WRITE_REVERSIBLE,
+    "pbi_add_table_from_source": WRITE_REVERSIBLE,
+    # El contrato del puerto es un artefacto del proyecto.
+    "pbi_define_port_contract": WRITE_REVERSIBLE,
     "pbi_align_visuals": WRITE_REVERSIBLE,
     "pbi_apply_design_system": WRITE_REVERSIBLE,
     # El brief es un artefacto del proyecto, con journal como todo.

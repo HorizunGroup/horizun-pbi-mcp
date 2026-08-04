@@ -201,3 +201,74 @@ def register(mcp) -> None:
             return data_diagnose.diagnose(session, modelo, brief=el_brief,
                                           tables=tables)
         return guard(_impl)
+
+    @mcp.tool()
+    def pbi_define_port_contract(datasets: List[Dict[str, Any]],
+                                 name: str = "",
+                                 request_id: str = "") -> Dict[str, Any]:
+        """Escribe el CONTRATO del puerto del ecosistema (pbi-port-contract.json).
+
+        El puerto NO es un bus de APIs entre Revit/Navisworks/Project —eso es
+        fragil sin arreglo—: es un contrato de datos. Cada herramienta EMITE
+        un dataset normalizado con una llave compartida, y este MCP lo valida
+        y lo consume.
+
+        `datasets`: [{name, key, columns: [{name, type, required?}],
+        emitted_by?, description?}]. La llave es obligatoria: es lo que
+        permite cruzar los datasets entre si (p.ej. HRZ_COD_PRES entre el
+        modelo BIM, el presupuesto y el cronograma).
+
+        Vive versionado junto al .pbip, como el brief. Se valida con
+        pbi_check_contract: archivos entrantes antes de cargar, y el modelo
+        activo despues.
+        """
+        from horizun_pbi_mcp.services import port_contract
+
+        def _impl():
+            active = get_session().require_active_pbip()
+            datos: Dict[str, Any] = {"datasets": datasets}
+            if name:
+                datos["name"] = name
+            return port_contract.write_contract(active, datos)
+        return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_check_contract(source_path: str = "", dataset: str = "",
+                           request_id: str = "") -> Dict[str, Any]:
+        """Valida contra el contrato del puerto: un archivo entrante o el modelo.
+
+        Con `source_path` (+ `dataset`): el export de Revit/Navisworks/Project
+        ANTES de cargarlo — columnas que faltan, tipos incompatibles, llave
+        ausente. Chequeo ESTRUCTURAL y honesto: unicidad y huerfanas de la
+        llave exigen los datos completos, y eso es pbi_diagnose_data con la
+        tabla ya cargada; la respuesta lo dice en `not_checked`.
+
+        Sin `source_path`: el MODELO activo contra el contrato entero, y el
+        circulo que cierra todo: `suggested_critical_fields` — las llaves del
+        puerto listas para pbi_define_brief, de modo que el diagnostico las
+        trate como criticas del dueño sin teclearlas dos veces.
+        """
+        from horizun_pbi_mcp.services import port_contract
+
+        def _impl():
+            active = get_session().require_active_pbip()
+            contrato = port_contract.read_contract(active)
+            if contrato is None:
+                return {"defined": False,
+                        "define_with": "pbi_define_port_contract",
+                        "hint": ("No hay pbi-port-contract.json en el "
+                                 "proyecto: el puerto aun no tiene contrato.")}
+            if source_path:
+                if not dataset:
+                    raise ValidationError(
+                        "Con source_path indica tambien 'dataset': contra "
+                        "cual spec del contrato se valida el archivo.")
+                return {"defined": True,
+                        **port_contract.check_file(contrato, dataset,
+                                                   source_path)}
+            from horizun_pbi_mcp.pbip import tmdl_reader
+
+            modelo = tmdl_reader.read_semantic_model(active, strict=False)
+            return {"defined": True,
+                    **port_contract.check_model(contrato, modelo)}
+        return guard(_impl)

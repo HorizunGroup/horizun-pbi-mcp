@@ -1,4 +1,4 @@
-# Tool catalog — 124
+# Tool catalog — 127
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -31,7 +31,9 @@ tools registered.
 | O — session exit | 1 |
 | P — intent brief | 2 |
 | Q — data diagnostics | 1 |
-| **Total** | **124** |
+| R — external sources | 1 |
+| S — ecosystem port | 2 |
+| **Total** | **127** |
 
 ---
 
@@ -120,6 +122,8 @@ tools registered.
 |---|---|
 | `pbi_propose_dashboard` | Classifies the model and proposes complete designs, with their reasoning |
 | `pbi_profile_data` | Profiles the VALUES: out-of-range percentages, empty columns |
+| `pbi_add_table_from_source` | Table from SQL Server / PostgreSQL / OData / Web JSON. Columns are declared (no credentials ⇒ no schema read, and columns are never invented); the response always states that the first refresh needs a human in Desktop |
+| `pbi_define_port_contract` · `pbi_check_contract` | The ecosystem port as a DATA CONTRACT (not an API bus): datasets with a shared key, validated against incoming files (structure) and against the live model — returns the port keys ready as `critical_fields` for the brief |
 | `pbi_diagnose_data` | Content-level checks on the LIVE model: orphan keys, duplicated grain, calendar gaps, and the brief's critical-field thresholds — every finding carries its DAX proof and sample culprits |
 
 ## Report authoring (PBIR)
