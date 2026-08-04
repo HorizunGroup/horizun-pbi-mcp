@@ -88,6 +88,28 @@ def _side_effects(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return efectos
 
 
+def _dedupe_warnings(avisos: Any) -> Any:
+    """Colapsa avisos IDENTICOS en uno con su cuenta: «mensaje (×14)».
+
+    Una llamada a pbi_apply_page_spec con 14 visuales devolvia 14 copias
+    literales de «No habia un visual de este tipo para clonar...». Repetir un
+    aviso no lo hace mas cierto: solo gasta la ventana de contexto del agente
+    que lo lee. Se conserva el ORDEN de primera aparicion y el tipo (lista de
+    cadenas), asi que quien busque un texto por `in` lo sigue encontrando.
+    """
+    if not isinstance(avisos, list):
+        return avisos
+    cuenta: Dict[str, int] = {}
+    orden: List[str] = []
+    for aviso in avisos:
+        if not isinstance(aviso, str):
+            return avisos  # forma inesperada: mejor intacta que adivinada
+        if aviso not in cuenta:
+            orden.append(aviso)
+        cuenta[aviso] = cuenta.get(aviso, 0) + 1
+    return [a if cuenta[a] == 1 else f"{a} (×{cuenta[a]})" for a in orden]
+
+
 def success(payload: Dict[str, Any], *, operation: str, request_id: str,
             duration_ms: float) -> Dict[str, Any]:
     """Construye el envelope de exito conservando el payload original."""
@@ -100,6 +122,7 @@ def success(payload: Dict[str, Any], *, operation: str, request_id: str,
     out["operation"] = operation
     out["duration_ms"] = round(duration_ms, 1)
     out.setdefault("warnings", [])
+    out["warnings"] = _dedupe_warnings(out["warnings"])
     efectos = _side_effects(payload)
     if efectos:
         out["side_effects"] = efectos
