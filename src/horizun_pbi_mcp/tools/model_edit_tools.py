@@ -269,6 +269,7 @@ def register(mcp) -> None:
                                 sheet: str = "", culture: str = "",
                                 description: str = "", overwrite: bool = False,
                                 dry_run: bool = False, table_id: str = "",
+                                skip_rows: Optional[int] = None,
                                 request_id: str = "") -> Dict[str, Any]:
         """Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.
 
@@ -305,6 +306,14 @@ def register(mcp) -> None:
         pasara `pbi_validate_tmdl`, se aborta en vez de dejar un proyecto que
         no abre.
 
+        **Filas de basura antes del encabezado**: es el patron de export mas
+        comun de un ERP -fila 1 con el titulo del reporte y el resto de la
+        fila vacia, encabezado real en la fila 2-. Por defecto se AUTODETECTA
+        la primera fila que pueda ser encabezado (sin huecos y sin nombres
+        repetidos) y se dice cual se eligio en `warnings`. `skip_rows` fuerza
+        cuantas saltar cuando la deteccion no acierta; `skip_rows=0` obliga a
+        usar la fila 1 tal cual. Aplica a csv y xlsx.
+
         `dry_run=true` devuelve el TMDL y la M sin escribir nada.
         `sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.
 
@@ -316,7 +325,7 @@ def register(mcp) -> None:
             _proyecto_activo(), path, table_name=table_name,
             sheet=sheet or None, culture=culture or None,
             description=description or None, overwrite=overwrite,
-            dry_run=dry_run, table_id=table_id or None))
+            dry_run=dry_run, table_id=table_id or None, skip_rows=skip_rows))
 
     @mcp.tool()
     def pbi_set_storage_mode(table: str, mode: str,
