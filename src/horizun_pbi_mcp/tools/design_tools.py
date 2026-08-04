@@ -25,7 +25,7 @@ def register(mcp) -> None:
     def pbi_start_here(request_id: str = "") -> Dict[str, Any]:
         """Por donde empezar. Mira el estado real y dice los siguientes pasos.
 
-        Ciento diecinueve tools con buen nombre siguen siendo ciento diecinueve tools.
+        Ciento veintiuna tools con buen nombre siguen siendo ciento veintiuna tools.
         Esta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada
         uno con el nombre exacto de la tool y **por que** toca ahora: si hay
         proyecto activo, si tiene modelo o solo informe, si esta vacio, y si

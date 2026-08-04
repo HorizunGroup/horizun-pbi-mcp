@@ -164,10 +164,36 @@ def list_presets() -> List[Dict[str, Any]]:
             for clave, v in PRESETS.items()]
 
 
+#: Clases de texto del tema de Power BI a las que se puede fijar la fuente.
+#: La clave amable -> la clase real del esquema de temas.
+_CLASES_DE_FUENTE = {"title": "title", "body": "label", "callout": "callout"}
+
+
 def build_theme(preset: str = "control_room",
                 name: Optional[str] = None,
-                data_colors: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Devuelve el JSON del tema. `data_colors` sustituye la paleta categorica."""
+                data_colors: Optional[List[str]] = None,
+                theme_json: Optional[Dict[str, Any]] = None,
+                fonts: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Devuelve el JSON del tema.
+
+    `theme_json`: un tema COMPLETO del llamante, que se escribe tal cual (se le
+    ajusta solo el nombre, que debe coincidir con el archivo). Existe porque
+    para tipografia corporativa habia que dejar que la tool escribiera su JSON
+    y sobrescribirlo despues a mano, confiando en que report.json siguiera
+    apuntando al mismo archivo. Cuando se pasa, `preset` no se usa.
+
+    `fonts`: {'title'|'body'|'callout': 'Familia'} -> textClasses del tema.
+    Se aplica SOBRE el preset o SOBRE theme_json, el que este en juego.
+
+    `data_colors` sustituye la paleta categorica.
+    """
+    if theme_json is not None:
+        if not isinstance(theme_json, dict) or not theme_json:
+            raise ThemeError(
+                "theme_json debe ser un objeto JSON de tema no vacio.")
+        tema = copy.deepcopy(theme_json)
+        return _con_extras(tema, name, data_colors, fonts)
+
     if preset not in PRESETS:
         raise ThemeError(
             f"Tema desconocido: '{preset}'. Disponibles: {sorted(PRESETS)}.",
@@ -184,6 +210,36 @@ def build_theme(preset: str = "control_room",
                  "deja de estar verificado contra daltonismo.", len(data_colors))
     if name:
         tema["name"] = name
+    return _con_extras(tema, None, None, fonts)
+
+
+def _con_extras(tema: Dict[str, Any], name: Optional[str],
+                data_colors: Optional[List[str]],
+                fonts: Optional[Dict[str, str]]) -> Dict[str, Any]:
+    """Aplica nombre, paleta y fuentes sobre un tema ya construido."""
+    if data_colors:
+        malos = [c for c in data_colors
+                 if not (isinstance(c, str) and c.startswith("#") and len(c) in (4, 7))]
+        if malos:
+            raise ThemeError(
+                f"Colores no validos (se esperaba #RRGGBB): {malos}.")
+        tema["dataColors"] = list(data_colors)
+    if name:
+        tema["name"] = name
+    if fonts:
+        desconocidas = sorted(set(fonts) - set(_CLASES_DE_FUENTE))
+        if desconocidas:
+            raise ThemeError(
+                f"Clases de fuente desconocidas: {desconocidas}. "
+                f"Validas: {sorted(_CLASES_DE_FUENTE)}.",
+                details={"valid": sorted(_CLASES_DE_FUENTE)})
+        clases = tema.setdefault("textClasses", {})
+        for amable, familia in fonts.items():
+            if not isinstance(familia, str) or not familia.strip():
+                raise ThemeError(f"La fuente de '{amable}' debe ser un nombre "
+                                 "de familia no vacio.")
+            clase = clases.setdefault(_CLASES_DE_FUENTE[amable], {})
+            clase["fontFace"] = familia.strip()
     return tema
 
 
@@ -291,6 +347,30 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
     informe["resourcePackages"] = _paquete_recursos(
         informe.get("resourcePackages"), nombre_archivo)
 
+    # Si habia un tema anterior y su contenido difiere del nuevo, se avisa: la
+    # sustitucion es legitima -un informe declara UN customTheme-, pero hacerla
+    # en silencio ya costo ediciones a mano una vez. No se bloquea: el archivo
+    # anterior queda en el backup de la transaccion, recuperable.
+    avisos: List[str] = []
+    anterior_path = None
+    if anterior:
+        try:
+            anterior_path = safe_paths.safe_join(
+                recursos_dir, str(anterior), kind="ruta del tema anterior")
+        except Exception:                                # noqa: BLE001
+            anterior_path = None
+    if anterior_path is not None and anterior_path.exists():
+        try:
+            previo = read_json(anterior_path)
+        except Exception:                                # noqa: BLE001
+            previo = None
+        if previo is not None and previo != tema:
+            avisos.append(
+                f"El tema anterior '{anterior}' tenia contenido DISTINTO al "
+                "nuevo (pudo estar editado a mano) y queda reemplazado. Su "
+                "version previa esta en el backup de esta transaccion; "
+                "recuperala de ahi si esas ediciones importaban.")
+
     # El archivo y sus dos declaraciones en report.json forman una sola unidad:
     # cualquiera de las dos mitades sin la otra hace que Desktop ignore el tema.
     # La misma puerta bloquea la escritura si la version PBIR no es soportada o
@@ -305,7 +385,7 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
         tx.write_json(informe_path, informe)
 
     log.info("Tema '%s' aplicado (%s)", tema.get("name"), nombre_archivo)
-    return {
+    salida = {
         "theme_name": tema.get("name"),
         "file": str(destino),
         "report_json": str(informe_path),
@@ -316,3 +396,6 @@ def apply_theme(active: ActivePbip, tema: Dict[str, Any],
         "transaction": cm.result,
         "validation_report": cm.validation,
     }
+    if avisos:
+        salida["warnings"] = avisos
+    return salida

@@ -130,6 +130,8 @@ def register(mcp) -> None:
     def pbi_apply_theme(preset: str = "control_room",
                         name: Optional[str] = None,
                         data_colors: Optional[List[str]] = None,
+                        theme_json: Optional[Dict[str, Any]] = None,
+                        fonts: Optional[Dict[str, str]] = None,
                         request_id: Optional[str] = None) -> Dict[str, Any]:
         """Aplica un tema de colores al informe .pbip activo.
 
@@ -141,6 +143,18 @@ def register(mcp) -> None:
         series por la tuya (#RRGGBB); ojo, entonces el orden deja de estar
         verificado contra daltonismo. `name`: nombre visible del tema.
 
+        `theme_json`: un tema COMPLETO tuyo (el objeto JSON), que se escribe
+        tal cual — para tipografia corporativa o formatos que los presets no
+        cubren, sin tener que sobrescribir el archivo a mano despues. Cuando lo
+        pasas, `preset` no se usa; `data_colors` y `fonts` se aplican encima.
+
+        `fonts`: {'title'|'body'|'callout': 'Familia'} fija las fuentes via
+        textClasses, sobre el preset o sobre tu theme_json.
+
+        Si el informe ya tenia un tema con contenido DISTINTO (p.ej. editado a
+        mano), se reemplaza avisandolo en `warnings`; la version anterior queda
+        recuperable en el backup de la transaccion.
+
         Requiere el proyecto CERRADO en Power BI Desktop.
         """
         from horizun_pbi_mcp.pbip import theme
@@ -148,7 +162,8 @@ def register(mcp) -> None:
         def _impl():
             activo = _tema_activo()
             construido = theme.build_theme(preset=preset, name=name,
-                                           data_colors=data_colors)
+                                           data_colors=data_colors,
+                                           theme_json=theme_json, fonts=fonts)
             return theme.apply_theme(activo, construido)
 
         return guard_mutation(_impl)

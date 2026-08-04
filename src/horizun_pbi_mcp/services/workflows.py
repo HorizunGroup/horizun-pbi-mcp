@@ -477,3 +477,265 @@ def prepare_delivery(active, model_data, *, dry_run: bool = True) -> Dict[str, A
         "prepare_delivery", etapas, applied=True,
         resumen=(f"{aplicado['applied']} correccion(es). Puntaje "
                  f"{auditoria['score']} -> {despues['score']}."))
+
+
+# ---------------------------------------------------------------------------
+# Renombrar una medida SIN romper el informe
+# ---------------------------------------------------------------------------
+
+def _bloques_de_medida(lines: List[str]) -> List[Dict[str, Any]]:
+    """Rangos [inicio, fin) de cada bloque `measure` de un archivo TMDL.
+
+    Se delimitan aqui y no con un regex global porque el reemplazo de
+    referencias DAX solo es seguro DENTRO de una medida: en la expresion de una
+    columna calculada, `[x]` sin calificar es una COLUMNA de su propia tabla, y
+    reescribirlo corromperia un calculo que no tiene nada que ver.
+    """
+    from horizun_pbi_mcp.pbip.tmdl_reader import _first_token, _indent, _unquote
+
+    bloques: List[Dict[str, Any]] = []
+    i = 0
+    while i < len(lines):
+        linea = lines[i]
+        if _indent(linea) == 1 and _first_token(linea) == "measure":
+            cabecera = linea.strip()[len("measure"):].strip()
+            nombre = _unquote(cabecera.split("=", 1)[0].strip())
+            j = i + 1
+            while j < len(lines):
+                lj = lines[j]
+                if lj.strip() and _indent(lj) <= 1:
+                    break
+                j += 1
+            bloques.append({"name": nombre, "start": i, "end": j})
+            i = j
+        else:
+            i += 1
+    return bloques
+
+
+def _reemplazar_ref_dax(texto: str, viejo: str, nuevo: str):
+    """Sustituye `[viejo]` SIN calificar por `[nuevo]`. `(texto, cuantas)`.
+
+    Solo la forma sin calificar: `Tabla[viejo]` o `'Tabla'[viejo]` puede ser
+    una COLUMNA homonima de otra tabla, y adivinar ahi es corromper. Las
+    calificadas que referencien de verdad a la medida las recoge el barrido
+    final y salen como aviso con su ubicacion, nunca en silencio.
+    """
+    import re
+
+    patron = re.compile(r"(?<![\w'\]])\[" + re.escape(viejo) + r"\]",
+                        re.IGNORECASE)
+    return patron.subn(f"[{nuevo}]", texto)
+
+
+def _barrido_de_restos(active, table: str, old_name: str) -> List[str]:
+    """Rutas del informe donde AUN se referencia la medida vieja.
+
+    Cubre lo que el plan de visuales no toca: bookmarks, filterConfig de
+    paginas o del informe, y cualquier JSON del arbol `.Report`. Encontrar
+    algo aqui no es fallo del renombrado: es la lista exacta de lo que hay
+    que revisar a mano, dicha en voz alta.
+    """
+    from pathlib import Path as _Path
+
+    from horizun_pbi_mcp.utils.json_utils import read_json
+
+    if not active.report_dir:
+        return []
+
+    def _tiene_ref(nodo) -> bool:
+        if isinstance(nodo, dict):
+            medida = nodo.get("Measure")
+            if isinstance(medida, dict):
+                prop = str(medida.get("Property") or "")
+                ent = (medida.get("Expression", {}) or {}).get(
+                    "SourceRef", {}) or {}
+                entidad = str(ent.get("Entity") or "")
+                if (prop.casefold() == old_name.casefold()
+                        and (not entidad or entidad.casefold() == table.casefold())):
+                    return True
+            return any(_tiene_ref(v) for v in nodo.values())
+        if isinstance(nodo, list):
+            return any(_tiene_ref(v) for v in nodo)
+        return False
+
+    base = _Path(active.report_dir) / "definition"
+    restos: List[str] = []
+    for ruta in sorted(base.rglob("*.json")):
+        try:
+            datos = read_json(ruta)
+        except Exception:                                # noqa: BLE001
+            continue
+        if _tiene_ref(datos):
+            restos.append(str(ruta.relative_to(base)).replace("\\", "/"))
+    return restos
+
+
+def rename_measure(active, model_data, *, table: str, old_name: str,
+                   new_name: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Renombra una medida actualizando a la vez modelo e informe.
+
+    El caso que cierra: renombrar 8 medidas a nombres presentables obligaba a
+    reescribir el TMDL completo y re-aplicar la pagina entera, porque
+    cualquier referencia vieja quedaba rota EN SILENCIO -el visual abre y sale
+    vacio-. Aqui todo se compila primero y se escribe en UNA transaccion:
+    cabecera TMDL, expresiones DAX de otras medidas y visual.json del informe.
+    """
+    import copy as _copy
+
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_writer import _render
+    from horizun_pbi_mcp.utils.validation import tmdl_quote_name, validate_object_name
+
+    etapas: List[Dict[str, Any]] = []
+    if not model_data:
+        raise ValidationError("Se necesita el modelo para renombrar con referencias.")
+
+    nuevo = validate_object_name(new_name, "medida")
+    viejo = str(old_name).strip()
+    if viejo == nuevo:
+        raise ValidationError("El nombre nuevo es identico al actual.")
+
+    # -- validaciones contra el modelo (la leccion del preflight: una colision
+    #    de nombres no falla al escribir; falla al ABRIR Desktop) --------------
+    medidas = model_data.get("measures") or []
+    la_medida = None
+    for m in medidas:
+        if (str(m.get("table", "")).casefold() == table.casefold()
+                and str(m.get("name", "")).casefold() == viejo.casefold()):
+            la_medida = m
+            break
+    if la_medida is None:
+        disponibles = sorted(str(m.get("name")) for m in medidas
+                             if str(m.get("table", "")).casefold() == table.casefold())
+        raise ValidationError(
+            f"La medida '{viejo}' no existe en la tabla '{table}'.",
+            details={"available": disponibles})
+    for m in medidas:
+        if (m is not la_medida
+                and str(m.get("name", "")).casefold() == nuevo.casefold()):
+            raise ValidationError(
+                f"Ya existe una medida '{m.get('name')}' en la tabla "
+                f"'{m.get('table')}': los nombres de medida son unicos en "
+                "todo el modelo.")
+    for t in model_data.get("tables") or []:
+        if str(t.get("name", "")).casefold() != table.casefold():
+            continue
+        for c in t.get("columns") or []:
+            if str(c.get("name", "")).casefold() == nuevo.casefold():
+                raise ValidationError(
+                    f"La tabla '{table}' ya tiene una COLUMNA '{c.get('name')}'. "
+                    "Power BI acepta escribirlo y despues rechaza el modelo al "
+                    "abrirlo: es la colision exacta que detecta el preflight.")
+
+    # -- plan TMDL: cabecera + referencias DAX en bloques de medida -----------
+    planes_tmdl: List[Dict[str, Any]] = []
+    total_refs_dax = 0
+    for t in model_data.get("tables") or []:
+        nombre_tabla = str(t.get("name"))
+        try:
+            ruta = find_table_file(active, nombre_tabla)
+        except Exception:                                # noqa: BLE001
+            continue
+        lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
+        cambiado = False
+        refs_aqui = 0
+        for bloque in _bloques_de_medida(lineas):
+            ini, fin = bloque["start"], bloque["end"]
+            if (nombre_tabla.casefold() == table.casefold()
+                    and bloque["name"].casefold() == viejo.casefold()):
+                cab = lineas[ini]
+                _, _, resto = cab.partition("=")
+                lineas[ini] = f"\tmeasure {tmdl_quote_name(nuevo)} ={resto}"
+                cambiado = True
+            for k in range(ini, fin):
+                if k == ini:
+                    izq, sep, der = lineas[k].partition("=")
+                    if not sep:
+                        continue
+                    der2, n = _reemplazar_ref_dax(der, viejo, nuevo)
+                    if n:
+                        lineas[k] = izq + sep + der2
+                        refs_aqui += n
+                        cambiado = True
+                else:
+                    linea2, n = _reemplazar_ref_dax(lineas[k], viejo, nuevo)
+                    if n:
+                        lineas[k] = linea2
+                        refs_aqui += n
+                        cambiado = True
+        if cambiado:
+            planes_tmdl.append({"path": ruta, "text": _render(lineas),
+                                "table": nombre_tabla,
+                                "dax_refs": refs_aqui})
+            total_refs_dax += refs_aqui
+    etapas.append(_etapa("plan_modelo", {
+        "files": [{"table": p["table"], "dax_refs": p["dax_refs"]}
+                  for p in planes_tmdl],
+        "dax_references": total_refs_dax}))
+
+    # -- plan de visuales: contra el modelo YA renombrado en memoria ----------
+    modelo_renombrado = _copy.deepcopy(model_data)
+    for m in modelo_renombrado.get("measures") or []:
+        if (str(m.get("table", "")).casefold() == table.casefold()
+                and str(m.get("name", "")).casefold() == viejo.casefold()):
+            m["name"] = nuevo
+    ref_vieja = f"{table}[{viejo}]"
+    ref_nueva = f"{table}[{nuevo}]"
+    acciones: List[Dict[str, Any]] = []
+    for p in pbir_reader.list_pages(active):
+        for v in pbir_reader.list_visuals(active, p["name"], strict=True):
+            if any(str(r).casefold() == ref_vieja.casefold()
+                   for r in v.get("measures", [])):
+                acciones.append({"page": p["name"], "visual_id": v["id"]})
+    planes_visual = [pbir_edit.plan_replace_visual_field(
+        active, a["page"], a["visual_id"], ref_vieja, ref_nueva,
+        modelo_renombrado) for a in acciones]
+    etapas.append(_etapa("plan_informe", {"visuals": acciones}))
+
+    if dry_run:
+        return _informe(
+            "rename_measure", etapas, applied=False,
+            resumen=(f"'{viejo}' -> '{nuevo}': {len(planes_tmdl)} archivo(s) "
+                     f"TMDL ({total_refs_dax} referencia(s) DAX) y "
+                     f"{len(acciones)} visual(es). dry_run."))
+
+    # -- aplicar: UNA transaccion para modelo e informe -----------------------
+    destinos = [p["path"] for p in planes_tmdl] + [p["path"] for p in planes_visual]
+    pbir_edit.assert_escritura_pbir(active, "Renombrar una medida")
+    cm = txn_service.project_transaction(active, destinos,
+                                         tool="pbi_rename_measure")
+    with cm as tx:
+        for p in planes_tmdl:
+            tx.write_text(p["path"], p["text"])
+        for p in planes_visual:
+            tx.write_json(p["path"], p["data"])
+    etapas.append(_etapa("apply", {"tmdl_files": len(planes_tmdl),
+                                   "visuals": len(planes_visual),
+                                   "transaction": cm.result["journal"]}))
+
+    # -- verificacion: releer y barrer, nunca dar por hecho -------------------
+    releido = tmdl_reader.read_semantic_model(active, strict=False)
+    nombres = {(str(m.get("table", "")).casefold(), str(m.get("name", "")).casefold())
+               for m in releido.get("measures") or []}
+    renombrada = ((table.casefold(), nuevo.casefold()) in nombres
+                  and (table.casefold(), viejo.casefold()) not in nombres)
+    restos = _barrido_de_restos(active, table, viejo)
+    etapas.append(_etapa("verificacion", {"renamed_verified": renombrada,
+                                          "leftover_references": restos}))
+    avisos = []
+    if not renombrada:
+        avisos.append("La relectura del TMDL no confirma el renombrado: revisa "
+                      "el journal de la transaccion.")
+    if restos:
+        avisos.append(
+            f"Quedan referencias a '{viejo}' fuera de los visuales tratados "
+            f"(bookmarks o filtros): {restos}. Revisalas a mano; no se "
+            "adivinan porque una referencia calificada puede ser una columna "
+            "homonima de otra tabla.")
+    return _informe(
+        "rename_measure", etapas, applied=True,
+        resumen=(f"'{viejo}' -> '{nuevo}' renombrada. {total_refs_dax} "
+                 f"referencia(s) DAX y {len(planes_visual)} visual(es) "
+                 "actualizados en una transaccion."),
+        warnings=avisos)

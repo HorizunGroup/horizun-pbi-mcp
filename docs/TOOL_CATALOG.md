@@ -1,4 +1,4 @@
-# Tool catalog — 119
+# Tool catalog — 121
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -27,7 +27,9 @@ tools registered.
 | J — data loading | 2 |
 | L — design and entry point | 4 |
 | M — work cycle | 1 |
-| **Total** | **119** |
+| N — refactoring | 1 |
+| O — session exit | 1 |
+| **Total** | **121** |
 
 ---
 
@@ -42,6 +44,7 @@ tools registered.
 | `pbi_select_model` | Sets the active model (requires a port if there are several) |
 | `pbi_test_connection` | Validates the connection |
 | `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; only closes Desktop if the tool opened it |
+| `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open |
 | `pbi_list_pending_journals` | Journals of operations left half-done |
 | `pbi_inspect_journal` | Compares a journal with the current state (read-only) |
 
@@ -68,6 +71,7 @@ tools registered.
 |---|---|
 | `pbi_create_measure` · `pbi_update_measure` | No |
 | `pbi_delete_measure` | **Yes** (`confirm`) |
+| `pbi_rename_measure` | No — updates TMDL header, DAX refs and report visuals in ONE transaction; qualified refs and bookmarks come back as warnings, never silently |
 | `pbi_set_column_visibility` · `pbi_hide_columns` | No |
 | `pbi_set_relationship_direction` · `pbi_disable_auto_date_time` | No |
 | `pbi_refresh_model` | Irreversible. Devuelve `rows_by_table`: un refresh puede terminar en 'ok' y cargar CERO filas |

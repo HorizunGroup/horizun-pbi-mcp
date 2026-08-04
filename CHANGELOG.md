@@ -5,6 +5,51 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.1.1] — 2026-08-04
+
+Closes the field-report queue completely (items 6, 8 and 9 were the last
+three) and removes a real client's name from the repository — current state
+AND full history, which was rewritten for the purpose. Two new tools
+(121 total); zero breaking changes.
+
+### Added
+
+- **`theme_json` and `fonts` on `pbi_apply_theme`**: a complete caller-supplied
+  theme written as-is (corporate typography no longer requires overwriting the
+  generated file by hand), and `fonts: {title|body|callout}` mapped to the
+  real `textClasses` (`body` → `label`). Replacing a theme whose on-disk
+  content differs (hand-edited) now warns and points at the transaction
+  backup — it used to be silently destroyed on re-apply.
+- **`pbi_rename_measure`**: renames the TMDL header, the unqualified `[old]`
+  DAX references in other measures, and the report's `visual.json`s, all in
+  ONE transaction, then verifies by re-reading. Replacement runs only inside
+  measure blocks (in a calculated column, unqualified brackets mean a COLUMN
+  of its own table) and only on unqualified refs (`Tabla[old]` can be a
+  homonymous column of another table); anything left — bookmarks, filters,
+  qualified refs — comes back in `warnings` with its location, never
+  silently. Renaming onto an existing measure or a column of the same table
+  is refused up front: that exact collision passes the write and kills
+  Desktop at open.
+- **`pbi_close_desktop`**: the missing exit of the edit-open-look-edit cycle.
+  Closes ONLY the instance serving that file, verifies process identity
+  (name + start time, never bare PID), re-checks the file is no longer open
+  (`verified_closed`) and requires `confirm=true` — unsaved changes die with
+  the window, and in a `.pbip` that includes the session's refreshed data.
+
+### Changed
+
+- **Client names are gone from the repository**, current state and rewritten
+  history, with a tracked-files guard (`tests/test_sin_datos_de_empresa.py`)
+  that also watches for any trace of the team's internal knowledge base. The
+  guard builds the forbidden literal split so it never publishes what it
+  polices — which is how the name leaked the first time.
+- `docs/BACKLOG.md` brought current: the `pbi_apply_plan` question is
+  **decided** (the `plan_token` IS the explicit approval — a client cannot
+  hold a valid one by accident, and it dies on state drift; `confirm` stays
+  as documented redundancy), and R15 records `mode='auto'` as its mitigation.
+
+---
+
 ## [1.1.0] — 2026-08-03
 
 Everything here came out of real use, not a roadmap: five gaps hit while
