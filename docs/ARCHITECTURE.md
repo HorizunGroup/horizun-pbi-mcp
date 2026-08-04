@@ -25,7 +25,7 @@ _Status verified on baseline commit `a304e33`. 4,982 lines of Python in `src/`._
                                         │  ← ONLY cross-cutting abstraction
                         ┌───────────────┴───────────────┐
                         ▼                               ▼
-              src/powerbi/  (LIVE)                src/pbip/  (ON DISK)
+              src/horizun_pbi_mcp/powerbi/  (LIVE)                src/pbip/  (ON DISK)
         ┌─────────────────────────┐     ┌──────────────────────────────┐
         │ clr_bootstrap  loads CLR│     │ project_locator  locates     │
         │ adomd_client   ADOMD.NET│     │ tmdl_reader/writer  model    │
@@ -38,9 +38,9 @@ _Status verified on baseline commit `a304e33`. 4,982 lines of Python in `src/`._
                         │                               │
                         └───────────────┬───────────────┘
                                         ▼
-                    src/utils/     json_utils (atomic writing)
+                    src/horizun_pbi_mcp/utils/     json_utils (atomic writing)
                                    file_utils · validation · change_log
-                    src/config.py  Settings + Session (process singletons)
+                    src/horizun_pbi_mcp/config.py  Settings + Session (process singletons)
                     src/reporting.py  Markdown + quality rules
 ```
 

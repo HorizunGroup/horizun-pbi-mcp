@@ -115,7 +115,7 @@ NOTES = {
         "expands_vars": "Si, admite ${VAR}. Aun asi este script emite rutas "
                         "absolutas: funcionan siempre, sin depender de la expansion.",
         "cwd": "Hereda el directorio desde el que arrancaste Claude Code. "
-               "El servidor no depende de ello: resuelve todo desde src/config.py.",
+               "El servidor no depende de ello: resuelve todo desde src/horizun_pbi_mcp/config.py.",
         "python": "No busca Python: usa exactamente el 'command' que le des.",
         "env": "Objeto 'env' dentro de la entrada del servidor.",
         "verify": "En Claude Code: /mcp   (debe aparecer 'horizun-pbi-mcp' conectado)",

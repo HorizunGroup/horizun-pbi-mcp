@@ -3,7 +3,7 @@
 El nombre vive aqui y no repartido por el codigo: renombrar un producto no
 deberia obligar a buscar cadenas sueltas en veinte archivos.
 
-COMPATIBILIDAD: las 117 tools conservan el prefijo `pbi_`. Renombrarlas romperia
+COMPATIBILIDAD: las 119 tools conservan el prefijo `pbi_`. Renombrarlas romperia
 a cualquier cliente ya configurado, y el nombre comercial no es motivo
 suficiente para eso.
 """
@@ -20,11 +20,11 @@ MCP_SERVER_NAME = "horizun-pbi-mcp"
 PACKAGE_NAME = "horizun-pbi-mcp"
 #: Version VISIBLE del producto: la que anuncia serverInfo y la que coincide
 #: con el tag de Git.
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 #: La misma version en el formato que exige PEP 440 para `pyproject.toml`.
 #: `1.0.0-rc.2` no es valido ahi; una release estable usa `1.0.1`.
-VERSION_PEP440 = "1.0.1"
+VERSION_PEP440 = "1.1.0"
 #: Logger raiz.
 LOGGER_NAME = "horizun_pbi_mcp"
 #: Prefijo de las tools. NO cambia: es contrato publico.

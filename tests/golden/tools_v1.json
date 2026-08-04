@@ -4136,7 +4136,7 @@
     },
     {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento dieciocho tools con buen nombre siguen siendo ciento dieciocho tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento diecinueve tools con buen nombre siguen siendo ciento diecinueve tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,
