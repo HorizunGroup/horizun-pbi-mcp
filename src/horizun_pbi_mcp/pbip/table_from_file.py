@@ -154,21 +154,106 @@ def _inferir_tipo(valores: List[str], sep_decimal: Optional[str]) -> str:
 # Lectura de cada formato
 # ---------------------------------------------------------------------------
 
-def _perfilar_csv(ruta: Path, muestra: int) -> Dict[str, Any]:
+#: Cuantas filas se miran como candidatas a encabezado al autodetectar. Un
+#: reporte corporativo pone titulo, filtros y fecha de emision; pasado eso, si
+#: no ha aparecido un encabezado plausible, insistir es adivinar.
+_MAX_FILAS_CANDIDATAS = 10
+
+
+def _fila_es_encabezado(fila: List[Any], ancho: int = 0) -> bool:
+    """Si una fila puede ser la de encabezados.
+
+    Tres condiciones. Las dos primeras son las que Power BI necesita de verdad:
+    ninguna celda vacia -una columna sin nombre no se puede cargar- y ninguna
+    repetida -dos columnas con el mismo nombre, tampoco-.
+
+    La tercera es que ocupe TODO el ancho de la tabla, y es la que se le olvida
+    a cualquiera: la fila de titulo de un reporte suele ser una sola celda, y
+    una sola celda no tiene huecos ni repetidos, asi que pasaba las dos
+    primeras y se elegia como encabezado. El resultado era una tabla de una
+    columna llamada "Reporte mensual". Lo encontro la prueba del delimitador,
+    no el razonamiento.
+    """
+    celdas = [str(c).strip() for c in fila]
+    if not celdas or any(not c for c in celdas):
+        return False
+    if ancho and len(celdas) < ancho:
+        return False
+    minusculas = [c.casefold() for c in celdas]
+    return len(set(minusculas)) == len(minusculas)
+
+
+def _elegir_fila_de_encabezado(filas: List[List[Any]],
+                               skip_rows: Optional[int]) -> int:
+    """Indice (0-based) de la fila de encabezados.
+
+    Con `skip_rows` explicito se respeta sin discutir: quien mira el archivo
+    sabe mas que cualquier heuristica.
+
+    Sin el, se busca la primera fila que pueda serlo. El caso que lo motiva es
+    el export corporativo tipico: fila 1 con el titulo del reporte y el resto
+    de la fila vacia, encabezado real en la fila 2. Antes eso terminaba en
+    «Hay 6 columna(s) sin nombre en la fila de encabezados» y habia que
+    escribir la particion M y el TMDL a mano -justo lo que esta funcion existe
+    para evitar-.
+
+    Si ninguna fila de las primeras convence, se devuelve 0: se conserva el
+    comportamiento de siempre y el error posterior explica que pasa. Adivinar
+    mas alla de eso seria elegir por el usuario sin decirselo.
+    """
+    if skip_rows is not None:
+        return max(0, int(skip_rows))
+    candidatas = filas[:_MAX_FILAS_CANDIDATAS]
+    # El ancho de la tabla se toma de lo que se ve, no de la primera fila:
+    # justo la primera es la que suele venir mutilada.
+    ancho = max((len(f) for f in candidatas), default=0)
+    for indice, fila in enumerate(candidatas):
+        if _fila_es_encabezado(fila, ancho):
+            return indice
+    return 0
+
+
+def _aviso_de_encabezado(indice: int, explicito: bool) -> List[str]:
+    """Lo que se eligio, dicho en voz alta. Elegir en silencio es peor."""
+    if indice <= 0:
+        return []
+    if explicito:
+        return [f"Se saltaron las primeras {indice} fila(s) por peticion; "
+                f"los encabezados se leyeron de la fila {indice + 1}."]
+    return [f"La fila 1 no servia como encabezado (huecos o nombres "
+            f"repetidos). Se uso la fila {indice + 1} y se saltaron las "
+            f"{indice} anteriores. Pasa 'skip_rows' si no es lo que querias."]
+
+
+def _perfilar_csv(ruta: Path, muestra: int,
+                  skip_rows: Optional[int] = None) -> Dict[str, Any]:
     crudo = ruta.read_bytes()
     tiene_bom = crudo.startswith(b"\xef\xbb\xbf")
     texto = crudo.decode("utf-8-sig" if tiene_bom else "utf-8", errors="replace")
 
-    cabecera = texto.splitlines()[0] if texto.splitlines() else ""
-    delimitador = max(_DELIMITADORES, key=cabecera.count)
-    if cabecera.count(delimitador) == 0:
+    # El delimitador se busca en las primeras lineas, no solo en la primera:
+    # cuando la fila 1 es el titulo del reporte no lleva ni un separador, y
+    # mirarla sola hacia caer siempre en la coma por descarte.
+    lineas = texto.splitlines()[:_MAX_FILAS_CANDIDATAS] or [""]
+    delimitador = max(_DELIMITADORES,
+                      key=lambda d: max(linea.count(d) for linea in lineas))
+    if all(linea.count(delimitador) == 0 for linea in lineas):
         delimitador = ","
 
     filas = list(csv.reader(io.StringIO(texto), delimiter=delimitador))
     if not filas:
         raise TableFromFileError(f"El archivo esta vacio: {ruta}")
-    encabezados = [c.strip() for c in filas[0]]
-    datos = filas[1:muestra + 1]
+
+    fila_encabezado = _elegir_fila_de_encabezado(filas, skip_rows)
+    if fila_encabezado >= len(filas):
+        raise TableFromFileError(
+            f"skip_rows={fila_encabezado} deja el archivo sin encabezados: "
+            f"solo tiene {len(filas)} fila(s).",
+            details={"rows": len(filas), "skip_rows": fila_encabezado,
+                     "path": str(ruta)})
+
+    encabezados = [c.strip() for c in filas[fila_encabezado]]
+    datos = filas[fila_encabezado + 1:fila_encabezado + 1 + muestra]
 
     columnas_valores: List[List[str]] = [
         [f[i] if i < len(f) else "" for f in datos]
@@ -180,6 +265,8 @@ def _perfilar_csv(ruta: Path, muestra: int) -> Dict[str, Any]:
         "encoding": 65001, "has_bom": tiene_bom, "sheet": None,
         "decimal_separator": sep,
         "row_sample": len(datos),
+        "header_row": fila_encabezado,
+        "warnings": _aviso_de_encabezado(fila_encabezado, skip_rows is not None),
         "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
                     for n, v in zip(encabezados, columnas_valores)],
     }
@@ -289,7 +376,8 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
     return filas
 
 
-def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int) -> Dict[str, Any]:
+def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
+                   skip_rows: Optional[int] = None) -> Dict[str, Any]:
     with zipfile.ZipFile(ruta) as z:
         hojas = _hojas_xlsx(z)
         if not hojas:
@@ -301,12 +389,24 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int) -> Dict[str, A
                 f"El libro no tiene la hoja '{hoja}'. Tiene: "
                 f"{', '.join(hojas)}.",
                 details={"sheets": hojas, "path": str(ruta)})
-        filas = _filas_xlsx(z, hojas.index(hoja), muestra)
+        # Se leen las filas que se van a saltar ADEMAS de la muestra: si no,
+        # saltar diez filas dejaria diez filas menos de datos que perfilar.
+        margen = (skip_rows if skip_rows is not None else _MAX_FILAS_CANDIDATAS)
+        filas = _filas_xlsx(z, hojas.index(hoja), muestra + max(0, margen))
 
     if not filas:
         raise TableFromFileError(f"La hoja '{hoja}' esta vacia: {ruta}")
-    encabezados = [str(c).strip() for c in filas[0]]
-    datos = filas[1:]
+
+    fila_encabezado = _elegir_fila_de_encabezado(filas, skip_rows)
+    if fila_encabezado >= len(filas):
+        raise TableFromFileError(
+            f"skip_rows={fila_encabezado} deja la hoja '{hoja}' sin "
+            f"encabezados: solo tiene {len(filas)} fila(s).",
+            details={"rows": len(filas), "skip_rows": fila_encabezado,
+                     "sheet": hoja, "path": str(ruta)})
+
+    encabezados = [str(c).strip() for c in filas[fila_encabezado]]
+    datos = filas[fila_encabezado + 1:]
     columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
                         for i in range(len(encabezados))]
     sep = _separador_decimal([v for col in columnas_valores for v in col])
@@ -315,6 +415,8 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int) -> Dict[str, A
         "format": "xlsx", "path": str(ruta), "sheet": hoja, "delimiter": None,
         "encoding": None, "has_bom": False, "decimal_separator": sep,
         "row_sample": len(datos),
+        "header_row": fila_encabezado,
+        "warnings": _aviso_de_encabezado(fila_encabezado, skip_rows is not None),
         "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
                     for n, v in zip(encabezados, columnas_valores)],
     }
@@ -510,8 +612,14 @@ def _perfilar_html(ruta: Path, muestra: int, table_id: Optional[str] = None
 
 
 def perfilar(path: Path | str, sheet: Optional[str] = None,
-             muestra: int = 200, table_id: Optional[str] = None) -> Dict[str, Any]:
-    """Mira dentro del archivo y deduce columnas, tipos y cultura."""
+             muestra: int = 200, table_id: Optional[str] = None,
+             skip_rows: Optional[int] = None) -> Dict[str, Any]:
+    """Mira dentro del archivo y deduce columnas, tipos y cultura.
+
+    `skip_rows`: cuantas filas saltar antes del encabezado. `None` (por
+    defecto) autodetecta la primera fila que pueda serlo -sin huecos y sin
+    nombres repetidos- entre las primeras, y lo dice en `warnings`.
+    """
     ruta = Path(path).expanduser()
     if not ruta.exists():
         raise TableFromFileError(f"El archivo no existe: {ruta}",
@@ -530,9 +638,9 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
             details={"path": str(ruta), "suffix": ruta.suffix})
 
     if formato == "csv":
-        perfil = _perfilar_csv(ruta, muestra)
+        perfil = _perfilar_csv(ruta, muestra, skip_rows)
     elif formato == "xlsx":
-        perfil = _perfilar_xlsx(ruta, sheet, muestra)
+        perfil = _perfilar_xlsx(ruta, sheet, muestra, skip_rows)
     elif formato == "html":
         perfil = _perfilar_html(ruta, muestra, table_id)
     else:
@@ -660,6 +768,15 @@ def construir_m(perfil: Dict[str, Any], culture: Optional[str] = None) -> str:
     if perfil["format"] == "html":
         pass  # los nombres ya quedaron fijados arriba: promover aqui los duplicaria
     elif perfil["format"] != "json":
+        # Las filas previas al encabezado se saltan AQUI tambien, no solo al
+        # perfilar. Si el perfil leyera los encabezados de la fila 2 y la M
+        # siguiera promoviendo la 1, el TMDL describiria unas columnas y el
+        # refresco cargaria otras: la tabla abre y no trae nada.
+        saltar = int(perfil.get("header_row") or 0)
+        if saltar > 0:
+            pasos.append(f'    #"Filas de cabecera quitadas" = Table.Skip('
+                         f'{anterior}, {saltar}),')
+            anterior = '#"Filas de cabecera quitadas"'
         pasos.append(f'    #"Encabezados promovidos" = Table.PromoteHeaders('
                      f'{anterior}, [PromoteAllScalars = true]),')
         anterior = '#"Encabezados promovidos"'
@@ -728,7 +845,8 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   sheet: Optional[str] = None, culture: Optional[str] = None,
                   description: Optional[str] = None, overwrite: bool = False,
                   dry_run: bool = False, muestra: int = 200,
-                  table_id: Optional[str] = None) -> Dict[str, Any]:
+                  table_id: Optional[str] = None,
+                  skip_rows: Optional[int] = None) -> Dict[str, Any]:
     """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre.
 
     `table_id`: solo para HTML/'.xls' que en realidad es HTML. El `id` de la
@@ -739,7 +857,8 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
     from horizun_pbi_mcp.utils.validation import validate_object_name
 
     ruta = Path(path).expanduser()
-    perfil = perfilar(ruta, sheet=sheet, muestra=muestra, table_id=table_id)
+    perfil = perfilar(ruta, sheet=sheet, muestra=muestra, table_id=table_id,
+                      skip_rows=skip_rows)
 
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
     try:
