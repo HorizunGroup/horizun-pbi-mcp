@@ -204,9 +204,19 @@ def _elegir_fila_de_encabezado(filas: List[List[Any]],
     if skip_rows is not None:
         return max(0, int(skip_rows))
     candidatas = filas[:_MAX_FILAS_CANDIDATAS]
-    # El ancho de la tabla se toma de lo que se ve, no de la primera fila:
-    # justo la primera es la que suele venir mutilada.
-    ancho = max((len(f) for f in candidatas), default=0)
+    # El ancho de referencia es la MODA de los anchos, no el maximo. El maximo
+    # castigaba al inocente: una sola fila de datos con un campo de mas -una
+    # coma sin entrecomillar, el clasico de un export- subia la vara y
+    # descalificaba al encabezado legitimo, y la fila torcida acababa
+    # PROMOVIDA a encabezado con todos los datos reales descartados. La moda
+    # es lo que la tabla ES; el maximo es lo que una fila rota aparenta.
+    # En empate gana el mayor: con solo titulo+encabezado (una fila de cada
+    # ancho), la vara debe ser el ancho del encabezado, no el del titulo.
+    anchos = [len(f) for f in candidatas if f]
+    ancho = 0
+    if anchos:
+        frecuencia_max = max(anchos.count(a) for a in set(anchos))
+        ancho = max(a for a in set(anchos) if anchos.count(a) == frecuencia_max)
     for indice, fila in enumerate(candidatas):
         if _fila_es_encabezado(fila, ancho):
             return indice
@@ -231,13 +241,32 @@ def _perfilar_csv(ruta: Path, muestra: int,
     tiene_bom = crudo.startswith(b"\xef\xbb\xbf")
     texto = crudo.decode("utf-8-sig" if tiene_bom else "utf-8", errors="replace")
 
-    # El delimitador se busca en las primeras lineas, no solo en la primera:
-    # cuando la fila 1 es el titulo del reporte no lleva ni un separador, y
-    # mirarla sola hacia caer siempre en la coma por descarte.
-    lineas = texto.splitlines()[:_MAX_FILAS_CANDIDATAS] or [""]
-    delimitador = max(_DELIMITADORES,
-                      key=lambda d: max(linea.count(d) for linea in lineas))
-    if all(linea.count(delimitador) == 0 for linea in lineas):
+    # El delimitador se ELIGE POR VOTOS: gana el que aparece en MAS lineas de
+    # las primeras, no el que mas veces aparece en una. La diferencia importa
+    # dos veces:
+    #  - la fila 1 puede ser el titulo del reporte, sin un solo separador:
+    #    mirarla sola caia siempre en la coma por descarte;
+    #  - un CSV latinoamericano usa ';' de delimitador y ',' de DECIMAL
+    #    ("1234,56;3"): contar apariciones totales o el maximo por linea deja
+    #    a la coma empatar o ganar, y el archivo entero se parte por los
+    #    decimales. Votar por lineas no: el ';' esta en todas las lineas de
+    #    datos y el decimal tambien, asi que desempata la consistencia -en
+    #    cuantas lineas el conteo es EL MISMO-, que para el delimitador real
+    #    es casi siempre todas y para un decimal depende de los valores.
+    lineas = [l for l in texto.splitlines()[:_MAX_FILAS_CANDIDATAS] if l.strip()]
+    lineas = lineas or [""]
+
+    def _votos(d: str):
+        conteos = [linea.count(d) for linea in lineas]
+        presentes = [c for c in conteos if c > 0]
+        if not presentes:
+            return (0, 0, 0)
+        mas_comun = max(set(presentes), key=presentes.count)
+        consistencia = presentes.count(mas_comun)
+        return (len(presentes), consistencia, mas_comun)
+
+    delimitador = max(_DELIMITADORES, key=_votos)
+    if _votos(delimitador)[0] == 0:
         delimitador = ","
 
     filas = list(csv.reader(io.StringIO(texto), delimiter=delimitador))
@@ -349,7 +378,26 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
         return []
     raiz = ET.fromstring(z.read(nombre))
     filas: List[List[str]] = []
+    # Indice FISICO de fila, leido del atributo `r`. Excel no escribe <row>
+    # para una fila vacia, pero Excel.Workbook en Power Query SI la devuelve
+    # como fila de nulls dentro del rango usado. Si aqui se ignoraran los
+    # huecos, `header_row` contaria filas PRESENTES mientras el Table.Skip de
+    # la M salta filas FISICAS: con titulo en la fila 1, la 2 vacia y el
+    # encabezado en la 3, el perfil declararia unas columnas y el refresco
+    # promoveria la fila vacia -la tabla abre y no refresca-. Y con
+    # `skip_rows` explicito pasaria lo mismo: quien lo pasa cuenta filas
+    # mirando Excel, o sea fisicas. Los huecos se materializan como filas
+    # vacias para que ambos indices sean el mismo.
+    esperada = 1
     for fila in raiz.iter(f"{_NS_HOJA}row"):
+        try:
+            fisica = int(fila.get("r") or esperada)
+        except ValueError:
+            fisica = esperada
+        while esperada < fisica and len(filas) <= muestra:
+            filas.append([])
+            esperada += 1
+        esperada = fisica + 1
         valores: List[str] = []
         for celda in fila.iter(f"{_NS_HOJA}c"):
             tipo = celda.get("t")
@@ -879,8 +927,14 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
         resumen["table_id"] = perfil.get("table_id")
         resumen["table_index"] = perfil.get("table_index")
         resumen["promoted_headers"] = perfil.get("promote_headers")
-        if perfil.get("warnings"):
-            resumen["warnings"] = perfil["warnings"]
+    if perfil.get("header_row"):
+        resumen["header_row"] = perfil["header_row"]
+    # Los avisos van para TODO formato, no solo html. Estuvieron dentro de la
+    # rama html y los de csv/xlsx -"se saltaron N filas", que es justo lo que
+    # el docstring de la tool promete decir- se generaban en el perfil y se
+    # tiraban aqui: la tool saltaba filas sin ninguna senal en la respuesta.
+    if perfil.get("warnings"):
+        resumen["warnings"] = perfil["warnings"]
     if dry_run:
         return {**resumen, "dry_run": True, "tmdl": texto, "m": construir_m(perfil, culture)}
 

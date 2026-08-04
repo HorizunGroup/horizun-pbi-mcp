@@ -37,7 +37,13 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 RAIZ_REPO = Path(__file__).resolve().parent.parent
-MANIFIESTO = RAIZ_REPO / "src" / "services" / "schemas" / "pbir_manifest.json"
+# Ruta bajo el paquete unico. La antigua (src/services/...) sobrevivio al
+# reempaquetado porque ningun test ejecuta este script: fallaba en el bootstrap
+# del plugin, en el paso de esquemas del CI y en la instruccion del README —
+# los tres sitios que SI lo ejecutan. Peor: con --update habria RESUCITADO el
+# arbol viejo, escribiendo el manifiesto donde el servidor ya no lee.
+MANIFIESTO = (RAIZ_REPO / "src" / "horizun_pbi_mcp" / "services" / "schemas"
+              / "pbir_manifest.json")
 
 BASE = "https://developer.microsoft.com/json-schemas/fabric/item/report/"
 
