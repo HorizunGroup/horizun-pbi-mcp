@@ -5,6 +5,57 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.2.0] — 2026-08-04
+
+The four phases of the product vision, shipped. Six new tools (127 total);
+zero breaking changes. They are not four loose features — they chain:
+
+    port keys -> brief critical_fields -> diagnostics escalate to error
+
+### Added
+
+- **Intent brief** (`pbi_define_brief`, `pbi_get_brief`) — what the dashboard
+  is FOR, as a versioned artifact next to the `.pbip`. **The answers belong to
+  the human**: an empty `purpose` errors with an instruction to ASK, and
+  `pbi_get_brief` on a project without one returns the questions to ask rather
+  than an empty form. Consumed by `pbi_start_here` (shows the declared
+  purpose; its absence is the project's first gap), `pbi_propose_dashboard`
+  (attaches purpose, key questions and non-goals as the yardstick — no fake
+  keyword matching) and `pbi_list_design_systems` (recommends from `delivery`,
+  which is physical legibility, not aesthetics).
+
+- **Content-level data diagnostics** (`pbi_diagnose_data`) — what breaks
+  dashboards and no metadata sees: orphan keys falling into the relationship's
+  (Blank) so totals quietly come up short (blank keys counted too), duplicated
+  grain on the one side that multiplies everything on join, calendar gaps
+  detected by key TYPE rather than by name, and the brief's `critical_fields`
+  thresholds. **Severity is the owner's call**: what they declared critical
+  escalates to `error` citing their own *why*; a critical field that no longer
+  exists is a finding, not silence. Every finding carries the DAX that proves
+  it and sample culprits.
+
+- **External sources** (`pbi_add_table_from_source`) — SQL Server, PostgreSQL,
+  OData, Web JSON. The M is the easy part; **credentials and privacy levels
+  live in Desktop's UI and are not stored in the `.pbip`**, so the warning
+  ships in every response: the query is written, the first refresh needs a
+  human, and this server cannot verify the connection. Columns are declared by
+  the caller — without credentials there is no schema to read, and columns are
+  never invented. `Value.NativeQuery` carries `EnableFolding=true`; `web_json`
+  pins culture to `en-US` because JSON writes numbers culture-free and using
+  the system's is the `10527.52` → ten million bug.
+
+- **The ecosystem port as a DATA CONTRACT** (`pbi_define_port_contract`,
+  `pbi_check_contract`) — deliberately not an API bus between Revit,
+  Navisworks and Project: four chained desktop apps is fragile in a way that
+  doesn't get fixed. Each tool emits a normalized dataset with a shared key;
+  the contract is validated against incoming files (structure only — and it
+  says so: uniqueness and orphans need the full data, which is
+  `pbi_diagnose_data`) and against the live model, which returns
+  `suggested_critical_fields` so the port keys reach the brief without being
+  typed twice.
+
+---
+
 ## [1.1.1] — 2026-08-04
 
 Closes the field-report queue completely (items 6, 8 and 9 were the last
