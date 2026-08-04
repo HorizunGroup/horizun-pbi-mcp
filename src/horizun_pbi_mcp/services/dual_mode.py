@@ -24,14 +24,22 @@ la Fase 1B.
 """
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
 
 LIVE = "live"
 PBIP = "pbip"
 BOTH = "both"
-VALID_MODES = (LIVE, PBIP, BOTH)
+#: `auto` NO es un destino: se resuelve a `live` o a `pbip` mirando el estado
+#: real antes de hacer nada. Existe porque el default historico es `live`, que
+#: exige Desktop ABIERTO, mientras que el flujo que documenta
+#: `pbi_create_pbip_project` -construir desde cero- exige escribir el modelo con
+#: Desktop CERRADO. En ese flujo el default fallaba siempre. El default no se
+#: cambia: eso romperia el contrato congelado y el comportamiento de clientes ya
+#: configurados. Se anade el valor y se dice en el error cual toca.
+AUTO = "auto"
+VALID_MODES = (LIVE, PBIP, BOTH, AUTO)
 
 
 class DualModeNotAvailableError(PowerBIMCPError):
@@ -62,18 +70,63 @@ def normalize_mode(mode: Optional[str]) -> str:
     """Normaliza y valida el modo. No decide si es ejecutable."""
     m = (mode or LIVE).lower().strip()
     if m not in VALID_MODES:
-        raise ValidationError(f"mode invalido: '{mode}'. Usa live|pbip|both.")
+        raise ValidationError(
+            f"mode invalido: '{mode}'. Usa live|pbip|both|auto.")
     return m
 
 
-def assert_mode_is_safely_executable(mode: Optional[str]) -> str:
-    """Normaliza el modo y rechaza `both` SIN producir efecto alguno.
+def resolver_auto(session: Any) -> str:
+    """Convierte `auto` en el destino que el estado ACTUAL permite.
+
+    La regla es la del sistema, no una preferencia: `live` necesita Desktop
+    abierto sirviendo el modelo; `pbip` necesita el proyecto en disco y Desktop
+    cerrado. Si los dos son posibles gana `live`, que es lo inmediato y no toca
+    archivos; si ninguno lo es, se falla diciendo QUE falta, en vez de elegir
+    uno y fallar mas adelante por otra razon.
+    """
+    from horizun_pbi_mcp.services import project_state
+
+    hay_modelo = getattr(session, "active_model", None) is not None
+    activo = getattr(session, "active_pbip", None)
+
+    if hay_modelo:
+        return LIVE
+    if activo is not None:
+        estado = project_state.detect(activo)
+        if estado.get("state") == "open":
+            raise ValidationError(
+                "mode='auto' no puede resolverse: el proyecto esta ABIERTO en "
+                "Power BI Desktop (no se puede escribir el TMDL) y no hay una "
+                "sesion live seleccionada. Ejecuta pbi_select_model para usar "
+                "'live', o cierra Desktop para usar 'pbip'.",
+                details={"requested_mode": AUTO, "project_state": "open"})
+        return PBIP
+    raise ValidationError(
+        "mode='auto' no puede resolverse: no hay modelo activo ni proyecto "
+        ".pbip abierto. Ejecuta pbi_select_model (para 'live') o "
+        "pbi_open_pbip_project (para 'pbip').",
+        details={"requested_mode": AUTO, "available_modes": [LIVE, PBIP]})
+
+
+def assert_mode_is_safely_executable(mode: Optional[str],
+                                    session: Any = None) -> str:
+    """Normaliza el modo, resuelve `auto` y rechaza `both` SIN efecto alguno.
 
     Debe llamarse lo primero de cada tool dual: antes de conectar a TOM, de
     validar objetos contra el motor, de crear un journal, de leer para
     planificar una escritura o de modificar archivos.
+
+    `auto` se resuelve aqui, en el mismo sitio y con el mismo orden: mirar el
+    estado antes de producir ningun efecto es justo lo que hace que esta
+    funcion sirva.
     """
     m = normalize_mode(mode)
+    if m == AUTO:
+        if session is None:
+            raise ValidationError(
+                "mode='auto' necesita la sesion para resolverse.",
+                details={"requested_mode": AUTO})
+        m = resolver_auto(session)
     if m == BOTH:
         raise DualModeNotAvailableError(
             _MENSAJE,
@@ -107,9 +160,3 @@ def run_dual(mode: str, live_call: Callable[[], object],
     else:  # pragma: no cover - lo impide assert_mode_is_safely_executable
         raise DualModeNotAvailableError(_MENSAJE, details={"requested_mode": mode})
     return out
-
-
-#: Nota corta para las descripciones de las tools duales.
-MODE_NOTE = ("mode: 'live' (Desktop abierto) o 'pbip' (Desktop cerrado). "
-             "'both' esta temporalmente deshabilitado bajo la politica estricta: "
-             "los dos destinos exigen estados de Desktop incompatibles.")

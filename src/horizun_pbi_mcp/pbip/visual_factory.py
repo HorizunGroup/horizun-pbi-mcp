@@ -678,8 +678,21 @@ def _sin_marco() -> Dict[str, Any]:
 def _build_textbox(opciones: Dict[str, Any]) -> Dict[str, Any]:
     texto = opciones.get("text")
     if texto is None:
+        # El mensaje dice DONDE va la propiedad, no solo que falta. Sin eso, un
+        # tipo anunciado como soportado era inusable: se probaba `text` a nivel
+        # del visual, se probaba en `fields`, y el error repetia lo mismo. No se
+        # pudo poner ni un titulo de pagina y hubo que suplirlo con tarjetas.
         raise VisualFactoryError(
-            "Un 'textbox' necesita 'text'. Sin texto no hay nada que escribir.")
+            "Un 'textbox' necesita su texto en options.text, no en 'fields' ni "
+            "en la raiz del visual. Ejemplo: "
+            '{"type": "textbox", "options": {"text": "Resumen mensual", '
+            '"font_size": 20, "bold": true}}.',
+            details={"property": "options.text",
+                     "example": {"type": "textbox",
+                                 "options": {"text": "Resumen mensual",
+                                             "font_size": 20, "bold": True}},
+                     "other_options": ["font_size", "color", "bold", "font",
+                                       "align", "show_title"]})
     estilo: Dict[str, Any] = {}
     if opciones.get("font_size") is not None:
         estilo["fontSize"] = f"{opciones['font_size']}pt"
@@ -848,9 +861,16 @@ def _build_image(opciones: Dict[str, Any]) -> Dict[str, Any]:
     recurso = opciones.get("resource")
     if not recurso:
         raise VisualFactoryError(
-            "Un 'image' necesita 'resource': el ItemName del recurso ya "
-            "registrado en RegisteredResources. Registralo antes con "
-            "pbi_add_image_resource.")
+            "Un 'image' necesita su recurso en options.resource: el ItemName "
+            "del recurso ya registrado en RegisteredResources. Registralo "
+            "antes con pbi_add_image_resource. Ejemplo: "
+            '{"type": "image", "options": {"resource": "logo.png", '
+            '"scaling": "Fit"}}.',
+            details={"property": "options.resource",
+                     "example": {"type": "image",
+                                 "options": {"resource": "logo.png",
+                                             "scaling": "Fit"}},
+                     "other_options": ["name", "scaling"]})
     return {"image": [{"properties": {"sourceFile": {"image": {
         "name": _lit(opciones.get("name") or recurso),
         "url": {"expr": {"ResourcePackageItem": {

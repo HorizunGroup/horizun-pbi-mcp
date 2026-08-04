@@ -50,11 +50,13 @@ def register(mcp) -> None:
         mode='both' esta temporalmente deshabilitado bajo la politica estricta:
         'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,
         asi que una sola llamada aplicaria solo uno de los dos destinos. Elige
-        'live' o 'pbip'.
+        'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas
+        construyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige
+        Desktop abierto.
         """
         def _impl():
-            m = _check_mode(mode)
             session = get_session()
+            m = _check_mode(mode, session)
             return _run_dual(
                 m,
                 lambda: model_writer.create_measure(
@@ -82,11 +84,13 @@ def register(mcp) -> None:
         mode='both' esta temporalmente deshabilitado bajo la politica estricta:
         'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,
         asi que una sola llamada aplicaria solo uno de los dos destinos. Elige
-        'live' o 'pbip'.
+        'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas
+        construyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige
+        Desktop abierto.
         """
         def _impl():
-            m = _check_mode(mode)
             session = get_session()
+            m = _check_mode(mode, session)
             return _run_dual(
                 m,
                 lambda: model_writer.update_measure(
@@ -106,14 +110,16 @@ def register(mcp) -> None:
         mode='both' esta temporalmente deshabilitado bajo la politica estricta:
         'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,
         asi que una sola llamada aplicaria solo uno de los dos destinos. Elige
-        'live' o 'pbip'.
+        'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas
+        construyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige
+        Desktop abierto.
         """
         def _impl():
             if not confirm:
                 raise ValidationError(
                     "Operacion destructiva: pasa confirm=true para eliminar la medida.")
-            m = _check_mode(mode)
             session = get_session()
+            m = _check_mode(mode, session)
             return _run_dual(
                 m,
                 lambda: model_writer.delete_measure(session, table, name),
