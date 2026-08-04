@@ -184,6 +184,21 @@ def validate_schema(spec: Any) -> List[Dict[str, str]]:
             if campos is not None and not isinstance(campos, dict):
                 errores.append(_err(f"{base}.fields",
                                     "'fields' debe ser un objeto rol -> campos."))
+            formato = v.get("format")
+            if formato is not None:
+                if not isinstance(formato, dict):
+                    errores.append(_err(
+                        f"{base}.format",
+                        "'format' debe ser un objeto propiedad -> valor.",
+                        f"Admitidas: {sorted(visual_factory.FORMATOS_COMUNES)}"))
+                else:
+                    for clave in formato:
+                        if clave not in visual_factory.FORMATOS_COMUNES:
+                            errores.append(_err(
+                                f"{base}.format.{clave}",
+                                f"'{clave}' no es un formato conocido.",
+                                "Admitidas: "
+                                f"{sorted(visual_factory.FORMATOS_COMUNES)}"))
             pos = v.get("position")
             if pos is not None:
                 if not isinstance(pos, dict):
@@ -289,7 +304,7 @@ def resolve_layout(spec: Dict[str, Any], canvas: Dict[str, Any]) -> List[Dict[st
         modo = "grid" if not all(v.get("position") for v in visuals) else None
 
     if modo is None:
-        return [dict(v["position"]) for v in visuals]
+        return _con_z(([dict(v["position"]) for v in visuals]))
 
     items = [{"visual_id": str(i), "type": visual_factory.resolve_type(v["type"])}
              for i, v in enumerate(visuals)]
@@ -300,7 +315,39 @@ def resolve_layout(spec: Dict[str, Any], canvas: Dict[str, Any]) -> List[Dict[st
         c = por_indice[str(i)]
         salida.append({"x": c["x"], "y": c["y"],
                        "width": c["width"], "height": c["height"]})
-    return salida
+    return _con_z(salida)
+
+
+def _con_z(posiciones: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Asigna un orden Z distinto a cada visual que no lo traiga.
+
+    Sin esto todos salian con `z: 0` y despues el propio `pbi_detect_layout_issues`
+    avisaba de `layout_z_order_duplicated`: la herramienta generaba el problema
+    que su auditor reportaba. Y no es solo ruido —con la Z empatada, cual visual
+    queda encima de cual es indefinido—.
+
+    Se respeta la `z` que venga puesta a mano: quien la escribe esta ordenando
+    capas a proposito (un fondo detras de todo, una cabecera encima).
+    """
+    for indice, pos in enumerate(posiciones):
+        if pos.get("z") is None:
+            pos["z"] = float(indice)
+    return posiciones
+
+
+def _opciones_con_formato(v: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Une `options` y el bloque `format` del spec en lo que espera la fabrica.
+
+    En el spec son dos cosas distintas a proposito: `options` configura el
+    CONTENEDOR (marco, fondo, texto de un elemento decorativo) y `format`
+    configura el VISUAL (etiquetas de datos, leyenda, modo del segmentador).
+    Mezclarlos en el spec obligaria a saber cual es cual para acertar.
+    """
+    opciones = dict(v.get("options") or {})
+    formato = v.get("format")
+    if formato:
+        opciones["format"] = formato
+    return opciones or None
 
 
 def deterministic_id(seed: str, kind: str, index: int) -> str:
@@ -425,7 +472,7 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
     for i, (v, pos) in enumerate(zip(spec["visuals"], posiciones)):
         built = visual_factory.build_visual(
             active, v["type"], v.get("fields", {}), pos, v.get("title"),
-            indice_medidas, options=v.get("options"))
+            indice_medidas, options=_opciones_con_formato(v))
         vid = deterministic_id(seed, "visual", i)
         built["visual"]["name"] = vid
         construidos.append({"visual": built["visual"],

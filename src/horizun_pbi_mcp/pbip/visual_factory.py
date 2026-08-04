@@ -946,6 +946,71 @@ def _build_decorativo(actual_type: str,
     return vis
 
 
+#: Formatos comunes traducidos a PBIR. Clave amable -> (scope, grupo,
+#: propiedad, valores admitidos o None si es libre).
+#:
+#: Existe porque poner un slicer en desplegable obligaba a escribir a mano
+#:
+#:     "objects": {"data": [{"properties": {"mode": {"expr": {"Literal":
+#:         {"Value": "'Dropdown'"}}}}}]}
+#:
+#: dentro de cada visual.json. Funciona -Desktop lo respeta- pero es la clase
+#: de edicion a mano que despues aparece como errores de esquema que nadie
+#: sabe de donde salieron. Aqui la escribe el servidor, con la gramatica de
+#: `_lit()`, y pasa por el oraculo oficial como todo lo demas.
+#:
+#: El vocabulario es corto A PROPOSITO: cada entrada esta comprobada contra el
+#: catalogo oficial. Es preferible rechazar una clave que no se conoce a
+#: escribir una forma plausible que Desktop ignore en silencio.
+_FORMATOS_COMUNES: Dict[str, tuple] = {
+    "mode": ("objects", "data", "mode",
+             ("Basic", "Dropdown", "Between", "Before", "After", "List")),
+    "dataLabels": ("objects", "labels", "show", None),
+    "legend": ("objects", "legend", "show", None),
+    "legendPosition": ("objects", "legend", "position",
+                       ("Top", "Bottom", "Left", "Right", "TopCenter",
+                        "BottomCenter", "LeftCenter", "RightCenter")),
+}
+
+
+#: Vocabulario publico: lo consulta el validador del spec para poder
+#: rechazar una clave desconocida ANTES de construir nada.
+FORMATOS_COMUNES = _FORMATOS_COMUNES
+
+
+def _aplicar_formato(vis: Dict[str, Any], formato: Dict[str, Any]
+                     ) -> List[tuple[str, str, str]]:
+    """Traduce el bloque `format` a `objects`. Devuelve las rutas escritas.
+
+    Falla ante una clave desconocida en vez de ignorarla: un formato que se
+    pide y no se aplica es peor que un error, porque el informe sale distinto
+    de lo que se penso y nadie sabe por que.
+    """
+    rutas: List[tuple[str, str, str]] = []
+    for clave, valor in (formato or {}).items():
+        entrada = _FORMATOS_COMUNES.get(clave)
+        if entrada is None:
+            raise VisualFactoryError(
+                f"'{clave}' no es un formato conocido. Admitidos: "
+                f"{sorted(_FORMATOS_COMUNES)}.",
+                details={"unsupported": clave,
+                         "supported": sorted(_FORMATOS_COMUNES)})
+        scope, grupo, propiedad, admitidos = entrada
+        if admitidos and str(valor) not in admitidos:
+            raise VisualFactoryError(
+                f"'{clave}={valor}' no existe. Valores: {list(admitidos)}.",
+                details={"property": clave, "value": valor,
+                         "allowed": list(admitidos)})
+        destino = vis.setdefault(scope, {})
+        bloques = destino.setdefault(grupo, [{}])
+        if not bloques:
+            bloques.append({})
+        propiedades = bloques[0].setdefault("properties", {})
+        propiedades[propiedad] = _lit(valor)
+        rutas.append((scope, grupo, propiedad))
+    return rutas
+
+
 def _rutas_formato_generadas(vis: Dict[str, Any], *, completas: bool,
                              actual_type: str, title: Optional[str],
                              opciones: Dict[str, Any]) -> List[tuple[str, str, str]]:
@@ -989,13 +1054,21 @@ def _rutas_formato_generadas(vis: Dict[str, Any], *, completas: bool,
 
 def _comprobar_formato_generado(documento: Dict[str, Any], *, completas: bool,
                                 actual_type: str, title: Optional[str],
-                                opciones: Dict[str, Any]) -> None:
-    """Falla pronto si el catalogo oficial no reconoce lo que generamos."""
+                                opciones: Dict[str, Any],
+                                rutas_extra: Optional[List[tuple]] = None) -> None:
+    """Falla pronto si el catalogo oficial no reconoce lo que generamos.
+
+    `rutas_extra` son las que escribio el bloque `format`. Van explicitas
+    porque el oraculo solo comprueba lo que se le declara: una ruta escrita y
+    no declarada pasaria sin mirar, que es como se colaron en su dia los
+    `objects` invalidos.
+    """
     from horizun_pbi_mcp.services import format_oracle
 
     rutas = _rutas_formato_generadas(
         documento.get("visual") or {}, completas=completas,
         actual_type=actual_type, title=title, opciones=opciones)
+    rutas = list(rutas) + list(rutas_extra or [])
     if rutas:
         format_oracle.assert_managed_paths(documento, rutas)
 
@@ -1082,6 +1155,7 @@ def build_visual(
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         _aplicar_estilo_contenedor(vis, options or {})
+        rutas_formato = _aplicar_formato(vis, (options or {}).get("format") or {})
         origin = f"clonado de {template}"
     else:
         vis = {
@@ -1094,6 +1168,7 @@ def build_visual(
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         _aplicar_estilo_contenedor(vis, options or {})
+        rutas_formato = _aplicar_formato(vis, (options or {}).get("format") or {})
         data = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
         origin = "plantilla minima (validar en Power BI Desktop)"
         warnings.append(
@@ -1102,5 +1177,5 @@ def build_visual(
 
     _comprobar_formato_generado(
         data, completas=False, actual_type=actual_type, title=title,
-        opciones=options or {})
+        opciones=options or {}, rutas_extra=rutas_formato)
     return {"visual": data, "actual_type": actual_type, "origin": origin, "warnings": warnings}
