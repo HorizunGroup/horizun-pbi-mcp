@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 123,
+  "tool_count": 124,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -1950,6 +1950,36 @@
         "page": {
           "required": false,
           "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pbi_diagnose_data",
+      "description": "Diagnostico de CONTENIDO contra el modelo VIVO: lo que rompe\ntableros y ningun metadato ve.\n\nCuatro chequeos deterministas, cada uno con la consulta DAX que lo\ndemuestra y muestras de los valores culpables:\n\n- **claves_huerfanas**: filas del lado muchos cuya clave no existe en\n  el lado uno (caen al Blank de la relacion; los totales cuadran de\n  menos sin error). Incluye claves EN BLANCO.\n- **grano_duplicado**: el lado uno con claves repetidas (todo se\n  multiplica al cruzar).\n- **calendario_con_huecos**: dias faltantes en la tabla de fechas.\n- **umbral_del_brief_violado** y **campo_critico_inexistente**: los\n  `critical_fields` del brief contra los datos reales. La severidad\n  la decide el dueño: lo que declaro critico sale como `error`.\n\nNo hay heuristicas \"inteligentes\" de outliers ni escalas: lo generico\nes determinista y lo subjetivo viene del brief. Un chequeo que no se\npudo correr sale en `skipped` con su motivo — \"no se comprobo\" y\n\"esta bien\" no son lo mismo.\n\nRequiere el modelo ABIERTO en Desktop (consulta datos, no archivos).\n`tables` acota a las relaciones que tocan esas tablas.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "tables": {
+          "required": false,
+          "type": "array[string]|null",
           "default": null
         }
       },

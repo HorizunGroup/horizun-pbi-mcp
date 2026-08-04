@@ -158,3 +158,46 @@ def register(mcp) -> None:
                     "autofixes": [{"rule": k, **v}
                                   for k, v in sorted(report_audit.AUTOFIXES.items())]}
         return guard(_impl)
+
+    @mcp.tool()
+    def pbi_diagnose_data(tables: Optional[List[str]] = None,
+                          request_id: str = "") -> Dict[str, Any]:
+        """Diagnostico de CONTENIDO contra el modelo VIVO: lo que rompe
+        tableros y ningun metadato ve.
+
+        Cuatro chequeos deterministas, cada uno con la consulta DAX que lo
+        demuestra y muestras de los valores culpables:
+
+        - **claves_huerfanas**: filas del lado muchos cuya clave no existe en
+          el lado uno (caen al Blank de la relacion; los totales cuadran de
+          menos sin error). Incluye claves EN BLANCO.
+        - **grano_duplicado**: el lado uno con claves repetidas (todo se
+          multiplica al cruzar).
+        - **calendario_con_huecos**: dias faltantes en la tabla de fechas.
+        - **umbral_del_brief_violado** y **campo_critico_inexistente**: los
+          `critical_fields` del brief contra los datos reales. La severidad
+          la decide el dueño: lo que declaro critico sale como `error`.
+
+        No hay heuristicas "inteligentes" de outliers ni escalas: lo generico
+        es determinista y lo subjetivo viene del brief. Un chequeo que no se
+        pudo correr sale en `skipped` con su motivo — "no se comprobo" y
+        "esta bien" no son lo mismo.
+
+        Requiere el modelo ABIERTO en Desktop (consulta datos, no archivos).
+        `tables` acota a las relaciones que tocan esas tablas.
+        """
+        def _impl():
+            session = get_session()
+            from horizun_pbi_mcp.powerbi import model_reader
+            from horizun_pbi_mcp.services import brief as brief_service
+            from horizun_pbi_mcp.services import data_diagnose
+
+            modelo = model_reader.read_model(session)
+            try:
+                el_brief = brief_service.read_brief(
+                    session.require_active_pbip())
+            except Exception:                            # noqa: BLE001
+                el_brief = None
+            return data_diagnose.diagnose(session, modelo, brief=el_brief,
+                                          tables=tables)
+        return guard(_impl)

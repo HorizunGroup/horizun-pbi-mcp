@@ -1,4 +1,4 @@
-# Tool catalog — 123
+# Tool catalog — 124
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -30,7 +30,8 @@ tools registered.
 | N — refactoring | 1 |
 | O — session exit | 1 |
 | P — intent brief | 2 |
-| **Total** | **123** |
+| Q — data diagnostics | 1 |
+| **Total** | **124** |
 
 ---
 
@@ -119,6 +120,7 @@ tools registered.
 |---|---|
 | `pbi_propose_dashboard` | Classifies the model and proposes complete designs, with their reasoning |
 | `pbi_profile_data` | Profiles the VALUES: out-of-range percentages, empty columns |
+| `pbi_diagnose_data` | Content-level checks on the LIVE model: orphan keys, duplicated grain, calendar gaps, and the brief's critical-field thresholds — every finding carries its DAX proof and sample culprits |
 
 ## Report authoring (PBIR)
 

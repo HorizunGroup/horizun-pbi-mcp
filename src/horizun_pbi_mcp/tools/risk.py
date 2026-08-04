@@ -79,6 +79,8 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_column_dependencies": READ_ONLY,
     "pbi_compare_live_to_pbip": READ_ONLY,
     "pbi_detect_layout_issues": READ_ONLY,
+    # DAX de solo lectura contra el modelo vivo; sin ficheros.
+    "pbi_diagnose_data": READ_ONLY,
     "pbi_diff_page_spec": READ_ONLY,
     "pbi_generate_page_spec": READ_ONLY,
     "pbi_get_object": READ_ONLY,
