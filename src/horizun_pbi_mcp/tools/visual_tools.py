@@ -155,6 +155,18 @@ def register(mcp) -> None:
           `bold_value`, `value_color`.
         - `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.
         - `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.
+          El texto va en `options.text`, NO en `fields` ni en la raiz:
+          {"type": "textbox", "options": {"text": "Resumen", "font_size": 20}}.
+        - `image`: `resource` (ItemName ya registrado con
+          `pbi_add_image_resource`), `name`, `scaling`.
+        - `pageNavigator`: `show_hidden`, `show_current`.
+        - `actionButton`: `action`, `icon`, `target_page`, `text`.
+        - `format`: formato del VISUAL, no del contenedor. `mode`
+          (segmentador: Dropdown, List, Between...), `dataLabels` (bool),
+          `legend` (bool), `legendPosition` (Top, Bottom, Left, Right...). Una
+          clave desconocida aqui SE RECHAZA con la lista de las validas: un
+          formato que se pide y no se aplica deja el informe distinto de lo que
+          se penso sin decir por que.
 
         `position`: {x, y, width, height} (z opcional).
         Clona un visual del mismo tipo como plantilla si existe. Hace backup.

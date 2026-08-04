@@ -177,7 +177,7 @@ def hide_columns_service(session, columns: Any, hidden: bool,
     """
     # Lo primero: antes de conectar a TOM, de validar contra el motor, de crear
     # journal, de leer para planificar o de tocar un archivo.
-    m = _check_mode(mode)
+    m = _check_mode(mode, get_session())
 
     unicas, duplicadas = _validar_entradas(columns)
     solicitadas = list(columns) if isinstance(columns, list) else []
@@ -404,10 +404,12 @@ def register(mcp) -> None:
         mode='both' esta temporalmente deshabilitado bajo la politica estricta:
         'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,
         asi que una sola llamada aplicaria solo uno de los dos destinos. Elige
-        'live' o 'pbip'.
+        'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas
+        construyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige
+        Desktop abierto.
         """
         def _impl():
-            m = _check_mode(mode)
+            m = _check_mode(mode, get_session())
             session = get_session()
             return _dual(
                 m,
@@ -433,7 +435,9 @@ def register(mcp) -> None:
         mode='both' esta temporalmente deshabilitado bajo la politica estricta:
         'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,
         asi que una sola llamada aplicaria solo uno de los dos destinos. Elige
-        'live' o 'pbip'.
+        'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas
+        construyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige
+        Desktop abierto.
         """
         return guard_mutation(lambda: hide_columns_service(
             get_session(), columns, hidden, mode))
@@ -454,7 +458,7 @@ def register(mcp) -> None:
         una sola llamada aplicaria solo uno de los dos destinos.
         """
         def _impl():
-            m = _check_mode(mode)
+            m = _check_mode(mode, get_session())
             session = get_session()
             return _dual(
                 m,
