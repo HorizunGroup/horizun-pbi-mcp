@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 121,
+  "tool_count": 123,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -1709,6 +1709,74 @@
       }
     },
     {
+      "name": "pbi_define_brief",
+      "description": "Escribe el BRIEF DE INTENCION del tablero: para que existe.\n\nEs la pieza que gobierna a las demas: la propuesta de paginas, el\nsistema de diseño y las auditorias leen este artefacto para servir a\nun proposito en vez de deducirlo todo del modelo.\n\n**Las respuestas son del HUMANO, no tuyas.** Antes de llamar, pregunta\nen conversacion: ¿para que quieres este tablero? ¿quien lo va a mirar?\n¿que decisiones debe sostener? ¿como se va a ver (sala, escritorio,\nPDF, movil)? Un brief inventado por el agente es peor que ninguno:\nfija en un archivo con autoridad lo que nadie dijo.\n\n`delivery`: pantalla_sala | escritorio | lectura_pdf | movil — decide\nel sistema de diseño recomendado (legibilidad fisica, no estetica).\n`critical_fields`: [{field, why, min?, max?}] — que campos son\ncriticos y sus umbrales; los usara el diagnostico de datos.\n\nSe guarda como `pbi-brief.json` JUNTO al .pbip (fuera de .Report/\n.SemanticModel, que Desktop reescribe al guardar): versionado con el\nproyecto y editable en cualquier momento. Reescribirlo es normal:\nlos tableros cambian de proposito.",
+      "params": {
+        "audience": {
+          "required": true,
+          "type": "string"
+        },
+        "critical_fields": {
+          "required": false,
+          "type": "array[object]|null",
+          "default": null
+        },
+        "decisions": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "delivery": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "key_questions": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "non_goals": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "purpose": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "update_cadence": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        }
+      },
+      "required": [
+        "audience",
+        "purpose"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_delete_bookmark",
       "description": "Borra un marcador y lo quita del indice. Destructiva: confirm=true.",
       "params": {
@@ -2306,6 +2374,31 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_get_brief",
+      "description": "Lee el brief de intencion del proyecto activo.\n\nDevuelve `defined: false` si no existe —con las preguntas que hay que\nhacerle al usuario para definirlo—, o el brief completo y el sistema\nde diseño que recomienda. Consultalo ANTES de proponer paginas o\nelegir sistema: es la diferencia entre servir al proposito del\ntablero y deducirlo todo del modelo.",
+      "params": {
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
       }
     },
     {

@@ -65,9 +65,22 @@ def register(mcp) -> None:
         Usalo para ofrecer opciones al usuario en vez de decidir por el.
         """
         from horizun_pbi_mcp.pbip import theme
+        from horizun_pbi_mcp.services import brief as brief_service
         from horizun_pbi_mcp.services import proposals
 
-        return guard(lambda: proposals.propose(_model_data(), theme.list_presets()))
+        def _impl():
+            # El brief manda sobre la deduccion: si existe, cada propuesta
+            # viaja con el proposito del dueño al lado para juzgarla contra
+            # eso. Su ausencia tambien se dice: proponer sin proposito es
+            # legitimo, pero no debe parecer lo mismo.
+            try:
+                el_brief = brief_service.read_brief(
+                    get_session().require_active_pbip())
+            except Exception:                            # noqa: BLE001
+                el_brief = None
+            return proposals.propose(_model_data(), theme.list_presets(),
+                                     brief=el_brief)
+        return guard(_impl)
 
     @mcp.tool()
     def pbi_page_building_blocks() -> Dict[str, Any]:

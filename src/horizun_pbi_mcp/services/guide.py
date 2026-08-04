@@ -149,6 +149,16 @@ def situacion(session) -> Dict[str, Any]:
     informe = (_contar_informe(active) if active.has_pbir
                else {"pages": None, "visuals": None})
 
+    # El brief es el techo de todo lo demas: si existe, cada paso sirve a un
+    # proposito dicho por el dueño; si no, se sugiere definirlo ANTES de
+    # construir. Nunca lanza aqui: la guia es un diagnostico.
+    try:
+        from horizun_pbi_mcp.services import brief as brief_service
+
+        el_brief = brief_service.read_brief(active)
+    except Exception:                                    # noqa: BLE001
+        el_brief = None
+
     proyecto = {
         "path": active.pbip_path,
         "name": active.report_name,
@@ -159,10 +169,21 @@ def situacion(session) -> Dict[str, Any]:
         "pages": informe["pages"],
         "visuals": informe["visuals"],
         "desktop": estado.to_dict(),
+        "brief": ({"purpose": el_brief.get("purpose"),
+                   "audience": el_brief.get("audience")}
+                  if el_brief else None),
     }
 
     pasos: List[Dict[str, Any]] = []
     frases: List[str] = [f"Proyecto activo: {Path(active.pbip_path).name}."]
+    if el_brief:
+        frases.append(f"Proposito declarado: {el_brief['purpose']}")
+    else:
+        pasos.append(_paso(
+            "pbi_get_brief",
+            "El tablero no tiene brief de intencion: nadie ha dicho PARA QUE "
+            "existe. Pregunta al usuario y definelo antes de construir; la "
+            "propuesta y el sistema de diseño lo leen."))
 
     # --- lo que BLOQUEA va primero: no tiene sentido sugerir algo imposible --
     if estado.state == project_state.OPEN:

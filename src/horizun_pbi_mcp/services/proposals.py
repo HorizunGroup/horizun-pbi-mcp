@@ -214,8 +214,16 @@ def _proponer_tendencia(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def propose(model_data: Optional[Dict[str, Any]],
-            theme_presets: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
-    """Propuestas de paginas y de tema, deducidas de lo que el modelo tiene."""
+            theme_presets: Optional[List[Dict[str, Any]]] = None,
+            brief: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Propuestas de paginas y de tema, deducidas de lo que el modelo tiene.
+
+    Con `brief`, las propuestas ya no son huerfanas: se adjuntan el proposito
+    y las preguntas clave DEL DUEÑO para que quien elija lo haga contra eso, y
+    el sistema de diseño recomendado sale de `delivery`. No se finge
+    alineacion semantica -emparejar preguntas con specs por palabras seria
+    adivinar-; se pone la vara al lado de cada propuesta y se deja juzgar.
+    """
     if not model_data:
         return {"proposals": [], "reason": "No hay modelo cargado que analizar."}
 
@@ -235,7 +243,29 @@ def propose(model_data: Optional[Dict[str, Any]],
             faltantes.extend(p.get("needs") or [])
 
     log.info("Propuestas generadas: %s", len(propuestas))
+    salida_brief: Dict[str, Any] = {}
+    if brief:
+        from horizun_pbi_mcp.services import brief as brief_service
+
+        salida_brief = {
+            "brief": {"purpose": brief.get("purpose"),
+                      "audience": brief.get("audience"),
+                      "key_questions": brief.get("key_questions") or [],
+                      "non_goals": brief.get("non_goals") or []},
+            "judge_against": ("Cada propuesta debe responder alguna de "
+                              "key_questions y ninguna caer en non_goals; "
+                              "descarta las que no."),
+            "recommended_design_system":
+                brief_service.recommended_system(brief),
+        }
+    else:
+        salida_brief = {"brief": None,
+                        "hint": ("No hay brief de intencion: estas propuestas "
+                                 "se deducen SOLO del modelo. Define uno con "
+                                 "pbi_define_brief para proponer con "
+                                 "proposito.")}
     return {
+        **salida_brief,
         "proposals": propuestas,
         "detected": {k: len(v) for k, v in clasificacion.items() if k != "families"},
         "families": clasificacion["families"],
