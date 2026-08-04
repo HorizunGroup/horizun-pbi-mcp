@@ -3,8 +3,8 @@ registro en publicCustomVisuals y medidas con dataCategory (SVG ImageUrl)."""
 import json
 from pathlib import Path
 
-from pbip import pbir_writer, project_locator, tmdl_reader, tmdl_writer
-from pbip.visual_factory import HTML_CONTENT_TYPE, build_visual
+from horizun_pbi_mcp.pbip import pbir_writer, project_locator, tmdl_reader, tmdl_writer
+from horizun_pbi_mcp.pbip.visual_factory import HTML_CONTENT_TYPE, build_visual
 
 
 OFFICIAL_HTML_CONTENT_GUID = "htmlContent443BE3AD55E043BF878BED274D3A6855"
@@ -57,7 +57,7 @@ def test_measure_with_data_category(session, sample_pbip):
     tmdl_writer.create_measure_pbip(active, "Ventas", "SVG Punto", svg,
                                     None, None, "SVG", overwrite=True,
                                     data_category="ImageUrl")
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
     text = find_table_file(active, "Ventas").read_text(encoding="utf-8")
     assert "dataCategory: ImageUrl" in text
     # y el modelo re-parsea sin romperse

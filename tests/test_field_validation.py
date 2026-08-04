@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import pbir_reader, project_locator, tmdl_reader
-from services import pbir_edit
-from services.pbir_edit import FieldNotFoundError
+from horizun_pbi_mcp.pbip import pbir_reader, project_locator, tmdl_reader
+from horizun_pbi_mcp.services import pbir_edit
+from horizun_pbi_mcp.services.pbir_edit import FieldNotFoundError
 from tests.fixtures import synthetic
 
 

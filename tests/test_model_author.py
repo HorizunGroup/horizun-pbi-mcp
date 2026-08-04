@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from pbip import model_author, project_locator
-from pbip.model_author import ModelAuthorError
-from services import tmdl_validate
+from horizun_pbi_mcp.pbip import model_author, project_locator
+from horizun_pbi_mcp.pbip.model_author import ModelAuthorError
+from horizun_pbi_mcp.services import tmdl_validate
 
 
 @pytest.fixture
@@ -26,14 +26,13 @@ def proyecto(session, sample_pbip):
 
 
 def _tabla(activo, nombre="Ventas") -> str:
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
 
     return find_table_file(activo, nombre).read_text(encoding="utf-8-sig")
 
 
 def _assert_tom_abre(proyecto):
-    import config
-
+    from horizun_pbi_mcp import config
     definition = Path(proyecto.semantic_model_dir) / "definition"
     settings = config.get_settings()
     anterior = settings.libs_dir
@@ -55,7 +54,7 @@ def _columnas_para_relacion(proyecto):
 # -------------------------------------------------- columna calculada -------
 def test_columna_calculada_se_declara_antes_de_la_particion(proyecto):
     """Una columna despues de `partition` no la lee Power BI."""
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
 
     archivo = find_table_file(proyecto, "Ventas")
     archivo.write_text(
@@ -105,7 +104,7 @@ def test_columna_duplicada_exige_permiso(proyecto):
 
 
 def test_columna_case_insensitive_no_duplica_columna_existente(proyecto):
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
 
     archivo = find_table_file(proyecto, "Ventas")
     before = archivo.read_bytes()
@@ -119,7 +118,7 @@ def test_columna_case_insensitive_no_duplica_columna_existente(proyecto):
 
 
 def test_columna_no_puede_llamarse_como_medida_ni_con_overwrite(proyecto):
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
 
     archivo = find_table_file(proyecto, "Ventas")
     before = archivo.read_bytes()
@@ -297,7 +296,7 @@ def test_tabla_calculada_declara_columnas_y_particion(proyecto):
 
 def test_tabla_y_registro_revierten_juntos_si_falla_segunda_escritura(
         proyecto, monkeypatch):
-    from services import txn
+    from horizun_pbi_mcp.services import txn
 
     definition = Path(proyecto.semantic_model_dir) / "definition"
     model_file = definition / "model.tmdl"
@@ -322,7 +321,7 @@ def test_tabla_y_registro_revierten_juntos_si_falla_segunda_escritura(
 
 def test_error_nuevo_de_validacion_revierte_tabla_y_registro(
         proyecto, monkeypatch):
-    from services import tmdl_validate
+    from horizun_pbi_mcp.services import tmdl_validate
 
     definition = Path(proyecto.semantic_model_dir) / "definition"
     model_file = definition / "model.tmdl"
@@ -449,7 +448,7 @@ def test_slug_ocupado_por_otra_tabla_no_se_sobrescribe(proyecto):
 
 # ------------------------------------------------ modo de almacenamiento ----
 def _con_particion(proyecto, modo="import"):
-    from pbip.tmdl_reader import find_table_file
+    from horizun_pbi_mcp.pbip.tmdl_reader import find_table_file
 
     archivo = find_table_file(proyecto, "Ventas")
     archivo.write_text(

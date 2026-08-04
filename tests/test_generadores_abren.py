@@ -42,18 +42,18 @@ from pathlib import Path
 
 import pytest
 
-from config import ActivePbip
-from pbip import (bookmarks, filter_builder, pbip_scaffold, pbir_reader,
+from horizun_pbi_mcp.config import ActivePbip
+from horizun_pbi_mcp.pbip import (bookmarks, filter_builder, pbip_scaffold, pbir_reader,
                   table_from_file, theme, tmdl_reader, tmdl_writer,
                   visual_factory)
-from powerbi.errors import VisualFactoryError
-from services import page_spec, report_validator, tmdl_validate
+from horizun_pbi_mcp.powerbi.errors import VisualFactoryError
+from horizun_pbi_mcp.services import page_spec, report_validator, tmdl_validate
 
 
 # ============================================================ disponibilidad ==
 def _hay_tom() -> bool:
     try:
-        from powerbi.clr_bootstrap import load_tom
+        from horizun_pbi_mcp.powerbi.clr_bootstrap import load_tom
 
         load_tom()
         return True
@@ -351,8 +351,8 @@ def test_un_mapa_de_calor_con_dos_medidas_pasa_el_validador(proyecto_real):
     `selector.metadata` que las distingue no me lo he inventado, sale del
     esquema `formattingObjectDefinitions`—.
     """
-    from pbip import conditional_format
-    from utils.json_utils import read_json, write_json
+    from horizun_pbi_mcp.pbip import conditional_format
+    from horizun_pbi_mcp.utils.json_utils import read_json, write_json
 
     active, md = proyecto_real
     compilado = page_spec.compile_spec(active, {
@@ -476,7 +476,7 @@ def test_los_tipos_de_interaccion_son_los_del_esquema_oficial():
 
     Se lee del esquema CACHEADO: sin red y sin CLI, asi que corre siempre.
     """
-    from services import pbir_schema
+    from horizun_pbi_mcp.services import pbir_schema
 
     esquema, _ = pbir_schema.cargar(
         "https://developer.microsoft.com/json-schemas/fabric/item/report/"
@@ -637,7 +637,7 @@ def test_una_interaccion_a_un_visual_que_no_existe_se_acusa(proyecto_real):
 def test_una_medida_no_puede_llamarse_como_una_columna_de_su_tabla(proyecto_real):
     """Power BI: «No se puede crear la medida 'X' porque ya existe una columna
     con el mismo nombre». Se comprobo abriendolo: el modelo queda vacio."""
-    from powerbi.errors import MeasureExistsError
+    from horizun_pbi_mcp.powerbi.errors import MeasureExistsError
 
     active, _ = proyecto_real
     with pytest.raises(MeasureExistsError) as exc:
@@ -650,7 +650,7 @@ def test_una_medida_no_puede_llamarse_como_una_columna_de_su_tabla(proyecto_real
 
 def test_el_nombre_de_una_medida_es_unico_en_todo_el_modelo(proyecto_real):
     """No por tabla: el motor rechaza las dos si se repiten en tablas distintas."""
-    from powerbi.errors import MeasureExistsError
+    from horizun_pbi_mcp.powerbi.errors import MeasureExistsError
 
     active, _ = proyecto_real
     with pytest.raises(MeasureExistsError) as exc:
@@ -674,7 +674,7 @@ def test_reemplazar_una_medida_existente_sigue_funcionando(proyecto_real):
 @requiere_oraculos
 def test_el_modelo_sigue_abriendo_tras_rechazar_un_nombre_invalido(proyecto_real):
     """Rechazar no puede dejar el TMDL a medias."""
-    from powerbi.errors import MeasureExistsError
+    from horizun_pbi_mcp.powerbi.errors import MeasureExistsError
 
     active, _ = proyecto_real
     with pytest.raises(MeasureExistsError):

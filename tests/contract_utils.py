@@ -151,7 +151,7 @@ def snapshot_from_server() -> Dict[str, Any]:
     src = str(REPO_ROOT / "src")
     if src not in sys.path:
         sys.path.insert(0, src)
-    from server import build_server  # import diferido: necesita src en sys.path
+    from horizun_pbi_mcp.server import build_server  # import diferido: necesita src en sys.path
 
     mcp = build_server()
     tools = asyncio.run(mcp.list_tools())

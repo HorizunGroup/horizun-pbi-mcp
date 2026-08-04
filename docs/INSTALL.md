@@ -145,7 +145,7 @@ Paste the resulting TOML section into `~/.codex/config.toml`. It's **TOML**, not
 ```toml
 [mcp_servers.horizun-pbi-mcp]
 command = "C:/path/to/python.exe"
-args = ["C:/path/to/repository/src/server.py"]
+args = ["-m", "horizun_pbi_mcp.server"]
 
 [mcp_servers.horizun-pbi-mcp.env]
 HORIZUN_PBI_MCP_LOG_LEVEL = "INFO"

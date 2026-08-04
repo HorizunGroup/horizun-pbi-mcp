@@ -135,7 +135,7 @@ python scripts/doctor.py
 With **Power BI Desktop open** on a report:
 
 ```bash
-python src/server.py     # starts the MCP server (stdio); Ctrl+C to exit
+python -m horizun_pbi_mcp.server   # starts the MCP server (stdio); Ctrl+C to exit
 ```
 
 For a quick test without MCP, in Python:

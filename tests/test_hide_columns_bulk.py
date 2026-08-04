@@ -16,13 +16,13 @@ from pathlib import Path
 
 import pytest
 
-from config import ActiveModel
-from pbip import model_edit, project_locator
-from powerbi import model_writer
-from powerbi.errors import PowerBIMCPError, TableNotFoundError, ValidationError
-from services import txn as txn_service
+from horizun_pbi_mcp.config import ActiveModel
+from horizun_pbi_mcp.pbip import model_edit, project_locator
+from horizun_pbi_mcp.powerbi import model_writer
+from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, TableNotFoundError, ValidationError
+from horizun_pbi_mcp.services import txn as txn_service
 from tests.fixtures import synthetic
-from tools.model_edit_tools import (BulkApplyFailedError, BulkPartialError,
+from horizun_pbi_mcp.tools.model_edit_tools import (BulkApplyFailedError, BulkPartialError,
                                     _apply_both_compensated, _validar_entradas,
                                     hide_columns_service)
 
@@ -104,7 +104,7 @@ def identidad_de_sesion_certificada(monkeypatch):
     estas pruebas dan por supuesto. Quien SI prueba la frescura es
     `tests/test_session_freshness.py`, y ahi no se toca nada.
     """
-    from powerbi import desktop_discovery
+    from horizun_pbi_mcp.powerbi import desktop_discovery
 
     monkeypatch.setattr(desktop_discovery, "verify_model",
                         lambda modelo: {"status": "ok"})
@@ -606,7 +606,7 @@ def test_un_fallo_total_no_se_convierte_en_lista_de_exitos(proyecto):
 
 def test_la_tool_envuelve_el_servicio_y_reporta_ok_false(proyecto):
     """A traves de guard(), un fallo total es ok:false, no ok:true con errores."""
-    from tools._common import guard
+    from horizun_pbi_mcp.tools._common import guard
 
     session, active, project = proyecto
     res = guard(lambda: hide_columns_service(

@@ -23,8 +23,8 @@ from pathlib import Path
 
 import pytest
 
-import logging_config
-from logging_config import (SafeRotatingFileHandler, purgar_logs,
+from horizun_pbi_mcp import logging_config
+from horizun_pbi_mcp.logging_config import (SafeRotatingFileHandler, purgar_logs,
                             ruta_log_de_este_proceso)
 
 REPO = Path(__file__).resolve().parent.parent
@@ -117,7 +117,7 @@ def test_varios_procesos_concurrentes_no_dejan_errores(tmp_path):
     script.write_text(
         "import sys, logging\n"
         f"sys.path.insert(0, {str(REPO / 'src')!r})\n"
-        "import logging_config\n"
+        "from horizun_pbi_mcp import logging_config\n"
         f"log = logging_config.setup_logging('INFO', {str(tmp_path / 'concurrente.log')!r})\n"
         "for i in range(400):\n"
         "    log.info('proceso %s linea %s de relleno para forzar rotacion', "
@@ -201,7 +201,7 @@ def test_el_servidor_no_ensucia_stdout_con_logs(tmp_path):
     script = tmp_path / "arranque.py"
     script.write_text(
         f"import sys; sys.path.insert(0, {str(REPO / 'src')!r})\n"
-        "from server import build_server\n"
+        "from horizun_pbi_mcp.server import build_server\n"
         "import asyncio\n"
         "tools = asyncio.run(build_server().list_tools())\n"
         "print(len(tools))\n",

@@ -260,7 +260,7 @@ def test_every_tool_has_a_useful_description(snapshot):
 
 def test_create_visual_description_matches_supported_catalog(snapshot):
     """El contrato no puede anunciar solo el catalogo antiguo de visuales."""
-    from pbip.visual_factory import SUPPORTED
+    from horizun_pbi_mcp.pbip.visual_factory import SUPPORTED
 
     tool = next(t for t in snapshot["tools"] if t["name"] == "pbi_create_visual")
     description = tool["description"]

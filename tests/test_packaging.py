@@ -23,25 +23,26 @@ from pathlib import Path
 
 import pytest
 
-import branding as _branding
+import horizun_pbi_mcp.branding as _branding
 from tests import test_tool_contract as _contrato
 
 REPO = Path(__file__).resolve().parent.parent
 
 MODULOS_SERVICES = [
-    "services/__init__.py",
-    "services/paths.py",
-    "services/dax_guard.py",
-    "services/project_state.py",
-    "services/txn.py",
-    "services/dual_mode.py",
-    "services/envelope.py",
-    "services/telemetry.py",
-    "services/operations.py",
-    "services/planning.py",
+    "horizun_pbi_mcp/services/__init__.py",
+    "horizun_pbi_mcp/services/paths.py",
+    "horizun_pbi_mcp/services/dax_guard.py",
+    "horizun_pbi_mcp/services/project_state.py",
+    "horizun_pbi_mcp/services/txn.py",
+    "horizun_pbi_mcp/services/dual_mode.py",
+    "horizun_pbi_mcp/services/envelope.py",
+    "horizun_pbi_mcp/services/telemetry.py",
+    "horizun_pbi_mcp/services/operations.py",
+    "horizun_pbi_mcp/services/planning.py",
 ]
-MODULOS_RAIZ = ["config.py", "logging_config.py", "reporting.py",
-                "server.py", "branding.py"]
+MODULOS_RAIZ = ["horizun_pbi_mcp/config.py", "horizun_pbi_mcp/logging_config.py",
+                "horizun_pbi_mcp/reporting.py", "horizun_pbi_mcp/server.py",
+                "horizun_pbi_mcp/branding.py", "horizun_pbi_mcp/__init__.py"]
 
 #: Se toma del contrato para que no haya dos numeros que mantener a mano.
 TOOLS_ESPERADAS = _contrato.EXPECTED_COUNT
@@ -83,6 +84,35 @@ def test_el_wheel_contiene_los_modulos_raiz(wheel):
         f"El wheel no incluye {faltan}. Revisa py-modules en pyproject.toml.")
 
 
+def test_el_wheel_solo_ocupa_un_nombre_de_primer_nivel(wheel):
+    """Lo que se instala en site-packages es de todos, no solo nuestro.
+
+    El wheel llegó a instalar DIEZ nombres de primer nivel: `config`, `server`,
+    `services`, `tools`, `utils`, `pbip`, `powerbi`, `reporting`,
+    `logging_config` y `branding`. Cuatro de ellos estan entre los mas comunes
+    de Python. En cualquier entorno donde otro paquete -o el propio script del
+    usuario- hiciera `import config`, uno de los dos ganaba y el otro se
+    rompia, en la direccion que tocara ese dia. Publicado en PyPI eso deja de
+    ser un problema nuestro para serlo de quien lo instale, y no se arregla
+    despues sin romper a quien ya lo tenga.
+
+    Por eso esto se comprueba sobre el WHEEL construido de verdad, no sobre
+    pyproject.toml: lo que importa es lo que acaba en site-packages.
+    """
+    nombres = zipfile.ZipFile(wheel).namelist()
+    primer_nivel = set()
+    for n in nombres:
+        cabeza = n.split("/")[0]
+        if cabeza.endswith((".dist-info", ".data")):
+            continue
+        primer_nivel.add(cabeza if "/" in n else cabeza)
+
+    assert primer_nivel == {"horizun_pbi_mcp"}, (
+        f"El wheel instala {sorted(primer_nivel)} en site-packages. Debe "
+        "instalar UN solo nombre: horizun_pbi_mcp. Revisa "
+        "packages.find.include y py-modules en pyproject.toml.")
+
+
 def test_el_wheel_lleva_licencia_apache_y_notice(wheel):
     nombres = set(zipfile.ZipFile(wheel).namelist())
     assert any(nombre.endswith("/licenses/LICENSE") for nombre in nombres), (
@@ -100,16 +130,16 @@ def test_el_wheel_lleva_el_manifiesto_de_esquemas(wheel):
     descargar ni contra que verificarlo.
     """
     nombres = set(zipfile.ZipFile(wheel).namelist())
-    assert "services/schemas/pbir_manifest.json" in nombres, (
+    assert "horizun_pbi_mcp/services/schemas/pbir_manifest.json" in nombres, (
         "el wheel no lleva el manifiesto de esquemas PBIR")
 
-    vendidos = [n for n in nombres if n.startswith("services/schemas/pbir/")]
+    vendidos = [n for n in nombres if n.startswith("horizun_pbi_mcp/services/schemas/pbir/")]
     assert not vendidos, (
         f"el wheel redistribuye esquemas de terceros: {vendidos}")
 
     import json as _json
     manifiesto = _json.loads(
-        zipfile.ZipFile(wheel).read("services/schemas/pbir_manifest.json"))
+        zipfile.ZipFile(wheel).read("horizun_pbi_mcp/services/schemas/pbir_manifest.json"))
     assert len(manifiesto["documents"]) >= 5
     assert all(len(d["sha256"]) == 64 for d in manifiesto["documents"])
 
@@ -117,7 +147,8 @@ def test_el_wheel_lleva_el_manifiesto_de_esquemas(wheel):
 def test_el_wheel_contiene_los_paquetes_existentes(wheel):
     nombres = zipfile.ZipFile(wheel).namelist()
     for pkg in ("powerbi", "pbip", "tools", "utils"):
-        assert any(n.startswith(f"{pkg}/") for n in nombres), f"falta {pkg}/"
+        assert any(n.startswith(f"horizun_pbi_mcp/{pkg}/") for n in nombres), (
+            f"falta horizun_pbi_mcp/{pkg}/")
 
 
 def test_el_wheel_no_incluye_datos_ni_binarios(wheel):
@@ -160,11 +191,13 @@ def test_el_paquete_instalado_importa_y_registra_todas_las_tools(
     script = tmp_path / "verificar.py"
     script.write_text(
         "import json, importlib.util as u, asyncio\n"
+        "P = 'horizun_pbi_mcp.'\n"
         "faltan = [m for m in ("
-        "  'services','services.paths','services.dax_guard',"
-        "  'services.project_state','services.txn','server','config','reporting')\n"
+        "  P[:-1], P+'services', P+'services.paths', P+'services.dax_guard',"
+        "  P+'services.project_state', P+'services.txn', P+'server',"
+        "  P+'config', P+'reporting')\n"
         "  if u.find_spec(m) is None]\n"
-        "import server\n"
+        "from horizun_pbi_mcp import server\n"
         "tools = asyncio.run(server.build_server().list_tools())\n"
         "print(json.dumps({'faltan': faltan, 'n': len(tools),\n"
         "                  'nombres': sorted(t.name for t in tools)}))\n",
@@ -183,7 +216,8 @@ def test_el_paquete_instalado_importa_y_registra_todas_las_tools(
 def test_el_paquete_instalado_responde_al_handshake_mcp(entorno_instalado, tmp_path):
     """tools/list por stdio contra el servidor instalado desde el wheel."""
     script = tmp_path / "servidor.py"
-    script.write_text("import server; server.main()\n", encoding="utf-8")
+    script.write_text("from horizun_pbi_mcp import server; server.main()\n",
+                      encoding="utf-8")
 
     proc = subprocess.Popen(
         [str(entorno_instalado), str(script)], cwd=str(tmp_path),
@@ -260,8 +294,9 @@ def test_el_sdist_lleva_el_codigo_y_la_licencia(sdist):
     def hay(sufijo):
         return any(n.endswith(sufijo) for n in nombres)
 
-    for necesario in ("/src/server.py", "/src/branding.py", "/LICENSE", "/NOTICE",
-                      "/pyproject.toml", "/src/services/txn.py"):
+    for necesario in ("/src/horizun_pbi_mcp/server.py",
+                      "/src/horizun_pbi_mcp/branding.py", "/LICENSE", "/NOTICE",
+                      "/pyproject.toml", "/src/horizun_pbi_mcp/services/txn.py"):
         assert hay(necesario), f"el sdist no incluye {necesario}"
 
     prohibidos = [n for n in nombres
@@ -287,7 +322,8 @@ def test_el_sdist_se_instala_y_arranca(sdist, tmp_path_factory):
     trabajo = tmp_path_factory.mktemp("fuera_del_repo")
     script = trabajo / "verificar.py"
     script.write_text(
-        "import json, asyncio, server\n"
+        "import json, asyncio\n"
+        "from horizun_pbi_mcp import server\n"
         "tools = asyncio.run(server.build_server().list_tools())\n"
         "print(json.dumps({'n': len(tools),\n"
         "                  'version': server.build_server()._mcp_server.version}))\n",

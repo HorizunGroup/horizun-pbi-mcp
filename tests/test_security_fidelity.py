@@ -7,8 +7,8 @@ import json
 
 import pytest
 
-from pbip import project_locator, tmdl_reader, tmdl_writer, visual_factory
-from powerbi.errors import VisualFactoryError
+from horizun_pbi_mcp.pbip import project_locator, tmdl_reader, tmdl_writer, visual_factory
+from horizun_pbi_mcp.powerbi.errors import VisualFactoryError
 
 
 def test_path_traversal_in_pbip_is_blocked(session, tmp_path):

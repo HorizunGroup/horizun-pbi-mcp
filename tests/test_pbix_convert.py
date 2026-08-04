@@ -17,9 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from pbip import layout_to_pbir, pbix_reader, pbix_to_pbip
-from powerbi.errors import PowerBIMCPError
-from services import pbir_schema, report_validator
+from horizun_pbi_mcp.pbip import layout_to_pbir, pbix_reader, pbix_to_pbip
+from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
+from horizun_pbi_mcp.services import pbir_schema, report_validator
 
 
 # --------------------------------------------------------------- utilidades --
@@ -691,7 +691,7 @@ def test_exportar_modelo_declara_el_diagrama_que_escribe(
         zf.writestr("DiagramLayout", _u16({"version": "1.0", "diagrams": []}))
     contents = pbix_reader.read_pbix(pbix_heredado)
 
-    from powerbi import desktop_launcher, tmdl_export
+    from horizun_pbi_mcp.powerbi import desktop_launcher, tmdl_export
 
     abierto = SimpleNamespace(
         launched_by_us=True, waited_seconds=0.1,
@@ -803,7 +803,7 @@ def test_overwrite_reemplaza_residuos_con_backup(tmp_path, pbix_heredado):
 @pytest.mark.real_project_state
 def test_conversion_no_reemplaza_un_proyecto_abierto(
         tmp_path, pbix_heredado, monkeypatch):
-    from services import project_state
+    from horizun_pbi_mcp.services import project_state
 
     salida = tmp_path / "out"
     primero = pbix_to_pbip.convert(pbix_heredado, salida, include_model=False)
@@ -858,7 +858,7 @@ def test_lote_sigue_tras_un_fallo(tmp_path):
 # ------------------------------------------------------------------ live -----
 def _hay_modelo_local() -> bool:
     try:
-        from powerbi import desktop_discovery
+        from horizun_pbi_mcp.powerbi import desktop_discovery
 
         return any(i.get("status") == "ok" and (i.get("table_count") or 0) > 0
                    for i in desktop_discovery.discover_instances())
@@ -874,8 +874,8 @@ def _hay_modelo_local() -> bool:
                            "`python -m pytest -m live`.")
 def test_export_tmdl_live(tmp_path):
     """Serializa a TMDL el modelo abierto. Solo lee: no toca el modelo."""
-    from config import ActiveModel
-    from powerbi import desktop_discovery, tmdl_export
+    from horizun_pbi_mcp.config import ActiveModel
+    from horizun_pbi_mcp.powerbi import desktop_discovery, tmdl_export
 
     # La condicion de `skipif` se evalua al RECOLECTAR y este cuerpo vuelve a
     # buscar: si Desktop se cierra entre las dos cosas —en una suite de varios

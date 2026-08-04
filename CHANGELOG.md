@@ -93,7 +93,55 @@ price.
   is empty". The default stays `full`: the contract is frozen and nobody's
   existing call changes behavior.
 
+### Changed
+
+- **Everything now lives under a single package, `horizun_pbi_mcp`**: the wheel
+  used to install **ten** top-level names into `site-packages` — `config`,
+  `server`, `services`, `tools`, `utils`, `pbip`, `powerbi`, `reporting`,
+  `logging_config` and `branding`. Four of those are among the most common
+  names in Python: in any environment where another package — or the user's own
+  script — did `import config`, one of the two won and the other broke, in
+  whichever direction that day. Published on PyPI that stops being our problem
+  and becomes the problem of whoever installs it, and it can't be fixed later
+  without breaking everyone who already has it.
+
+  `test_el_wheel_solo_ocupa_un_nombre_de_primer_nivel` checks it against the
+  **built wheel**, not against `pyproject.toml`: what matters is what lands in
+  `site-packages`. It immediately earned its keep by catching a stale `build/`
+  directory that was poisoning the wheel with both layouts at once.
+
+  The command doesn't change (`horizun-pbi-mcp`). Launching from a clone is now
+  `python -m horizun_pbi_mcp.server` with `PYTHONPATH=<repo>/src`: running the
+  file directly puts *its own* directory on `sys.path`, not `src/`, so
+  `import horizun_pbi_mcp` doesn't resolve on a clean clone. On a developer
+  machine it appears to work anyway, because an editable install leaves a
+  `.pth` pointing at `src/` — exactly the class of failure that only shows up
+  on someone else's machine. `scripts/make_mcp_config.py` now emits the form
+  that works in both.
+
+- **`outputs/` and `backups/` no longer default inside the library tree**: they
+  were resolved relative to the *repository* root, computed from where
+  `config.py` sat. That works from a clone; installed with `pip`, `config.py`
+  lives in `site-packages/horizun_pbi_mcp/`, so that "root" was the virtualenv's
+  library tree — the user's Power BI project backups landed in
+  `<venv>/Lib/site-packages/backups` and vanished on the next reinstall. A backup
+  that deletes itself is not a backup.
+
+  `data_root()` now tells the two cases apart: from a clone the paths are
+  **exactly what they were** (nobody has to migrate anything); installed, it
+  uses the OS user-data directory (`%LOCALAPPDATA%`, or `XDG_DATA_HOME` /
+  `~/.local/share`). Environment variables still win over both.
+
 ### Fixed
+
+- **The server died at startup in an environment with no user profile**: found
+  while making the change above. `Path.home()` *raises* `RuntimeError` when
+  there is no `USERPROFILE` or `HOME` — which is what an MCP server launched as
+  a service, or by a client that scrubs the environment, actually gets. The
+  exception killed the process before the first protocol message: the worst way
+  to fail, with no visible trace for whoever configured it. Caught by the
+  packaging test that launches the installed server with a deliberately emptied
+  environment; `data_root()` now never raises.
 
 - **Intermittent test in `test_hide_columns_bulk.py`**: the live-mode tests
   install a fake model on port 1 and rely on the identity certified by

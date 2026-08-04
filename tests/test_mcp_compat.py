@@ -21,9 +21,9 @@ from pathlib import Path
 
 import pytest
 
-import branding
+from horizun_pbi_mcp import branding
 from mcp.server.fastmcp import FastMCP
-from server import build_server
+from horizun_pbi_mcp.server import build_server
 
 REPO = Path(__file__).resolve().parent.parent
 

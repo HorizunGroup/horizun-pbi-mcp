@@ -14,8 +14,8 @@ import json
 
 import pytest
 
-from pbip import project_locator, tmdl_reader
-from services import reference_audit
+from horizun_pbi_mcp.pbip import project_locator, tmdl_reader
+from horizun_pbi_mcp.services import reference_audit
 from tests.fixtures import synthetic
 
 

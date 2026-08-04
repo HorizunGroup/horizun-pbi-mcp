@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from services import report_validator as rv
-from services.report_validator import Diagnostico
+from horizun_pbi_mcp.services import report_validator as rv
+from horizun_pbi_mcp.services.report_validator import Diagnostico
 
 
 # ------------------------------------------------------------- CLI falso -----

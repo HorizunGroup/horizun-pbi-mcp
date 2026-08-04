@@ -13,10 +13,10 @@ import time
 
 import pytest
 
-from config import ActiveModel
-from powerbi import (adomd_client, dax_runner, desktop_discovery,
+from horizun_pbi_mcp.config import ActiveModel
+from horizun_pbi_mcp.powerbi import (adomd_client, dax_runner, desktop_discovery,
                      desktop_launcher, model_reader, model_writer, refresh)
-from powerbi.errors import (ConnectionFailedError, MeasureExistsError,
+from horizun_pbi_mcp.powerbi.errors import (ConnectionFailedError, MeasureExistsError,
                             RefreshError, TableNotFoundError, ValidationError)
 
 
@@ -322,7 +322,7 @@ def test_tamano_dax_cuenta_bytes_utf8_y_sintaxis_json():
 
 def test_exportaciones_dax_del_mismo_segundo_no_se_sobrescriben(
         isolated_settings, monkeypatch):
-    from utils import file_utils
+    from horizun_pbi_mcp.utils import file_utils
 
     monkeypatch.setattr(file_utils, "timestamp", lambda: "20260101_000000")
     stats = {"truncated_by_rows": False, "truncated_by_bytes": False}

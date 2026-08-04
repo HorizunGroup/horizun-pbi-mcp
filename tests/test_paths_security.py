@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from config import ActivePbip
-from pbip import pbir_reader, pbir_writer, project_locator
-from powerbi.errors import PathSecurityError, ValidationError
-from services import paths as safe_paths
+from horizun_pbi_mcp.config import ActivePbip
+from horizun_pbi_mcp.pbip import pbir_reader, pbir_writer, project_locator
+from horizun_pbi_mcp.powerbi.errors import PathSecurityError, ValidationError
+from horizun_pbi_mcp.services import paths as safe_paths
 from tests.fixtures import synthetic
 
 

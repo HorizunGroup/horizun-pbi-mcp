@@ -49,29 +49,28 @@ Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG
 test = ["pytest>=8.0"]
 
 [project.scripts]
-horizun-pbi-mcp = "server:main"
+horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
 # Alias legacy: se conserva para no romper instalaciones existentes.
-powerbi-mcp = "server:main"
+powerbi-mcp = "horizun_pbi_mcp.server:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-# Todos los modulos sueltos de src/. `reporting` faltaba: el wheel se instalaba
-# y el servidor moria al importar tools.documentation_tools.
-py-modules = ["server", "config", "logging_config", "reporting", "branding"]
 
 [tool.setuptools.package-data]
 # Los esquemas PBIR son DATOS, no codigo: sin esto el wheel se instala y
 # services/pbir_schema.py lanza schema_unavailable en la primera escritura.
 # El manifiesto (URLs + SHA-256) SI va en el paquete; los esquemas NO,
 # porque no declaran permiso de redistribucion.
-services = ["schemas/*.json"]
+"horizun_pbi_mcp.services" = ["schemas/*.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# `services*` es obligatorio: contiene la capa de seguridad (paths, dax_guard,
-# project_state, txn) de la que dependen pbip/ y powerbi/. Sin el, un wheel
-# instalado arranca... hasta el primer import.
-include = ["powerbi*", "pbip*", "tools*", "utils*", "services*"]
+# UN solo nombre de primer nivel. Antes se instalaban diez -`config`, `server`,
+# `services`, `tools`, `utils`, `pbip`, `powerbi`, `reporting`,
+# `logging_config`, `branding`- y cuatro de ellos estan entre los mas comunes
+# de Python: en cualquier entorno donde otro paquete hiciera `import config`,
+# uno de los dos ganaba. Publicado en PyPI, eso lo sufre quien lo instale.
+include = ["horizun_pbi_mcp*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

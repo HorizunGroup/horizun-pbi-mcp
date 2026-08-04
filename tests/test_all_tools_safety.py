@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from pbip import backup, pbir_writer, project_locator
-from services import pbir_edit, plan_contract
-from tools import audit_tools, convert_tools, dax_tools, ops_tools, workflow_tools
-from tools import _common
+from horizun_pbi_mcp.pbip import backup, pbir_writer, project_locator
+from horizun_pbi_mcp.services import pbir_edit, plan_contract
+from horizun_pbi_mcp.tools import audit_tools, convert_tools, dax_tools, ops_tools, workflow_tools
+from horizun_pbi_mcp.tools import _common
 
 
 class _McpCaptura:
@@ -105,7 +105,7 @@ def test_fallo_al_crear_directorio_obligatorio_revierte_la_pagina(
     raiz = Path(active.project_dir)
     antes = _estado_arbol(raiz)
 
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     def falla_directorio(self, target):
         raise OSError(f"no se pudo crear {target}")
@@ -136,7 +136,7 @@ def test_fallo_de_copia_no_deja_backup_parcial(
         session, sample_pbip, monkeypatch):
     project_locator.open_project(session, str(sample_pbip))
     active = session.require_active_pbip()
-    from services import txn as txn_service
+    from horizun_pbi_mcp.services import txn as txn_service
 
     root = txn_service.project_backup_root(active)
 
@@ -171,7 +171,7 @@ def test_mutacion_no_omite_un_visual_ilegible(
     corrupto.write_text("{esto no es json", encoding="utf-8")
     antes = _estado_arbol(Path(active.project_dir))
 
-    from powerbi.errors import ValidationError
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
 
     with pytest.raises(ValidationError) as exc:
         pbir_edit.set_visual_z_order(active, "pg1", [])
@@ -183,7 +183,7 @@ def test_mutacion_no_omite_un_visual_ilegible(
 def test_open_desktop_compensa_si_no_puede_seleccionar(monkeypatch):
     mcp = _McpCaptura()
     dax_tools.register(mcp)
-    from powerbi import desktop_launcher
+    from horizun_pbi_mcp.powerbi import desktop_launcher
 
     abierto = SimpleNamespace(
         pbix_path="x.pbix", instance={"port": 1234}, desktop_pid=77,
@@ -223,8 +223,8 @@ def test_inventario_de_paginas_no_oculta_page_json_corrupto(
                  "pg1" / "page.json")
     page_json.write_text("{roto", encoding="utf-8")
 
-    from powerbi.errors import ValidationError
-    from pbip import pbir_reader
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+    from horizun_pbi_mcp.pbip import pbir_reader
 
     with pytest.raises(ValidationError) as exc:
         pbir_reader.list_pages(active)
@@ -235,7 +235,7 @@ def test_inventario_de_paginas_no_oculta_page_json_corrupto(
 def test_fallo_del_registro_idempotente_no_convierte_commit_en_error(
         monkeypatch, tmp_path):
     """La escritura principal ya ocurrio; reintentar seria peor."""
-    from services import idempotency
+    from horizun_pbi_mcp.services import idempotency
 
     monkeypatch.setattr(idempotency, "store_por_defecto", lambda: object())
     monkeypatch.setattr(idempotency, "comenzar", lambda *a, **k: None)
@@ -271,8 +271,8 @@ def test_formatos_de_auditoria_se_validan_antes_de_escribir(
 
 def test_scaffold_no_confunde_validador_roto_con_validador_ausente(
         tmp_path, monkeypatch):
-    from pbip import pbip_scaffold
-    from services import report_validator
+    from horizun_pbi_mcp.pbip import pbip_scaffold
+    from horizun_pbi_mcp.services import report_validator
 
     monkeypatch.setattr(
         report_validator, "validar_informe",
@@ -291,7 +291,7 @@ def test_validate_project_no_declara_valido_un_report_json_corrupto(
     active = session.require_active_pbip()
     report_json = Path(active.report_dir) / "definition" / "report.json"
     report_json.write_text("{corrupto", encoding="utf-8")
-    from services import report_validator
+    from horizun_pbi_mcp.services import report_validator
 
     monkeypatch.setattr(
         report_validator, "validar_informe",
@@ -308,16 +308,15 @@ def test_validate_project_no_declara_valido_un_report_json_corrupto(
 def test_modelo_ilegible_no_se_convierte_en_validacion_omitida(
         session, sample_pbip, monkeypatch):
     project_locator.open_project(session, str(sample_pbip))
-    import config
-
+    from horizun_pbi_mcp import config
     monkeypatch.setattr(config, "_session", session)
     monkeypatch.setattr(
-        __import__("pbip.tmdl_reader", fromlist=["x"]),
+        __import__("horizun_pbi_mcp.pbip.tmdl_reader", fromlist=["x"]),
         "read_semantic_model",
         lambda *_a, **_k: (_ for _ in ()).throw(ValueError("TMDL roto")))
 
-    from powerbi.errors import ValidationError
-    from tools import visual_tools
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+    from horizun_pbi_mcp.tools import visual_tools
 
     with pytest.raises(ValidationError) as exc:
         visual_tools._model_data()  # noqa: SLF001
@@ -329,8 +328,8 @@ def test_propiedad_de_medida_no_puede_inyectar_tmdl(
         session, sample_pbip):
     project_locator.open_project(session, str(sample_pbip))
     active = session.require_active_pbip()
-    from pbip import tmdl_writer
-    from powerbi.errors import ValidationError
+    from horizun_pbi_mcp.pbip import tmdl_writer
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
 
     antes = _estado_arbol(Path(active.project_dir))
     with pytest.raises(ValidationError):
@@ -347,8 +346,8 @@ def test_lector_tmdl_no_oculta_una_tabla_ilegible(
     active = session.require_active_pbip()
     tablas = Path(active.semantic_model_dir) / "definition" / "tables"
     (tablas / "Rota.tmdl").write_bytes(b"\xff\xfe\x00")
-    from pbip import tmdl_reader
-    from powerbi.errors import ValidationError
+    from horizun_pbi_mcp.pbip import tmdl_reader
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
 
     with pytest.raises(ValidationError) as exc:
         tmdl_reader.read_semantic_model(active)
@@ -358,21 +357,21 @@ def test_lector_tmdl_no_oculta_una_tabla_ilegible(
 
 @pytest.mark.parametrize("valor", [float("nan"), float("inf"), float("-inf")])
 def test_posicion_rechaza_numeros_no_json(valor):
-    from powerbi.errors import ValidationError
-    from utils.validation import validate_position
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+    from horizun_pbi_mcp.utils.validation import validate_position
 
     with pytest.raises(ValidationError):
         validate_position({"x": valor, "y": 0, "width": 1, "height": 1})
 
 
 def test_escritor_json_no_emite_nan():
-    from utils.json_utils import dumps
+    from horizun_pbi_mcp.utils.json_utils import dumps
 
     with pytest.raises(ValueError):
         dumps({"x": float("nan")})
 
 
 def test_nombres_de_salida_no_colisionan_en_el_mismo_segundo():
-    from utils.file_utils import timestamp
+    from horizun_pbi_mcp.utils.file_utils import timestamp
 
     assert timestamp() != timestamp()
