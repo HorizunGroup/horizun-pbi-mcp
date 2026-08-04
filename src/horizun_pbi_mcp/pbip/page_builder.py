@@ -90,8 +90,39 @@ def building_blocks(active: ActivePbip, model_data: Optional[Dict[str, Any]]) ->
         "existing_pages": pages_info,
         "supported_visual_types": visual_factory.SUPPORTED,
         "warnings": avisos,
-        "hint": "Arma un spec con page_name, canvas y visuals[{type,title,fields,position}]. "
-                "Omite position para auto-acomodar con 'layout'.",
+        "hint": "Arma el spec con la forma de 'example_spec': exige "
+                "'schema_version' y un objeto 'page'. Omite 'position' en un "
+                "visual para que 'layout' lo acomode solo.",
+        "example_spec": _example_spec(_detect_canvas(active)),
+    }
+
+
+def _example_spec(canvas: Dict[str, Any]) -> Dict[str, Any]:
+    """Un spec MINIMO y valido, para copiar y editar.
+
+    El hint anterior describia otra forma -«page_name, canvas y visuals[...]»-
+    que el validador rechaza: exige `schema_version` y un objeto `page`. Quien
+    seguia la pista al pie de la letra se comia dos errores seguidos, y una
+    pista que lleva al error es peor que no dar ninguna.
+
+    Se devuelve el ejemplo entero en vez de describirlo con palabras porque la
+    forma exacta es el dato: `page_spec.validate_schema()` lo acepta tal cual.
+    """
+    from horizun_pbi_mcp.services.page_spec import SCHEMA_VERSION
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "page": {"name": "Resumen",
+                 "width": canvas.get("width", 1280),
+                 "height": canvas.get("height", 720)},
+        "layout": {"preset": "executive", "gap": 16},
+        "visuals": [
+            {"type": "card", "title": "Total",
+             "fields": {"values": ["[NombreDeTuMedida]"]}},
+            {"type": "columnChart", "title": "Por categoria",
+             "fields": {"category": "TuTabla[TuColumna]",
+                        "values": ["[NombreDeTuMedida]"]}},
+        ],
     }
 
 

@@ -83,7 +83,15 @@ def _estilos(fondo: str, tinta: str, tinta2: str,
                 "border": [{"show": False}],
                 "title": [{"show": True, "fontColor": {"solid": {"color": tinta}},
                            "fontSize": 12, "alignment": "left"}],
-                "labels": [{"color": {"solid": {"color": tinta2}}, "fontSize": 9}],
+                # `show` es obligatorio para que las etiquetas de datos
+                # APAREZCAN. Sin el, el tema define su color y su tamano y
+                # Power BI las deja apagadas: las graficas salen sin numeros,
+                # que es justo lo contrario de lo que se espera de un tema
+                # "listo para repartir". Definir el aspecto de algo que nunca
+                # se dibuja no se nota al validar; se nota al abrir.
+                "labels": [{"show": True,
+                            "color": {"solid": {"color": tinta2}},
+                            "fontSize": 9}],
                 "categoryAxis": [{"show": True, "gridlineShow": False,
                                   "labelColor": {"solid": {"color": tinta2}},
                                   "fontSize": 9}],

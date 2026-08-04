@@ -111,5 +111,41 @@ def refresh_model(
         "tables": refreshed,
         "duration_s": duration_s,
         "scope": "local (Power BI Desktop)",
-        "note": "Refresh local aplicado. Guarda en Power BI Desktop para persistirlo.",
+        "note": _nota_de_persistencia(session),
     }
+
+
+#: Lo que guardar SI persiste, segun el formato del proyecto abierto.
+_NOTA_PBIP = (
+    "Refresh local aplicado. Los datos viven en la sesion de Power BI Desktop: "
+    "un proyecto .pbip guarda solo la DEFINICION (TMDL + PBIR), no los datos, "
+    "asi que al reabrirlo el modelo viene vacio y hay que refrescar otra vez. "
+    "Lo que si persiste al guardar son los cambios de definicion."
+)
+_NOTA_SIN_PROYECTO = (
+    "Refresh local aplicado. Si el informe abierto es un .pbip, los datos NO se "
+    "guardan con el proyecto (solo la definicion) y habra que refrescar al "
+    "reabrir; un .pbix si los almacena."
+)
+
+
+def _nota_de_persistencia(session: Session) -> str:
+    """Que sobrevive a guardar, segun el formato REAL del proyecto activo.
+
+    La nota anterior era una sola frase -«Guarda en Power BI Desktop para
+    persistirlo»- y en `.pbip` es sencillamente falsa: ese formato guarda
+    definicion (TMDL + PBIR), no datos. Al reabrir, el modelo viene vacio y hay
+    que refrescar de nuevo.
+
+    Importa mas de lo que parece porque una nota dentro de una respuesta de
+    tool no se lee como una opinion: el agente la repite al usuario como un
+    hecho. Si no se sabe el formato no se afirma ninguno de los dos: se explica
+    la diferencia y ya.
+    """
+    try:
+        activo = session.active_pbip
+    except Exception:                                    # noqa: BLE001
+        return _NOTA_SIN_PROYECTO
+    if activo is None:
+        return _NOTA_SIN_PROYECTO
+    return _NOTA_PBIP
