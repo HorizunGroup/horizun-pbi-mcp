@@ -3,12 +3,15 @@
 What remains open, why it matters and how to check it. Ordered by what
 hurts the most.
 
-Updated on 2026-08-04 for **v1.1.1** (121 tools). The fourteen-item field
-report from the first real end-to-end session is now **fully closed**: the
-last three items landed as `theme_json`/`fonts` on `pbi_apply_theme`,
-`pbi_rename_measure` (model + DAX refs + report visuals in one transaction)
-and `pbi_close_desktop` (identity-verified, confirm-gated). The list below
-isn't a brainstorm: it's what we know is missing, with evidence.
+Updated on 2026-08-04 for **v1.2.0** (127 tools). Two things closed since
+1.0.1: the fourteen-item field report from the first real end-to-end session,
+and **the four phases of the product vision** — intent brief, content-level
+data diagnostics, external sources, and the ecosystem port as a data
+contract. They chain: port keys → brief `critical_fields` → diagnostics
+escalate those findings to `error` citing the owner's own reason.
+
+The list below isn't a brainstorm: it's what we know is missing, with
+evidence.
 
 ---
 
