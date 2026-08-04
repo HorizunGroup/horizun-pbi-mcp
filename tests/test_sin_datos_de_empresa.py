@@ -30,9 +30,16 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 
 #: Nombres de cliente que estuvieron y no deben volver. Se comparan sin
-#: distinguir mayusculas: "Acme", "ACME Y CIA" y "acme-logo.png" son
-#: el mismo problema.
-CLIENTES = ("acme",)
+#: distinguir mayusculas: el nombre suelto, la razon social y un nombre de
+#: archivo que lo contenga son el mismo problema.
+#:
+#: Se construyen PARTIDOS a proposito, para que el literal completo no exista
+#: en ningun fichero del repositorio — ni siquiera en este. Asi el guard puede
+#: vigilar la cadena sin publicarla el mismo (que es como se filtro la primera
+#: vez: la lista de prohibidos NOMBRABA al cliente), y una reescritura de la
+#: historia puede sustituir el literal en todos los commits sin romper al
+#: propio guard.
+CLIENTES = ("".join(("pro", "desa")),)
 
 #: Marcadores del CORE interno. Cualquiera de estos en un fichero versionado
 #: significa que algo del arbol privado se copio al publico.
