@@ -176,11 +176,22 @@ CICLO_TOOLS = [
     "pbi_open_and_refresh",
 ]
 
+#: Renombrar a mano rompia el informe en silencio: visual abierto y vacio.
+REFACTOR_TOOLS = [
+    "pbi_rename_measure",
+]
+
+#: La salida que faltaba del ciclo editar-abrir-mirar-editar.
+CIERRE_TOOLS = [
+    "pbi_close_desktop",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
                 + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS
-                + FILTRO_VISUAL_TOOLS + CICLO_TOOLS)
+                + FILTRO_VISUAL_TOOLS + CICLO_TOOLS + REFACTOR_TOOLS
+                + CIERRE_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

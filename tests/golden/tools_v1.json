@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 119,
+  "tool_count": 121,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -387,11 +387,16 @@
     },
     {
       "name": "pbi_apply_theme",
-      "description": "Aplica un tema de colores al informe .pbip activo.\n\nEscribe el JSON del tema en StaticResources/RegisteredResources y lo\ndeclara en report.json (themeCollection + resourcePackages). Sin las\ntres cosas Power BI Desktop lo ignora en silencio.\n\n`preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de\nseries por la tuya (#RRGGBB); ojo, entonces el orden deja de estar\nverificado contra daltonismo. `name`: nombre visible del tema.\n\nRequiere el proyecto CERRADO en Power BI Desktop.",
+      "description": "Aplica un tema de colores al informe .pbip activo.\n\nEscribe el JSON del tema en StaticResources/RegisteredResources y lo\ndeclara en report.json (themeCollection + resourcePackages). Sin las\ntres cosas Power BI Desktop lo ignora en silencio.\n\n`preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de\nseries por la tuya (#RRGGBB); ojo, entonces el orden deja de estar\nverificado contra daltonismo. `name`: nombre visible del tema.\n\n`theme_json`: un tema COMPLETO tuyo (el objeto JSON), que se escribe\ntal cual — para tipografia corporativa o formatos que los presets no\ncubren, sin tener que sobrescribir el archivo a mano despues. Cuando lo\npasas, `preset` no se usa; `data_colors` y `fonts` se aplican encima.\n\n`fonts`: {'title'|'body'|'callout': 'Familia'} fija las fuentes via\ntextClasses, sobre el preset o sobre tu theme_json.\n\nSi el informe ya tenia un tema con contenido DISTINTO (p.ej. editado a\nmano), se reemplaza avisandolo en `warnings`; la version anterior queda\nrecuperable en el backup de la transaccion.\n\nRequiere el proyecto CERRADO en Power BI Desktop.",
       "params": {
         "data_colors": {
           "required": false,
           "type": "array[string]|null",
+          "default": null
+        },
+        "fonts": {
+          "required": false,
+          "type": "null|object",
           "default": null
         },
         "name": {
@@ -407,6 +412,11 @@
         "request_id": {
           "required": false,
           "type": "null|string",
+          "default": null
+        },
+        "theme_json": {
+          "required": false,
+          "type": "null|object",
           "default": null
         }
       },
@@ -794,6 +804,44 @@
       "annotations": {
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pbi_close_desktop",
+      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).",
+      "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -3496,6 +3544,54 @@
       }
     },
     {
+      "name": "pbi_rename_measure",
+      "description": "Renombra una medida actualizando TODO lo que la referencia.\n\nRenombrar a mano rompe el informe en silencio: cualquier visual o\nmedida que apuntara al nombre viejo abre y sale VACIO, sin error. Esta\ntool compila primero y escribe en UNA transaccion: la cabecera TMDL,\nlas expresiones DAX de otras medidas que usan `[old_name]`, y los\nvisual.json del informe. Devuelve la lista de lo tocado.\n\nLimite honesto: las referencias DAX CALIFICADAS (`Tabla[old]`) no se\nreescriben —pueden ser una columna homonima de otra tabla, y adivinar\nseria corromper—; si quedan, salen en `warnings` con su ubicacion,\nigual que las de bookmarks y filtros.\n\nSolo `pbip` (escribe modelo E informe a la vez: exige Desktop\nCERRADO). `dry_run=true` (defecto) devuelve el plan sin escribir.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "new_name": {
+          "required": true,
+          "type": "string"
+        },
+        "old_name": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "new_name",
+        "old_name",
+        "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_rename_page",
       "description": "Cambia el nombre visible de una pagina. El id interno no cambia.",
       "params": {
@@ -4136,7 +4232,7 @@
     },
     {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento diecinueve tools con buen nombre siguen siendo ciento diecinueve tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento veintiuna tools con buen nombre siguen siendo ciento veintiuna tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,

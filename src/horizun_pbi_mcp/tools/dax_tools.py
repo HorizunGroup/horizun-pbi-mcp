@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import dax_runner, desktop_discovery
+from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
 from horizun_pbi_mcp.tools._common import guard
 
@@ -188,3 +189,33 @@ def register(mcp) -> None:
         referenciarse entre si. Devuelve por cada una: valid, value (muestra) y error.
         """
         return guard(lambda: dax_runner.validate_measures(get_session(), measures))
+
+    @mcp.tool()
+    def pbi_close_desktop(path: str, confirm: bool = False,
+                          request_id: str = "") -> Dict[str, Any]:
+        """Cierra la instancia de Power BI Desktop que sirve ESE proyecto.
+
+        Es la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir
+        el TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui
+        -tocaba matar el proceso a mano en PowerShell-.
+
+        Cierra SOLO la instancia con ese archivo abierto, verificando la
+        identidad del proceso (nombre + hora de arranque, nunca el PID a
+        secas). Al final re-comprueba que el archivo ya no este abierto y lo
+        dice en `verified_closed`.
+
+        DESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en
+        un .pbip eso incluye los datos refrescados de la sesion-. Por eso
+        exige `confirm=true`. Si el archivo no estaba abierto, no hace nada y
+        lo dice (`was_open: false`).
+        """
+        def _impl():
+            if not confirm:
+                raise ValidationError(
+                    "Cerrar Desktop descarta lo no guardado de esa ventana "
+                    "(y en .pbip, los datos refrescados). Pasa confirm=true "
+                    "si es lo que quieres.")
+            from horizun_pbi_mcp.powerbi import desktop_launcher
+
+            return desktop_launcher.close_desktop_by_path(path)
+        return guard(_impl)

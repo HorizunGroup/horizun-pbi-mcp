@@ -127,3 +127,35 @@ def register(mcp) -> None:
                     session.require_active_pbip(), table, name),
             )
         return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_rename_measure(table: str, old_name: str, new_name: str,
+                           dry_run: bool = True,
+                           request_id: str = "") -> Dict[str, Any]:
+        """Renombra una medida actualizando TODO lo que la referencia.
+
+        Renombrar a mano rompe el informe en silencio: cualquier visual o
+        medida que apuntara al nombre viejo abre y sale VACIO, sin error. Esta
+        tool compila primero y escribe en UNA transaccion: la cabecera TMDL,
+        las expresiones DAX de otras medidas que usan `[old_name]`, y los
+        visual.json del informe. Devuelve la lista de lo tocado.
+
+        Limite honesto: las referencias DAX CALIFICADAS (`Tabla[old]`) no se
+        reescriben —pueden ser una columna homonima de otra tabla, y adivinar
+        seria corromper—; si quedan, salen en `warnings` con su ubicacion,
+        igual que las de bookmarks y filtros.
+
+        Solo `pbip` (escribe modelo E informe a la vez: exige Desktop
+        CERRADO). `dry_run=true` (defecto) devuelve el plan sin escribir.
+        """
+        from horizun_pbi_mcp.pbip import tmdl_reader as _tr
+        from horizun_pbi_mcp.services import workflows as _wf
+
+        def _impl():
+            session = get_session()
+            active = session.require_active_pbip()
+            modelo = _tr.read_semantic_model(active, strict=False)
+            return _wf.rename_measure(active, modelo, table=table,
+                                      old_name=old_name, new_name=new_name,
+                                      dry_run=dry_run)
+        return guard_mutation(_impl)

@@ -3,10 +3,12 @@
 What remains open, why it matters and how to check it. Ordered by what
 hurts the most.
 
-Updated on 2026-08-02 after auditing the **117 tools** via AST, testing
-real PBIX→PBIP conversions and reopening the results in Power BI
-Desktop. The integrated suite came in at **1542 passed, 3 skipped**. The list
-below isn't a brainstorm: it's what we know is missing, with evidence.
+Updated on 2026-08-04 for **v1.1.1** (121 tools). The fourteen-item field
+report from the first real end-to-end session is now **fully closed**: the
+last three items landed as `theme_json`/`fonts` on `pbi_apply_theme`,
+`pbi_rename_measure` (model + DAX refs + report visuals in one transaction)
+and `pbi_close_desktop` (identity-verified, confirm-gated). The list below
+isn't a brainstorm: it's what we know is missing, with evidence.
 
 ---
 
@@ -176,6 +178,11 @@ deterministic partial state. It was blocked instead of faking atomicity.
 It's not debt: it's a decision with its reasoning written down. Reopening it
 requires turning it into a **guided workflow**, not an operation.
 
+**Mitigation since v1.1.0:** `mode='auto'` resolves live/pbip from the REAL
+state (verified session, not a stored field) before any effect, so the
+build-from-scratch flow no longer trips over the `live` default. `both`
+itself stays blocked; `auto` chooses one destination, never two.
+
 ---
 
 ## 7. G10 — three unpublished PBIR schema versions
@@ -192,16 +199,18 @@ There's nothing to do on our side until Microsoft publishes them.
 
 ## 8. `pbi_apply_plan` and contractual confirmation
 
-**Status:** pending contract decision.
+**Status:** decided on 2026-08-04. The `plan_token` IS the explicit approval.
 
-The tool applies a plan signed via `plan_token`, but keeps `confirm=true`
-as the historical default. If the token is interpreted as the explicit
-approval, the current contract is coherent. If a client-written
-`confirm=true` is also required, the default should switch to `false`.
+Reasoning: a client cannot hold a valid token by accident. It must call
+`pbi_plan_change`, receive a token bound to a fingerprint of the state the
+plan was computed on, and pass it back deliberately — and the token dies the
+moment the state drifts (`plan_token_stale`). That is a stronger consent
+mechanism than a boolean a client can hardcode. Requiring `confirm=true` on
+top would be a second signature for the same act; flipping its default to
+`false` would break the frozen contract to add no safety.
 
-That change would break the frozen MCP contract and so it wasn't made
-during the audit. It requires a deliberate approval and a golden update; it
-must not slip in disguised as a refactor.
+`confirm=true` stays as the historical default, documented as redundant with
+the token. Nothing to do; the item is closed.
 
 ---
 
@@ -220,5 +229,5 @@ but it's worth having them together:
 
 3. **What only runs on the developer's own machine only works there.**
    The clean install found two defects no test caught, because they all
-   ran on an environment that was already fine. The current suite has 1542
-   tests passed, but the external oracles remain mandatory.
+   ran on an environment that was already fine. The suite keeps growing (1,700+
+   tests), but the external oracles remain mandatory.

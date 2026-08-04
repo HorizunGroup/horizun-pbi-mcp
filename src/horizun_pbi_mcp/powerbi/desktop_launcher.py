@@ -527,3 +527,44 @@ def close(opened: OpenedPbix, force: bool = False) -> Dict[str, Any]:
     return {"closed": not supervivientes, "pid": opened.desktop_pid,
             "killed": kill_requested, "children": len(hijos),
             "survivors": [p.pid for p in supervivientes]}
+
+
+def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
+    """Cierra SOLO la instancia de Desktop que tiene abierto ese archivo.
+
+    Existe porque el ciclo real de trabajo -editar, abrir, mirar, editar-
+    chocaba cinco veces por sesion con `project_open_in_desktop` sin ninguna
+    salida desde el MCP: habia que ir a PowerShell a matar el proceso. Eso, o
+    peor: matar PBIDesktop.exe a ciegas y llevarse la ventana de OTRO informe.
+
+    La identidad se verifica igual que en `close()`: nombre del proceso y hora
+    de arranque, nunca el PID a secas -Windows los recicla-. Y al final se
+    RE-COMPRUEBA que el archivo ya no este abierto, porque "terminate no
+    lanzo" no es "la ventana se cerro".
+    """
+    pbix = Path(pbix_path).expanduser().resolve()
+    if pbix.suffix.casefold() not in {".pbix", ".pbip"}:
+        raise ValidationError(
+            "Solo se cierran sesiones de archivos .pbix o .pbip.",
+            details={"path": str(pbix), "extension": pbix.suffix})
+
+    pid = proceso_con_archivo_abierto(pbix)
+    if not pid:
+        return {"closed": False, "was_open": False,
+                "reason": "el archivo no esta abierto en ningun Desktop",
+                "path": str(pbix)}
+
+    abierto = OpenedPbix(str(pbix), {}, pid, False, 0.0,
+                         desktop_started=_process_started(pid))
+    resultado = close(abierto, force=True)
+    resultado["path"] = str(pbix)
+    resultado["was_open"] = True
+
+    # Verificacion real: el archivo ya no puede estar abierto en NINGUN pid.
+    todavia = proceso_con_archivo_abierto(pbix)
+    resultado["verified_closed"] = todavia is None
+    if todavia is not None:
+        resultado["closed"] = False
+        resultado["reason"] = (f"otro proceso (pid {todavia}) sigue con el "
+                               "archivo abierto")
+    return resultado

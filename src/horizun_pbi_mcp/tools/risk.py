@@ -46,7 +46,7 @@ llamadas iguales a `pbi_create_visual` crean dos visuales. Anunciar
 `idempotent=True` seria prometer una garantia que depende de que quien llama haga
 su parte.
 
-`openWorldHint` es `False` en las 119: este servidor habla con el disco local y
+`openWorldHint` es `False` en las 121: este servidor habla con el disco local y
 con un Power BI Desktop local. No hay dominio abierto.
 """
 from __future__ import annotations
@@ -163,6 +163,8 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_create_hierarchy": WRITE_REVERSIBLE,
     "pbi_create_html_visual": WRITE_REVERSIBLE,
     "pbi_create_measure": WRITE_REVERSIBLE,
+    # Renombra en modelo E informe dentro de una transaccion con journal.
+    "pbi_rename_measure": WRITE_REVERSIBLE,
     "pbi_create_page_from_spec": WRITE_REVERSIBLE,
     "pbi_create_pbip_project": WRITE_REVERSIBLE,
     "pbi_create_relationship": WRITE_REVERSIBLE,
@@ -195,6 +197,8 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_apply_plan": WRITE_DESTRUCTIVE,
     "pbi_delete_bookmark": WRITE_DESTRUCTIVE,
     "pbi_delete_measure": WRITE_DESTRUCTIVE,
+    # Cierra una ventana del usuario: lo no guardado se pierde.
+    "pbi_close_desktop": WRITE_DESTRUCTIVE,
     "pbi_delete_page": WRITE_DESTRUCTIVE,
     "pbi_delete_visual": WRITE_DESTRUCTIVE,
     "pbi_purge_backups": WRITE_DESTRUCTIVE,
