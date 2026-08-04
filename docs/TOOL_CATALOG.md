@@ -1,4 +1,4 @@
-# Tool catalog — 121
+# Tool catalog — 123
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -29,7 +29,8 @@ tools registered.
 | M — work cycle | 1 |
 | N — refactoring | 1 |
 | O — session exit | 1 |
-| **Total** | **121** |
+| P — intent brief | 2 |
+| **Total** | **123** |
 
 ---
 
@@ -177,6 +178,8 @@ Close two gaps of the same kind: having the pieces isn't the same as knowing how
 | Tool | What it does |
 |---|---|
 | `pbi_start_here` | Looks at the real state and gives the next steps, with the reason for each |
+| `pbi_define_brief` | Writes the intent brief (`pbi-brief.json` next to the .pbip): what the dashboard is FOR, answered by the human. Proposals, design system and the guide consume it |
+| `pbi_get_brief` | Reads the brief, or returns the questions to ask the user when it doesn't exist |
 | `pbi_list_design_systems` | Available systems: each one decides theme, canvas, grid and text scale all at once |
 | `pbi_apply_design_system` | Applies the system and returns the grid, to place things by hand on the same guides |
 | `pbi_compose_page` | Composes an entire page on the grid from intent |

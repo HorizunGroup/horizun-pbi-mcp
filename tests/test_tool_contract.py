@@ -186,12 +186,18 @@ CIERRE_TOOLS = [
     "pbi_close_desktop",
 ]
 
+#: El brief de intencion: para que existe el tablero, dicho por su dueño.
+BRIEF_TOOLS = [
+    "pbi_define_brief",
+    "pbi_get_brief",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
                 + VERIFICACION_TOOLS + CARGA_TOOLS + DISENO_TOOLS
                 + FILTRO_VISUAL_TOOLS + CICLO_TOOLS + REFACTOR_TOOLS
-                + CIERRE_TOOLS)
+                + CIERRE_TOOLS + BRIEF_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

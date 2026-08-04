@@ -118,6 +118,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_report_capabilities": READ_ONLY,
     "pbi_search_model": READ_ONLY,
     "pbi_session_info": READ_ONLY,
+    "pbi_get_brief": READ_ONLY,
     "pbi_start_here": READ_ONLY,
     "pbi_test_connection": READ_ONLY,
     "pbi_validate_generated_page": READ_ONLY,
@@ -147,6 +148,8 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_add_table_from_file": WRITE_REVERSIBLE,
     "pbi_align_visuals": WRITE_REVERSIBLE,
     "pbi_apply_design_system": WRITE_REVERSIBLE,
+    # El brief es un artefacto del proyecto, con journal como todo.
+    "pbi_define_brief": WRITE_REVERSIBLE,
     "pbi_apply_page_spec": WRITE_REVERSIBLE,
     "pbi_apply_theme": WRITE_REVERSIBLE,
     "pbi_arrange_visuals": WRITE_REVERSIBLE,

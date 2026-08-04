@@ -55,8 +55,21 @@ def register(mcp) -> None:
         recolocarlo todo.
         """
         def _impl():
-            return {"systems": design.list_systems(),
-                    "default": "informe"}
+            salida = {"systems": design.list_systems(),
+                      "default": "informe"}
+            # Si hay brief con `delivery`, la eleccion deja de ser a ciegas:
+            # el sistema es legibilidad fisica y el brief dice donde se lee.
+            try:
+                from horizun_pbi_mcp.services import brief as brief_service
+
+                el_brief = brief_service.read_brief(
+                    get_session().require_active_pbip())
+                rec = brief_service.recommended_system(el_brief)
+                if rec:
+                    salida["recommended_by_brief"] = rec
+            except Exception:                            # noqa: BLE001
+                pass
+            return salida
         return guard(_impl)
 
     @mcp.tool()
@@ -152,3 +165,76 @@ def register(mcp) -> None:
                     **{k: v for k, v in resultado.items() if k != "warnings"}}
 
         return guard(_impl) if dry_run else guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_define_brief(purpose: str, audience: str,
+                         decisions: Optional[List[str]] = None,
+                         key_questions: Optional[List[str]] = None,
+                         delivery: Optional[str] = None,
+                         update_cadence: Optional[str] = None,
+                         critical_fields: Optional[List[Dict[str, Any]]] = None,
+                         non_goals: Optional[List[str]] = None,
+                         request_id: str = "") -> Dict[str, Any]:
+        """Escribe el BRIEF DE INTENCION del tablero: para que existe.
+
+        Es la pieza que gobierna a las demas: la propuesta de paginas, el
+        sistema de diseño y las auditorias leen este artefacto para servir a
+        un proposito en vez de deducirlo todo del modelo.
+
+        **Las respuestas son del HUMANO, no tuyas.** Antes de llamar, pregunta
+        en conversacion: ¿para que quieres este tablero? ¿quien lo va a mirar?
+        ¿que decisiones debe sostener? ¿como se va a ver (sala, escritorio,
+        PDF, movil)? Un brief inventado por el agente es peor que ninguno:
+        fija en un archivo con autoridad lo que nadie dijo.
+
+        `delivery`: pantalla_sala | escritorio | lectura_pdf | movil — decide
+        el sistema de diseño recomendado (legibilidad fisica, no estetica).
+        `critical_fields`: [{field, why, min?, max?}] — que campos son
+        criticos y sus umbrales; los usara el diagnostico de datos.
+
+        Se guarda como `pbi-brief.json` JUNTO al .pbip (fuera de .Report/
+        .SemanticModel, que Desktop reescribe al guardar): versionado con el
+        proyecto y editable en cualquier momento. Reescribirlo es normal:
+        los tableros cambian de proposito.
+        """
+        from horizun_pbi_mcp.services import brief as brief_service
+
+        def _impl():
+            active = get_session().require_active_pbip()
+            return brief_service.write_brief(active, {
+                "purpose": purpose, "audience": audience,
+                "decisions": decisions, "key_questions": key_questions,
+                "delivery": delivery, "update_cadence": update_cadence,
+                "critical_fields": critical_fields, "non_goals": non_goals,
+            })
+        return guard_mutation(_impl)
+
+    @mcp.tool()
+    def pbi_get_brief(request_id: str = "") -> Dict[str, Any]:
+        """Lee el brief de intencion del proyecto activo.
+
+        Devuelve `defined: false` si no existe —con las preguntas que hay que
+        hacerle al usuario para definirlo—, o el brief completo y el sistema
+        de diseño que recomienda. Consultalo ANTES de proponer paginas o
+        elegir sistema: es la diferencia entre servir al proposito del
+        tablero y deducirlo todo del modelo.
+        """
+        from horizun_pbi_mcp.services import brief as brief_service
+
+        def _impl():
+            active = get_session().require_active_pbip()
+            datos = brief_service.read_brief(active)
+            if datos is None:
+                return {"defined": False,
+                        "questions_for_the_user": [
+                            "¿Para que quieres este tablero? (purpose)",
+                            "¿Quien lo va a mirar? (audience)",
+                            "¿Que decisiones debe sostener? (decisions)",
+                            "¿Que preguntas debe responder? (key_questions)",
+                            "¿Como se vera: sala, escritorio, PDF o movil? "
+                            "(delivery)"],
+                        "define_with": "pbi_define_brief"}
+            return {"defined": True, "brief": datos,
+                    "recommended_design_system":
+                        brief_service.recommended_system(datos)}
+        return guard(_impl)
