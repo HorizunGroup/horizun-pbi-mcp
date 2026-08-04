@@ -550,17 +550,28 @@ class Transaction:
             by_outcome.setdefault(rec.outcome or "unknown", []).append(rec.key)
         conflicts = by_outcome.get(ROLLBACK_CONFLICT, [])
         failures = by_outcome.get(ROLLBACK_FAILED, [])
-        return {
+        clean = not conflicts and not failures
+        salida = {
             "request_id": self.request_id,
             "tool": self.tool,
             "committed": self.committed,
             "rolled_back": self._rolled_back,
-            "clean": not conflicts and not failures,
+            "clean": clean,
             "journal": str(self.journal_dir),
             "files": [r.to_dict() for r in self.records.values()],
-            "by_outcome": by_outcome,
             "removed_dirs": getattr(self, "_removed_dirs", []),
         }
+        # `by_outcome` solo cuando DIAGNOSTICA algo: en una transaccion limpia
+        # y confirmada es la misma lista de rutas de `files` reagrupada bajo
+        # "committed" -la tercera copia de cada ruta en la respuesta, junto a
+        # `files` y a `side_effects`-. Una llamada con 14 visuales repetia
+        # cada ruta tres veces y la respuesta se comia miles de tokens del
+        # agente sin decir nada nuevo. Con conflicto o rollback se conserva
+        # entero, que es cuando alguien lo lee; y el manifiesto en disco
+        # siempre lleva el detalle completo.
+        if not (clean and self.committed and not self._rolled_back):
+            salida["by_outcome"] = by_outcome
+        return salida
 
     def _write_manifest(self, status: str, cause: Optional[str] = None, *,
                         strict: bool = True) -> None:
