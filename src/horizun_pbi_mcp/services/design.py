@@ -435,9 +435,14 @@ def aplicar(active: Any, system: str) -> Dict[str, Any]:
               "color": s["color"], **resultado}
     if desajustadas:
         salida["pages_with_other_canvas"] = desajustadas
+        # Las comillas anidadas dentro del f-string son de Python 3.12 (PEP
+        # 701) y aqui se soporta 3.10: la lista se arma fuera.
+        lienzos = sorted({"{:.0f}x{:.0f}".format(d["canvas"]["width"],
+                                                 d["canvas"]["height"])
+                          for d in desajustadas})
         salida.setdefault("warnings", []).append(
             f"{len(desajustadas)} pagina(s) siguen con OTRO lienzo "
-            f"({', '.join(sorted({f'{d["canvas"]["width"]:.0f}x{d["canvas"]["height"]:.0f}' for d in desajustadas}))}) "
+            f"({', '.join(lienzos)}) "
             f"y con los colores del tema anterior: sus titulos pueden quedar "
             f"ilegibles y sus visuales fuera de limites. Aplicar el sistema NO "
             f"las reescribe. Usa pbi_reflow_pages(system='{system}') para "
