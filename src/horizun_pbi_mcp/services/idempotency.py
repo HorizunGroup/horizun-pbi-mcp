@@ -36,15 +36,49 @@ Persistencia
 Un archivo JSON por `request_id` bajo `<backups>/_idempotency/`, escrito con
 `durable_write` (tmp + fsync + replace). Un proceso interrumpido a mitad deja el
 registro anterior intacto, nunca un archivo a medias.
+
+La reserva tiene que ser ATOMICA
+--------------------------------
+`comenzar()` hacia leer -> decidir -> escribir sin nada que lo hiciera
+indivisible. Dos llamadas simultaneas con el mismo `request_id` leian las dos
+que no habia registro, las dos escribian `in_flight` y las dos ejecutaban la
+mutacion: exactamente lo que esta pieza existe para impedir. La ventana es
+pequena pero real, y un cliente que reintenta por timeout es justo quien la
+abre.
+
+Dos cerrojos, porque son dos problemas distintos:
+
+- **Entre procesos**: un cerrojo de archivo (`fcntl.flock` / `msvcrt.locking`)
+  sobre `<request_id>.lock`, tomado durante la decision entera. Se eligio el
+  cerrojo del sistema y no un archivo centinela porque **el sistema lo suelta
+  solo cuando el proceso muere**; un centinela lo dejaria puesto para siempre.
+- **Entre hilos**: un `threading.Lock` por `request_id`. En el mismo proceso el
+  cerrojo de archivo no siempre distingue dos descriptores, y el servidor
+  atiende en hilos.
+
+Y el alta se hace ademas con `O_CREAT | O_EXCL`, que es atomico de por si: si
+el cerrojo de archivo no llegara a aplicarse —hay sistemas de archivos en red
+que lo ignoran—, dos altas simultaneas siguen sin poder ganar las dos.
+
+El JSON corrupto no se pisa
+---------------------------
+`leer()` devolvia `None` ante un registro ilegible, asi que la llamada
+siguiente lo tomaba por inexistente y lo SOBREESCRIBIA: se habilitaba una
+mutacion que quiza ya se habia hecho, y encima se destruia la unica evidencia
+de lo ocurrido. Ahora falla cerrado (`idempotency_record_corrupt`) y el
+archivo se queda como esta, byte a byte. Nadie lo renombra ni lo borra: eso lo
+decide una persona mirandolo.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
@@ -59,6 +93,11 @@ STALE_IN_FLIGHT_SECONDS = 300
 #: Espera maxima ante un in_flight vivo, antes de devolver request_in_progress.
 WAIT_SECONDS = 2.0
 _WAIT_STEP = 0.05
+#: Espera maxima por el cerrojo de un `request_id`. La seccion critica es una
+#: lectura y una escritura de unos pocos kilobytes: agotarlo no significa
+#: "hay cola", significa que alguien lo tiene tomado y no lo suelta.
+LOCK_TIMEOUT_SECONDS = 30.0
+_LOCK_STEP = 0.01
 
 IN_FLIGHT = "in_flight"
 SUCCEEDED = "succeeded"
@@ -76,6 +115,110 @@ class RequestInProgressError(PowerBIMCPError):
     """Ese request_id se esta ejecutando ahora mismo en otra llamada."""
 
     code = "request_in_progress"
+
+
+class RegistroCorruptoError(PowerBIMCPError):
+    """El registro de esa peticion existe pero no es JSON valido.
+
+    Se falla cerrado a proposito. Un registro ilegible es la unica prueba de
+    que esa peticion paso por aqui: tratarlo como inexistente habilitaria una
+    mutacion que quiza ya ocurrio, y sobreescribirlo borraria la evidencia.
+    """
+
+    code = "idempotency_record_corrupt"
+
+
+# ------------------------------------------------------- exclusion mutua ---
+#: Un cerrojo por `request_id` dentro del proceso. Se guardan indefinidamente
+#: porque un Lock son unas decenas de bytes y el numero de request_id vivos en
+#: una sesion es pequeno; purgarlos abriria una carrera al purgar.
+_CERROJOS: Dict[str, threading.Lock] = {}
+_CERROJOS_LOCK = threading.Lock()
+
+
+def _cerrojo_de_hilo(clave: str) -> threading.Lock:
+    with _CERROJOS_LOCK:
+        return _CERROJOS.setdefault(clave, threading.Lock())
+
+
+if os.name == "nt":                                       # pragma: no cover
+    import msvcrt
+
+    def _intentar_tomar(fd: int) -> bool:
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+
+    def _soltar(fd: int) -> None:
+        try:
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+else:                                                     # pragma: no cover
+    import fcntl
+
+    def _intentar_tomar(fd: int) -> bool:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def _soltar(fd: int) -> None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+
+
+@contextlib.contextmanager
+def _cerrojo_de_archivo(ruta: Path, request_id: str) -> Iterator[None]:
+    """Cerrojo del sistema sobre `ruta`, con espera acotada.
+
+    Se reintenta sin bloquear en vez de usar la espera del sistema: en Windows
+    `LK_LOCK` bloquea diez segundos fijos y no hay forma de acotarlo, y colgar
+    un hilo del servidor sin limite no es una opcion.
+    """
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    banderas = os.O_CREAT | os.O_RDWR | getattr(os, "O_BINARY", 0)
+    fd = os.open(ruta, banderas, 0o600)
+    try:
+        limite = time.time() + LOCK_TIMEOUT_SECONDS
+        while True:
+            os.lseek(fd, 0, os.SEEK_SET)
+            if _intentar_tomar(fd):
+                break
+            if time.time() >= limite:
+                raise RequestInProgressError(
+                    f"El request_id '{request_id}' lleva mas de "
+                    f"{LOCK_TIMEOUT_SECONDS:.0f}s tomado por otra llamada y no "
+                    "se ha podido reservar. Espera a que termine antes de "
+                    "reintentar.",
+                    details={"request_id": request_id,
+                             "lock_timeout_seconds": LOCK_TIMEOUT_SECONDS})
+            time.sleep(_LOCK_STEP)
+        try:
+            yield
+        finally:
+            _soltar(fd)
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def _exclusion(store: "Store", request_id: str) -> Iterator[None]:
+    """Exclusion por `request_id`: primero entre hilos, luego entre procesos.
+
+    El orden es siempre el mismo en todo el modulo; invertirlo en algun sitio
+    seria un abrazo mortal entre dos procesos multihilo.
+    """
+    ruta = store._archivo_cerrojo(request_id)
+    with _cerrojo_de_hilo(str(ruta)):
+        with _cerrojo_de_archivo(ruta, request_id):
+            yield
 
 
 @dataclass
@@ -127,28 +270,92 @@ class Store:
         seguro = safe_paths.safe_identifier(request_id, kind="request_id")
         return self.root / f"{seguro}.json"
 
+    def _archivo_cerrojo(self, request_id: str) -> Path:
+        from horizun_pbi_mcp.services import paths as safe_paths
+
+        seguro = safe_paths.safe_identifier(request_id, kind="request_id")
+        # Archivo aparte: tomar el cerrojo no puede crear ni tocar el registro,
+        # que es lo que decide si la peticion existe. Y `purgar` mira *.json.
+        return self.root / f"{seguro}.lock"
+
+    def _corrupto(self, f: Path, request_id: str) -> RegistroCorruptoError:
+        return RegistroCorruptoError(
+            f"El registro de idempotencia de '{request_id}' existe pero no es "
+            "JSON valido. No se ejecuta la operacion ni se sobreescribe el "
+            "archivo: es la unica prueba de que esa peticion paso por aqui y "
+            "no se sabe si llego a aplicarse. Revisalo y decide tu si "
+            f"borrarlo: {f}",
+            details={"request_id": request_id, "path": str(f),
+                     "recovery": "Inspecciona el archivo. Si el cambio NO se "
+                                 "aplico, borralo a mano y reintenta. Si se "
+                                 "aplico, borralo y NO reintentes."})
+
     def leer(self, request_id: str) -> Optional[Registro]:
         f = self._archivo(request_id)
         if not f.exists():
             return None
         try:
-            datos = json.loads(f.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            log.warning("Registro de idempotencia ilegible, se ignora: %s", f)
+            crudo = f.read_text(encoding="utf-8")
+        except OSError:
+            log.warning("Registro de idempotencia ilegible: %s", f)
             return None
+        try:
+            datos = json.loads(crudo)
+        except ValueError as exc:
+            # Antes esto devolvia None y la llamada siguiente lo pisaba.
+            log.error("Registro de idempotencia corrupto: %s (%s)", f, exc)
+            raise self._corrupto(f, request_id) from exc
         reg = Registro.from_dict(datos)
         if time.time() - reg.created_at > TTL_SECONDS:
             return None
         return reg
 
+    def _no_pisar_corrupto(self, request_id: str) -> None:
+        """Invariante: nunca se sobreescribe un JSON que no parsea."""
+        f = self._archivo(request_id)
+        if not f.exists():
+            return
+        try:
+            json.loads(f.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise self._corrupto(f, request_id) from exc
+        except OSError:
+            return          # ilegible por permisos: no es corrupcion probada
+
     def escribir(self, reg: Registro) -> None:
         from horizun_pbi_mcp.services.txn import durable_write
 
+        self._no_pisar_corrupto(reg.request_id)
         reg.updated_at = time.time()
         self.root.mkdir(parents=True, exist_ok=True)
         durable_write(self._archivo(reg.request_id),
                       json.dumps(reg.to_dict(), ensure_ascii=False,
                                  indent=2).encode("utf-8"))
+
+    def reservar(self, reg: Registro) -> bool:
+        """Crea el registro SOLO si no existia. `True` si la reserva es nuestra.
+
+        `O_CREAT | O_EXCL` es atomico en el sistema de archivos: de dos altas
+        simultaneas, exactamente una lo consigue. Es la garantia de ultimo
+        recurso, por debajo del cerrojo, para el unico caso que importa de
+        verdad —dos llamadas que no ven registro— y el unico que sobrevive a un
+        sistema de archivos que ignore los cerrojos.
+        """
+        self.root.mkdir(parents=True, exist_ok=True)
+        reg.updated_at = time.time()
+        datos = json.dumps(reg.to_dict(), ensure_ascii=False,
+                           indent=2).encode("utf-8")
+        try:
+            fd = os.open(self._archivo(reg.request_id),
+                         os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                         | getattr(os, "O_BINARY", 0), 0o600)
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(datos)
+            fh.flush()
+            os.fsync(fh.fileno())
+        return True
 
     def borrar(self, request_id: str) -> None:
         try:
@@ -180,20 +387,62 @@ def store_por_defecto() -> Store:
 
 
 # ------------------------------------------------------------------ protocolo ---
+#: Veredictos de `_decidir`. No son parte del contrato publico.
+_EJECUTAR = "ejecutar"
+_REPRODUCIR = "reproducir"
+_EN_VUELO = "en_vuelo"
+
+
 def comenzar(store: Store, request_id: str, operation: str,
              payload: Any) -> Optional[Dict[str, Any]]:
     """Abre (o resuelve) una peticion.
 
     Devuelve el resultado guardado si es un reintento ya resuelto; `None` si hay
     que ejecutar la mutacion. Lanza si hay conflicto o si sigue en vuelo.
+
+    La decision se toma entera bajo el cerrojo del `request_id` —leer y
+    reservar tienen que ser indivisibles o dos llamadas ejecutan la misma
+    mutacion—, pero la ESPERA se hace fuera: quien esta ejecutando tiene que
+    poder escribir su resultado, y si el que espera retuviera el cerrojo no
+    podria. Por eso es un bucle y no una llamada anidada.
     """
     fp = plan_contract.fingerprint_de(payload)
+    limite = time.time() + WAIT_SECONDS
+    while True:
+        with _exclusion(store, request_id):
+            veredicto, valor = _decidir(store, request_id, operation, fp)
+        if veredicto == _EJECUTAR:
+            return None
+        if veredicto == _REPRODUCIR:
+            return valor
+        if time.time() >= limite:
+            raise RequestInProgressError(
+                f"El request_id '{request_id}' se esta ejecutando ahora mismo. "
+                "Espera a que termine antes de reintentar.",
+                details={"request_id": request_id, "operation": valor.operation,
+                         "age_seconds": round(valor.edad, 1)})
+        time.sleep(_WAIT_STEP)
+
+
+def _decidir(store: Store, request_id: str, operation: str, fp: str):
+    """Que hacer con esta peticion. Se llama SIEMPRE con el cerrojo tomado."""
     reg = store.leer(request_id)
 
     if reg is None:
-        store.escribir(Registro(request_id=request_id, operation=operation,
-                                payload_fingerprint=fp, state=IN_FLIGHT))
-        return None
+        nuevo = Registro(request_id=request_id, operation=operation,
+                         payload_fingerprint=fp, state=IN_FLIGHT)
+        if store.reservar(nuevo):
+            return _EJECUTAR, None
+        # Alguien gano el alta entre la lectura y esta linea, aun teniendo el
+        # cerrojo: solo puede pasar si el cerrojo no se aplico. Se vuelve a
+        # decidir con lo que hay ahora, que es lo unico honesto.
+        log.warning("La reserva de %s la gano otra llamada: se reevalua.",
+                    request_id)
+        reg = store.leer(request_id)
+        if reg is None:                                   # pragma: no cover
+            return _EN_VUELO, Registro(request_id=request_id,
+                                       operation=operation,
+                                       payload_fingerprint=fp, state=IN_FLIGHT)
 
     if reg.payload_fingerprint != fp:
         raise IdempotencyConflictError(
@@ -206,49 +455,20 @@ def comenzar(store: Store, request_id: str, operation: str,
     if reg.state == SUCCEEDED and reg.result is not None:
         salida = dict(reg.result)
         salida["idempotent_replay"] = True
-        return salida
+        return _REPRODUCIR, salida
 
     if reg.state == IN_FLIGHT:
-        reg = _esperar_o_reclamar(store, reg, fp)
-        if reg is None:
-            return None                       # se reclamo: hay que ejecutar
-        if reg.state == SUCCEEDED and reg.result is not None:
-            salida = dict(reg.result)
-            salida["idempotent_replay"] = True
-            return salida
-        raise RequestInProgressError(
-            f"El request_id '{request_id}' se esta ejecutando ahora mismo. "
-            "Espera a que termine antes de reintentar.",
-            details={"request_id": request_id, "operation": reg.operation,
-                     "age_seconds": round(reg.edad, 1)})
+        if reg.edad <= STALE_IN_FLIGHT_SECONDS:
+            return _EN_VUELO, reg
+        # Lleva parado demasiado: el proceso que lo abrio murio. Se reclama.
+        # No se afirma que la mutacion no ocurriera, solo que nadie la vigila.
+        log.warning("Peticion %s abandonada en vuelo hace %.0fs: se reclama.",
+                    request_id, reg.edad)
 
-    # failed / compensated: se puede reintentar, se reabre.
+    # in_flight abandonado, failed o compensated: se reabre y se ejecuta.
     store.escribir(Registro(request_id=request_id, operation=operation,
                             payload_fingerprint=fp, state=IN_FLIGHT))
-    return None
-
-
-def _esperar_o_reclamar(store: Store, reg: Registro,
-                        fp: str) -> Optional[Registro]:
-    """Espera acotada a que un in_flight se resuelva.
-
-    Si lleva parado mas de `STALE_IN_FLIGHT_SECONDS`, el proceso que lo abrio
-    murio: se reclama la entrada. No se afirma que la mutacion no ocurriera.
-    """
-    if reg.edad > STALE_IN_FLIGHT_SECONDS:
-        log.warning("Peticion %s abandonada en vuelo hace %.0fs: se reclama.",
-                    reg.request_id, reg.edad)
-        store.escribir(Registro(request_id=reg.request_id, operation=reg.operation,
-                                payload_fingerprint=fp, state=IN_FLIGHT))
-        return None
-
-    limite = time.time() + WAIT_SECONDS
-    while time.time() < limite:
-        time.sleep(_WAIT_STEP)
-        actual = store.leer(reg.request_id)
-        if actual is None or actual.state != IN_FLIGHT:
-            return actual
-    return reg
+    return _EJECUTAR, None
 
 
 def terminar_ok(store: Store, request_id: str, operation: str, payload: Any,
