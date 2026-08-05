@@ -135,8 +135,13 @@ def _err(path: str, mensaje: str, sugerencia: str = "") -> Dict[str, str]:
     return e
 
 
-def validate_schema(spec: Any) -> List[Dict[str, str]]:
-    """Valida la FORMA del spec. Devuelve la lista de errores con su JSON path."""
+def validate_schema(spec: Any, active: Any = None) -> List[Dict[str, str]]:
+    """Valida la FORMA del spec. Devuelve la lista de errores con su JSON path.
+
+    Con `active` se admiten ademas los visuales PERSONALIZADOS que ese
+    informe tenga instalados: su identificador es un GUID distinto en cada
+    proyecto, asi que no puede vivir en una tabla fija.
+    """
     errores: List[Dict[str, str]] = []
     if not isinstance(spec, dict):
         return [_err("$", "El spec debe ser un objeto JSON.")]
@@ -177,9 +182,22 @@ def validate_schema(spec: Any) -> List[Dict[str, str]]:
                 errores.append(_err(f"{base}.type", "Falta 'type'.",
                                     f"Soportados: {visual_factory.SUPPORTED}"))
             elif str(v["type"]).lower() not in visual_factory.TYPE_MAP:
-                errores.append(_err(
-                    f"{base}.type", f"Tipo no soportado: '{v['type']}'.",
-                    f"Soportados: {visual_factory.SUPPORTED}"))
+                # Puede ser un personalizado instalado en ESTE informe.
+                guid = None
+                instalados: List[str] = []
+                if active is not None and getattr(active, "report_dir", None):
+                    from horizun_pbi_mcp.pbip import custom_visuals
+
+                    guid = custom_visuals.resolve_guid(active.report_dir, v["type"])
+                    instalados = sorted(custom_visuals.discover_for(active))
+                if guid is None:
+                    sugerencia = f"Nativos: {visual_factory.SUPPORTED}."
+                    if active is not None:
+                        sugerencia += (" Personalizados instalados en este "
+                                       f"informe: {instalados or 'ninguno'}.")
+                    errores.append(_err(
+                        f"{base}.type", f"Tipo no soportado: '{v['type']}'.",
+                        sugerencia))
             campos = v.get("fields")
             if campos is not None and not isinstance(campos, dict):
                 errores.append(_err(f"{base}.fields",
@@ -440,7 +458,7 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
     No escribe nada. Es el paso comun a preview, diff y apply, para que los
     tres describan exactamente lo mismo.
     """
-    errores = validate_schema(spec)
+    errores = validate_schema(spec, active)
     if errores:
         raise SpecValidationError(
             f"El spec tiene {len(errores)} error(es) de esquema.",

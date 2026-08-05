@@ -276,13 +276,44 @@ def roles_de(actual_type: str) -> Dict[str, str]:
 SUPPORTED = sorted(REAL_TYPES + tuple(ALIASES), key=str.lower)
 
 
-def resolve_type(visual_type: str) -> str:
+def resolve_type(visual_type: str, active: Any = None) -> str:
+    """Nombre canonico del tipo. Con `active`, admite los PERSONALIZADOS.
+
+    Los 29 nativos viven en `TYPE_MAP` porque su contrato se verifico contra
+    el catalogo oficial. Un visual personalizado no puede estar ahi -su GUID
+    es distinto en cada informe-, asi que se resuelve contra los que el
+    informe tiene instalados en `CustomVisuals/`. Sin `active` se conserva el
+    comportamiento de siempre: solo nativos.
+    """
     key = str(visual_type).strip().lower()
-    if key not in TYPE_MAP:
+    if key in TYPE_MAP:
+        return TYPE_MAP[key]
+
+    if active is not None and getattr(active, "report_dir", None):
+        from horizun_pbi_mcp.pbip import custom_visuals
+
+        guid = custom_visuals.resolve_guid(active.report_dir, visual_type)
+        if guid:
+            # El GUID CANONICO del manifiesto, no lo que se tecleo: el
+            # `visualType` tiene que coincidir exacto o Power BI no lo
+            # encuentra.
+            return guid
+        instalados = sorted(custom_visuals.discover_for(active))
         raise VisualFactoryError(
-            f"Tipo de visual no soportado: '{visual_type}'. "
-            f"Soportados: {SUPPORTED}.")
-    return TYPE_MAP[key]
+            f"Tipo de visual no soportado: '{visual_type}'. Nativos: "
+            f"{SUPPORTED}. Personalizados instalados en este informe: "
+            f"{instalados or 'ninguno'}.",
+            details={"visual_type": visual_type, "native": SUPPORTED,
+                     "custom_installed": instalados})
+
+    raise VisualFactoryError(
+        f"Tipo de visual no soportado: '{visual_type}'. "
+        f"Soportados: {SUPPORTED}.")
+
+
+def es_personalizado(actual_type: str) -> bool:
+    """Un tipo que no esta entre los nativos es un personalizado."""
+    return actual_type not in set(REAL_TYPES)
 
 
 def normalizar_referencia(ref: Any) -> str:
@@ -409,11 +440,54 @@ def _normalizar_roles(actual_type: str,
     return normalizado
 
 
+def _roles_personalizados(actual_type: str, fields: Dict[str, Any],
+                          roles_declarados: List[str]) -> Dict[str, List[Any]]:
+    """Roles de un visual PERSONALIZADO: verbatim, validados contra su manifiesto.
+
+    No se pasa por `ROLE_MAP` ni por los contratos de cardinalidad y clase de
+    campo: esos se verificaron contra el catalogo oficial de Microsoft y no
+    dicen nada de un visual de terceros. El contrato aqui lo publica el propio
+    visual en `capabilities.dataRoles`, y se aplica con el mismo rigor: un rol
+    que ese GUID no declara se RECHAZA con la lista de los validos, igual que
+    con los nativos.
+    """
+    validos = {r.casefold(): r for r in roles_declarados}
+    salida: Dict[str, List[Any]] = {}
+    for rol_pedido, refs in (fields or {}).items():
+        canonico = validos.get(str(rol_pedido).strip().casefold())
+        if canonico is None:
+            raise VisualFactoryError(
+                f"El visual personalizado '{actual_type}' no declara un rol "
+                f"'{rol_pedido}'. Roles que acepta: {sorted(roles_declarados)}.",
+                details={"visual_type": actual_type, "role": rol_pedido,
+                         "valid_roles": sorted(roles_declarados),
+                         "source": "capabilities.dataRoles del .pbiviz.json"})
+        if not refs:
+            continue
+        if isinstance(refs, (str, dict)):
+            salida[canonico] = [refs]
+        elif isinstance(refs, (list, tuple)):
+            salida[canonico] = list(refs)
+        else:
+            raise VisualFactoryError(
+                f"El rol '{rol_pedido}' espera un campo o una lista de campos; "
+                f"se recibio {type(refs).__name__}.")
+    return salida
+
+
 def _build_query(actual_type: str, fields: Dict[str, Any],
                  measure_index: Optional[Dict[str, str]],
-                 warnings: List[str]) -> Dict[str, Any]:
-    role_map = ROLE_MAP.get(actual_type, {"values": "Values"})
-    normalizado = _normalizar_roles(actual_type, fields)
+                 warnings: List[str],
+                 roles_personalizados: Optional[List[str]] = None) -> Dict[str, Any]:
+    if roles_personalizados is not None:
+        normalizado = _roles_personalizados(actual_type, fields,
+                                            roles_personalizados)
+        # El orden lo fija el manifiesto: dos specs equivalentes deben producir
+        # el mismo visual.json byte a byte.
+        role_map = {r: r for r in roles_personalizados}
+    else:
+        role_map = ROLE_MAP.get(actual_type, {"values": "Values"})
+        normalizado = _normalizar_roles(actual_type, fields)
 
     # Se emite en el orden del mapa, no en el que llegaron los roles: dos specs
     # equivalentes tienen que producir el MISMO visual.json byte a byte, o el
@@ -458,7 +532,16 @@ def _build_query(actual_type: str, fields: Dict[str, Any],
 
 
 def _validate_role_contract(actual_type: str, query: Dict[str, Any]) -> None:
-    """Exige obligatoriedad y cardinalidad antes de buscar una plantilla."""
+    """Exige obligatoriedad y cardinalidad antes de buscar una plantilla.
+
+    Solo para NATIVOS. Los contratos de abajo (roles obligatorios, cardinalidad
+    maxima, clase de campo) salieron del catalogo oficial de Microsoft; aplicar
+    esas tablas a un visual de terceros seria inventarle un contrato que nadie
+    publico y rechazar visuales perfectamente validos. Lo suyo ya se valido
+    contra su `.pbiviz.json` en `_roles_personalizados`.
+    """
+    if es_personalizado(actual_type):
+        return
     estados = query.get("queryState") or {}
     faltantes = [rol for rol in REQUIRED_ROLES.get(actual_type, ())
                  if not (estados.get(rol) or {}).get("projections")]
@@ -547,9 +630,22 @@ def _quitar_selectores_de_campos_obsoletos(
         vis: Dict[str, Any], query: Dict[str, Any], warnings: List[str]) -> None:
     """Descarta formato acotado a campos que ya no estan en la consulta.
 
-    `selector.metadata` es un queryRef. Clonarlo junto con una consulta nueva
-    deja reglas de formato condicional apuntando al campo de la plantilla; el
-    esquema no lo denuncia porque el bloque `objects` es abierto.
+    Dos formas del mismo defecto, y el esquema no denuncia ninguna porque el
+    bloque `objects` es abierto:
+
+    - `selector.metadata` es un queryRef. Clonarlo junto con una consulta
+      nueva deja reglas de formato condicional apuntando al campo de la
+      plantilla.
+    - `selector.data` con `scopeId` fija puntos CONCRETOS: es el rastro de
+      que alguien pincho un elemento en la plantilla y le puso un color. En un
+      visual nuevo esos identificadores no significan nada. Se vio en el visor
+      APS real, cuyo `dataColors` arrastraba la seleccion del original. Un
+      `dataViewWildcard` en cambio se conserva: significa "todos los puntos",
+      no uno.
+
+    Lo que NO lleva selector se conserva intacto, y esa distincion es la que
+    salva la configuracion propia del visual: `objects.connection` del visor
+    APS lleva `baseUrl` y el token `mt`, y sin ellos el visual carga vacio.
     """
     referencias = {
         proyeccion.get("queryRef")
@@ -571,6 +667,16 @@ def _quitar_selectores_de_campos_obsoletos(
             metadata = selector.get("metadata") if isinstance(selector, dict) else None
             if metadata is not None and (
                     not isinstance(metadata, str) or metadata not in referencias):
+                eliminados += 1
+                continue
+            datos_sel = selector.get("data") if isinstance(selector, dict) else None
+            if isinstance(datos_sel, list) and any(
+                    isinstance(d, dict) and "scopeId" in d for d in datos_sel):
+                # Seleccion PUNTUAL heredada de la plantilla: sus scopeIds
+                # apuntan a filas concretas que este visual no tiene por que
+                # contener. Ojo con la distincion, que costo un test: un
+                # `dataViewWildcard` NO es una seleccion puntual -significa
+                # "todos los puntos"- y debe conservarse.
                 eliminados += 1
                 continue
             vigentes.append(bloque)
@@ -1072,6 +1178,77 @@ def _rutas_formato_generadas(vis: Dict[str, Any], *, completas: bool,
     return rutas
 
 
+#: Tipo NATIVO que se usa como referencia del marco al clonar un personalizado.
+#: Los `visualContainerObjects` (titulo, fondo, borde, sombra) son cromo del
+#: contenedor y son COMPARTIDOS entre tipos —lo dice el propio format_oracle—,
+#: asi que el catalogo de cualquier nativo sirve de patron. Hace falta porque
+#: `catalog describe <GUID>` NO funciona para un visual de terceros:
+#: comprobado, el CLI oficial no lo conoce.
+_TIPO_REFERENCIA_MARCO = "barChart"
+
+
+def _sanear_marco_heredado(vis: Dict[str, Any], actual_type: str,
+                           warnings: List[str]) -> None:
+    """Quita del marco CLONADO lo que el catalogo oficial rechaza.
+
+    Caso real, y la razon de que esto exista: varios visores APS del informe
+    traen `visualContainerObjects.dropShadow.preset = 'Outer'`, valor que el
+    catalogo oficial no admite (acepta BottomRight, Bottom, ... Custom). Power
+    BI Desktop lo tolera —el informe abre y el visual pinta—, pero el
+    validador oficial lo marca. Al clonar, ese defecto PREEXISTENTE viajaba a
+    cada visual nuevo: un error mas por visual, y la transaccion se bloqueaba
+    con razon por dejar el informe peor de como estaba.
+
+    No es culpa de quien llama ni algo que deba fallar: se DESCARTA lo
+    invalido heredado y se avisa.
+
+    Se juzga contra el catalogo de un NATIVO porque el marco es compartido, y
+    solo si el CLI oficial esta disponible de verdad: el snapshot local es un
+    subconjunto minimo y usarlo aqui borraria formato legitimo por el simple
+    hecho de no estar en la muestra. Sin oraculo real no se sanea nada —mejor
+    propagar y que el guard bloquee, que mutilar en silencio—.
+    """
+    marco = vis.get("visualContainerObjects")
+    if not isinstance(marco, dict) or not marco:
+        return
+    from horizun_pbi_mcp.services import format_oracle
+
+    catalogo = format_oracle._load_catalog(_TIPO_REFERENCIA_MARCO)
+    if not catalogo:
+        return
+    definiciones = catalogo.get("visualContainerObjects") or {}
+    if not definiciones:
+        return
+
+    quitadas: List[str] = []
+    for grupo, bloques in list(marco.items()):
+        grupo_def = definiciones.get(grupo)
+        if not isinstance(grupo_def, dict):
+            continue  # grupo que el patron no cubre: no se toca
+        for bloque in bloques if isinstance(bloques, list) else []:
+            props = bloque.get("properties") if isinstance(bloque, dict) else None
+            if not isinstance(props, dict):
+                continue
+            for prop, valor in list(props.items()):
+                definicion = grupo_def.get(prop)
+                if not isinstance(definicion, dict):
+                    continue
+                if not format_oracle._matches_kind(valor, definicion):
+                    props.pop(prop, None)
+                    quitadas.append(f"{grupo}.{prop}")
+        if isinstance(bloques, list) and all(
+                not (b.get("properties") or {}) for b in bloques
+                if isinstance(b, dict)):
+            marco.pop(grupo, None)
+
+    if quitadas:
+        warnings.append(
+            "Del marco heredado de la plantilla se descartaron propiedades que "
+            f"el catalogo oficial no admite: {sorted(set(quitadas))}. Ya "
+            "estaban mal en el visual original; copiarlas habria sumado un "
+            "error por cada visual nuevo.")
+
+
 def _comprobar_formato_generado(documento: Dict[str, Any], *, completas: bool,
                                 actual_type: str, title: Optional[str],
                                 opciones: Dict[str, Any],
@@ -1082,7 +1259,14 @@ def _comprobar_formato_generado(documento: Dict[str, Any], *, completas: bool,
     porque el oraculo solo comprueba lo que se le declara: una ruta escrita y
     no declarada pasaria sin mirar, que es como se colaron en su dia los
     `objects` invalidos.
+
+    NO aplica a los personalizados: el oraculo es el catalogo de formato
+    OFICIAL de Microsoft y no conoce las propiedades de un visual de terceros
+    -`connection.baseUrl` del visor APS, por ejemplo-. Preguntarle por ellas
+    daria un falso positivo y bloquearia una escritura correcta.
     """
+    if es_personalizado(actual_type):
+        return
     from horizun_pbi_mcp.services import format_oracle
 
     rutas = _rutas_formato_generadas(
@@ -1120,8 +1304,28 @@ def build_visual(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Devuelve (visual_dict, meta) donde meta incluye warnings y origen."""
-    actual_type = resolve_type(visual_type)
+    actual_type = resolve_type(visual_type, active)
     warnings: List[str] = []
+
+    # Un personalizado trae su propio contrato de roles en el manifiesto que el
+    # informe ya tiene instalado. Se lee aqui una vez y viaja hasta la consulta.
+    roles_custom: Optional[List[str]] = None
+    if es_personalizado(actual_type):
+        from horizun_pbi_mcp.pbip import custom_visuals
+
+        info = custom_visuals.discover_for(active).get(actual_type)
+        if info is None:                                  # pragma: no cover
+            raise VisualFactoryError(
+                f"'{actual_type}' no esta instalado en este informe.",
+                details={"visual_type": actual_type})
+        roles_custom = custom_visuals.role_names(info)
+        if not roles_custom:
+            raise VisualFactoryError(
+                f"El visual personalizado '{actual_type}' no declara ningun "
+                "rol de datos en su .pbiviz.json; no se puede saber donde "
+                "poner los campos.",
+                details={"visual_type": actual_type,
+                         "manifest": info.get("manifest")})
 
     pos = _normalizar_posicion(position)
 
@@ -1154,7 +1358,8 @@ def build_visual(
                 "origin": "elemento de composicion",
                 "warnings": warnings}
 
-    query = _build_query(actual_type, fields or {}, measure_index, warnings)
+    query = _build_query(actual_type, fields or {}, measure_index, warnings,
+                         roles_personalizados=roles_custom)
     _validate_role_contract(actual_type, query)
     template = find_template(active, actual_type)
     if template is not None:
@@ -1172,6 +1377,7 @@ def build_visual(
         else:
             _quitar_titulo_heredado(vis)
         _quitar_selectores_de_campos_obsoletos(vis, query, warnings)
+        _sanear_marco_heredado(vis, actual_type, warnings)
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         _aplicar_estilo_contenedor(vis, options or {})

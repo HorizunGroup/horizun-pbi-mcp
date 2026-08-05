@@ -108,7 +108,14 @@ def register(mcp) -> None:
         que se puedan corregir sin adivinar. No escribe nada.
         """
         def _impl():
-            errores = page_spec.validate_schema(spec)
+            # Con el proyecto activo, la validacion admite ademas los
+            # visuales personalizados que ESE informe tiene instalados.
+            activo = None
+            try:
+                activo = get_session().require_active_pbip()
+            except Exception:                        # noqa: BLE001
+                pass
+            errores = page_spec.validate_schema(spec, activo)
             if errores:
                 return {"valid": False, "stage": "schema", "errors": errores,
                         "schema_version": page_spec.SCHEMA_VERSION}
