@@ -135,10 +135,17 @@ def guard_mutation(fn: Callable[[], Any]) -> Dict[str, Any]:
     store = idempotency.store_por_defecto()
 
     try:
-        previo = idempotency.comenzar(store, rid, op, payload)
+        intento = idempotency.comenzar_intento(store, rid, op, payload)
+        previo = intento.replay
     except PowerBIMCPError as exc:
-        return envelope.failure(exc.code, exc.message, exc.details,
-                                operation=op, request_id=rid, duration_ms=0)
+        salida = envelope.failure(exc.code, exc.message, exc.details,
+                                  operation=op, request_id=rid, duration_ms=0)
+        # Un resultado desconocido NO es seguro de reintentar: pudo aplicarse.
+        # Decirlo en el sobre, y no solo en `details`, es lo que impide que un
+        # cliente lo reintente en bucle.
+        if isinstance(exc.details, dict) and "safe_to_retry" in exc.details:
+            salida["safe_to_retry"] = exc.details["safe_to_retry"]
+        return salida
     except Exception as exc:                           # noqa: BLE001
         # Todavia no se ejecuto la mutacion: es seguro fallar cerrado.
         log.exception("No se pudo iniciar la idempotencia de %s", op)
@@ -155,7 +162,8 @@ def guard_mutation(fn: Callable[[], Any]) -> Dict[str, Any]:
     salida = guard(fn, operation=op, request_id=rid)
     if salida.get("ok"):
         try:
-            idempotency.terminar_ok(store, rid, op, payload, salida)
+            idempotency.terminar_ok(store, rid, op, payload, salida,
+                                    attempt_id=intento.attempt_id)
         except Exception as exc:                       # noqa: BLE001
             # La mutacion YA termino. Propagar esta excepcion haria que el
             # cliente creyera que fallo y la repitiera, duplicando paginas o
@@ -174,7 +182,8 @@ def guard_mutation(fn: Callable[[], Any]) -> Dict[str, Any]:
         salida["safe_to_retry"] = seguro
         try:
             idempotency.terminar_error(store, rid, op, payload, salida,
-                                       safe_to_retry=seguro)
+                                       safe_to_retry=seguro,
+                                       attempt_id=intento.attempt_id)
         except Exception as exc:                       # noqa: BLE001
             log.exception("No se pudo persistir el fallo de %s", op)
             salida.setdefault("warnings", []).append(

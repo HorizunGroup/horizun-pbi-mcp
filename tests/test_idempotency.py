@@ -116,10 +116,19 @@ def test_en_vuelo_que_termina_durante_la_espera_devuelve_el_resultado(store, mon
 
     leer_real = store.leer
     primera_lectura = True   # todas salen del hilo principal: no hace falta lock
+    principal = threading.current_thread()
 
     def leer_coordinado(request_id):
-        """Convierte cada lectura del registro en una cita con el otro hilo."""
+        """Convierte cada lectura del registro en una cita con el otro hilo.
+
+        Solo las del hilo PRINCIPAL. `terminar_ok` tambien lee ahora —para
+        comprobar que sigue siendo el dueno de la reserva antes de escribir— y
+        si esa lectura entrara en la cita, el hilo que termina se quedaria
+        esperandose a si mismo.
+        """
         nonlocal primera_lectura
+        if threading.current_thread() is not principal:
+            return leer_real(request_id)
         if primera_lectura:
             primera_lectura = False
             registro = leer_real(request_id)
@@ -155,20 +164,37 @@ def test_en_vuelo_que_termina_durante_la_espera_devuelve_el_resultado(store, mon
     assert salida == {"ok": True, "n": 7, "idempotent_replay": True}
 
 
-def test_en_vuelo_abandonado_se_reclama(store, monkeypatch):
-    """Un proceso muerto no puede bloquear el request_id para siempre."""
-    idempotency.comenzar(store, "r1", "op", PAYLOAD)
-    reg = store.leer("r1")
-    reg.updated_at = time.time() - idempotency.STALE_IN_FLIGHT_SECONDS - 10
-    store.escribir(reg)
-    # `escribir` refresca updated_at: se fuerza en el archivo directamente.
-    f = store.root / "r1.json"
-    datos = json.loads(f.read_text(encoding="utf-8"))
-    datos["updated_at"] = time.time() - idempotency.STALE_IN_FLIGHT_SECONDS - 10
-    f.write_text(json.dumps(datos), encoding="utf-8")
+def test_en_vuelo_antiguo_no_se_reclama_solo(store):
+    """Antes se reclamaba, y eso era la carrera.
 
-    assert idempotency.comenzar(store, "r1", "op", PAYLOAD) is None, (
-        "un in_flight abandonado debe poder reclamarse")
+    Un `in_flight` con mas de `STALE_IN_FLIGHT_SECONDS` se daba por abandonado
+    y se AUTORIZABA otra ejecucion. "Antiguo" no prueba que el primero haya
+    muerto —`pbi_open_and_refresh` pasa de cinco minutos sin despeinarse— y
+    aunque hubiera muerto, nadie sabe si la escritura llego a aplicarse.
+
+    La regresion viva de esa carrera esta en
+    `tests/test_idempotency_intentos.py`; aqui se fija la regla.
+    """
+    idempotency.comenzar(store, "r1", "op", PAYLOAD)
+    envejecer(store, "r1", idempotency.STALE_IN_FLIGHT_SECONDS + 10)
+
+    with pytest.raises(idempotency.ResultadoDesconocidoError) as exc:
+        idempotency.comenzar(store, "r1", "op", PAYLOAD)
+    assert exc.value.code == "request_outcome_unknown"
+    assert exc.value.details["safe_to_retry"] is False
+    assert "recovery" in exc.value.details, "fallar cerrado sin salida es un muro"
+
+
+def envejecer(store, request_id, segundos):
+    """Retrasa `updated_at` en el archivo.
+
+    `escribir` lo refresca, asi que no vale pasar por el Store: hay que tocar
+    el JSON directamente.
+    """
+    f = store.root / f"{request_id}.json"
+    datos = json.loads(f.read_text(encoding="utf-8"))
+    datos["updated_at"] = time.time() - segundos
+    f.write_text(json.dumps(datos), encoding="utf-8")
 
 
 def test_fallo_dice_si_es_seguro_reintentar(store):
