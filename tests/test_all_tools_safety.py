@@ -238,7 +238,10 @@ def test_fallo_del_registro_idempotente_no_convierte_commit_en_error(
     from horizun_pbi_mcp.services import idempotency
 
     monkeypatch.setattr(idempotency, "store_por_defecto", lambda: object())
-    monkeypatch.setattr(idempotency, "comenzar", lambda *a, **k: None)
+    monkeypatch.setattr(
+        idempotency, "comenzar_intento",
+        lambda _s, rid, *a, **k: idempotency.Intento(request_id=rid,
+                                                     attempt_id="intento-1"))
     monkeypatch.setattr(
         idempotency, "terminar_ok",
         lambda *a, **k: (_ for _ in ()).throw(OSError("disco lleno")))
