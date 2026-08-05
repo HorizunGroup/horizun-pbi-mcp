@@ -70,9 +70,17 @@ def comillas_anidadas(fuente: str):
     return hallazgos
 
 
-@pytest.mark.skipif(not hasattr(tokenize, "FSTRING_START"),
-                    reason="el interprete no distingue los tokens de f-string "
-                           "(<3.12); ahi el propio parser ya rechaza PEP 701")
+#: El detector necesita los tokens de f-string, que son de 3.12. Corriendo en
+#: 3.10 u 11 no hace falta: ahi el propio parser rechaza PEP 701 y el fallo
+#: sale solo. El guard existe justamente para el caso contrario —escribir en
+#: un interprete nuevo y publicar para uno viejo—, y ahi si esta disponible.
+SIN_TOKENS_DE_FSTRING = pytest.mark.skipif(
+    not hasattr(tokenize, "FSTRING_START"),
+    reason="el interprete no distingue los tokens de f-string (<3.12); ahi el "
+           "propio parser ya rechaza PEP 701 al importar")
+
+
+@SIN_TOKENS_DE_FSTRING
 @pytest.mark.parametrize("ruta", FUENTES, ids=lambda p: p.name)
 def test_ninguna_fuente_usa_comillas_anidadas_en_f_strings(ruta):
     minimo = minimo_declarado()
@@ -88,6 +96,7 @@ def test_ninguna_fuente_usa_comillas_anidadas_en_f_strings(ruta):
         f"Lineas: {[l for l, _ in hallazgos]}")
 
 
+@SIN_TOKENS_DE_FSTRING
 def test_el_detector_encuentra_el_caso_que_se_nos_colo():
     """El detector tiene que acusar la linea real que rompio CI."""
     c = '"'
@@ -98,6 +107,7 @@ def test_el_detector_encuentra_el_caso_que_se_nos_colo():
     assert hallazgos, "el detector no vio el caso que rompio la matriz 3.10"
 
 
+@SIN_TOKENS_DE_FSTRING
 def test_el_detector_no_acusa_lo_que_si_es_legal():
     """Comillas del OTRO tipo por dentro son validas desde siempre."""
     assert comillas_anidadas("""x = f"{d['canvas']['width']:.0f}"\n""") == []
