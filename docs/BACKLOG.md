@@ -3,7 +3,7 @@
 What remains open, why it matters and how to check it. Ordered by what
 hurts the most.
 
-Updated on 2026-08-04 for **v1.2.0** (127 tools). Two things closed since
+Updated on 2026-08-04 for **v1.2.0** (128 tools). Two things closed since
 1.0.1: the fourteen-item field report from the first real end-to-end session,
 and **the four phases of the product vision** — intent brief, content-level
 data diagnostics, external sources, and the ecosystem port as a data
@@ -217,7 +217,32 @@ the token. Nothing to do; the item is closed.
 
 ---
 
-## 9. What we learned and must not lose
+## 9. Left over from the 5D session (findings 5 to 9)
+
+**Status:** open, all of them MEDIUM or LOW. The two CRITICAL ones (active
+project ≠ active model, ephemeral live measures) and the two HIGH ones
+(orphans on canvas change, no way back after changing design system) are
+closed — the latter two by `pbi_reflow_pages` plus the warning that `merge`
+now issues, with the count and both ways out, before the damage.
+
+What's left, in order:
+
+- **`pbi_compose_page` has a single shape.** Header, KPI row, hero + supports,
+  detail table. It's deliberate — coherence between pages comes from no page
+  being able to invent its own order — but a cover page and a monitor page
+  aren't the same page. Archetypes (`portada`, `detalle`, `monitor`) without
+  reopening free-form composition.
+- **Format-property validation isn't uniform.** An invalid property makes
+  `tableEx` fail entirely, while cards and charts ignore it silently. Same
+  input, three behaviours: the one that's right is failing, and saying which
+  property.
+- **Open/close cycles.** Every PBIR edit needs Desktop closed and every model
+  edit needs it open and saved; a long session is a lot of manual cycles.
+- **The navigator ignores `visibility`.** Hidden pages appear anyway.
+
+---
+
+## 10. What we learned and must not lose
 
 Three rules that were expensive to learn. They're in the code as comments,
 but it's worth having them together:

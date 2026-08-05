@@ -25,7 +25,7 @@ def register(mcp) -> None:
     def pbi_start_here(request_id: str = "") -> Dict[str, Any]:
         """Por donde empezar. Mira el estado real y dice los siguientes pasos.
 
-        Ciento veintisiete tools con buen nombre siguen siendo ciento veintisiete tools.
+        Ciento veintiocho tools con buen nombre siguen siendo ciento veintiocho tools.
         Esta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada
         uno con el nombre exacto de la tool y **por que** toca ahora: si hay
         proyecto activo, si tiene modelo o solo informe, si esta vacio, y si
@@ -238,3 +238,37 @@ def register(mcp) -> None:
                     "recommended_design_system":
                         brief_service.recommended_system(datos)}
         return guard(_impl)
+
+    @mcp.tool()
+    def pbi_reflow_pages(system: str, pages: Optional[List[str]] = None,
+                         dry_run: bool = True,
+                         request_id: str = "") -> Dict[str, Any]:
+        """Reescala las paginas ya escritas al lienzo de otro sistema.
+
+        El camino de vuelta que faltaba. Aplicar un sistema cambia el tema del
+        informe, pero NO reescribe lo ya compuesto: las paginas se quedan con
+        el lienzo anterior —visuales fuera de limites, basura invisible que si
+        viaja al render— y con los colores que se cocieron al componerlas: un
+        titulo compuesto en tema oscuro queda BLANCO SOBRE BLANCO al pasar a
+        claro, sin que falle nada.
+
+        Esto hace las dos cosas: reescala cada visual proporcionalmente al
+        lienzo nuevo (acotandolo si no cabe) y recalcula el color de texto de
+        los elementos decorativos con el tema del sistema destino.
+
+        **No recompone**: no se puede saber que intencion tenia cada visual, y
+        adivinarla seria peor. Si una pagina necesita otra estructura,
+        recomponla con `pbi_compose_page`. Esto la deja utilizable, no optima.
+
+        `pages`: subconjunto opcional (id o nombre visible); por defecto todas.
+        `dry_run=true` (por defecto) devuelve el plan visual por visual, con
+        cuales estaban ya fuera de limites, sin escribir nada.
+
+        Escribe en el informe (PBIR): requiere el proyecto CERRADO en Desktop.
+        """
+        from horizun_pbi_mcp.services import reflow
+
+        def _impl():
+            return reflow.aplicar(get_session().require_active_pbip(),
+                                  system, pages, dry_run=dry_run)
+        return guard_mutation(_impl)

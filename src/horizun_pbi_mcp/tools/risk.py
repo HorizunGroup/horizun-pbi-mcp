@@ -145,7 +145,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_open_in_desktop": SIDE_EFFECT_EXTERNAL,
     "pbi_validate_desktop_render": SIDE_EFFECT_EXTERNAL,
 
-    # -- write_reversible (47) --
+    # -- write_reversible (48) --
     "pbi_add_custom_visual": WRITE_REVERSIBLE,
     "pbi_add_image_resource": WRITE_REVERSIBLE,
     "pbi_add_table_from_file": WRITE_REVERSIBLE,
@@ -154,6 +154,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_define_port_contract": WRITE_REVERSIBLE,
     "pbi_align_visuals": WRITE_REVERSIBLE,
     "pbi_apply_design_system": WRITE_REVERSIBLE,
+    "pbi_reflow_pages": WRITE_REVERSIBLE,
     # El brief es un artefacto del proyecto, con journal como todo.
     "pbi_define_brief": WRITE_REVERSIBLE,
     "pbi_apply_page_spec": WRITE_REVERSIBLE,

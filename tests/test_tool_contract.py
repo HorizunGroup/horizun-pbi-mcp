@@ -161,6 +161,7 @@ DISENO_TOOLS = [
     "pbi_list_design_systems",
     "pbi_apply_design_system",
     "pbi_compose_page",
+    "pbi_reflow_pages",
 ]
 
 #: Filtrar un visual EXISTENTE sin escribir `filterConfig` a mano.
