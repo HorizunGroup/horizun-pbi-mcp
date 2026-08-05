@@ -295,6 +295,7 @@ def register(mcp) -> None:
                 "active_pbip": info_pbip,
                 "coherence": coh,
                 "outputs_dir": str(get_settings().outputs_dir),
+                "persisted_session": session.persisted_state,
                 "live_plans": operations.registro().planes_vivos(),
             }
             if coh["state"] == coherencia.DIFFERENT:
@@ -302,6 +303,13 @@ def register(mcp) -> None:
                     "El modelo en vivo y el proyecto activo son archivos "
                     "DISTINTOS. Las escrituras de informe estan bloqueadas "
                     "hasta resolverlo. " + coh["how_to_fix"]]
+            # Un session.json corrupto no rompe nada AHORA, y por eso hay que
+            # decirlo: se nota al reiniciar, cuando ya nadie lo relaciona.
+            if salida["persisted_session"]["state"] == "corrupt":
+                salida.setdefault("warnings", []).append(
+                    f"{salida['persisted_session']['path']} esta corrupto. "
+                    + salida["persisted_session"]["consequence"] + " "
+                    + salida["persisted_session"]["recovery"])
             return salida
         return guard(_impl)
 

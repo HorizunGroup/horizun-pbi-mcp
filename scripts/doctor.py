@@ -452,8 +452,11 @@ def check_session_freshness(rep: Report, instances: List[Dict[str, Any]]) -> Non
         data = json.loads(session_file.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         rep.add("session", "Sesion persistida", WARN,
-                f"session.json ilegible: {exc}", required=False,
-                hint=f"Puedes borrarlo sin riesgo: {session_file}")
+                f"session.json CORRUPTO: {exc}. El servidor lo conserva sin "
+                "tocar y arranca con la sesion vacia; no persistira nada "
+                "mientras siga asi.", required=False,
+                hint="Miralo y borralo tu si no te dice nada. No se "
+                     f"sobreescribe solo, a proposito: {session_file}")
         return
 
     problems = []

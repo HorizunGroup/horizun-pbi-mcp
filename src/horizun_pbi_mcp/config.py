@@ -41,6 +41,10 @@ except Exception:  # pragma: no cover
     def load_dotenv(*_a, **_k):  # type: ignore
         return False
 
+from horizun_pbi_mcp.logging_config import get_logger
+
+log = get_logger("config")
+
 #: src/horizun_pbi_mcp/config.py -> la raiz del clon es el abuelo de src/.
 #: Solo es "la raiz del proyecto" cuando de verdad se ejecuta desde un clon;
 #: `running_from_checkout()` es quien lo decide, no esta constante.
@@ -247,6 +251,9 @@ class Session:
         self._verified_identity: Optional[tuple[Any, ...]] = None
         self._verified_at_monotonic: Optional[float] = None
         self._session_file = settings.outputs_dir / "session.json"
+        # Lo pone `_load_persisted`; se declara aqui para que `_persist`
+        # nunca pueda mirarlo antes de que exista.
+        self._session_corrupta: Optional[str] = None
         self._load_persisted()
 
     # -- modelo activo --
@@ -391,7 +398,40 @@ class Session:
             return self._active_pbip
 
     # -- persistencia best-effort --
+    @property
+    def persisted_state(self) -> Dict[str, Any]:
+        """Que le paso al `session.json` al arrancar.
+
+        `ok` cuando se leyo (o no existia); `corrupt` cuando existe y no es
+        JSON valido. En ese caso el archivo NO se toca —ni se reescribe, ni se
+        renombra, ni se borra— y la sesion arranca en blanco. Es el unico
+        estado que hay que contar hacia fuera: todo lo demas sigue igual, pero
+        el modelo y el proyecto activos ya no sobreviven a un reinicio y nadie
+        se enteraria.
+        """
+        estado: Dict[str, Any] = {"path": str(self._session_file),
+                                  "state": "corrupt" if self._session_corrupta
+                                  else "ok"}
+        if self._session_corrupta:
+            estado["reason"] = self._session_corrupta
+            estado["consequence"] = (
+                "La sesion arranco vacia y no se persistira nada mientras el "
+                "archivo siga asi: el modelo y el proyecto activos se perderan "
+                "al reiniciar.")
+            estado["recovery"] = (
+                "Miralo y borralo tu si no te dice nada. No se sobreescribe "
+                "solo, a proposito: nadie sabe que habia dentro.")
+        return estado
+
     def _persist(self) -> None:
+        if self._session_corrupta:
+            # Invariante: no se pisa un JSON que no parsea. Perder la sesion
+            # persistida es reversible; destruir el archivo que explica que
+            # paso, no.
+            log.warning(
+                "No se persiste la sesion: %s esta corrupto (%s). Se deja "
+                "intacto.", self._session_file, self._session_corrupta)
+            return
         data = {
             "active_model": self._active_model.to_dict() if self._active_model else None,
             "active_pbip": self._active_pbip.to_dict() if self._active_pbip else None,
@@ -408,17 +448,33 @@ class Session:
             pass
 
     def _load_persisted(self) -> None:
+        self._session_corrupta: Optional[str] = None
+        if not self._session_file.exists():
+            return
         try:
-            if self._session_file.exists():
-                data = json.loads(self._session_file.read_text(encoding="utf-8"))
-                am = data.get("active_model")
-                ap = data.get("active_pbip")
-                if am:
-                    self._active_model = ActiveModel(**am)
-                if ap:
-                    self._active_pbip = ActivePbip(**ap)
-        except (OSError, ValueError, TypeError):
-            pass
+            crudo = self._session_file.read_text(encoding="utf-8")
+        except OSError:
+            return
+        try:
+            data = json.loads(crudo)
+        except ValueError as exc:
+            # Antes se ignoraba en silencio y el primer `_persist()` lo pisaba.
+            self._session_corrupta = f"{type(exc).__name__}: {exc}"
+            log.error("session.json corrupto, se conserva sin tocar: %s (%s)",
+                      self._session_file, exc)
+            return
+        try:
+            am = data.get("active_model") if isinstance(data, dict) else None
+            ap = data.get("active_pbip") if isinstance(data, dict) else None
+            if am:
+                self._active_model = ActiveModel(**am)
+            if ap:
+                self._active_pbip = ActivePbip(**ap)
+        except (TypeError, AttributeError) as exc:
+            # JSON valido pero con otra forma: no es corrupcion del archivo, y
+            # reescribirlo con la forma buena es justo lo que toca.
+            log.warning("session.json no tiene la forma esperada (%s): se "
+                        "ignora su contenido.", exc)
 
 
 # --- singletons de proceso ---
