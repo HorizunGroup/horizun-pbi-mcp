@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.2.0** — 128 tools, 1793 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
+**v1.3.0** — 128 tools, 2006 tests passed (1 skipped, with their condition documented). Covers two complementary layers:
 
 | Layer | For what | How |
 |---|---|---|

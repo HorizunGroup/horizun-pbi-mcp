@@ -5,6 +5,60 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.3.0] — 2026-08-05
+
+One new tool (128 total), zero breaking changes. Two defects found writing a
+real 5D dashboard, two more found reviewing the fix for the first two, and all
+of them the same shape: **the server knew something and acted as if it
+didn't.** Every fix verified by mutation.
+
+### Added
+
+- **Custom visuals in page writing** — third-party visuals by GUID, with the
+  role contract **discovered** from
+  `<Report>/CustomVisuals/<GUID>/resources/<GUID>.pbiviz.json`, never
+  hardcoded. Validated as strictly as a native; native contracts deliberately
+  not applied to third parties. `catalog describe <GUID>` does not work for
+  them, so inherited container chrome is judged against a native catalog and
+  sanitized (real templates carry `dropShadow.preset='Outer'`, invalid per the
+  official catalog and tolerated by Desktop).
+- **`pbi_reflow_pages`** — rescales already-written pages to another system's
+  canvas and recomputes the decorative text colour baked in at composition
+  time. Does not recompose. `dry_run=true` by default.
+
+### Fixed
+
+- **The two server states could diverge silently.** `active_model` and
+  `active_pbip` were never cross-checked and can point at different clients'
+  files while every response looks normal. Now crossed at
+  `assert_escritura_pbir`. Blocks on confirmed divergence, **never on
+  `unknown`**.
+- **Live measures were ephemeral and said so in a footnote.** `mode='live'`
+  now returns `persisted: false` plus a warning stating the consequence, and
+  the envelope escalates to `WARNING`.
+- **Changing the canvas left orphans off-screen.** `merge` warns before the
+  damage with the count, the ids and both ways out; applying a design system
+  reports how many pages it leaves on another canvas.
+- **Idempotency could authorise the same mutation twice**, four ways:
+  the reservation was not atomic (now a per-`request_id` lock across threads
+  and processes, plus `O_CREAT|O_EXCL`); a stale `in_flight` was reclaimed on
+  age alone (no automatic reclaim — `request_outcome_unknown` with
+  `safe_to_retry=false`, non-reusable `attempt_id` and compare-and-set on
+  close); `safe_to_retry` was stored and never consulted; and the TTL deleted
+  uncertain state, `in_flight` included.
+- **Corrupt JSON was overwritten.** Idempotency records and `session.json`
+  both fail closed now and are preserved byte for byte, with a recovery path.
+  Nothing is renamed, moved or deleted automatically. An `OSError` while
+  reading is no longer treated as absence.
+
+### Changed
+
+- `pbi_session_info` gains `persisted_session` (additive).
+- `descartar_en_vuelo()` — explicit recovery for an uncertain outcome. Service
+  function, deliberately not an MCP tool in this release.
+
+---
+
 ## [1.2.0] — 2026-08-04
 
 The four phases of the product vision, shipped. Six new tools (127 total);
