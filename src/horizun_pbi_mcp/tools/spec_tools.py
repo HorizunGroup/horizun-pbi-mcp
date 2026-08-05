@@ -24,7 +24,17 @@ def _active():
 
 
 def _compilar(spec: Dict[str, Any], seed: str = ""):
-    return page_spec.compile_spec(_active(), spec, _model_data(), seed=seed)
+    datos = _model_data()
+    compilado = page_spec.compile_spec(_active(), spec, datos, seed=seed)
+    # Si los campos se validaron contra el modelo EN VIVO en vez del TMDL, la
+    # respuesta tiene que decirlo: una medida no guardada pasa la comprobacion
+    # y desaparece al cerrar Desktop, dejando la pagina rota en disco.
+    from horizun_pbi_mcp.tools.visual_tools import drenar_avisos_de_fuente
+
+    avisos = drenar_avisos_de_fuente()
+    if avisos:
+        compilado.setdefault("warnings", []).extend(avisos)
+    return compilado
 
 
 def register(mcp) -> None:

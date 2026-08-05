@@ -128,13 +128,29 @@ def assert_pbir_soportado(active: ActivePbip, operation: str) -> str:
 
 
 def assert_escritura_pbir(active: ActivePbip, operation: str) -> None:
-    """Puerta unica de toda escritura PBIR: formato soportado + Desktop cerrado.
+    """Puerta unica de toda escritura PBIR.
 
-    El orden importa: primero el formato, porque si no sabemos escribirlo da
-    igual que Desktop este cerrado.
+    Tres comprobaciones, en este orden:
+
+    1. **Formato soportado**: si no sabemos escribirlo, lo demas da igual.
+    2. **Desktop cerrado**: su Ctrl+S sobrescribiria lo que escribamos.
+    3. **El modelo vivo y este proyecto son el MISMO archivo**. Es la mas
+       nueva y nace de un incidente real: `pbi_select_model` servia el modelo
+       de un `.pbix` mientras el proyecto activo era otro `.pbip`, de otro
+       cliente, y se estuvo a punto de escribirle cuatro paginas al informe
+       equivocado. Solo se detecto porque el conteo de visuales no cuadraba.
+       Se niega igual que se niega con Desktop abierto —el precedente ya
+       existe y funciona—, pero SOLO ante una divergencia confirmada: si no se
+       puede verificar, se deja pasar. Negarse por no poder comprobar
+       convertiria un permiso denegado en una sesion inservible.
     """
     assert_pbir_soportado(active, operation)
     project_state.assert_writable(active, operation=operation)
+
+    from horizun_pbi_mcp.config import get_session
+    from horizun_pbi_mcp.services import coherencia
+
+    coherencia.assert_coherente(get_session(), operation)
 
 
 def report_capabilities(active: ActivePbip) -> Dict[str, Any]:

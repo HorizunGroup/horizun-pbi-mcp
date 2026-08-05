@@ -35,6 +35,32 @@ LIVE_NOTE = (
     "guardado en el archivo, usa Ctrl+S en Power BI Desktop."
 )
 
+#: Aviso PROMINENTE de que lo escrito es efimero.
+#:
+#: Antes esto viajaba solo como `note`, una nota al pie que se lee al final o
+#: no se lee. Paso lo previsible: se crearon cinco medidas en vivo, Desktop se
+#: cerro sin guardar, y las paginas que YA las referenciaban quedaron con
+#: "Hubo un problema con uno o mas campos" en cuatro tarjetas. Ninguna
+#: validacion lo detecta porque cada mitad -informe en disco y modelo en
+#: memoria- es valida por separado.
+#:
+#: Ahora sale `persisted: False` y un warning, que ademas hace que el envelope
+#: marque la respuesta como WARNING en vez de exito limpio: quien la lea por
+#: encima ve igualmente que algo queda pendiente.
+_AVISO_EFIMERO = (
+    "NO PERSISTIDO: este cambio vive SOLO en la memoria de Power BI Desktop. "
+    "Si se cierra sin guardar, desaparece — y cualquier pagina del informe que "
+    "ya lo referencie quedara rota ('Hubo un problema con uno o mas campos'). "
+    "Guarda con Ctrl+S en Desktop, o usa mode='pbip' para escribir en el TMDL, "
+    "que si es duradero."
+)
+
+
+def _efimero() -> Dict[str, Any]:
+    """Campos que acompanan a TODA escritura en vivo."""
+    return {"persisted": False, "note": LIVE_NOTE,
+            "warnings": [_AVISO_EFIMERO]}
+
 
 def _find_table(mdl, table_name: str):
     wanted = table_name.casefold()
@@ -195,7 +221,7 @@ def create_measure(
         _save_changes(mdl, "create_measure", table=target.Name, measure=name)
         after = _snapshot(measure)
     return {"action": action, "table": target.Name, "before": before,
-            "after": after, "note": LIVE_NOTE}
+            "after": after, **_efimero()}
 
 
 def update_measure(
@@ -227,7 +253,7 @@ def update_measure(
         _save_changes(mdl, "update_measure", table=owner.Name, measure=name)
         after = _snapshot(measure)
     return {"action": "updated", "table": owner.Name, "before": before, "after": after,
-            "note": LIVE_NOTE}
+            **_efimero()}
 
 
 def set_column_hidden(session: Session, table: str, column: str,
@@ -250,7 +276,7 @@ def set_column_hidden(session: Session, table: str, column: str,
         col.IsHidden = bool(hidden)
         _save_changes(mdl, "set_column_hidden", table=t.Name, column=col.Name)
     return {"table": table, "column": column, "before_hidden": before,
-            "after_hidden": bool(hidden), "note": LIVE_NOTE}
+            "after_hidden": bool(hidden), **_efimero()}
 
 
 def _find_column(mdl, table_name: str, column_name: str, index: int):
@@ -329,7 +355,7 @@ def set_columns_hidden_bulk(session: Session, entries: List[Dict[str, str]],
         _save_changes(mdl, "set_columns_hidden_bulk", columns=len(entries))
 
     return {"changed": sum(1 for r in resultados if r["changed"]),
-            "results": resultados, "save_changes_calls": 1, "note": LIVE_NOTE}
+            "results": resultados, "save_changes_calls": 1, **_efimero()}
 
 
 def set_relationship_crossfilter(session: Session, from_table: str, to_table: str,
@@ -366,7 +392,7 @@ def set_relationship_crossfilter(session: Session, from_table: str, to_table: st
         _save_changes(mdl, "set_relationship_crossfilter",
                       from_table=from_table, to_table=to_table)
     return {"matched": matched, "direction": direction, "changes": changes,
-            "note": LIVE_NOTE}
+            **_efimero()}
 
 
 def delete_measure(session: Session, table: str, name: str) -> Dict[str, Any]:
@@ -379,4 +405,4 @@ def delete_measure(session: Session, table: str, name: str) -> Dict[str, Any]:
         before = _snapshot(measure)
         owner.Measures.Remove(measure)
         _save_changes(mdl, "delete_measure", table=owner.Name, measure=name)
-    return {"action": "deleted", "table": owner.Name, "before": before, "note": LIVE_NOTE}
+    return {"action": "deleted", "table": owner.Name, "before": before, **_efimero()}
