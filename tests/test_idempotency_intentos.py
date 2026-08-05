@@ -190,8 +190,12 @@ def test_descartar_es_lo_unico_que_reabre(store):
     r = idempotency.descartar_en_vuelo(store, "r1", motivo="el cambio no estaba")
     assert r["discarded"] is True and r["state"] == idempotency.FAILED
     est = idempotency.estado(store, "r1")
-    assert est["safe_to_retry"] is False, (
-        "se reabre, pero sin mentir sobre si era seguro")
+    assert est["safe_to_retry"] is True, (
+        "descartar ES la afirmacion humana de que el cambio no se aplico, y "
+        "por tanto de que reintentar es seguro; ahora que el veredicto "
+        "gobierna la autorizacion, tiene que decir lo que se comprobo")
+    assert est["error"]["reviewed_by_human"] is True, (
+        "y hay que poder distinguirlo de un fallo que se declaro seguro solo")
 
     assert idempotency.comenzar_intento(store, "r1", "op", PAYLOAD).hay_que_ejecutar
 

@@ -433,10 +433,12 @@ class Store:
             # Antes esto devolvia None y la llamada siguiente lo pisaba.
             log.error("Registro de idempotencia corrupto: %s (%s)", f, exc)
             raise self._corrupto(f, request_id) from exc
-        reg = Registro.from_dict(datos)
-        if time.time() - reg.created_at > TTL_SECONDS:
-            return None
-        return reg
+        # El TTL ya NO se aplica aqui. Ocultar un registro por viejo convertia
+        # "caducado" en "no existe": un in_flight o un fallo inseguro de mas
+        # de 24h volvia a autorizarse —el reclaim inseguro, por la puerta del
+        # calendario—. Quien caduca es `purgar()`, y solo lo terminal
+        # inequivocamente seguro.
+        return Registro.from_dict(datos)
 
     def _no_pisar_corrupto(self, request_id: str) -> None:
         """Invariante: nunca se sobreescribe un JSON que no parsea."""
@@ -503,17 +505,42 @@ class Store:
             pass
 
     def purgar(self) -> int:
-        """Elimina registros caducados. Devuelve cuantos."""
+        """Elimina SOLO lo terminal inequivocamente seguro y caducado.
+
+        Purgar era la otra puerta del reclaim: borraba por edad cualquier
+        registro —incluido un `in_flight` o un fallo inseguro— y el siguiente
+        `comenzar()` con ese request_id volvia a autorizarse. **La duda no
+        prescribe**: lo incierto se queda hasta que una persona lo resuelva.
+
+        Se puede ir: `succeeded`, `compensated` y `failed` con
+        `safe_to_retry=True`, pasado el TTL. Se queda: todo `in_flight`, los
+        fallos inseguros o sin veredicto, y lo corrupto o ilegible, que es
+        evidencia.
+
+        Cada borrado se decide bajo la exclusion de SU request_id, releyendo
+        el registro con el cerrojo tomado: entre ver el archivo y borrarlo,
+        otra llamada pudo reabrir la peticion, y borrar eso seria matar un
+        intento vivo por una lectura vieja.
+        """
         if not self.root.exists():
             return 0
         n = 0
         for f in self.root.glob("*.json"):
             try:
-                datos = json.loads(f.read_text(encoding="utf-8"))
-                if time.time() - datos.get("created_at", 0) > TTL_SECONDS:
+                with _exclusion(self, f.stem):
+                    reg = self.leer(f.stem)
+                    if reg is None or \
+                            time.time() - reg.created_at <= TTL_SECONDS:
+                        continue
+                    if reg.state == IN_FLIGHT:
+                        continue              # incierto: no prescribe
+                    if reg.state == FAILED and reg.safe_to_retry is not True:
+                        continue              # inseguro o sin veredicto
                     f.unlink(missing_ok=True)
                     n += 1
-            except (ValueError, OSError):
+            except PowerBIMCPError:
+                continue                      # corrupto/ilegible: evidencia
+            except OSError:                                 # pragma: no cover
                 continue
         return n
 
@@ -626,11 +653,56 @@ def _decidir(store: Store, request_id: str, operation: str, fp: str):
             return _EN_VUELO, reg
         raise _desconocido(reg)
 
-    # failed / compensated: acabaron, y acabaron mal. Reintentar es la via
-    # prevista, asi que se reabre con un intento NUEVO.
-    nuevo = _nuevo_intento(request_id, operation, fp)
-    store.escribir(nuevo)
-    return _EJECUTAR, nuevo.attempt_id
+    if reg.state == COMPENSATED or (reg.state == FAILED
+                                    and reg.safe_to_retry is True):
+        # Reintentar es seguro DECLARADO: compensated deshizo el cambio
+        # entero, y el failed lo afirmo quien lo cerro. Solo con esa
+        # afirmacion se reabre. Antes se reabria CUALQUIER failed sin mirar
+        # el veredicto, y un `bulk_partially_applied` cerrado con
+        # safe_to_retry=False se ejecutaba dos veces con el mismo request_id:
+        # guardar el veredicto y no consultarlo es no tenerlo.
+        nuevo = _nuevo_intento(request_id, operation, fp)
+        store.escribir(nuevo)
+        return _EJECUTAR, nuevo.attempt_id
+
+    if reg.state == FAILED and reg.safe_to_retry is False \
+            and isinstance(reg.error, dict):
+        # Fallo declarado NO seguro: se reproduce lo que paso, sin ejecutar.
+        # La raiz lleva el veredicto aunque el error guardado no lo trajera.
+        salida = dict(reg.error)
+        salida["idempotent_replay"] = True
+        salida["safe_to_retry"] = False
+        return _REPRODUCIR, salida
+
+    # failed sin veredicto (registro de una version anterior o cierre
+    # incompleto), inseguro sin error que reproducir, o un estado que este
+    # codigo no conoce: no hay base para autorizar nada.
+    raise _fallo_sin_permiso(reg)
+
+
+def _fallo_sin_permiso(reg: Registro) -> ResultadoDesconocidoError:
+    """Un fallo sin veredicto de reintento no autoriza nada.
+
+    `safe_to_retry=None` lo dejan los registros de versiones anteriores y los
+    cierres que no llegaron a declararlo. Tratarlo como "si se puede" seria
+    decidir por quien no dijo nada, que es como volvio la carrera la ultima
+    vez.
+    """
+    motivo = ("sin veredicto de reintento" if reg.safe_to_retry is None
+              else "declarado NO seguro de reintentar y sin resultado "
+                   "guardado que reproducir")
+    return ResultadoDesconocidoError(
+        f"El request_id '{reg.request_id}' termino en '{reg.state}' {motivo}. "
+        "No se autoriza otra ejecucion con ese mismo request_id.",
+        details={"request_id": reg.request_id, "operation": reg.operation,
+                 "state": reg.state,
+                 "stored_safe_to_retry": reg.safe_to_retry,
+                 "safe_to_retry": False,
+                 "recovery": (
+                     "Comprueba en el proyecto si el cambio se aplico. Si NO "
+                     "se aplico y quieres reintentar, usa un request_id nuevo "
+                     "o borra el registro a mano. Si se aplico, no "
+                     "reintentes.")})
 
 
 def _desconocido(reg: Registro) -> ResultadoDesconocidoError:
@@ -737,10 +809,19 @@ def descartar_en_vuelo(store: Store, request_id: str, *,
     """Recuperacion EXPLICITA de una peticion con resultado desconocido.
 
     El servidor no hace esto solo, y ese es el punto: quien lo llama esta
-    afirmando que ha mirado el proyecto y que el cambio no se aplico. Queda
-    como `failed` con `safe_to_retry=False`, para que el registro siga
-    contando lo que paso, y el siguiente intento con ese `request_id` se
-    autoriza con identidad nueva.
+    afirmando que ha mirado el proyecto y que el cambio NO se aplico.
+
+    Esa afirmacion es exactamente lo que hace seguro reintentar, asi que el
+    registro queda como `failed` con `safe_to_retry=True`. Guardar `False` y
+    reabrir igualmente —como se hacia— era incoherente por los dos lados a la
+    vez: el registro decia una cosa y la autorizacion hacia la contraria.
+    Ahora que el veredicto GOBIERNA la autorizacion, tiene que decir la
+    verdad de lo que se acaba de comprobar.
+
+    No es una compensacion: `compensated` significa que el servidor deshizo
+    el cambio y puede demostrarlo. Aqui no se deshizo nada; alguien miro y
+    dijo que nunca llego a haberlo. Por eso el estado es `failed` con el
+    motivo dentro, y no `compensated`.
     """
     with _exclusion(store, request_id):
         actual = store.leer(request_id)
@@ -751,8 +832,9 @@ def descartar_en_vuelo(store: Store, request_id: str, *,
             return {"request_id": request_id, "discarded": False,
                     "reason": f"No esta en vuelo, esta en '{actual.state}'."}
         actual.state = FAILED
-        actual.safe_to_retry = False
-        actual.error = {"error": "in_flight_discarded", "message": motivo}
+        actual.safe_to_retry = True
+        actual.error = {"error": "in_flight_discarded", "message": motivo,
+                        "reviewed_by_human": True}
         # Identidad nueva: el intento viejo, si despierta, ya no es el dueno y
         # no podra pisar lo que escriba el siguiente.
         actual.attempt_id = uuid.uuid4().hex

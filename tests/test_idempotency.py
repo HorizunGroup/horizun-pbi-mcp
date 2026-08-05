@@ -259,14 +259,22 @@ def test_request_id_malicioso_no_escribe_fuera(store):
 
 
 def test_caducados_se_purgan(store, monkeypatch):
+    """Caduca lo que ACABO bien. Lo incierto no prescribe.
+
+    Antes caducaba cualquier cosa por edad, `in_flight` incluido, y eso era
+    el reclaim inseguro por la puerta del calendario: pasadas 24h el mismo
+    request_id volvia a autorizarse. Lo que se puede purgar y lo que no tiene
+    su propio archivo: `tests/test_idempotency_veredicto_y_purgado.py`.
+    """
     idempotency.comenzar(store, "viejo", "op", PAYLOAD)
+    idempotency.terminar_ok(store, "viejo", "op", PAYLOAD, {"ok": True})
     f = store.root / "viejo.json"
     datos = json.loads(f.read_text(encoding="utf-8"))
     datos["created_at"] = time.time() - idempotency.TTL_SECONDS - 10
     f.write_text(json.dumps(datos), encoding="utf-8")
 
-    assert store.leer("viejo") is None, "un registro caducado no se reproduce"
     assert store.purgar() == 1
+    assert store.leer("viejo") is None, "ya no esta: se purgo"
 
 
 # ================================================ extremo a extremo por tool ==
