@@ -22,6 +22,25 @@ RELOAD_HINT = (
 )
 
 
+#: Aviso que se emite cuando los campos se validaron contra el modelo EN VIVO
+#: en vez del TMDL. Se acumula aqui y las tools lo vacian en su respuesta.
+_AVISO_FUENTE_VIVA = (
+    "Los campos se validaron contra el modelo EN VIVO (este proyecto no tiene "
+    "TMDL). Una medida creada con mode='live' y no guardada pasa esta "
+    "comprobacion y desaparece al cerrar Power BI Desktop: la pagina queda en "
+    "disco referenciando algo que ya no existe. Guarda con Ctrl+S antes de "
+    "cerrar."
+)
+_AVISOS_DE_FUENTE: List[str] = []
+
+
+def drenar_avisos_de_fuente() -> List[str]:
+    """Devuelve y limpia los avisos sobre la fuente del modelo."""
+    avisos = list(dict.fromkeys(_AVISOS_DE_FUENTE))
+    _AVISOS_DE_FUENTE.clear()
+    return avisos
+
+
 def _model_data() -> Optional[Dict[str, Any]]:
     """Modelo contra el que se resuelven los campos al escribir en el informe.
 
@@ -39,6 +58,18 @@ def _model_data() -> Optional[Dict[str, Any]]:
         if session.active_pbip and session.active_pbip.has_tmdl:
             return tmdl_reader.read_semantic_model(session.active_pbip)
         if session.active_model:
+            # RESPALDO, y conviene saber que se esta usando: aqui las
+            # referencias se validan contra un modelo EN MEMORIA. Una medida
+            # creada con mode='live' y no guardada existe para esta
+            # comprobacion y desaparece al cerrar Desktop, dejando la pagina
+            # -que si quedo en disco- con "Hubo un problema con uno o mas
+            # campos". Paso de verdad, con cinco medidas y cuatro tarjetas.
+            # No se puede impedir desde aqui, pero callarlo es peor.
+            log.warning(
+                "Sin TMDL: los campos se validan contra el modelo EN VIVO. Lo "
+                "que no este guardado en Desktop no sobrevivira, y las paginas "
+                "que lo referencien quedaran rotas.")
+            _AVISOS_DE_FUENTE.append(_AVISO_FUENTE_VIVA)
             return model_reader.read_model(session)
     except Exception as exc:  # noqa: BLE001
         # Si hay una fuente autoritativa pero esta rota, None significaria

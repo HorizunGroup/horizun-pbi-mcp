@@ -141,6 +141,18 @@ def register(mcp) -> None:
                 f"{Path(pbip.pbip_path).name}" if pbip else "sin proyecto activo",
                 requerido=False)
 
+            # Con los dos estados activos hay una pregunta que ninguna otra
+            # comprobacion hacia: ¿son el MISMO archivo? Puede haber un modelo
+            # de un cliente y un proyecto de otro, y cada mitad valida sola.
+            from horizun_pbi_mcp.services import coherencia
+
+            coh = coherencia.check(session)
+            if coh["state"] != coherencia.NOT_APPLICABLE:
+                add("model_matches_project",
+                    coh["state"] != coherencia.DIFFERENT,
+                    coh["reason"],
+                    requerido=coh["state"] == coherencia.DIFFERENT)
+
             pendientes = []
             if pbip is not None:
                 try:
@@ -271,12 +283,26 @@ def register(mcp) -> None:
                              "desktop_state": estado_proyecto.to_dict(),
                              "writable": estado_proyecto.writable}
 
-            return {
+            # La pregunta que ninguna validacion cruzaba: ¿el modelo en vivo
+            # y el proyecto en disco son el MISMO archivo? Pueden ser de
+            # clientes distintos y todo responder con normalidad, porque cada
+            # mitad es valida por separado.
+            from horizun_pbi_mcp.services import coherencia
+
+            coh = coherencia.check(session)
+            salida = {
                 "active_model": info_modelo,
                 "active_pbip": info_pbip,
+                "coherence": coh,
                 "outputs_dir": str(get_settings().outputs_dir),
                 "live_plans": operations.registro().planes_vivos(),
             }
+            if coh["state"] == coherencia.DIFFERENT:
+                salida["warnings"] = [
+                    "El modelo en vivo y el proyecto activo son archivos "
+                    "DISTINTOS. Las escrituras de informe estan bloqueadas "
+                    "hasta resolverlo. " + coh["how_to_fix"]]
+            return salida
         return guard(_impl)
 
     @mcp.tool()

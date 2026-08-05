@@ -186,6 +186,28 @@ def situacion(session) -> Dict[str, Any]:
             "propuesta y el sistema de diseño lo leen."))
 
     # --- lo que BLOQUEA va primero: no tiene sentido sugerir algo imposible --
+    from horizun_pbi_mcp.services import coherencia
+
+    coh = coherencia.check(session)
+    proyecto["coherence"] = {"state": coh["state"], "reason": coh["reason"]}
+    if coh["state"] == coherencia.DIFFERENT:
+        # Antes que cualquier otra cosa: el modelo que se consulta NO describe
+        # el informe que se va a escribir, y todo lo demas se leeria como si si.
+        frases.append(
+            "AVISO GRAVE: el modelo en vivo y este proyecto son archivos "
+            "DISTINTOS. Lo que consultes con DAX no describe el informe que "
+            "vas a escribir, y las escrituras de informe estan bloqueadas.")
+        pasos.append(_paso(
+            "pbi_list_desktop_models",
+            "Resuelve la divergencia antes de nada: elige el Desktop que "
+            "tiene abierto ESTE proyecto, o abre el proyecto del modelo que "
+            "estas consultando."))
+    elif coh["state"] == coherencia.UNKNOWN:
+        frases.append(
+            "No se pudo comprobar que el modelo en vivo corresponda a este "
+            "proyecto (permisos). No se bloquea nada, pero conviene verificarlo "
+            "antes de escribir.")
+
     if estado.state == project_state.OPEN:
         frases.append(
             "Esta ABIERTO en Power BI Desktop, asi que el modelo (TMDL) no se "
