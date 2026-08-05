@@ -415,8 +415,36 @@ def aplicar(active: Any, system: str) -> Dict[str, Any]:
     haga sobre las mismas guias.
     """
     s = tokens(system)
+
+    # Que pasa con lo que YA existe. Aplicar un sistema cambia el tema del
+    # informe entero, pero NO reescribe las paginas ya compuestas: se quedan
+    # con el lienzo anterior y con los colores que se cocieron al componerlas.
+    # Callarlo es lo que dejo titulos blancos sobre fondo blanco y visuales
+    # fuera de limites que solo aparecen al abrir.
+    from horizun_pbi_mcp.services import reflow
+
+    try:
+        desajustadas = reflow.paginas_con_otro_lienzo(active, s["canvas"])
+    except Exception:                                    # noqa: BLE001
+        desajustadas = []
+
     resultado = theme_mod.apply_theme(active, theme_mod.build_theme(s["theme"]))
     log.info("Sistema de diseño '%s' aplicado (tema %s).", system, s["theme"])
-    return {"system": system, "title": s["titulo"], "canvas": s["canvas"],
-            "grid": s["grid"], "typography": s["tipografia"],
-            "color": s["color"], **resultado}
+    salida = {"system": system, "title": s["titulo"], "canvas": s["canvas"],
+              "grid": s["grid"], "typography": s["tipografia"],
+              "color": s["color"], **resultado}
+    if desajustadas:
+        salida["pages_with_other_canvas"] = desajustadas
+        # Las comillas anidadas dentro del f-string son de Python 3.12 (PEP
+        # 701) y aqui se soporta 3.10: la lista se arma fuera.
+        lienzos = sorted({"{:.0f}x{:.0f}".format(d["canvas"]["width"],
+                                                 d["canvas"]["height"])
+                          for d in desajustadas})
+        salida.setdefault("warnings", []).append(
+            f"{len(desajustadas)} pagina(s) siguen con OTRO lienzo "
+            f"({', '.join(lienzos)}) "
+            f"y con los colores del tema anterior: sus titulos pueden quedar "
+            f"ilegibles y sus visuales fuera de limites. Aplicar el sistema NO "
+            f"las reescribe. Usa pbi_reflow_pages(system='{system}') para "
+            f"reescalarlas y recolorearlas.")
+    return salida

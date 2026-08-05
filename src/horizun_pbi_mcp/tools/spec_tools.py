@@ -249,7 +249,13 @@ def register(mcp) -> None:
             if resultado.get("change") != page_update.NO_CHANGE:
                 resultado["validation"] = page_spec.validate_generated_page(
                     active, resultado["page_id"], _model_data())
-            resultado["warnings"] = compilado["warnings"]
+            # Se SUMAN, no se pisan: los del compilado hablan del spec y los
+            # del resultado de lo que quedo escrito —los visuales fuera del
+            # lienzo que merge conserva—. Asignar aqui los del compilado
+            # borraba los segundos justo antes de devolverlos.
+            resultado["warnings"] = (list(compilado["warnings"])
+                                     + [a for a in (resultado.get("warnings") or [])
+                                        if a not in compilado["warnings"]])
             return resultado
         return guard_mutation(_impl)
 

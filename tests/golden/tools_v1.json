@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 127,
+  "tool_count": 128,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -3796,6 +3796,49 @@
       }
     },
     {
+      "name": "pbi_reflow_pages",
+      "description": "Reescala las paginas ya escritas al lienzo de otro sistema.\n\nEl camino de vuelta que faltaba. Aplicar un sistema cambia el tema del\ninforme, pero NO reescribe lo ya compuesto: las paginas se quedan con\nel lienzo anterior —visuales fuera de limites, basura invisible que si\nviaja al render— y con los colores que se cocieron al componerlas: un\ntitulo compuesto en tema oscuro queda BLANCO SOBRE BLANCO al pasar a\nclaro, sin que falle nada.\n\nEsto hace las dos cosas: reescala cada visual proporcionalmente al\nlienzo nuevo (acotandolo si no cabe) y recalcula el color de texto de\nlos elementos decorativos con el tema del sistema destino.\n\n**No recompone**: no se puede saber que intencion tenia cada visual, y\nadivinarla seria peor. Si una pagina necesita otra estructura,\nrecomponla con `pbi_compose_page`. Esto la deja utilizable, no optima.\n\n`pages`: subconjunto opcional (id o nombre visible); por defecto todas.\n`dry_run=true` (por defecto) devuelve el plan visual por visual, con\ncuales estaban ya fuera de limites, sin escribir nada.\n\nEscribe en el informe (PBIR): requiere el proyecto CERRADO en Desktop.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "pages": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "system": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "system"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_refresh_model",
       "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
       "params": {
@@ -4521,7 +4564,7 @@
     },
     {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento veintisiete tools con buen nombre siguen siendo ciento veintisiete tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento veintiocho tools con buen nombre siguen siendo ciento veintiocho tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,

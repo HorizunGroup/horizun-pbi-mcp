@@ -29,6 +29,16 @@ un visual no debe regenerar su id.
 
 El defecto por defecto es el conservador: un spec parcial no puede vaciar una
 pagina por omision.
+
+Lo conservador tiene un precio, y hay que decirlo
+------------------------------------------------
+Si el lienzo del spec no es el de la pagina —se recompuso con otro sistema de
+diseno— los visuales que `merge` conserva se quedan con las coordenadas del
+lienzo VIEJO. Los que no caben en el nuevo no desaparecen: quedan fuera de
+limites, invisibles al abrir el informe pero presentes en el render y en la
+publicacion, y solo se descubren con `pbi_detect_layout_issues`. Paso de
+verdad al pasar de 1920x1080 a 1280x720. Ahora se avisa ANTES, con la cuenta
+hecha y con las dos salidas: `sync_mode='replace'` o `pbi_reflow_pages`.
 """
 from __future__ import annotations
 
@@ -135,6 +145,44 @@ def planificar(active: ActivePbip, compilado: Dict[str, Any], *,
     return _planificar_update(active, compilado, page_id, sync_mode)
 
 
+def _avisar_de_los_que_quedan_fuera(sobrantes: List[Dict[str, Any]],
+                                    pagina_actual: Dict[str, Any],
+                                    canvas_nuevo: Dict[str, Any]
+                                    ) -> Dict[str, Any]:
+    """Los que `merge` conserva y ya no caben en el lienzo del spec.
+
+    Solo cuenta como fuera de limites lo que se sale del lienzo NUEVO: si el
+    lienzo no cambia, un visual que ya estaba mal colocado se avisa igual, que
+    para el que lee es el mismo problema.
+    """
+    ancho = float(canvas_nuevo.get("width") or 0)
+    alto = float(canvas_nuevo.get("height") or 0)
+    if not sobrantes or not ancho or not alto:
+        return {"ids": [], "warnings": []}
+
+    fuera = []
+    for v in sobrantes:
+        pos = v.get("position") or {}
+        x, y = float(pos.get("x") or 0), float(pos.get("y") or 0)
+        w, h = float(pos.get("width") or 0), float(pos.get("height") or 0)
+        if x + w > ancho or y + h > alto:
+            fuera.append(v["id"])
+    if not fuera:
+        return {"ids": [], "warnings": []}
+
+    viejo = (float(pagina_actual.get("width") or 0),
+             float(pagina_actual.get("height") or 0))
+    cambio = viejo != (ancho, alto) and all(viejo)
+    porque = (f"El lienzo pasa de {viejo[0]:.0f}x{viejo[1]:.0f} a "
+              f"{ancho:.0f}x{alto:.0f} y " if cambio else "")
+    return {"ids": fuera, "warnings": [
+        f"{porque}{len(fuera)} visual(es) de la composicion anterior quedan "
+        f"FUERA del lienzo y sync_mode='merge' los conserva: {fuera}. No se "
+        "ven al abrir el informe, pero si viajan al render y a la "
+        "publicacion. Usa sync_mode='replace' para eliminarlos, o "
+        "pbi_reflow_pages para reescalar la pagina entera al lienzo nuevo."]}
+
+
 def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
                        page_id: str, sync_mode: str) -> Dict[str, Any]:
     pdir = pbir_reader.pages_dir(active)
@@ -191,6 +239,10 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
     if sync_mode == REPLACE:
         borrados = [Path(v["file"]) for v in sobrantes]
 
+    avisos = _avisar_de_los_que_quedan_fuera(
+        sobrantes if sync_mode == MERGE else [], actual_pagina,
+        compilado["canvas"])
+
     # page.json: solo lo que el spec declara.
     nueva_pagina = dict(actual_pagina)
     nueva_pagina["displayName"] = compilado["page_name"]
@@ -218,6 +270,8 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
         "kept": kept, "added": added, "updated": updated,
         "removed": [v["id"] for v in (sobrantes if sync_mode == REPLACE else [])],
         "not_removed": [v["id"] for v in (sobrantes if sync_mode == MERGE else [])],
+        "out_of_bounds_kept": avisos["ids"],
+        "warnings": avisos["warnings"],
         "sync_mode": sync_mode,
     }
 

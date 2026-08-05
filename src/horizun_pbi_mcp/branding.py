@@ -3,7 +3,7 @@
 El nombre vive aqui y no repartido por el codigo: renombrar un producto no
 deberia obligar a buscar cadenas sueltas en veinte archivos.
 
-COMPATIBILIDAD: las 127 tools conservan el prefijo `pbi_`. Renombrarlas romperia
+COMPATIBILIDAD: las 128 tools conservan el prefijo `pbi_`. Renombrarlas romperia
 a cualquier cliente ya configurado, y el nombre comercial no es motivo
 suficiente para eso.
 """

@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.2.0** — 127 tools, 1793 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
+**v1.2.0** — 128 tools, 1793 tests passed (3 skipped, with their condition documented). Covers two complementary layers:
 
 | Layer | For what | How |
 |---|---|---|
@@ -22,7 +22,7 @@
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 127 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 128 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -92,7 +92,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 When the first session opens, the plugin runs the full setup automatically in
 the background. Check `pbi_install_status`; once it finishes, restart the
-client and the 127 `pbi_*` tools will be available. There are no downloads or
+client and the 128 `pbi_*` tools will be available. There are no downloads or
 additional scripts the user needs to run manually.
 
 > **Honest technical limit:** there's no dedicated executable, but you do need
@@ -190,7 +190,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 
 ---
 
-## Available tools (127)
+## Available tools (128)
 
 > Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -369,7 +369,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 127 tools are frozen):
+Verify the MCP contract (the 128 tools are frozen):
 
 ```bash
 python -m tests.contract_utils

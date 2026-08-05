@@ -615,8 +615,13 @@ def apply_spec(active: ActivePbip, compilado: Dict[str, Any], *,
     plan = page_update.planificar(active, compilado, page=page,
                                   sync_mode=sync_mode)
     if plan["change"] == page_update.NO_CHANGE:
+        # Los avisos viajan tambien aqui: una pagina que ya coincide con el
+        # spec puede seguir arrastrando visuales fuera del lienzo, y callarlo
+        # porque "no hay nada que escribir" es justo como se descubren tarde.
         return {"change": page_update.NO_CHANGE, "page_id": plan["page_id"],
                 "applied": 0, "summary": page_update.resumen(plan),
+                "warnings": list(plan.get("warnings") or []),
+                "out_of_bounds_kept": list(plan.get("out_of_bounds_kept") or []),
                 "visuals_created": []}
 
     pbir_edit_mod = __import__("horizun_pbi_mcp.services.pbir_edit", fromlist=["x"])
@@ -645,6 +650,8 @@ def apply_spec(active: ActivePbip, compilado: Dict[str, Any], *,
             "added": plan["added"], "updated": plan["updated"],
             "kept": plan["kept"], "removed": plan.get("removed", []),
             "not_removed": plan.get("not_removed", []),
+            "out_of_bounds_kept": list(plan.get("out_of_bounds_kept") or []),
+            "warnings": list(plan.get("warnings") or []),
             "sync_mode": plan["sync_mode"],
             "summary": page_update.resumen(plan),
             "visuals_created": [{"id": v} for v in plan["added"]],

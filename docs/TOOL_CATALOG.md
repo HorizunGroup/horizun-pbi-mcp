@@ -1,4 +1,4 @@
-# Tool catalog — 127
+# Tool catalog — 128
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -25,7 +25,7 @@ tools registered.
 | H — composition, theme and bookmarks | 7 |
 | I — pre-delivery verification | 3 |
 | J — data loading | 2 |
-| L — design and entry point | 4 |
+| L — design and entry point | 5 |
 | M — work cycle | 1 |
 | N — refactoring | 1 |
 | O — session exit | 1 |
@@ -33,7 +33,7 @@ tools registered.
 | Q — data diagnostics | 1 |
 | R — external sources | 1 |
 | S — ecosystem port | 2 |
-| **Total** | **127** |
+| **Total** | **128** |
 
 ---
 
@@ -189,6 +189,7 @@ Close two gaps of the same kind: having the pieces isn't the same as knowing how
 | `pbi_list_design_systems` | Available systems: each one decides theme, canvas, grid and text scale all at once |
 | `pbi_apply_design_system` | Applies the system and returns the grid, to place things by hand on the same guides |
 | `pbi_compose_page` | Composes an entire page on the grid from intent |
+| `pbi_reflow_pages` | The way back after changing system: rescales already-written pages to the new canvas and recomputes the text colour baked in at composition time |
 
 ## Risk classes
 
