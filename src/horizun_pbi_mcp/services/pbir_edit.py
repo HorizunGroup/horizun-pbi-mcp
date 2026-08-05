@@ -168,6 +168,20 @@ def report_capabilities(active: ActivePbip) -> Dict[str, Any]:
             if entrada["template"] is None:
                 entrada["template"] = {"page": pagina["name"], "visual_id": v["id"]}
 
+    # Los personalizados INSTALADOS, con los roles que declara cada manifiesto.
+    # `public_custom_visuals` (de report.json) solo dice que el informe los
+    # descarga de AppSource; esto dice cuales estan de verdad en el proyecto y
+    # QUE roles aceptan, que es lo que hace falta para escribir uno.
+    from horizun_pbi_mcp.pbip import custom_visuals as _cv
+
+    instalados = _cv.discover_for(active)
+    personalizados = {
+        guid: {"display_name": info["display_name"],
+               "version": info["version"],
+               "roles": _cv.role_names(info)}
+        for guid, info in sorted(instalados.items())
+    }
+
     return {
         "pbir_version": version,
         # Coherente con assert_pbir_soportado: sin version NO es soportado.
@@ -177,10 +191,13 @@ def report_capabilities(active: ActivePbip) -> Dict[str, Any]:
         "writable": version in VERSIONES_SOPORTADAS,
         "theme": tema,
         "public_custom_visuals": custom,
+        "custom_visuals_installed": personalizados,
         "visual_types_present": tipos,
         "clonable_types": sorted(tipos),
         "note": ("Solo se pueden crear visuales de tipos ya presentes en el "
-                 "informe: se clona una estructura real en vez de inventarla."),
+                 "informe: se clona una estructura real en vez de inventarla. "
+                 "Los de `custom_visuals_installed` se pueden usar por su GUID "
+                 "en `type`, con los roles que ahi se listan."),
     }
 
 
