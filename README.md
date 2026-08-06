@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.4.0** — 132 tools. Covers two complementary Power BI layers plus verified document exports and read-only SharePoint ingestion:
+**v1.4.0** — 133 tools. Covers two complementary Power BI layers plus verified document exports, report **content** export and read-only SharePoint ingestion:
 
 | Layer | For what | How |
 |---|---|---|
@@ -22,7 +22,7 @@
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 132 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 133 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -93,7 +93,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 When the first session opens, the plugin runs the full setup automatically in
 the background. Check `pbi_install_status`; once it finishes, restart the
-client and the 132 `pbi_*` tools will be available. There are no downloads or
+client and the 133 `pbi_*` tools will be available. There are no downloads or
 additional scripts the user needs to run manually.
 
 > **Honest technical limit:** there's no dedicated executable, but you do need
@@ -195,7 +195,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 
 ---
 
-## Available tools (132)
+## Available tools (133)
 
 > Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -219,6 +219,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 - `pbi_generate_pdf_report` — executive/technical/audit PDF with optional dashboard PNG/JPEG captures.
 - `pbi_sharepoint_list_folder` — lists SharePoint Online folders through Microsoft Graph with pagination and limits.
 - `pbi_sharepoint_download_folder` — staged all-or-nothing download to `outputs/sharepoint/`, verified by size and SHA-256.
+- `pbi_export_report_content` — exports the report **content**: the data behind each visual, or a query the client declares. Needs the live model; refuses to export an unprocessed one instead of writing a blank file.
 
 **Measures (Phase 4)** — `mode: live|pbip|both`, `overwrite`
 - `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructive: `confirm=true`).
@@ -380,7 +381,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 132 tools are frozen):
+Verify the MCP contract (the 133 tools are frozen):
 
 ```bash
 python -m tests.contract_utils

@@ -101,6 +101,63 @@ def test_pdf_incluye_captura_y_se_reabre(proyecto, tmp_path):
     assert "Capturas de los tableros" in text
 
 
+def test_etiqueta_de_objeto_nombra_cada_tipo_de_hallazgo():
+    paginas = {"pg1": "Matriz de Riesgos"}
+    etiqueta = exporting._finding_object_label
+
+    assert etiqueta({"kind": "measure", "name": "Total", "table": "Ventas"}) == \
+        "Medida Total (Ventas)"
+    assert etiqueta({"kind": "column", "name": "Ventas[Monto]"}) == \
+        "Columna Ventas[Monto]"
+    assert etiqueta({"kind": "relationship", "from": "A", "to": "B"}) == \
+        "Relacion A -> B"
+    assert etiqueta({"kind": "visual", "id": "abc123", "type": "textbox",
+                     "page": "pg1"}, paginas) == \
+        "Visual textbox abc123 - pagina Matriz de Riesgos"
+    assert etiqueta({"kind": "visual_group", "visuals": ["a1", "b2"],
+                     "page": "pg1"}, paginas) == \
+        "Visuales a1, b2 - pagina Matriz de Riesgos"
+    # Un grupo con toda la pagina dentro no puede reventar la fila del PDF.
+    assert etiqueta({"kind": "visual_group",
+                     "visuals": [f"v{n}" for n in range(7)]}) == \
+        "Visuales v0, v1, v2, v3, (+3 mas)"
+    assert etiqueta({"kind": "page", "page": "pg1", "name": "P1"}) == "Pagina P1"
+    assert etiqueta({"kind": "page", "page": "pg1"}, paginas) == \
+        "Pagina Matriz de Riesgos"
+    assert etiqueta({"kind": "model"}) == "Modelo"
+    assert etiqueta(None) == "" and etiqueta({}) == ""
+
+
+def test_texto_del_hallazgo_no_vuelca_json_crudo():
+    # Los motores de auditoria no producen `message`: solo `evidence`.
+    assert exporting._finding_message(
+        {"evidence": {"visual_count": 13, "threshold": 12}}) == \
+        "visual_count: 13; threshold: 12"
+    assert exporting._finding_message(
+        {"evidence": {"visuals": ["a", "b"]}}) == "visuals: a, b"
+    assert exporting._finding_message({"evidence": {}}) == ""
+    # Ni `None` ni `False` de Python deben llegar a un reporte que lee alguien.
+    assert exporting._finding_message(
+        {"evidence": {"title": None, "has_description": False}}) == \
+        "title: (vacio); has_description: no"
+    assert exporting._finding_message(
+        {"message": "Explicito", "evidence": {"x": 1}}) == "Explicito"
+
+
+def test_pdf_de_auditoria_nombra_el_objeto_de_cada_hallazgo(proyecto):
+    result = exporting.generate_pdf_report(
+        proyecto, source="pbip", report_type="audit", include_audit=True)
+
+    reader = PdfReader(result["output_path"])
+    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    assert result["findings_included"] >= 1
+    # El reporte de auditoria no lista las tablas del modelo: si aparece
+    # "Ventas" es porque el hallazgo de la medida por fin dice de quien habla.
+    assert "Ventas" in text and "Total" in text
+    assert '{"' not in text, "la evidencia no puede llegar como JSON al PDF"
+
+
 def test_pdf_rechaza_capturas_ajenas_a_imagen(proyecto, tmp_path):
     bad = tmp_path / "captura.txt"
     bad.write_text("no es una imagen", encoding="utf-8")

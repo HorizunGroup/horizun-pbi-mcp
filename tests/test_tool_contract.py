@@ -217,6 +217,12 @@ EXPORTACION_Y_SHAREPOINT_TOOLS = [
     "pbi_sharepoint_download_folder",
 ]
 
+#: Exportacion del CONTENIDO: los datos que muestra el tablero, no sus
+#: metadatos. Es la unica que necesita el modelo en vivo Y procesado.
+CONTENIDO_TOOLS = [
+    "pbi_export_report_content",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
@@ -224,7 +230,7 @@ TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + FILTRO_VISUAL_TOOLS + CICLO_TOOLS + REFACTOR_TOOLS
                 + CIERRE_TOOLS + BRIEF_TOOLS + DIAGNOSTICO_TOOLS
                 + FUENTES_TOOLS + PUERTO_TOOLS
-                + EXPORTACION_Y_SHAREPOINT_TOOLS)
+                + EXPORTACION_Y_SHAREPOINT_TOOLS + CONTENIDO_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

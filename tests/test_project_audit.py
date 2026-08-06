@@ -291,3 +291,155 @@ def test_catalogo_de_autofixes():
     assert report_audit.AUTOFIXES
     for regla, datos in report_audit.AUTOFIXES.items():
         assert datos["description"] and datos["target"]
+
+
+# ================================= visuales que Power BI se niega a dibujar ===
+def _escribir_visual(active, vid: str, visual: dict, position: dict) -> str:
+    """Deja un visual en la pagina del fixture, tal cual lo escribe Desktop."""
+    ruta = pbir_edit._visual_file(active, P, vid)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(json.dumps(
+        {"name": vid, "position": position, "visual": visual},
+        indent=2), encoding="utf-8")
+    return vid
+
+
+def _campo(entidad: str, propiedad: str) -> dict:
+    return {"Column": {"Expression": {"SourceRef": {"Entity": entidad}},
+                       "Property": propiedad}}
+
+
+def _scatter(x_agregado: bool = False, con_detalles: bool = True) -> dict:
+    def proyeccion(propiedad: str, agregar: bool) -> dict:
+        campo = _campo("Ventas", propiedad)
+        if agregar:
+            campo = {"Aggregation": {"Expression": campo, "Function": 1}}
+        return {"field": campo, "queryRef": f"Ventas.{propiedad}"}
+
+    estado = {"X": {"projections": [proyeccion("Monto", x_agregado)]},
+              "Y": {"projections": [proyeccion("Monto", x_agregado)]}}
+    if con_detalles:
+        estado["Category"] = {"projections": [proyeccion("Monto", False)]}
+    return {"visualType": "scatterChart", "query": {"queryState": estado}}
+
+
+def test_detecta_scatter_con_detalles_y_ejes_sin_resumir(proyecto):
+    """El error que Power BI muestra en pantalla y ningun esquema ve."""
+    active, md, _p = proyecto
+    vid = _escribir_visual(active, "scatterroto000000", _scatter(),
+                           {"x": 0, "y": 0, "width": 400, "height": 300, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    hallazgos = [h for h in r["findings"]
+                 if h["rule"] == "report_scatter_axis_not_aggregated"]
+
+    assert hallazgos and hallazgos[0]["object"]["id"] == vid
+    assert hallazgos[0]["severity"] == "error", "el visual no se dibuja"
+    assert "Ventas[Monto]" in hallazgos[0]["evidence"]["fields"]
+
+
+def test_un_scatter_con_los_ejes_resumidos_no_se_reporta(proyecto):
+    active, md, _p = proyecto
+    _escribir_visual(active, "scatterbien000000", _scatter(x_agregado=True),
+                     {"x": 0, "y": 0, "width": 400, "height": 300, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    assert not [h for h in r["findings"]
+                if h["rule"] == "report_scatter_axis_not_aggregated"]
+
+
+def test_un_scatter_sin_detalles_puede_dejar_los_ejes_en_bruto(proyecto):
+    """Sin campo en Detalles, Power BI dibuja los pares tal cual."""
+    active, md, _p = proyecto
+    _escribir_visual(active, "scatterpares00000", _scatter(con_detalles=False),
+                     {"x": 0, "y": 0, "width": 400, "height": 300, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    assert not [h for h in r["findings"]
+                if h["rule"] == "report_scatter_axis_not_aggregated"]
+
+
+def _slicer() -> dict:
+    return {"visualType": "slicer", "query": {"queryState": {
+        "Values": {"projections": [{"field": _campo("Ventas", "Monto"),
+                                    "queryRef": "Ventas.Monto"}]}}}}
+
+
+def test_detecta_slicer_por_debajo_del_piso_de_altura(proyecto):
+    active, md, _p = proyecto
+    vid = _escribir_visual(active, "slicercorto000000", _slicer(),
+                           {"x": 0, "y": 0, "width": 296, "height": 64, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    hallazgos = [h for h in r["findings"]
+                 if h["rule"] == "report_slicer_below_height_floor"]
+
+    assert hallazgos and hallazgos[0]["object"]["id"] == vid
+    assert hallazgos[0]["evidence"]["minimum"] == report_audit.ALTO_MINIMO_SLICER
+    assert hallazgos[0]["evidence"]["mode"] == "lista (por defecto)"
+
+
+def test_el_slicer_desplegable_con_alto_suficiente_no_se_reporta(proyecto):
+    active, md, _p = proyecto
+    visual = _slicer()
+    visual["objects"] = {"data": [{"properties": {
+        "mode": {"expr": {"Literal": {"Value": "'Dropdown'"}}}}}]}
+    _escribir_visual(active, "slicerbien0000000", visual,
+                     {"x": 0, "y": 0, "width": 296, "height": 80, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    assert not [h for h in r["findings"]
+                if h["rule"] == "report_slicer_below_height_floor"]
+
+
+def test_sin_cabecera_el_piso_del_slicer_baja(proyecto):
+    """MEDIDO contra el CLI oficial: sin cabecera, 47 falla y 48 pasa.
+
+    La primera version usaba 76 siempre y marcaba como rotos nueve slicers
+    sanos de otro informe que ocultaban su cabecera.
+    """
+    active, md, _p = proyecto
+    visual = _slicer()
+    visual["objects"] = {
+        "data": [{"properties": {
+            "mode": {"expr": {"Literal": {"Value": "'Dropdown'"}}}}}],
+        "header": [{"properties": {
+            "show": {"expr": {"Literal": {"Value": "false"}}}}}]}
+    _escribir_visual(active, "slicersincab00000", visual,
+                     {"x": 0, "y": 0, "width": 296, "height": 74, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    assert not [h for h in r["findings"]
+                if h["rule"] == "report_slicer_below_height_floor"]
+
+
+def test_sin_cabecera_por_debajo_de_48_si_se_reporta(proyecto):
+    active, md, _p = proyecto
+    visual = _slicer()
+    visual["objects"] = {"header": [{"properties": {
+        "show": {"expr": {"Literal": {"Value": "false"}}}}}]}
+    _escribir_visual(active, "slicersincorto000", visual,
+                     {"x": 0, "y": 0, "width": 296, "height": 40, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    hallazgo = [h for h in r["findings"]
+                if h["rule"] == "report_slicer_below_height_floor"][0]
+
+    assert hallazgo["evidence"]["minimum"] == 48
+    assert hallazgo["evidence"]["header_shown"] is False
+
+
+def test_el_modo_del_slicer_se_lee_del_bloque_objects(proyecto):
+    active, md, _p = proyecto
+    visual = _slicer()
+    visual["objects"] = {"data": [{"properties": {
+        "mode": {"expr": {"Literal": {"Value": "'Dropdown'"}}}}}]}
+    _escribir_visual(active, "slicerdrop0000000", visual,
+                     {"x": 0, "y": 0, "width": 296, "height": 64, "z": 1})
+
+    r = report_audit.audit_report(active, md)
+    hallazgo = [h for h in r["findings"]
+                if h["rule"] == "report_slicer_below_height_floor"][0]
+
+    assert hallazgo["evidence"]["mode"] == "Dropdown"
+    assert "se recorta" in hallazgo["recommendation"]

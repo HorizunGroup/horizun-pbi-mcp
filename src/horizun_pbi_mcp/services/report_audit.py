@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html as html_mod
 import json
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from horizun_pbi_mcp.config import ActivePbip
@@ -27,6 +28,105 @@ def _h(rule: str, severity: str, objeto: Dict[str, Any], evidencia: Dict[str, An
     return {"rule": rule, "severity": severity, "domain": "report",
             "object": objeto, "evidence": evidencia,
             "recommendation": recomendacion, "auto_fix_available": auto_fix}
+
+
+#: Alto minimo de un slicer, en px. Depende de si la cabecera esta visible:
+#: con ella, 28 + selector 32 + relleno 8/8 = 76; sin ella, 32 + 16 = 48.
+#:
+#: Las dos cifras estan MEDIDAS contra el CLI oficial, no deducidas: se le
+#: paso el mismo informe variando el alto y se busco donde deja de quejarse.
+#: Con cabecera, 74 falla y 76 pasa; sin cabecera, 47 falla y 48 pasa. La
+#: primera version de esta regla usaba 76 siempre y marcaba como rotos nueve
+#: slicers sanos que ocultaban su cabecera.
+ALTO_MINIMO_SLICER = 76
+ALTO_MINIMO_SLICER_SIN_CABECERA = 48
+
+#: Roles de eje de un scatter. Si hay campo en Detalles, estos DEBEN venir
+#: agregados o Power BI no dibuja la nube de puntos.
+_EJES_SCATTER = ("X", "Y")
+
+
+def _propiedad_de_objeto(datos: Dict[str, Any], grupo: str,
+                         propiedad: str) -> Optional[str]:
+    """Valor literal de `visual.objects.<grupo>.<propiedad>`, si esta."""
+    try:
+        for entrada in datos["visual"]["objects"][grupo]:
+            valor = entrada["properties"][propiedad]["expr"]["Literal"]["Value"]
+            return str(valor).strip("'")
+    except (KeyError, IndexError, TypeError):
+        return None
+    return None
+
+
+def _formato_de_slicer(visual: Dict[str, Any]) -> Dict[str, Any]:
+    """Modo y visibilidad de la cabecera, leidos del bloque `objects`.
+
+    `read_visual_file` no devuelve `objects` -no lo necesita nadie mas-, asi
+    que se relee el JSON. Es un archivo ya en disco y son pocos.
+    """
+    vacio = {"mode": None, "header": True}
+    ruta = visual.get("file")
+    if not ruta:
+        return vacio
+    from horizun_pbi_mcp.utils.json_utils import read_json
+
+    try:
+        datos = read_json(Path(ruta))
+    except Exception:                          # noqa: BLE001 - visual ilegible
+        return vacio
+    cabecera = _propiedad_de_objeto(datos, "header", "show")
+    return {"mode": _propiedad_de_objeto(datos, "data", "mode"),
+            # Sin la propiedad, la cabecera se muestra: es el valor por defecto.
+            "header": cabecera is None or cabecera.casefold() != "false"}
+
+
+def _visual_no_renderiza(visual: Dict[str, Any], pid: str) -> List[Dict[str, Any]]:
+    """Configuraciones que dejan al visual con un cartel en vez de datos."""
+    hallazgos: List[Dict[str, Any]] = []
+    tipo = visual.get("type")
+    roles = visual.get("fields") or {}
+    objeto = {"kind": "visual", "page": pid, "id": visual.get("id"),
+              "type": tipo}
+
+    if tipo == "scatterChart" and (roles.get("Category") or roles.get("Series")):
+        sin_agregar = [
+            p.get("ref") for eje in _EJES_SCATTER
+            for p in roles.get(eje) or []
+            if p.get("kind") == "column" and p.get("aggregation") is None]
+        if sin_agregar:
+            hallazgos.append(_h(
+                "report_scatter_axis_not_aggregated", ERROR, objeto,
+                {"fields": [r for r in sin_agregar if r],
+                 "has_details": bool(roles.get("Category"))},
+                "Con un campo en Detalles, Power BI exige que X e Y esten "
+                "resumidos: sin eso NO dibuja el visual y muestra 'Quite los "
+                "valores para mostrar los pares del eje X y el eje Y'. Pon un "
+                "resumen (promedio o suma) en esos campos, o quita Detalles."))
+
+    if tipo == "slicer":
+        alto = float((visual.get("position") or {}).get("height") or 0)
+        formato = _formato_de_slicer(visual)
+        con_cabecera = formato["header"]
+        piso = (ALTO_MINIMO_SLICER if con_cabecera
+                else ALTO_MINIMO_SLICER_SIN_CABECERA)
+        if 0 < alto < piso:
+            modo = formato["mode"]
+            desplegable = (modo or "").casefold() == "dropdown"
+            desglose = ("cabecera 28 + selector 32 + relleno 8/8"
+                        if con_cabecera else
+                        "selector 32 + relleno 8/8, sin cabecera")
+            hallazgos.append(_h(
+                "report_slicer_below_height_floor", ERROR, objeto,
+                {"height": alto, "minimum": piso, "header_shown": con_cabecera,
+                 "mode": modo or "lista (por defecto)"},
+                f"Un slicer con este formato necesita {piso} px ({desglose}). "
+                f"Con {alto:.0f} " + ("se recorta." if desplegable else
+                                      "solo se ve un elemento y una barra de "
+                                      "scroll.")
+                + " Sube el alto y, si aun no lo es, ponlo desplegable "
+                  "(`data.mode = 'Dropdown'`)."))
+
+    return hallazgos
 
 
 def audit_report(active: ActivePbip,
@@ -69,6 +169,14 @@ def audit_report(active: ActivePbip,
                     {"title": None},
                     "Un visual sin titulo obliga a adivinar que muestra. "
                     "Ponle uno descriptivo.", auto_fix=True))
+
+        # --- visuales que Power BI se NIEGA a dibujar ---------------------
+        # No es lo mismo un visual feo que uno en error: estos dos salen con
+        # un cartel en vez de contenido, y ni el esquema PBIR ni el DAX que
+        # generan delatan nada. Solo se veian abriendo el informe.
+        for v in visuales:
+            for hallazgo in _visual_no_renderiza(v, pid):
+                hallazgos.append(hallazgo)
 
         # --- referencias rotas -------------------------------------------
         if indice is not None:

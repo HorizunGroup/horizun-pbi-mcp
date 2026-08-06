@@ -4,11 +4,49 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session
-from horizun_pbi_mcp.services import exporting, sharepoint
+from horizun_pbi_mcp.services import content_export, exporting, sharepoint
 from horizun_pbi_mcp.tools._common import guard
 
 
 def register(mcp) -> None:
+    @mcp.tool()
+    def pbi_export_report_content(
+            select: Dict[str, Any], format: str = "xlsx",
+            dry_run: bool = False, auto_open: bool = True,
+            max_rows: int = 100_000, max_rows_pdf: int = 40,
+            title: str = "", file_name: str = "") -> Dict[str, Any]:
+        """Exporta el CONTENIDO del informe: los datos que muestra el tablero.
+
+        A diferencia de `pbi_export_excel` y `pbi_generate_pdf_report`, que
+        documentan el proyecto, esto exporta lo que el cliente ve. `select`
+        admite tres formas, combinables:
+
+        - `pages`: ["Matriz de Riesgos"] -> la tabla que hay detras de CADA
+          visual de esas paginas (por nombre visible o id interno).
+        - `visuals`: ["15b0fc11e628..."] -> solo esos visuales.
+        - `queries`: [{name, rows:["Tabla[Columna]"], values:["Medida"],
+          filters:[{field, values, exclude?}], top_n?}] -> lo que el cliente
+          declare, sin referirse a ningun visual.
+
+        Cada consulta se reconstruye a partir de los campos del visual, se
+        ejecuta en SOLO LECTURA contra el modelo en vivo y sale como una hoja
+        de Excel (`format`: `xlsx|pdf|both`).
+
+        Necesita el modelo en vivo: los datos solo existen en el motor, no en
+        el .pbip. Con `auto_open` abre el informe en Desktop si hace falta, y
+        se NIEGA a exportar si el modelo esta abierto pero sin procesar, en
+        vez de publicar un archivo en blanco. Con `dry_run` devuelve el DAX
+        que ejecutaria sin tocar el motor ni escribir nada.
+
+        Cada hoja declara con que filtros se saco y, sobre todo, cuales no se
+        pudieron aplicar. Los visuales sin consulta tabular -textos, imagenes,
+        formas- se listan aparte con el motivo.
+        """
+        return guard(lambda: content_export.export_content(
+            get_session(), select=select, format=format, dry_run=dry_run,
+            auto_open=auto_open, max_rows=max_rows, max_rows_pdf=max_rows_pdf,
+            title=title, file_name=file_name))
+
     @mcp.tool()
     def pbi_export_excel(source: str = "auto", query: str = "",
                          include_report: bool = True,
