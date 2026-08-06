@@ -17,14 +17,14 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Setup starts automatically on the first session. While it progresses
 you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
-the client the 128 tools will appear. Nothing needs to be downloaded or run
+the client the 132 tools will appear. Nothing needs to be downloaded or run
 separately. The runtime and verified downloads stay in the plugin's local
 data, outside the repository and your projects.
 
 Python 3.10+ is still a requirement: it's the local process that talks to
 Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 
-Reproducible guide from scratch. At the end, an MCP client should see 128 `pbi_*` tools.
+Reproducible guide from scratch. At the end, an MCP client should see 132 `pbi_*` tools.
 
 ---
 
@@ -200,6 +200,29 @@ All optional. See `.env.example`.
 | `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | Backups. **Always point it outside the `.pbip`** |
 | `HORIZUN_PBI_MCP_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
 | `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` to open on startup |
+| `HORIZUN_PBI_MCP_SHAREPOINT_TENANT_ID` | — | Microsoft Entra tenant for SharePoint app-only access |
+| `HORIZUN_PBI_MCP_SHAREPOINT_CLIENT_ID` | — | Application/client ID registered in Entra |
+| `HORIZUN_PBI_MCP_SHAREPOINT_CLIENT_SECRET` | — | Client secret; environment only, never a tool argument |
+| `HORIZUN_PBI_MCP_PDFTOPPM` | auto-detected | Optional exact path to Poppler `pdftoppm` for PDF render verification |
+
+### SharePoint Online setup
+
+The SharePoint tools use Microsoft Graph v1.0 with the application's identity
+(`client_credentials`). Register an application in Microsoft Entra ID, grant
+the least privileged read permission suitable for your tenant and give admin
+consent. Prefer `Sites.Selected` plus an explicit grant only to the sites the
+server must read; broader permissions such as `Sites.Read.All` should be a
+deliberate tenant decision.
+
+Configure the three `HORIZUN_PBI_MCP_SHAREPOINT_*` variables in the MCP
+process environment. Never paste the client secret into a chat or tool call.
+`pbi_sharepoint_list_folder` validates the connection without writing locally;
+`pbi_sharepoint_download_folder` writes a verified staged copy to
+`outputs/sharepoint/` and does not modify SharePoint.
+
+Official references: [Microsoft Graph app-only authentication](https://learn.microsoft.com/en-us/graph/auth-v2-service),
+[selected SharePoint permissions](https://learn.microsoft.com/en-us/graph/permissions-selected-overview),
+[list folder contents](https://learn.microsoft.com/en-us/graph/api/driveitem-list-children?view=graph-rest-1.0).
 
 ---
 
