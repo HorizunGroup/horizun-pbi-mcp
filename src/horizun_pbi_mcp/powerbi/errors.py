@@ -77,6 +77,18 @@ class RefreshError(PowerBIMCPError):
     code = "refresh_error"
 
 
+class RefreshTimeoutError(RefreshError):
+    """El refresh agoto su plazo y se pidio cancelarlo.
+
+    Codigo propio, no `refresh_error`, porque la accion del cliente es
+    distinta: no hay nada que corregir en la peticion. Lo habitual es que un
+    origen este esperando credenciales que un refresh lanzado por XMLA no
+    puede pedir -no hay dialogo que mostrar-, y el motor espera sin fin.
+    """
+
+    code = "refresh_timeout"
+
+
 # ---- PBIP / archivos ----
 class NoActivePbipError(PowerBIMCPError):
     code = "no_active_pbip"

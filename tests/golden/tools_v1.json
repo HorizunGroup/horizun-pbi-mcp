@@ -3480,6 +3480,11 @@
           "required": true,
           "type": "string"
         },
+        "refresh_timeout_seconds": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        },
         "request_id": {
           "required": false,
           "type": "string",
@@ -3949,7 +3954,7 @@
     },
     {
       "name": "pbi_refresh_model",
-      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
+      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\n`timeout_seconds` (600 por defecto, `0` lo desactiva): un refresh\nlanzado por XMLA **no puede mostrar el dialogo de credenciales** de\nDesktop, asi que un origen sin credenciales guardadas deja al motor\nesperando para siempre y no hay ninguna ventana que cerrar. Al\nagotarse el plazo se pide la cancelacion al motor y se devuelve\n`refresh_timeout` enumerando los origenes que REQUIEREN credenciales\n-no si las tienen: eso Desktop no lo expone- y si la cancelacion se\nconfirmo o el comando pudo quedar corriendo.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
       "params": {
         "request_id": {
           "required": false,
@@ -3959,6 +3964,11 @@
         "tables": {
           "required": false,
           "type": "array[string]|null",
+          "default": null
+        },
+        "timeout_seconds": {
+          "required": false,
+          "type": "integer|null",
           "default": null
         },
         "type": {
