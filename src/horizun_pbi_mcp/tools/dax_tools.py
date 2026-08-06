@@ -26,15 +26,20 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def pbi_select_model(port: Optional[int] = None,
-                         catalog: Optional[str] = None) -> Dict[str, Any]:
+                         catalog: Optional[str] = None,
+                         connection_string: Optional[str] = None) -> Dict[str, Any]:
         """Selecciona el modelo local activo para futuras operaciones.
 
-        Si hay un solo modelo abierto no hace falta indicar puerto. Si hay varios,
-        pasa el `port` (visto en pbi_list_desktop_models).
+        Si hay un solo modelo abierto no hace falta indicar nada. Si hay varios,
+        pasa `port` **o** `connection_string` TAL CUAL lo devuelve
+        `pbi_list_desktop_models` (`"Data Source=localhost:56057"`): lo que sale
+        de esa tool entra en esta sin tener que extraer el puerto a mano.
         """
         def _impl():
             session = get_session()
-            model = desktop_discovery.select_model(session, port=port, catalog=catalog)
+            model = desktop_discovery.select_model(
+                session, port=port, catalog=catalog,
+                connection_string=connection_string)
             return {"active_model": model.to_dict()}
         return guard(_impl)
 

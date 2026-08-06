@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -20,7 +21,8 @@ from typing import Any, Dict, List, Optional
 from horizun_pbi_mcp.config import ActiveModel, Session
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.adomd_client import AdomdClient
-from horizun_pbi_mcp.powerbi.errors import ModelDiscoveryError, PowerBIMCPError
+from horizun_pbi_mcp.powerbi.errors import (ModelDiscoveryError,
+                                            PowerBIMCPError, ValidationError)
 
 log = get_logger("discovery")
 
@@ -180,6 +182,11 @@ def _enrich(host: str, port: int) -> Dict[str, Any]:
                 names = [r[0] for r in trows if r and r[0]]
                 user = [n for n in names if not n.startswith(_SYS_TABLE_PREFIXES)]
                 info["table_count"] = len(user)
+                # Dos informes abiertos se llaman los dos "Model" y solo se
+                # distinguian por el numero de tablas: habia que seleccionar
+                # cada uno y pedirle un resumen para saber cual era cual. Los
+                # nombres ya se acaban de leer aqui; tirarlos era el problema.
+                info["tables_sample"] = sorted(user)[:5]
             except Exception as exc:  # noqa: BLE001
                 info["warnings"].append(f"No se pudo contar tablas: {exc}")
             info["status"] = "ok"
@@ -232,7 +239,7 @@ def discover_instances() -> List[Dict[str, Any]]:
                 "host": host, "port": port,
                 "connection_string": f"Data Source={host}:{port}",
                 "catalog": None, "database_name": None, "model_name": None,
-                "table_count": None, "status": "unreachable",
+                "table_count": None, "tables_sample": [], "status": "unreachable",
                 "warnings": ["Nadie escucha en el puerto: probablemente sea el "
                              "archivo de puerto de una sesion ya cerrada."],
             }
@@ -374,15 +381,56 @@ def verify_model(model: ActiveModel) -> Dict[str, Any]:
     return {"status": "ok", "instance": inst}
 
 
+_PUERTO_EN_CADENA = re.compile(r":(\d{1,5})\s*;?\s*$")
+
+
+def puerto_de_connection_string(valor: str) -> int:
+    """Extrae el puerto de lo que devuelve `pbi_list_desktop_models`.
+
+    Acepta la forma exacta que publica el listado -`Data Source=localhost:56057`-
+    y tambien `localhost:56057` a secas. Existe porque el campo se ofrecia en la
+    salida de una tool y la siguiente no lo aceptaba: habia que leerlo, extraer
+    el puerto a mano y pasarlo por otro parametro. Un valor que sale de aqui
+    tiene que poder entrar ahi.
+    """
+    texto = str(valor or "").strip()
+    if not texto:
+        raise ValidationError("connection_string no puede estar vacio.",
+                              details={"parameter": "connection_string"})
+    coincidencia = _PUERTO_EN_CADENA.search(texto.split("=")[-1].strip())
+    if not coincidencia:
+        raise ValidationError(
+            "No se pudo leer el puerto de connection_string. Se espera algo "
+            "como 'Data Source=localhost:56057' -tal cual lo devuelve "
+            "pbi_list_desktop_models- o 'localhost:56057'.",
+            details={"parameter": "connection_string", "value": texto[:120]})
+    puerto = int(coincidencia.group(1))
+    if not 1 <= puerto <= 65_535:
+        raise ValidationError(
+            f"El puerto {puerto} de connection_string esta fuera de rango.",
+            details={"parameter": "connection_string"})
+    return puerto
+
+
 def select_model(
-    session: Session, port: Optional[int] = None, catalog: Optional[str] = None
+    session: Session, port: Optional[int] = None, catalog: Optional[str] = None,
+    connection_string: Optional[str] = None
 ) -> ActiveModel:
     """Selecciona un modelo como activo para la sesion.
 
     - Si `port` se indica, usa ese.
+    - Si se indica `connection_string`, se extrae el puerto de ahi.
     - Si no y hay exactamente una instancia, la usa.
     - Si hay varias y no se indica puerto, lanza error con la lista.
     """
+    if connection_string is not None:
+        derivado = puerto_de_connection_string(connection_string)
+        if port is not None and int(port) != derivado:
+            raise ValidationError(
+                f"port={port} y connection_string apuntan a puertos distintos "
+                f"({port} y {derivado}). Indica solo uno.",
+                details={"port": port, "connection_string_port": derivado})
+        port = derivado
     instances = discover_instances()
     if not instances:
         raise ModelDiscoveryError(
@@ -401,13 +449,26 @@ def select_model(
     elif len(instances) == 1:
         chosen = instances[0]
     else:
+        # El mensaje anterior remitia a la tool que se acababa de llamar, sin
+        # decir QUE parametro usar ni con que valor. Ahora lleva la llamada
+        # exacta y los nombres de tabla, que es lo unico que distingue a dos
+        # modelos que se llaman los dos "Model".
+        opciones = [
+            {"port": i["port"], "model_name": i.get("model_name"),
+             "table_count": i.get("table_count"),
+             "tables_sample": i.get("tables_sample") or [],
+             "select_with": f"pbi_select_model(port={i['port']})"}
+            for i in instances
+        ]
+        puertos = ", ".join(str(i["port"]) for i in instances)
         raise ModelDiscoveryError(
-            "Hay varios modelos abiertos; indica el puerto con pbi_select_model.",
-            details={"instances": [
-                {"port": i["port"], "model_name": i.get("model_name"),
-                 "table_count": i.get("table_count")}
-                for i in instances
-            ]},
+            f"Hay {len(instances)} modelos abiertos y ninguno esta indicado. "
+            f"Llama pbi_select_model(port=...) con uno de estos puertos: "
+            f"{puertos}. Tambien acepta connection_string tal cual lo devuelve "
+            "pbi_list_desktop_models. En `instances` va una muestra de tablas "
+            "de cada uno para saber cual es cual.",
+            details={"instances": opciones,
+                     "ports": [i["port"] for i in instances]},
         )
 
     if chosen["status"] != "ok":

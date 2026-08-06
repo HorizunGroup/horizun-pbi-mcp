@@ -135,10 +135,23 @@ def register(mcp) -> None:
             for t in md.get("tables", []):
                 for p in t.get("partitions", []) or []:
                     particiones.append({"table": t["name"], **p})
+            # "No se pudo leer" y "no hay ninguna" son cosas distintas y el
+            # mensaje anterior las confundia: con una conexion viva las
+            # particiones no se exponen, y la respuesta se leia como que el
+            # modelo no tenia. Se sigue el mismo criterio que perspectivas.
+            soportado = any("partitions" in t for t in md.get("tables", []))
+            if not soportado:
+                avisos = ["Las particiones no estan disponibles en esta fuente "
+                          f"(source='{source}'). Se reporta como NO SOPORTADO, "
+                          "no como ausencia: el modelo puede tenerlas. Para "
+                          "leerlas usa source='pbip' sobre el proyecto en disco."]
+            elif not particiones:
+                avisos = ["La fuente expone particiones y este modelo no "
+                          "declara ninguna."]
+            else:
+                avisos = []
             return {"count": len(particiones), "partitions": particiones,
-                    "supported": any("partitions" in t for t in md.get("tables", [])),
-                    "warnings": ([] if particiones else
-                                 ["No se detectaron particiones en esta fuente."])}
+                    "supported": soportado, "warnings": avisos}
         return guard(_impl)
 
     @mcp.tool()
