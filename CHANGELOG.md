@@ -5,6 +5,35 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.4.0] — 2026-08-05
+
+Four additive tools (132 total), zero breaking changes.
+
+### Added
+
+- **`pbi_export_excel`** — verified `.xlsx` with summary, model metadata,
+  relationships, report pages/visuals, audit findings and optional read-only
+  DAX rows. Prevents formula injection, does not overwrite an existing export
+  and reopens the workbook before publishing it.
+- **`pbi_generate_pdf_report`** — executive, technical and audit PDF reports
+  with optional PNG/JPEG dashboard captures. Reopens every PDF with `pypdf`
+  and reports Poppler render verification when available.
+- **`pbi_sharepoint_list_folder`** — SharePoint Online folder discovery through
+  Microsoft Graph v1.0, with pagination, recursion and explicit limits.
+- **`pbi_sharepoint_download_folder`** — filtered, staged, all-or-nothing
+  download to `outputs/sharepoint/`, with byte limits, SHA-256 and post-write
+  verification.
+
+### Security
+
+- SharePoint uses MSAL client credentials from environment variables only.
+  Secrets and access tokens never appear in tool arguments or responses.
+- Graph pagination is restricted to `https://graph.microsoft.com`; site URLs
+  must be SharePoint Online HTTPS URLs; remote path components are validated
+  before touching disk.
+- The two SharePoint tools are the only ones announcing
+  `openWorldHint=true`; local export tools are classified as file-emitting.
+
 ## [1.3.0] — 2026-08-05
 
 One new tool (128 total), zero breaking changes. Two defects found writing a

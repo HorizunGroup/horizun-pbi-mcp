@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "horizun-pbi-mcp"
 # PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
-version = "1.3.0"
+version = "1.4.0"
 description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,6 +37,12 @@ dependencies = [
     # anyOf, const y additionalProperties, que es lo que el PBIR usa de verdad.
     "jsonschema>=4.20,<5",
     "referencing>=0.30,<1",
+    # Exportaciones de datos y reportes verificables.
+    "openpyxl>=3.1,<4",
+    "reportlab>=4.2,<6",
+    "pypdf>=5,<7",
+    # Autenticacion oficial de Microsoft para SharePoint/Graph app-only.
+    "msal>=1.31,<2",
 ]
 
 [project.urls]

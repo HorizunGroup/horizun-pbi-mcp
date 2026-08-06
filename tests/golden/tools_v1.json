@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 128,
+  "tool_count": 132,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -2420,6 +2420,58 @@
       }
     },
     {
+      "name": "pbi_export_excel",
+      "description": "Exporta la informacion disponible a un libro Excel verificado.\n\nCrea hojas para resumen, tablas, columnas, medidas, relaciones y, si\nhay PBIP activo, paginas, visuales y auditoria. `source` admite\n`auto|live|pbip`. Si se proporciona `query`, ejecuta DAX de solo lectura\ncontra Desktop y agrega `Datos_DAX`, declarando cualquier truncamiento.\n\nEl archivo se escribe en `outputs/excel/`, nunca dentro del PBIP. No\nsobrescribe nombres existentes, neutraliza formulas inyectadas y vuelve\na abrir el XLSX antes de informar exito.",
+      "params": {
+        "file_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "include_audit": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "include_report": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "max_rows": {
+          "required": false,
+          "type": "integer",
+          "default": 100000
+        },
+        "query": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "auto"
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_export_page_html",
       "description": "Exporta una MAQUETA HTML de una pagina EXISTENTE (layout + campos de cada visual).",
       "params": {
@@ -2496,6 +2548,63 @@
       "annotations": {
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pbi_generate_pdf_report",
+      "description": "Genera un PDF ejecutivo, tecnico o de auditoria con capturas.\n\nCompone informacion existente del modelo, paginas, visuales y auditoria.\n`capture_paths` acepta hasta 20 PNG/JPEG, por ejemplo las rutas devueltas\npor `pbi_validate_desktop_render`. No inventa graficas si no hay captura.\n\nEl PDF se reabre con pypdf y, cuando Poppler esta disponible, su primera\npagina se renderiza a PNG como prueba visual. Se guarda en `outputs/pdf/`.",
+      "params": {
+        "capture_paths": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "file_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "include_audit": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "max_findings": {
+          "required": false,
+          "type": "integer",
+          "default": 50
+        },
+        "report_type": {
+          "required": false,
+          "type": "string",
+          "default": "executive"
+        },
+        "source": {
+          "required": false,
+          "type": "string",
+          "default": "auto"
+        },
+        "title": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -4573,8 +4682,112 @@
       }
     },
     {
+      "name": "pbi_sharepoint_download_folder",
+      "description": "Descarga una carpeta de SharePoint a outputs/ de forma todo-o-nada.\n\nPrimero inventaria el lote y valida `max_files`, `max_total_mb` y el\nfiltro opcional `extensions` (por ejemplo `['xlsx','csv']`). Luego usa\nURLs temporales emitidas por Graph, verifica tamano y SHA-256 y publica\nel directorio completo bajo `outputs/sharepoint/`. Un fallo elimina el\nstaging y no deja una carpeta final parcial.\n\nEs una descarga de solo lectura remota: no sube, mueve ni elimina nada\nen SharePoint.",
+      "params": {
+        "extensions": {
+          "required": false,
+          "type": "array[string]|null",
+          "default": null
+        },
+        "folder_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "library": {
+          "required": false,
+          "type": "string",
+          "default": "Documents"
+        },
+        "max_files": {
+          "required": false,
+          "type": "integer",
+          "default": 200
+        },
+        "max_total_mb": {
+          "required": false,
+          "type": "integer",
+          "default": 500
+        },
+        "recursive": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "site_url": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "site_url"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_sharepoint_list_folder",
+      "description": "Conecta con SharePoint Online y lista una carpeta mediante Graph.\n\n`site_url` es la URL HTTPS del sitio; `library` es el nombre o id de la\nbiblioteca documental; `folder_path` usa `/`. Sigue la paginacion de\nGraph y puede recorrer subcarpetas con un limite total explicito.\n\nAutenticacion app-only: las credenciales SOLO se leen de las variables\n`HORIZUN_PBI_MCP_SHAREPOINT_TENANT_ID`, `_CLIENT_ID` y `_CLIENT_SECRET`.\nNunca se aceptan secretos como parametros ni se devuelven tokens.",
+      "params": {
+        "folder_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "library": {
+          "required": false,
+          "type": "string",
+          "default": "Documents"
+        },
+        "max_items": {
+          "required": false,
+          "type": "integer",
+          "default": 500
+        },
+        "recursive": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "site_url": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "site_url"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": true,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "pbi_start_here",
-      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento veintiocho tools con buen nombre siguen siendo ciento veintiocho tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
+      "description": "Por donde empezar. Mira el estado real y dice los siguientes pasos.\n\nCiento treinta y dos tools con buen nombre siguen siendo ciento treinta y dos tools.\nEsta responde «¿y ahora que?» con tres o cuatro pasos concretos, cada\nuno con el nombre exacto de la tool y **por que** toca ahora: si hay\nproyecto activo, si tiene modelo o solo informe, si esta vacio, y si\nPower BI Desktop lo tiene abierto —que impide escribir el TMDL—.\n\nDevuelve tambien `common_tasks`: tareas frecuentes y la secuencia de\ntools que las resuelve.\n\nNo escribe nada. Empieza por aqui cuando no sepas que sigue.",
       "params": {
         "request_id": {
           "required": false,

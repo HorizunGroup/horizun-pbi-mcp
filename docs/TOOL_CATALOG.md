@@ -1,4 +1,4 @@
-# Tool catalog — 128
+# Tool catalog — 132
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -33,7 +33,8 @@ tools registered.
 | Q — data diagnostics | 1 |
 | R — external sources | 1 |
 | S — ecosystem port | 2 |
-| **Total** | **128** |
+| T — exports and SharePoint | 4 |
+| **Total** | **132** |
 
 ---
 
@@ -162,6 +163,19 @@ tools registered.
 | `pbi_plan_audit_fixes` | Plans fixes for **specific** rules |
 | `pbi_apply_audit_fixes` | **Destructive** (`confirm`) |
 
+## Excel, PDF and SharePoint
+
+| Tool | What it does |
+|---|---|
+| `pbi_export_excel` | Verified `.xlsx` with summary, model, relationships, pages, visuals, audit and optional read-only DAX data. Reopens the workbook before publishing it under `outputs/excel/` |
+| `pbi_generate_pdf_report` | Executive, technical or audit PDF; can embed PNG/JPEG captures returned by `pbi_validate_desktop_render`; logical verification is mandatory and Poppler render verification is reported when available |
+| `pbi_sharepoint_list_folder` | Lists a SharePoint Online folder through Microsoft Graph v1.0, with pagination, optional recursion and explicit item limit |
+| `pbi_sharepoint_download_folder` | Downloads a filtered folder as an all-or-nothing staged batch under `outputs/sharepoint/`, with size checks and SHA-256 re-read |
+
+SharePoint uses app-only MSAL authentication. Credentials only come from
+`HORIZUN_PBI_MCP_SHAREPOINT_TENANT_ID`, `_CLIENT_ID` and `_CLIENT_SECRET`;
+tokens and secrets never form part of a tool signature or response.
+
 ## Workflows
 
 | Tool | Result |
@@ -202,12 +216,14 @@ that can quietly drift.
 
 | Class | No. | Behavior | `readOnlyHint` |
 |---|---|---|---|
-| `read_only` | 51 | Doesn't modify anything of the user's and leaves no file behind | `true` |
-| `read_only_emits_file` | 9 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
+| `read_only` | 54 | Doesn't modify anything of the user's and leaves no file behind | `true` |
+| `read_only_emits_file` | 11 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
+| `read_external` | 1 | Reads SharePoint through Microsoft Graph; no local or remote write | `true`, `openWorldHint: true` |
+| `read_external_emits_file` | 1 | Reads SharePoint and publishes a verified download under `outputs/` | `false`, `openWorldHint: true` |
 | `side_effect_external` | 2 | Opens — and sometimes closes — Power BI Desktop: `pbi_open_in_desktop`, `pbi_validate_desktop_render` | `false` |
-| `write_reversible` | 47 | Transaction with journal; rollback on failure | `false` |
-| `write_destructive` | 8 | Requires `confirm=true`: the four `pbi_delete_*`, `pbi_apply_audit_fixes`, `pbi_apply_plan`, `pbi_purge_backups`, `pbi_recover_from_journal` | `false`, `destructiveHint: true` |
-| `write_irreversible` | 1 | `pbi_refresh_model` | `false`, `destructiveHint: true` |
+| `write_reversible` | 52 | Transaction with journal; rollback on failure | `false` |
+| `write_destructive` | 9 | Requires `confirm=true`, including deletes, recovery and backup purge | `false`, `destructiveHint: true` |
+| `write_irreversible` | 2 | Refresh operations whose external effect cannot be rolled back | `false`, `destructiveHint: true` |
 | `unsupported` | — | `mode="both"` and cloud/Fabric — declared with their reason in `pbi_capabilities` | — |
 
 Two notes on why the boundary sits where it does:

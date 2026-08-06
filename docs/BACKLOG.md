@@ -3,7 +3,8 @@
 What remains open, why it matters and how to check it. Ordered by what
 hurts the most.
 
-Updated on 2026-08-05 for **v1.3.0** (128 tools). Two things closed since
+Updated on 2026-08-05 for **v1.4.0** (132 tools). Excel/PDF exports and
+SharePoint folder ingestion are now built in. Two things closed since
 1.0.1: the fourteen-item field report from the first real end-to-end session,
 and **the four phases of the product vision** — intent brief, content-level
 data diagnostics, external sources, and the ecosystem port as a data

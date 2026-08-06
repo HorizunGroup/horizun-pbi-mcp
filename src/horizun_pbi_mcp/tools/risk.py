@@ -10,8 +10,8 @@ avisar distinto ante un borrado, asi que o pregunta por todo o no pregunta por
 nada. Las dos opciones son malas.
 
 Aqui NO se inventa una taxonomia nueva: se usa la que el repositorio ya tenia
-escrita en `docs/TOOL_CATALOG.md`, y se le anaden dos clases que esa tabla no
-distinguia y que si cambian lo que el cliente debe hacer.
+escrita en `docs/TOOL_CATALOG.md`, incluida la distincion entre lectura local,
+lectura de Microsoft Graph y operaciones que dejan archivos.
 
 Por que la tabla es explicita y no deducida
 -------------------------------------------
@@ -32,6 +32,8 @@ Las clases
                             de una vista previa). No es "solo lectura" para el
                             protocolo: `readOnlyHint` significa que la tool no
                             modifica su entorno, y crear un fichero lo modifica.
+- `read_external`           Lee Microsoft Graph sin escribir local ni remoto.
+- `read_external_emits_file` Lee Microsoft Graph y deja descargas en outputs/.
 - `side_effect_external`    No escribe en el proyecto, pero actua sobre la
                             maquina: abre —y a veces cierra— Power BI Desktop.
 - `write_reversible`        Escribe con transaccion y journal; revierte si falla.
@@ -46,8 +48,8 @@ llamadas iguales a `pbi_create_visual` crean dos visuales. Anunciar
 `idempotent=True` seria prometer una garantia que depende de que quien llama haga
 su parte.
 
-`openWorldHint` es `False` en las 127: este servidor habla con el disco local y
-con un Power BI Desktop local. No hay dominio abierto.
+`openWorldHint` solo es `True` para las dos tools SharePoint: son las unicas que
+hablan con un servicio remoto. El resto opera sobre disco o Desktop local.
 """
 from __future__ import annotations
 
@@ -55,6 +57,8 @@ from typing import Any, Dict
 
 READ_ONLY = "read_only"
 READ_ONLY_EMITS_FILE = "read_only_emits_file"
+READ_EXTERNAL = "read_external"
+READ_EXTERNAL_EMITS_FILE = "read_external_emits_file"
 SIDE_EFFECT_EXTERNAL = "side_effect_external"
 WRITE_REVERSIBLE = "write_reversible"
 WRITE_DESTRUCTIVE = "write_destructive"
@@ -62,7 +66,10 @@ WRITE_IRREVERSIBLE = "write_irreversible"
 
 #: Clases que NO pueden usar `guard_mutation`. El test lo verifica por AST.
 CLASES_DE_LECTURA = frozenset(
-    {READ_ONLY, READ_ONLY_EMITS_FILE, SIDE_EFFECT_EXTERNAL})
+    {READ_ONLY, READ_ONLY_EMITS_FILE, READ_EXTERNAL,
+     READ_EXTERNAL_EMITS_FILE, SIDE_EFFECT_EXTERNAL})
+
+CLASES_MUNDO_ABIERTO = frozenset({READ_EXTERNAL, READ_EXTERNAL_EMITS_FILE})
 
 #: Clases que el cliente debe tratar como destructivas.
 CLASES_DESTRUCTIVAS = frozenset({WRITE_DESTRUCTIVE, WRITE_IRREVERSIBLE})
@@ -71,7 +78,7 @@ CLASES_DESTRUCTIVAS = frozenset({WRITE_DESTRUCTIVE, WRITE_IRREVERSIBLE})
 #: Clase de riesgo de cada tool registrada. Una entrada por tool, sin excepciones:
 #: `test_toda_tool_registrada_esta_clasificada` falla si falta una.
 RISK_BY_TOOL: Dict[str, str] = {
-    # -- read_only (51): ni escriben fichero ni tocan el proyecto --
+    # -- read_only (54): ni escriben fichero ni tocan el proyecto --
     "pbi_analyze_model_quality": READ_ONLY,
     "pbi_audit_model": READ_ONLY,
     "pbi_audit_report_only": READ_ONLY,
@@ -140,6 +147,12 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_preview_spec_html": READ_ONLY_EMITS_FILE,
     "pbi_profile_data": READ_ONLY_EMITS_FILE,
     "pbi_run_dax": READ_ONLY_EMITS_FILE,
+    "pbi_export_excel": READ_ONLY_EMITS_FILE,
+    "pbi_generate_pdf_report": READ_ONLY_EMITS_FILE,
+
+    # -- SharePoint / Microsoft Graph --
+    "pbi_sharepoint_list_folder": READ_EXTERNAL,
+    "pbi_sharepoint_download_folder": READ_EXTERNAL_EMITS_FILE,
 
     # -- side_effect_external (2): abren/cierran Power BI Desktop --
     "pbi_open_in_desktop": SIDE_EFFECT_EXTERNAL,
@@ -202,7 +215,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_update_measure": WRITE_REVERSIBLE,
     "pbi_update_visual_position": WRITE_REVERSIBLE,
 
-    # -- write_destructive (8): todas exigen confirm=true --
+    # -- write_destructive (9): todas exigen confirm=true --
     "pbi_apply_audit_fixes": WRITE_DESTRUCTIVE,
     "pbi_apply_plan": WRITE_DESTRUCTIVE,
     "pbi_delete_bookmark": WRITE_DESTRUCTIVE,
@@ -229,11 +242,12 @@ def annotations_for(nombre: str) -> Dict[str, Any]:
     descuido; se trata como escritura destructiva hasta que alguien la clasifique.
     """
     clase = RISK_BY_TOOL.get(nombre, WRITE_DESTRUCTIVE)
-    if clase == READ_ONLY:
-        return {"readOnlyHint": True, "openWorldHint": False}
+    open_world = clase in CLASES_MUNDO_ABIERTO
+    if clase in (READ_ONLY, READ_EXTERNAL):
+        return {"readOnlyHint": True, "openWorldHint": open_world}
     return {
         "readOnlyHint": False,
         "destructiveHint": clase in CLASES_DESTRUCTIVAS,
         "idempotentHint": False,
-        "openWorldHint": False,
+        "openWorldHint": open_world,
     }
