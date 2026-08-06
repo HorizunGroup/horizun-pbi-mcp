@@ -91,7 +91,7 @@ def add_public_custom_visual(active: ActivePbip, visual_id: str,
         with txn_service.project_transaction(
                 active, [report_json], tool="pbi_add_custom_visual") as t:
             t.write_json(report_json, data)
-            result = t.summary()
+        result = t.summary()
 
     if do_backup and result:
         record_change("pbi_add_custom_visual",
@@ -121,7 +121,7 @@ def write_visual(active: ActivePbip, page: str, visual_dict: Dict[str, Any],
         with txn_service.project_transaction(
                 active, [target], tool="pbi_create_visual") as t:
             t.write_json(target, visual_dict)
-            result = t.summary()
+        result = t.summary()
 
     if do_backup and result:
         record_change("pbi_create_visual",
@@ -167,7 +167,7 @@ def update_visual_position(
         with txn_service.project_transaction(
                 active, [target], tool="pbi_update_visual_position") as t:
             t.write_json(target, data)
-            result = t.summary()
+        result = t.summary()
 
     if do_backup and result:
         record_change("pbi_update_visual_position",
@@ -217,7 +217,7 @@ def update_visual_filters(
         with txn_service.project_transaction(
                 active, [target], tool="pbi_set_visual_filter") as t:
             t.write_json(target, data)
-            result = t.summary()
+        result = t.summary()
 
     if do_backup and result:
         record_change("pbi_set_visual_filter",
@@ -378,7 +378,7 @@ def create_page_with_visuals(
             t.write_json(p["path"], p["visual"])
         for d in materializado["ensure_dirs"]:
             t.ensure_directory(Path(d))
-        result = t.summary()
+    result = t.summary()
 
     creados = [{"id": p["id"], "file": str(p["path"]), **p["meta"]}
                for p in planificados]
@@ -452,7 +452,7 @@ def update_visuals_bulk(
             active, [p["path"] for p in planificados], tool=tool) as t:
         for p in planificados:
             t.write_json(p["path"], p["data"])
-        result = t.summary()
+    result = t.summary()
 
     if do_backup:
         record_change(tool,
@@ -503,7 +503,7 @@ def write_visual_with_registration(
         if not ya_registrado:
             t.write_json(report_json, data)
         t.write_json(target, visual_dict)
-        result = t.summary()
+    result = t.summary()
 
     if do_backup:
         record_change(tool,
@@ -582,7 +582,7 @@ def create_page(
                 active, [page_json_path, pages_json_path],
                 tool="pbi_create_page") as t:
             _apply(t)
-            result = t.summary()
+        result = t.summary()
 
     if do_backup and result:
         record_change("pbi_create_page",

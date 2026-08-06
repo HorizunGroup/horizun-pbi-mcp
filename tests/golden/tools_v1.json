@@ -4189,9 +4189,14 @@
     },
     {
       "name": "pbi_select_model",
-      "description": "Selecciona el modelo local activo para futuras operaciones.\n\nSi hay un solo modelo abierto no hace falta indicar puerto. Si hay varios,\npasa el `port` (visto en pbi_list_desktop_models).",
+      "description": "Selecciona el modelo local activo para futuras operaciones.\n\nSi hay un solo modelo abierto no hace falta indicar nada. Si hay varios,\npasa `port` **o** `connection_string` TAL CUAL lo devuelve\n`pbi_list_desktop_models` (`\"Data Source=localhost:56057\"`): lo que sale\nde esa tool entra en esta sin tener que extraer el puerto a mano.",
       "params": {
         "catalog": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "connection_string": {
           "required": false,
           "type": "null|string",
           "default": null

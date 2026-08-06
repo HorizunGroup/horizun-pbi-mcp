@@ -144,7 +144,7 @@ def _write_transactional(active: ActivePbip, file_path: Path, lines: List[str],
     project_state.assert_writable(active, operation="Editar el modelo TMDL")
     with txn_service.project_transaction(active, [file_path], tool=tool) as t:
         t.write_text(file_path, _render(lines))
-        return t.summary()
+    return t.summary()
 
 
 def render_measure_change(

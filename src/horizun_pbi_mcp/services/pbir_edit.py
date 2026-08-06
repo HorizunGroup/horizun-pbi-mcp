@@ -210,10 +210,20 @@ def report_capabilities(active: ActivePbip) -> Dict[str, Any]:
         "custom_visuals_installed": personalizados,
         "visual_types_present": tipos,
         "clonable_types": sorted(tipos),
-        "note": ("Solo se pueden crear visuales de tipos ya presentes en el "
-                 "informe: se clona una estructura real en vez de inventarla. "
-                 "Los de `custom_visuals_installed` se pueden usar por su GUID "
-                 "en `type`, con los roles que ahi se listan."),
+        # La nota anterior decia "SOLO se pueden crear visuales de tipos ya
+        # presentes", y con un informe vacio (`clonable_types: []`) se leia
+        # como que no se podia crear nada. Se crean igual: existe un fallback a
+        # plantilla minima. Describir una restriccion que el codigo no aplica
+        # hace perder llamadas comprobando algo que ya funcionaba.
+        "note": ("`clonable_types` son los tipos con una estructura REAL en "
+                 "este informe: al crear uno de esos se clona en vez de "
+                 "inventarlo, que es lo mas fiable. Un tipo que no este en la "
+                 "lista TAMBIEN se puede crear -incluso con el informe vacio-: "
+                 "se genera una plantilla minima y se avisa en `warnings`, y "
+                 "conviene comprobarla en Power BI Desktop. Los de "
+                 "`custom_visuals_installed` se usan por su GUID en `type`, "
+                 "con los roles que ahi se listan."),
+        "fallback_when_not_clonable": "plantilla minima (validar en Desktop)",
     }
 
 

@@ -303,6 +303,21 @@ def register(mcp) -> None:
                     "El modelo en vivo y el proyecto activo son archivos "
                     "DISTINTOS. Las escrituras de informe estan bloqueadas "
                     "hasta resolverlo. " + coh["how_to_fix"]]
+            elif (coh["state"] == coherencia.UNKNOWN and info_modelo is not None
+                    and info_pbip is not None):
+                # No se pudo CONFIRMAR que sean el mismo archivo, y aqui no se
+                # bloquea nada -eso solo se hace ante divergencia probada-,
+                # pero callarlo era el problema: un proyecto heredado de otra
+                # sesion aparecia junto a un modelo sin relacion, marcado
+                # `writable: true`, y nada en la respuesta lo insinuaba. Una
+                # escritura en modo `pbip` habria ido a un proyecto ajeno.
+                motivo = coh.get("reason") or "sin evidencia suficiente"
+                salida["warnings"] = [
+                    "NO se pudo confirmar que el modelo en vivo y el proyecto "
+                    f"activo sean el mismo archivo ({motivo}). Pueden serlo o "
+                    "no. El proyecto activo puede venir heredado de una sesion "
+                    "anterior: comprueba `active_pbip.path` antes de escribir "
+                    "en modo 'pbip'."]
             # Un session.json corrupto no rompe nada AHORA, y por eso hay que
             # decirlo: se nota al reiniciar, cuando ya nadie lo relaciona.
             if salida["persisted_session"]["state"] == "corrupt":

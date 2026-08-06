@@ -35,7 +35,7 @@ def _write_transactional(active: ActivePbip, path: Path, lines: List[str],
         text += "\n"
     with txn_service.project_transaction(active, [path], tool=tool) as t:
         t.write_text(path, text)
-        return t.summary()
+    return t.summary()
 
 
 def _column_block(lines: List[str], column: str) -> Optional[Tuple[int, int]]:
