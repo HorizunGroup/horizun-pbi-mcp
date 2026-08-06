@@ -182,6 +182,10 @@ DEPENDENCIAS = (
     ("dotenv", "python-dotenv"),
     ("jsonschema", "jsonschema"),
     ("referencing", "referencing"),
+    ("openpyxl", "openpyxl"),
+    ("reportlab", "reportlab"),
+    ("pypdf", "pypdf"),
+    ("msal", "msal"),
 )
 
 

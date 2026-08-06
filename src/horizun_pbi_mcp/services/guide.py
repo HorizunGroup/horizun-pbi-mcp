@@ -1,4 +1,4 @@
-"""Por donde se empieza. Un punto de entrada para 128 tools.
+"""Por donde se empieza. Un punto de entrada para 132 tools.
 
 El problema que cierra
 ----------------------
@@ -9,7 +9,7 @@ ninguna lista alfabetica—. El catalogo estaba completo y el camino no existia.
 
 Aqui no se documenta nada nuevo: se MIRA el estado real y se responde a «¿y
 ahora que?» con tres o cuatro pasos concretos, cada uno con el nombre exacto de
-la tool y el motivo. Una lista de 128 opciones no es una respuesta a esa
+la tool y el motivo. Una lista de 132 opciones no es una respuesta a esa
 pregunta; tres si.
 
 La regla que lo mantiene util
