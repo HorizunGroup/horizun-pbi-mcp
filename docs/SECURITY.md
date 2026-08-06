@@ -18,6 +18,8 @@ This MCP receives instructions from an LLM and writes to the user's files. The r
 | T6 | A secret ends up in the log | Redaction in `services/telemetry.py` |
 | T7 | A backup inside the `.pbip` corrupts it | Validated destination |
 | T8 | Operating against a session that's no longer the same one | Session fingerprint |
+| T9 | A forged Graph pagination URL receives an access token | HTTPS host/port validation before following every `nextLink` |
+| T10 | A remote SharePoint name escapes the download directory or leaves a partial batch | Component validation, containment, staging and atomic directory publish |
 
 ---
 
@@ -88,7 +90,7 @@ Now it's rejected **before any effect**. No bypass.
 
 ---
 
-## 7. Data that never leaves
+## 7. Logs, repository and external boundary
 
 The log only records the **shape**: `<15 chars>`, `<2 items>`. Never the content of `query`, `dax`, `expression`, `rows`, `spec`, `html`, `password`, `token`… Paths are shortened to two segments and `Password=…` patterns are masked.
 
@@ -96,14 +98,30 @@ Never enter the repository: real `.pbix`, `.pbip`, `.Report/`, `.SemanticModel/`
 
 ---
 
+### SharePoint external boundary
+
+The two SharePoint tools are the only open-world operations. They authenticate
+app-only with MSAL, reading tenant, client id and client secret from the process
+environment. Secrets are never MCP parameters and tokens are never returned.
+The bearer token is sent only to `https://graph.microsoft.com:443`; the
+temporary download URL receives no bearer header. Site/library/folder
+identifiers necessarily go to Microsoft Graph, and selected files travel only
+from SharePoint to the configured local `outputs/sharepoint/` directory. No
+local model, report, Excel or PDF content is uploaded.
+
+Use `Sites.Selected` with an explicit grant to only the required sites whenever
+the tenant permits it. Broader permissions such as `Sites.Read.All` expand the
+blast radius and are a deliberate administrator decision.
+
 ## 8. What this server does **not** do
 
 | Doesn't do | Why |
 |---|---|
-| Authenticate with Microsoft or Fabric | Out of scope; no credential management |
+| Interactive/delegated Microsoft login | SharePoint uses an application identity; no user-token flow |
+| Upload, move or delete in SharePoint | The connector is intentionally inbound/read-only remotely |
 | Publish to the Power BI Service | Local only |
 | Write via arbitrary XMLA | There's no safe way to bound it |
-| Purge backups | The policy is defined before deleting anything |
+| Send local Power BI content to Graph | SharePoint support only lists and downloads remote files |
 | Resume journals on startup | Could be worse than leaving it alone; see `RECOVERY.md` |
 | Guess the target of a broken reference | Requires an explicit `mapping` |
 | "Fix everything" | Autofixes are chosen by rule and object |

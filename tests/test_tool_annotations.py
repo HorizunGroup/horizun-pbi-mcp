@@ -206,13 +206,14 @@ def test_las_de_solo_lectura_se_anuncian_como_tales(anotaciones_publicadas):
         anotacion = anotaciones_publicadas.get(nombre)
         if anotacion is None:
             continue
-        esperado = clase == risk.READ_ONLY
+        esperado = clase in (risk.READ_ONLY, risk.READ_EXTERNAL)
         assert anotacion.readOnlyHint is esperado, (
             f"{nombre} ({clase}) publica readOnlyHint={anotacion.readOnlyHint}")
 
 
-def test_ninguna_tool_declara_dominio_abierto(anotaciones_publicadas):
-    """Este servidor habla con disco local y un Desktop local. No hay mundo abierto."""
+def test_solo_sharepoint_declara_dominio_abierto(anotaciones_publicadas):
+    """Solo el conector Graph sale del equipo y debe decirlo honestamente."""
     abiertas = sorted(n for n, a in anotaciones_publicadas.items()
                       if a is not None and a.openWorldHint)
-    assert not abiertas, f"Declaran openWorldHint: {abiertas}"
+    assert abiertas == ["pbi_sharepoint_download_folder",
+                        "pbi_sharepoint_list_folder"]

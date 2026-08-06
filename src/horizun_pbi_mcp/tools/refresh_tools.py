@@ -11,12 +11,23 @@ from horizun_pbi_mcp.tools._common import guard, guard_mutation
 def register(mcp) -> None:
     @mcp.tool()
     def pbi_refresh_model(type: str = "full",
-                          tables: Optional[List[str]] = None, request_id: str = "") -> Dict[str, Any]:
+                          tables: Optional[List[str]] = None,
+                          timeout_seconds: Optional[int] = None,
+                          request_id: str = "") -> Dict[str, Any]:
         """Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).
 
         `type`: full | calculate | clear_values (tambien automatic | data_only).
         `tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.
         Los errores de credenciales/origen se reportan.
+
+        `timeout_seconds` (600 por defecto, `0` lo desactiva): un refresh
+        lanzado por XMLA **no puede mostrar el dialogo de credenciales** de
+        Desktop, asi que un origen sin credenciales guardadas deja al motor
+        esperando para siempre y no hay ninguna ventana que cerrar. Al
+        agotarse el plazo se pide la cancelacion al motor y se devuelve
+        `refresh_timeout` enumerando los origenes que REQUIEREN credenciales
+        -no si las tienen: eso Desktop no lo expone- y si la cancelacion se
+        confirmo o el comando pudo quedar corriendo.
 
         Devuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron
         en cada tabla refrescada. Un refresh puede terminar en 'ok' y haber
@@ -29,12 +40,14 @@ def register(mcp) -> None:
         Desktop y al reabrir hay que refrescar otra vez. Lo que persiste al
         guardar es la definicion (TMDL + PBIR).
         """
-        return guard_mutation(lambda: refresh.refresh_model(get_session(), type, tables))
+        return guard_mutation(lambda: refresh.refresh_model(
+            get_session(), type, tables, timeout_seconds))
 
     @mcp.tool()
     def pbi_open_and_refresh(path: str, timeout: int = 300,
                              reuse_open: bool = True, type: str = "full",
                              tables: Optional[List[str]] = None,
+                             refresh_timeout_seconds: Optional[int] = None,
                              request_id: str = "") -> Dict[str, Any]:
         """Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.
 
@@ -74,7 +87,10 @@ def register(mcp) -> None:
                     desktop_launcher.close(abierto)
                 raise
 
-            salida["refresh"] = refresh.refresh_model(session, type, tables)
+            # `timeout` es el plazo para ABRIR Desktop; el del refresh es otro
+            # y se nombra aparte para que no se confundan.
+            salida["refresh"] = refresh.refresh_model(
+                session, type, tables, refresh_timeout_seconds)
             salida["desktop_left_open"] = True
             return salida
         return guard_mutation(_impl)

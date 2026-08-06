@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.3.0** — 128 tools, 2006 tests passed (1 skipped, with their condition documented). Covers two complementary layers:
+**v1.4.0** — 132 tools. Covers two complementary Power BI layers plus verified document exports and read-only SharePoint ingestion:
 
 | Layer | For what | How |
 |---|---|---|
@@ -22,7 +22,7 @@
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 128 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 132 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -61,7 +61,8 @@
 - **Windows** (Power BI Desktop is Windows-only) with **Power BI Desktop** installed.
 - **Python 3.10+** (tested on 3.14).
 - **.NET Framework 4.x** (comes with Windows) — used by `pythonnet`.
-- Python dependencies: `mcp` (includes FastMCP), `pythonnet`, `psutil`, `python-dotenv`.
+- Python dependencies: `mcp` (includes FastMCP), `pythonnet`, `psutil`,
+  `python-dotenv`, `openpyxl`, `reportlab`, `pypdf` and `msal`.
 - **ADOMD.NET + TOM DLLs** (Analysis Services). Downloaded without admin rights via `scripts/fetch_libs.py` (no need to install in the GAC).
 - To edit/create **visuals**: the report saved as **`.pbip` with PBIR** enabled.
 - *(Optional)* Tabular Editor **is not required** — see [Technical decisions](#technical-decisions).
@@ -92,7 +93,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 When the first session opens, the plugin runs the full setup automatically in
 the background. Check `pbi_install_status`; once it finishes, restart the
-client and the 128 `pbi_*` tools will be available. There are no downloads or
+client and the 132 `pbi_*` tools will be available. There are no downloads or
 additional scripts the user needs to run manually.
 
 > **Honest technical limit:** there's no dedicated executable, but you do need
@@ -187,10 +188,14 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 | `HORIZUN_PBI_MCP_BACKUPS_DIR` | `./backups` | `.pbip` backups |
 | `HORIZUN_PBI_MCP_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR` |
 | `HORIZUN_PBI_MCP_DEFAULT_PBIP` | — | `.pbip` to open on startup |
+| `HORIZUN_PBI_MCP_SHAREPOINT_TENANT_ID` | — | Microsoft Entra tenant for SharePoint app-only access |
+| `HORIZUN_PBI_MCP_SHAREPOINT_CLIENT_ID` | — | Application/client ID registered in Entra |
+| `HORIZUN_PBI_MCP_SHAREPOINT_CLIENT_SECRET` | — | Client secret; environment only, never a tool argument |
+| `HORIZUN_PBI_MCP_PDFTOPPM` | auto-detected | Optional exact path to Poppler `pdftoppm` for PDF render verification |
 
 ---
 
-## Available tools (128)
+## Available tools (132)
 
 > Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -208,6 +213,12 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 - `pbi_list_tables`, `pbi_list_measures`, `pbi_list_relationships` — with `source: live|pbip`.
 - `pbi_analyze_model_quality` — typical model issues.
 - `pbi_document_model` — complete documentation in Markdown to `outputs/`.
+
+**Excel, PDF and SharePoint**
+- `pbi_export_excel` — verified workbook with model, report, audit and optional read-only DAX rows.
+- `pbi_generate_pdf_report` — executive/technical/audit PDF with optional dashboard PNG/JPEG captures.
+- `pbi_sharepoint_list_folder` — lists SharePoint Online folders through Microsoft Graph with pagination and limits.
+- `pbi_sharepoint_download_folder` — staged all-or-nothing download to `outputs/sharepoint/`, verified by size and SHA-256.
 
 **Measures (Phase 4)** — `mode: live|pbip|both`, `overwrite`
 - `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructive: `confirm=true`).
@@ -354,7 +365,7 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**1793 tests, 3 skipped.** The skip is environmental and says how to run it:
+**2039 tests, 3 skipped.** The skips are environmental and say how to run them:
 
 | Skipped | Condition |
 |---|---|
@@ -369,7 +380,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 128 tools are frozen):
+Verify the MCP contract (the 132 tools are frozen):
 
 ```bash
 python -m tests.contract_utils
