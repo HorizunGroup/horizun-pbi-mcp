@@ -438,6 +438,90 @@ def _pdf_text(value: Any, limit: int = 500) -> str:
     return html.escape(encoded, quote=False)
 
 
+# Los hallazgos de `report_audit`/`model_audit` identifican SIEMPRE su objeto
+# en `object`, nunca en el texto. Un PDF que solo imprime regla y evidencia
+# deja siete filas identicas de `measure_possibly_unused` sin decir que medida
+# es. Estas dos funciones son las que hacen accionable la tabla de hallazgos.
+_MAX_IDS_VISUALES = 4
+_ETIQUETA_OBJETO = {
+    "model": "Modelo", "report": "Informe", "table": "Tabla",
+    "column": "Columna", "measure": "Medida", "relationship": "Relacion",
+    "page": "Pagina", "visual": "Visual", "visual_pair": "Visuales",
+    "visual_group": "Visuales",
+}
+
+
+def _finding_object_label(objeto: Any,
+                          page_names: Optional[Dict[str, str]] = None) -> str:
+    """Nombre humano del objeto de un hallazgo: 'Medida Total (Ventas)'."""
+    if not isinstance(objeto, dict) or not objeto:
+        return ""
+    kind = str(objeto.get("kind") or "")
+    partes = [_ETIQUETA_OBJETO.get(kind, kind.replace("_", " ")).strip()]
+
+    nombre = objeto.get("name")
+    if kind in ("visual", "visual_pair", "visual_group"):
+        ids = objeto.get("visuals") or ([objeto["id"]] if objeto.get("id") else [])
+        tipo = objeto.get("type")
+        if tipo:
+            partes.append(str(tipo))
+        if ids:
+            # Un grupo puede traer los trece visuales de la pagina: la celda
+            # crece hasta comerse la fila. El Excel conserva la lista entera.
+            visibles = [str(i) for i in ids[:_MAX_IDS_VISUALES]]
+            if len(ids) > _MAX_IDS_VISUALES:
+                visibles.append(f"(+{len(ids) - _MAX_IDS_VISUALES} mas)")
+            partes.append(", ".join(visibles))
+    elif kind == "relationship" and not nombre:
+        origen, destino = objeto.get("from"), objeto.get("to")
+        if origen or destino:
+            partes.append(f"{origen or '?'} -> {destino or '?'}")
+    elif nombre:
+        partes.append(str(nombre))
+
+    if kind == "measure" and objeto.get("table"):
+        partes.append(f"({objeto['table']})")
+
+    # `page` es el id interno de la pagina; se traduce al nombre visible.
+    pagina = objeto.get("page")
+    if pagina and kind != "page":
+        visible = (page_names or {}).get(str(pagina)) or str(pagina)
+        partes.append(f"- pagina {visible}")
+    elif kind == "page":
+        visible = nombre or (page_names or {}).get(str(pagina or "")) or pagina
+        if visible and not nombre:
+            partes.append(str(visible))
+
+    return " ".join(p for p in partes if p).strip()
+
+
+def _finding_message(finding: Dict[str, Any]) -> str:
+    """Texto del hallazgo. Sin `message`, la evidencia se lee como pares.
+
+    Los motores de auditoria no producen `message`: solo `evidence`, que es un
+    dict. Volcarlo como JSON deja `{"visual_count": 13}` en un reporte que lee
+    una persona. Aqui se aplana a `visual_count: 13`, sin inventar prosa.
+    """
+    directo = finding.get("message") or finding.get("summary")
+    if isinstance(directo, str) and directo.strip():
+        return directo
+    evidencia = finding.get("evidence")
+    if not isinstance(evidencia, dict):
+        return "" if evidencia in (None, {}, []) else str(evidencia)
+    pares = []
+    for clave, valor in evidencia.items():
+        if valor is None:
+            valor = "(vacio)"
+        elif isinstance(valor, bool):        # antes de int: bool es int
+            valor = "si" if valor else "no"
+        elif isinstance(valor, (list, tuple)):
+            valor = ", ".join(str(v) for v in valor)
+        elif isinstance(valor, dict):
+            valor = json.dumps(valor, ensure_ascii=False, default=str)
+        pares.append(f"{clave}: {valor}")
+    return "; ".join(pares)
+
+
 def _capture_files(capture_paths: Optional[Sequence[str]]) -> List[Path]:
     paths: List[Path] = []
     for raw in list(capture_paths or []):
@@ -745,15 +829,20 @@ def generate_pdf_report(session: Session, *, report_type: str = "executive",
                         context.audit.get("hallazgos") or [])[:max_findings]
         section("Hallazgos de auditoria")
         if findings:
-            finding_rows = [["Severidad", "Regla", "Hallazgo", "Recomendacion"]]
+            page_names = {str(p.get("name")): (p.get("display_name") or
+                                               p.get("name"))
+                          for p in context.pages}
+            finding_rows = [["Severidad", "Regla", "Objeto", "Hallazgo",
+                             "Recomendacion"]]
             for finding in findings:
                 finding_rows.append([
                     finding.get("severity"), finding.get("rule") or finding.get("id"),
-                    finding.get("message") or finding.get("summary") or
-                    finding.get("evidence"), finding.get("recommendation")])
+                    _finding_object_label(finding.get("object"), page_names),
+                    _finding_message(finding), finding.get("recommendation")])
             available = page_size[0] - 32 * mm
-            table(finding_rows, [24 * mm, 40 * mm, available * 0.38,
-                                 available - 64 * mm - available * 0.38])
+            resto = available - 54 * mm
+            table(finding_rows, [20 * mm, 34 * mm, resto * 0.30, resto * 0.30,
+                                 resto * 0.40])
         else:
             story.append(Paragraph("No se registraron hallazgos.", styles["BodyText"]))
 

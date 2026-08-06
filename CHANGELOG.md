@@ -5,11 +5,25 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [1.4.0] — 2026-08-05
+## [1.4.0] — 2026-08-06
 
-Four additive tools (132 total), zero breaking changes.
+Five additive tools (133 total), zero breaking changes.
 
 ### Added
+
+- **`pbi_export_report_content`** — exports the report CONTENT, not its
+  metadata: the table behind each visual, or a query the client declares
+  (`rows`/`values`/`filters`/`top_n`). Selection by `pages`, `visuals` or
+  `queries`, output to `.xlsx`/`.pdf` under `outputs/content/`.
+  Each visual's query is reconstructed from its fields and its PBIR filters,
+  and every sheet declares which filters were applied and — the part that
+  matters — which could not be. Visuals with no tabular query (text boxes,
+  images, shapes) are listed with the reason instead of exported empty.
+  Needs the live model, so it opens Desktop when there is none, and it
+  **refuses to export a model that is open but unprocessed**: a freshly
+  opened `.pbip` answers every query with zero rows and would produce a blank
+  workbook without a single error. `dry_run` returns the DAX without touching
+  the engine.
 
 - **`pbi_export_excel`** — verified `.xlsx` with summary, model metadata,
   relationships, report pages/visuals, audit findings and optional read-only
@@ -23,6 +37,56 @@ Four additive tools (132 total), zero breaking changes.
 - **`pbi_sharepoint_download_folder`** — filtered, staged, all-or-nothing
   download to `outputs/sharepoint/`, with byte limits, SHA-256 and post-write
   verification.
+
+### Added
+
+- **Two audit rules for visuals Power BI refuses to draw.** A visual in error
+  shows a banner instead of content, and nothing catches it: the PBIR schema
+  accepts the JSON, the official CLI passes, and the synthesized DAX even
+  returns rows — because the fault is in the *field configuration*, not the
+  query. Both were found by looking at a real report, and both now fail the
+  audit as `error`:
+  - `report_scatter_axis_not_aggregated` — a scatter with a field in Details
+    and non-aggregated X/Y renders nothing ("remove the values to show X and
+    Y pairs").
+  - `report_slicer_below_height_floor` — a slicer below its height floor is
+    clipped in dropdown mode and shows a single scrollbarred item in list
+    mode. The floor depends on the header: **76px** with it (header 28 +
+    selector 32 + padding 8/8) and **48px** without (selector 32 + padding
+    8/8). Both numbers are measured against the official CLI, not derived:
+    feeding it the same report at varying heights, 74 fails and 76 passes
+    with a header, 47 fails and 48 passes without one. A first version used
+    76 unconditionally and reported nine healthy slicers — the ones that hide
+    their header — as broken.
+
+### Fixed
+
+- **A visual with columns from two tables exported a cartesian product.**
+  `SUMMARIZECOLUMNS` only applies auto-exists within one table: grouping by
+  columns of two related tables with no measure crosses them. Measured
+  against the engine — 20 risks by 20 mitigation measures returned 400 rows
+  where the visual shows 20. The query now carries an auxiliary
+  `CALCULATE(COUNTROWS(<fact table>))`, resolved from the model's
+  relationships, and that column is stripped before the file is written. When
+  no single fact table covers every column, the visual is declared
+  non-exportable rather than exported wrong.
+- **`reuse_open` never reused a `.pbip` session.** Detection relied on the
+  open file descriptors, and Desktop keeps none on a `.pbip` project folder
+  (verified with `open_files()`: zero files). Every `pbi_open_in_desktop` on a
+  project therefore launched ANOTHER window of the same report, and
+  `reuse_open=false` could not fail closed either. It now falls back to
+  matching the main window title, reusing only when exactly one window
+  matches.
+- **`pbi_generate_pdf_report` named no object in its audit table.** Every
+  finding carries `object` — the measure, column, visual or page it is about —
+  and the PDF dropped it, printing seven identical `measure_possibly_unused`
+  rows. It now has an `Objeto` column resolving page ids to their visible name.
+  The Excel export already carried the column.
+- **The same table printed raw JSON.** No audit engine emits `message`, so the
+  `message or summary or evidence` fallback always landed on the evidence dict
+  and rendered `{"visual_count": 13, "threshold": 12}` in a document a person
+  reads. Evidence is now flattened to `visual_count: 13; threshold: 12`. Found
+  by rendering the PDF and looking at it; the existing tests only counted pages.
 
 ### Security
 

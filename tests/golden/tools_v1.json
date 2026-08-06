@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 132,
+  "tool_count": 133,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -2482,6 +2482,69 @@
       },
       "required": [
         "page"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_export_report_content",
+      "description": "Exporta el CONTENIDO del informe: los datos que muestra el tablero.\n\nA diferencia de `pbi_export_excel` y `pbi_generate_pdf_report`, que\ndocumentan el proyecto, esto exporta lo que el cliente ve. `select`\nadmite tres formas, combinables:\n\n- `pages`: [\"Matriz de Riesgos\"] -> la tabla que hay detras de CADA\n  visual de esas paginas (por nombre visible o id interno).\n- `visuals`: [\"15b0fc11e628...\"] -> solo esos visuales.\n- `queries`: [{name, rows:[\"Tabla[Columna]\"], values:[\"Medida\"],\n  filters:[{field, values, exclude?}], top_n?}] -> lo que el cliente\n  declare, sin referirse a ningun visual.\n\nCada consulta se reconstruye a partir de los campos del visual, se\nejecuta en SOLO LECTURA contra el modelo en vivo y sale como una hoja\nde Excel (`format`: `xlsx|pdf|both`).\n\nNecesita el modelo en vivo: los datos solo existen en el motor, no en\nel .pbip. Con `auto_open` abre el informe en Desktop si hace falta, y\nse NIEGA a exportar si el modelo esta abierto pero sin procesar, en\nvez de publicar un archivo en blanco. Con `dry_run` devuelve el DAX\nque ejecutaria sin tocar el motor ni escribir nada.\n\nCada hoja declara con que filtros se saco y, sobre todo, cuales no se\npudieron aplicar. Los visuales sin consulta tabular -textos, imagenes,\nformas- se listan aparte con el motivo.",
+      "params": {
+        "auto_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "file_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "format": {
+          "required": false,
+          "type": "string",
+          "default": "xlsx"
+        },
+        "max_rows": {
+          "required": false,
+          "type": "integer",
+          "default": 100000
+        },
+        "max_rows_pdf": {
+          "required": false,
+          "type": "integer",
+          "default": 40
+        },
+        "select": {
+          "required": true,
+          "type": "object"
+        },
+        "title": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "select"
       ],
       "output_shape": {
         "type": "object",

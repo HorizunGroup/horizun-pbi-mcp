@@ -1,4 +1,4 @@
-# Tool catalog — 132
+# Tool catalog — 133
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -33,8 +33,8 @@ tools registered.
 | Q — data diagnostics | 1 |
 | R — external sources | 1 |
 | S — ecosystem port | 2 |
-| T — exports and SharePoint | 4 |
-| **Total** | **132** |
+| T — exports and SharePoint | 5 |
+| **Total** | **133** |
 
 ---
 
@@ -163,10 +163,17 @@ tools registered.
 | `pbi_plan_audit_fixes` | Plans fixes for **specific** rules |
 | `pbi_apply_audit_fixes` | **Destructive** (`confirm`) |
 
+`pbi_audit_report_only` includes two rules for visuals that Power BI refuses
+to draw — the failure no schema can see, because the JSON is valid and the
+fault is in the field configuration: `report_scatter_axis_not_aggregated`
+(Details plus non-aggregated X/Y) and `report_slicer_below_height_floor` (under its floor: 76px with a visible
+header, 48px without — both measured against the official CLI).
+
 ## Excel, PDF and SharePoint
 
 | Tool | What it does |
 |---|---|
+| `pbi_export_report_content` | Exports the report CONTENT — the data behind each visual, or a query the client declares — to `.xlsx`/`.pdf` under `outputs/content/`. Needs the live model: opens Desktop if needed and refuses to export when the model is open but unprocessed. Every sheet declares which filters were applied and which could not be |
 | `pbi_export_excel` | Verified `.xlsx` with summary, model, relationships, pages, visuals, audit and optional read-only DAX data. Reopens the workbook before publishing it under `outputs/excel/` |
 | `pbi_generate_pdf_report` | Executive, technical or audit PDF; can embed PNG/JPEG captures returned by `pbi_validate_desktop_render`; logical verification is mandatory and Poppler render verification is reported when available |
 | `pbi_sharepoint_list_folder` | Lists a SharePoint Online folder through Microsoft Graph v1.0, with pagination, optional recursion and explicit item limit |
@@ -217,7 +224,7 @@ that can quietly drift.
 | Class | No. | Behavior | `readOnlyHint` |
 |---|---|---|---|
 | `read_only` | 54 | Doesn't modify anything of the user's and leaves no file behind | `true` |
-| `read_only_emits_file` | 11 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
+| `read_only_emits_file` | 12 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
 | `read_external` | 1 | Reads SharePoint through Microsoft Graph; no local or remote write | `true`, `openWorldHint: true` |
 | `read_external_emits_file` | 1 | Reads SharePoint and publishes a verified download under `outputs/` | `false`, `openWorldHint: true` |
 | `side_effect_external` | 2 | Opens — and sometimes closes — Power BI Desktop: `pbi_open_in_desktop`, `pbi_validate_desktop_render` | `false` |

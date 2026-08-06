@@ -148,6 +148,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_profile_data": READ_ONLY_EMITS_FILE,
     "pbi_run_dax": READ_ONLY_EMITS_FILE,
     "pbi_export_excel": READ_ONLY_EMITS_FILE,
+    "pbi_export_report_content": READ_ONLY_EMITS_FILE,
     "pbi_generate_pdf_report": READ_ONLY_EMITS_FILE,
 
     # -- SharePoint / Microsoft Graph --

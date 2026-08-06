@@ -180,16 +180,50 @@ def _preflight_pbip_model(pbip: Path) -> None:
     )
 
 
-def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
-    """PID del Desktop que tiene ese .pbix abierto, si se puede averiguar.
+def _pid_por_titulo_de_ventana(stem: str) -> Optional[int]:
+    """PID cuya ventana principal se llama exactamente como el proyecto.
 
-    Desktop mantiene el archivo abierto mientras el informe esta cargado, asi
-    que la lista de descriptores lo delata. En Windows `open_files()` puede
-    fallar por permisos; en ese caso devolvemos None y el llamador decide.
+    Es la unica correlacion posible para un .pbip: Desktop NO deja ningun
+    descriptor abierto sobre la carpeta del proyecto -comprobado con
+    `open_files()`, que devuelve cero archivos de esa carpeta-, asi que la
+    busqueda por descriptores da None y, sin esto, cada apertura del mismo
+    proyecto lanzaba OTRA ventana.
+
+    Se exige coincidencia exacta y una sola ventana: ante dos candidatas no se
+    elige, porque reutilizar la equivocada es peor que no reutilizar.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        from horizun_pbi_mcp.powerbi.desktop_capture import _enumerate_windows
+    except Exception:                          # noqa: BLE001 - sin captura
+        return None
+
+    objetivo = stem.casefold()
+    coincidencias: List[int] = []
+    for proc in _procesos_desktop():
+        try:
+            titulos = [w.title.strip().casefold()
+                       for w in _enumerate_windows(proc.pid) if w.title]
+        except Exception:                      # noqa: BLE001
+            continue
+        if objetivo in titulos and proc.pid not in coincidencias:
+            coincidencias.append(proc.pid)
+    return coincidencias[0] if len(coincidencias) == 1 else None
+
+
+def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
+    """PID del Desktop que tiene ese informe abierto, si se puede averiguar.
+
+    Con un .pbix, Desktop mantiene el archivo abierto mientras el informe esta
+    cargado y la lista de descriptores lo delata. Con un .pbip no hay ningun
+    descriptor que mirar y se cae al titulo de la ventana. En Windows
+    `open_files()` puede fallar por permisos; en ese caso devolvemos None y el
+    llamador decide.
     """
     import psutil
 
-    objetivo = _normalized_open_path(pbix.resolve())
+    objetivo = _normalized_open_path(Path(pbix).resolve())
     for proc in _procesos_desktop():
         try:
             for archivo in proc.open_files():
@@ -197,6 +231,8 @@ def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
                     return proc.pid
         except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
             continue
+    if Path(pbix).suffix.casefold() == ".pbip":
+        return _pid_por_titulo_de_ventana(Path(pbix).stem)
     return None
 
 
