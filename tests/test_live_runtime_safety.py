@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from types import SimpleNamespace
+import sys
 import threading
 import time
 
@@ -779,6 +780,34 @@ def test_relacion_live_resuelve_tablas_sin_depender_de_mayusculas(monkeypatch):
     assert model.save_calls == 1
 
 
+#: Techo para esperas que en el caso bueno terminan al instante: un `Event`
+#: que ya esta puesto vuelve sin dormir, asi que un numero grande no alarga la
+#: prueba, solo evita colgar la suite si la sincronizacion se rompe. Un techo
+#: corto convertia esto en una medida encubierta de lo rapida que es la maquina.
+ESPERA_MAXIMA = 30.0
+
+
+def _esperar_hilo_dentro_de(hilo, funcion, timeout=ESPERA_MAXIMA):
+    """Espera a que `hilo` este ejecutando —o bloqueado dentro de— `funcion`.
+
+    Dormir un rato y dar por hecho que al despertar el otro hilo ya llego es
+    una apuesta sobre la maquina. Aqui se observa el estado real de la pila:
+    un hilo parado en `with self._model_operation_lock:` no crea un marco
+    Python nuevo, asi que su marco superior sigue siendo el de la funcion que
+    intenta tomar el lock. Esa es exactamente la condicion que la prueba
+    necesita antes de comprobar que la seleccion NO cambio.
+    """
+    limite = time.monotonic() + timeout
+    while time.monotonic() < limite:
+        marco = sys._current_frames().get(hilo.ident)
+        while marco is not None:
+            if marco.f_code.co_name == funcion:
+                return True
+            marco = marco.f_back
+        time.sleep(0.005)
+    return False
+
+
 def test_mutacion_live_mantiene_fija_la_seleccion_hasta_savechanges(
         session, monkeypatch):
     original = ActiveModel(
@@ -787,19 +816,47 @@ def test_mutacion_live_mantiene_fija_la_seleccion_hasta_savechanges(
     replacement = ActiveModel(
         "localhost", 50001, "Data Source=localhost:50001", catalog="B",
         session_fingerprint="fingerprint-B")
+
+    # `set_active_model` certifica la sesion, pero esa certificacion CADUCA en
+    # un segundo (`_MODEL_VERIFICATION_TTL_SECONDS`). Sin este doble, un runner
+    # cargado tardaba mas de ese segundo en llegar al lease y la comprobacion
+    # se iba a la maquina de verdad: no hay nadie escuchando en el 50000, y la
+    # prueba de concurrencia moria con un StaleSessionError que no tenia nada
+    # que ver con lo que estaba probando.
+    monkeypatch.setattr(desktop_discovery, "verify_model",
+                        lambda model: {"status": "ok"})
     session.set_active_model(original)
 
     entered = threading.Event()
     release = threading.Event()
     switched = threading.Event()
     column = FakeColumn("Importe")
-    model = FakeWriterModel([FakeWriterTable("Ventas", columns=[column])])
+
+    class ModeloQueMiraLaSeleccion(FakeWriterModel):
+        """Anota, EN el instante del guardado, sobre que seleccion se guarda.
+
+        Es el oraculo directo del invariante: no que la seleccion tardara en
+        cambiar, sino que el guardado ocurrio sobre el modelo arrendado.
+        """
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.seleccion_al_guardar = None
+            self.switch_visto_al_guardar = None
+
+        def SaveChanges(self):  # noqa: N802
+            self.seleccion_al_guardar = session.active_model
+            self.switch_visto_al_guardar = switched.is_set()
+            return super().SaveChanges()
+
+    model = ModeloQueMiraLaSeleccion(
+        [FakeWriterTable("Ventas", columns=[column])])
 
     @contextmanager
     def blocking_connect(active):
         assert active is original
         entered.set()
-        assert release.wait(2)
+        assert release.wait(ESPERA_MAXIMA), "el hilo principal nunca solto"
         yield object(), object(), model
 
     monkeypatch.setattr(model_writer, "connect", blocking_connect)
@@ -812,15 +869,22 @@ def test_mutacion_live_mantiene_fija_la_seleccion_hasta_savechanges(
         switched.set()
 
     mutation.start()
-    assert entered.wait(1)
+    assert entered.wait(ESPERA_MAXIMA), (
+        "la mutacion nunca llego a connect(): el lease no arranco")
     selector = threading.Thread(target=switch)
     selector.start()
-    time.sleep(0.05)
+    assert _esperar_hilo_dentro_de(selector, "set_active_model"), (
+        "el hilo que reselecciona nunca entro en set_active_model")
     assert not switched.is_set(), "la seleccion cambio durante la mutacion"
     release.set()
-    mutation.join(2)
-    selector.join(2)
+    mutation.join(ESPERA_MAXIMA)
+    selector.join(ESPERA_MAXIMA)
+    assert not mutation.is_alive() and not selector.is_alive()
 
     assert switched.is_set()
     assert model.save_calls == 1
+    # Lo que de verdad se defiende: el guardado vio la seleccion arrendada, con
+    # el otro hilo ya esperando su turno.
+    assert model.seleccion_al_guardar is original
+    assert model.switch_visto_al_guardar is False
     assert session.active_model is replacement
