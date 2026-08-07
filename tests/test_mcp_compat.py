@@ -165,3 +165,19 @@ def test_el_changelog_tiene_la_entrada_de_esta_version():
     texto = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"[{branding.VERSION}]" in texto, (
         f"el CHANGELOG no tiene una entrada para {branding.VERSION}")
+
+
+def test_el_manifiesto_del_registro_mcp_declara_esta_version():
+    """`.mcp/server.json` es lo que se publica al registro oficial al taguear.
+
+    Si se queda atras, el workflow del tag reenvia una version ya publicada y
+    el registro responde 400 `cannot publish duplicate version`: la release
+    sale en PyPI pero el registro sigue anunciando la anterior. Aqui se cazaba
+    ya la coherencia de pyproject, README y CHANGELOG; este archivo faltaba.
+    """
+    import json
+
+    datos = json.loads((REPO / ".mcp" / "server.json").read_text(encoding="utf-8"))
+    assert datos["version"] == branding.VERSION, (
+        f".mcp/server.json dice {datos['version']!r} y branding "
+        f"{branding.VERSION!r}")
