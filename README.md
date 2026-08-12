@@ -4,7 +4,9 @@
 
 **v1.5.1** — 134 tools. Covers two complementary Power BI layers plus verified document exports, report **content** export and read-only SharePoint ingestion:
 
-**Install = one prompt.** With Claude Code open, paste:
+**Install = one prompt.** With Claude Code open, paste (English or Spanish, same result):
+
+> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its marketplace, install the plugin, run its one-paste installer if any prerequisite is missing, resolve whatever it marks as pending, and don't stop until `pbi_install_status` says `ready` and the `pbi_*` tools appear.
 
 > Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp): agrega su marketplace, instala el plugin, corre su instalador de un pegado si falta algún prerequisito, resuelve los pendientes que marque, y no pares hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
 
@@ -86,7 +88,13 @@ irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/
 With Claude Code (or Codex) open, paste this and let the agent fight every
 dependency for you — Store-alias Python, missing Git, execution policy, stale
 PATH, network races. The bundled `horizun-pbi-setup` skill carries the full
-field runbook, so this really is the whole install:
+field runbook, so this really is the whole install. English or Spanish, same
+result:
+
+> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its
+> marketplace, install the plugin, run its one-paste installer if any
+> prerequisite is missing, resolve whatever it marks as pending, and don't
+> stop until `pbi_install_status` says `ready` and the `pbi_*` tools appear.
 
 > Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp):
 > agrega su marketplace, instala el plugin, corre su instalador de un pegado

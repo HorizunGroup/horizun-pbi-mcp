@@ -2,7 +2,13 @@
 
 ## If you already have Claude Code: ONE PROMPT — start here
 
-Paste this into Claude Code and let the agent fight the dependencies for you:
+Paste this into Claude Code and let the agent fight the dependencies for you.
+English or Spanish, same result:
+
+> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its
+> marketplace, install the plugin, run its one-paste installer if any
+> prerequisite is missing, resolve whatever it marks as pending, and don't
+> stop until `pbi_install_status` says `ready` and the `pbi_*` tools appear.
 
 > Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp):
 > agrega su marketplace, instala el plugin, corre su instalador de un pegado
