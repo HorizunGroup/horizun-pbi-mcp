@@ -1,5 +1,9 @@
 # Publishing: how it was done and how to repeat it
 
+> **Historical document (v1.0.0 era).** The live release procedure is
+> [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); the version numbers and
+> commands below describe the ORIGINAL publication and are not updated.
+
 This document describes the official publication: the historical repository
 is kept as a private legacy, and the public version is exported with fresh
 history from a verified tree.

@@ -510,6 +510,36 @@ def test_el_catalogo_declara_el_numero_real_de_tools():
         f"la tabla suma {total.group(1)} y hay {EXPECTED_COUNT}")
 
 
+def test_readme_e_install_no_mienten_ni_numero_ni_version():
+    """README e INSTALL son lo primero que ve el mundo y NO tenian guard.
+
+    Por ese hueco la portada de GitHub anuncio "133 pbi_* tools" con 134
+    publicadas (visto por el dueño el 2026-08-12, no por la suite). El mismo
+    principio del catalogo: los conteos salen de la corrida, no de la memoria
+    de quien edita, y la version del encabezado es la de branding.
+    """
+    import re
+
+    from pathlib import Path
+
+    from horizun_pbi_mcp import branding
+
+    raiz = Path(__file__).resolve().parents[1]
+    patron = re.compile(
+        r"(?:[Tt]he |the |tools \(|contract \(the )?(\d{3})(?:\s*`?pbi_\*`?)?"
+        r"\s*(?:tools|`pbi_\*` tools)|tools \((\d{3})\)")
+    for nombre in ("README.md", "docs/INSTALL.md"):
+        texto = (raiz / nombre).read_text(encoding="utf-8")
+        numeros = {int(n) for tupla in patron.findall(texto)
+                   for n in tupla if n}
+        assert numeros <= {EXPECTED_COUNT}, (
+            f"{nombre} anuncia conteos {sorted(numeros)} y hay "
+            f"{EXPECTED_COUNT}; se quedo atras")
+    encabezado = (raiz / "README.md").read_text(encoding="utf-8")
+    assert f"**v{branding.VERSION}**" in encabezado, (
+        f"el README no anuncia v{branding.VERSION} en su encabezado")
+
+
 def test_el_catalogo_menciona_las_tools_del_bloque_de_diseno():
     """El bloque nuevo tiene que estar documentado, no solo contado."""
     from pathlib import Path

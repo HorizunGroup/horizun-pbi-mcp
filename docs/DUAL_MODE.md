@@ -1,6 +1,6 @@
 # `mode="both"` — why it's blocked (R15)
 
-**Status: OPEN by design. `both` is not enabled in v1.0.0.**
+**Status: OPEN by design. `both` has not been enabled in any release (v1.0.0 onward).**
 
 This document explains why, what's kept in the meantime, and how it would have to be designed if it's ever implemented. **It doesn't describe anything that exists today.**
 

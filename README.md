@@ -32,7 +32,7 @@ irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Current architecture, structural debt and invariants |
 | [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) | Coexistence with other Power BI MCPs, with verification levels |
 | [`AGENTS.md`](AGENTS.md) | Rules for modifying this repository without breaking the contract |
-| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 133 tools by block, with their risk class |
+| [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md) | The 134 tools by block, with their risk class |
 | [`docs/DUAL_MODE.md`](docs/DUAL_MODE.md) | Why `mode="both"` is blocked (R15) |
 | [`docs/VALIDATION.md`](docs/VALIDATION.md) | The two PBIR validation layers and their limits |
 | [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) | What is checked before publishing |
@@ -81,7 +81,27 @@ irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/
 
 ## Installation
 
-### Direct from Codex or Claude (recommended)
+### One prompt (recommended)
+
+With Claude Code (or Codex) open, paste this and let the agent fight every
+dependency for you — Store-alias Python, missing Git, execution policy, stale
+PATH, network races. The bundled `horizun-pbi-setup` skill carries the full
+field runbook, so this really is the whole install:
+
+> Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp):
+> agrega su marketplace, instala el plugin, corre su instalador de un pegado
+> si falta algún prerequisito, resuelve los pendientes que marque, y no pares
+> hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
+
+No Claude Code on the machine yet? One paste in a normal PowerShell window
+(no admin; it can install Claude Code too, and when IT blocks installs its
+output is the exact user-scope ticket to hand over):
+
+```powershell
+irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+```
+
+### What the agent runs underneath
 
 You don't need to download or register a `.exe`, create `.mcp.json` or manually
 locate this repository. The plugin sets up an isolated Python environment in
@@ -103,7 +123,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 When the first session opens, the plugin runs the full setup automatically in
 the background. Check `pbi_install_status`; once it finishes, restart the
-client and the 133 `pbi_*` tools will be available. There are no downloads or
+client and the 134 `pbi_*` tools will be available. There are no downloads or
 additional scripts the user needs to run manually.
 
 > **Honest technical limit:** there's no dedicated executable, but you do need
@@ -205,7 +225,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 
 ---
 
-## Available tools (133)
+## Available tools (134)
 
 > Full catalog by block: [`docs/TOOL_CATALOG.md`](docs/TOOL_CATALOG.md).
 > Baseline inventory with risk class and preconditions: [`docs/TOOL_INVENTORY.md`](docs/TOOL_INVENTORY.md).
@@ -391,7 +411,7 @@ python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
 
-Verify the MCP contract (the 133 tools are frozen):
+Verify the MCP contract (the 134 tools are frozen):
 
 ```bash
 python -m tests.contract_utils
