@@ -5,11 +5,14 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [1.5.0] — 2026-08-12
 
-Torre Aurora field-report closure (134 tools). Everything below came from two
-real build sessions on 2026-08-11, triaged against the current code first —
-roughly half the report was already implemented; this closes the other half.
+Torre Aurora field-report closure (134 tools, one additive). Everything below
+came from two real build sessions on 2026-08-11, triaged against the current
+code first — roughly half the report was already implemented; this closes the
+other half. Three behaviors are deliberately STRICTER than in 1.4.0 (unknown
+spec options, merge content collisions, session-restored project); see
+`Changed` — automation that relied on the old lax behavior will notice.
 
 ### Added
 

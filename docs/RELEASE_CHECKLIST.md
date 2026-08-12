@@ -106,7 +106,7 @@ On a **copy** outside OneDrive, never on the original:
 
 ## Tagging
 
-The release candidate version is **`v1.4.0`**. The exceptions below are documented
+The release candidate version is **`v1.5.0`**. The exceptions below are documented
 product limits, not hidden bugs or skipped criteria.
 
 The version declared in `branding.VERSION` / `pyproject.toml` must match the tag **before** tagging. Installing from a tag and getting a package that reports a different version is exactly what these checks exist to prevent.
