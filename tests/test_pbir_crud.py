@@ -161,6 +161,32 @@ def test_set_visual_title_preserva_formato(proyecto):
     assert "fontColor" in props, "el formato del titulo se conserva"
 
 
+def test_ocultar_el_titulo_preserva_texto_y_formato(proyecto):
+    """`show=false` esconde el titulo sin el rodeo del texto vacio."""
+    ruta = pbir_edit._visual_file(proyecto[0], P, CARD)
+    active = proyecto[0]
+
+    pbir_edit.set_visual_title(active, P, CARD, show=False)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    props = datos["visual"]["visualContainerObjects"]["title"][0]["properties"]
+    assert props["show"]["expr"]["Literal"]["Value"] == "false"
+    assert "text" in props, "el texto sigue ahi para poder reactivarlo"
+    assert "fontColor" in props, "el formato no se pierde"
+
+    pbir_edit.set_visual_title(active, P, CARD, show=True)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    props = datos["visual"]["visualContainerObjects"]["title"][0]["properties"]
+    assert props["show"]["expr"]["Literal"]["Value"] == "true"
+
+
+def test_titulo_sin_texto_ni_show_se_rechaza(proyecto):
+    active, project, _s = proyecto
+    antes = huella(project)
+    with pytest.raises(ValidationError):
+        pbir_edit.set_visual_title(active, P, CARD)
+    assert huella(project) == antes
+
+
 def test_formato_condicional_devuelve_aviso_de_contraste_del_tema(
         proyecto, monkeypatch):
     from horizun_pbi_mcp.pbip import theme
@@ -204,6 +230,49 @@ def test_reaplicar_formato_a_campo_proyectado_es_idempotente(proyecto):
     reglas = [b for b in datos["visual"]["objects"]["dataPoint"]
               if "fill" in b.get("properties", {})]
     assert len(reglas) == 1
+
+
+def test_color_por_valor_de_campo_sobre_barras(proyecto):
+    active, _p, _s = proyecto
+    resultado = pbir_edit.set_color_from_field(
+        active, P, COL, "Fact[TotalAmount]", target="bars")
+
+    assert resultado["mode"] == "field_value"
+    ruta = pbir_edit._visual_file(active, P, COL)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    bloque = datos["visual"]["objects"]["dataPoint"][0]
+    expresion = bloque["properties"]["fill"]["solid"]["color"]["expr"]
+    assert "FillRule" not in expresion
+    assert expresion["Measure"]["Property"] == "TotalAmount"
+
+
+def test_target_column_ausente_falla_antes_de_escribir(proyecto):
+    """Pintar una columna que el visual no muestra era el no-op invisible."""
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    active, project, settings = proyecto
+    antes = huella(project)
+    with pytest.raises(cf.ConditionalFormatError) as exc:
+        pbir_edit.set_conditional_format(
+            active, P, COL, "Fact[TotalAmount]", "#000000", "#FFFFFF",
+            target="bars", target_column="Fact[NoProyectada]")
+    assert exc.value.details["rule"] == "format_target_not_projected"
+    assert huella(project) == antes
+    assert journals(settings.backups_dir) == []
+
+
+def test_anclas_numericas_viajan_hasta_el_visual(proyecto):
+    active, _p, _s = proyecto
+    pbir_edit.set_conditional_format(
+        active, P, COL, "Fact[TotalAmount]", "#000000", "#FFFFFF",
+        target="bars", min_value=0, max_value=100)
+
+    ruta = pbir_edit._visual_file(active, P, COL)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    grad = (datos["visual"]["objects"]["dataPoint"][0]["properties"]["fill"]
+            ["solid"]["color"]["expr"]["FillRule"]["FillRule"]["linearGradient2"])
+    assert grad["min"]["value"]["Literal"]["Value"] == "0D"
+    assert grad["max"]["value"]["Literal"]["Value"] == "100D"
 
 
 def test_orden_z(proyecto):
@@ -409,6 +478,55 @@ def test_detecta_z_duplicado():
     r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
     dup = [i for i in r["issues"] if i["rule"] == "layout_z_order_duplicated"]
     assert dup and dup[0]["evidence"]["count"] == 2
+
+
+def test_normalize_ejecuta_el_autofix_de_z_duplicado():
+    """El analizador marcaba `auto_fix_available: true` y nadie lo ejecutaba."""
+    vis = [{"id": "a", "position": {"x": 20, "y": 20, "width": 200,
+                                    "height": 100, "z": 0}},
+           {"id": "b", "position": {"x": 400, "y": 20, "width": 200,
+                                    "height": 100, "z": 0}},
+           {"id": "c", "position": {"x": 700, "y": 20, "width": 200,
+                                    "height": 100}}]
+    parches = layout_doctor.normalize(vis, {"width": 1280, "height": 720})
+
+    zetas = {p["visual_id"]: p["z"] for p in parches if "z" in p}
+    # 'a' conserva su z=0 (ya es el indice 0); 'b' y 'c' reciben z unicos.
+    assert zetas == {"b": 1.0, "c": 2.0}
+
+
+def test_normalize_no_toca_un_orden_z_sano():
+    vis = [{"id": "a", "position": {"x": 20, "y": 20, "width": 200,
+                                    "height": 100, "z": 0}},
+           {"id": "b", "position": {"x": 400, "y": 20, "width": 200,
+                                    "height": 100, "z": 1}}]
+    assert layout_doctor.normalize(vis, {"width": 1280, "height": 720}) == []
+
+
+def test_detecta_vacio_interno_en_tabla_estirada():
+    """La matriz de 4 columnas a 1248px: el hueco lo veia solo el dueno."""
+    vis = [{"id": "a", "type": "matrix",
+            "measures": ["[M1]"], "columns": ["T[C1]", "T[C2]", "T[C3]"],
+            "position": {"x": 16, "y": 16, "width": 1248, "height": 400}}]
+    r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
+    vacios = [i for i in r["issues"] if i["rule"] == "layout_internal_void"]
+    assert vacios and vacios[0]["evidence"]["columns"] == 4
+
+
+def test_tabla_dimensionada_al_contenido_no_avisa():
+    vis = [{"id": "a", "type": "matrix",
+            "measures": ["[M1]"], "columns": ["T[C1]", "T[C2]", "T[C3]"],
+            "position": {"x": 16, "y": 16, "width": 700, "height": 400}}]
+    r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
+    assert not any(i["rule"] == "layout_internal_void" for i in r["issues"])
+
+
+def test_sin_campos_conocidos_no_se_estima_vacio():
+    """Desde el compilador del spec no viajan los campos: no se especula."""
+    vis = [{"id": "a", "type": "matrix",
+            "position": {"x": 16, "y": 16, "width": 1248, "height": 400}}]
+    r = layout_doctor.detect_issues(vis, {"width": 1280, "height": 720})
+    assert not any(i["rule"] == "layout_internal_void" for i in r["issues"])
 
 
 def test_detecta_pagina_vacia():

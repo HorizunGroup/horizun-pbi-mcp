@@ -3,13 +3,19 @@
 What remains open, why it matters and how to check it. Ordered by what
 hurts the most.
 
-Updated on 2026-08-06 for **v1.4.0** (133 tools). Excel/PDF exports and
-SharePoint folder ingestion are now built in. Two things closed since
+Updated on 2026-08-12 (134 tools). Excel/PDF exports and
+SharePoint folder ingestion are now built in. Closed since
 1.0.1: the fourteen-item field report from the first real end-to-end session,
-and **the four phases of the product vision** — intent brief, content-level
+**the four phases of the product vision** — intent brief, content-level
 data diagnostics, external sources, and the ecosystem port as a data
-contract. They chain: port keys → brief `critical_fields` → diagnostics
-escalate those findings to `error` citing the owner's own reason.
+contract (they chain: port keys → brief `critical_fields` → diagnostics
+escalate those findings to `error` citing the owner's own reason) — and the
+**Torre Aurora field report** (2026-08-11): `target_column` + numeric anchors
++ field-value mode in conditional formatting, loud rejection of unknown spec
+options, id-first spec merge with content-collision conflicts, capture by
+page with fit-to-page, title `show`, theme `patch`, slicer header, z-order
+autofix, internal-void lint, and explicit confirmation of a session-restored
+project. See CHANGELOG "Unreleased".
 
 The list below isn't a brainstorm: it's what we know is missing, with
 evidence.

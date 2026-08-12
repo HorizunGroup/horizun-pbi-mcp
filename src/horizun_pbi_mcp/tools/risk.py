@@ -207,6 +207,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_repair_broken_references": WRITE_REVERSIBLE,
     "pbi_replace_visual_field": WRITE_REVERSIBLE,
     "pbi_set_column_visibility": WRITE_REVERSIBLE,
+    "pbi_set_color_from_field": WRITE_REVERSIBLE,
     "pbi_set_conditional_format": WRITE_REVERSIBLE,
     "pbi_set_relationship_direction": WRITE_REVERSIBLE,
     "pbi_set_storage_mode": WRITE_REVERSIBLE,

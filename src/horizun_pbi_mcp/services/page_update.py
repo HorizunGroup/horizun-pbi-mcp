@@ -194,27 +194,63 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
     actual_pagina = read_json(page_json)
     existentes = pbir_reader.list_visuals(active, page_id, strict=True)
 
-    # Emparejado por firma. Cada existente se consume una sola vez, para que
-    # dos visuales identicos no se emparejen ambos con el mismo del spec.
+    # Primera pasada: emparejado por ID. Es la unica identidad que no admite
+    # duda: el id determinista que produce la misma semilla, o el id real que
+    # el autor puso en el spec. Se reserva ANTES de la pasada por firma para
+    # que un emparejado difuso no consuma un visual que otro nombro explicito.
+    por_id = {v["id"]: v for v in existentes}
+    reservados: Dict[int, Dict[str, Any]] = {}
+    usados: set = set()
+    for indice, c in enumerate(compilado["visuals"]):
+        for candidato_id in (c["visual"].get("name"),
+                             (c.get("meta") or {}).get("spec_id")):
+            existente = por_id.get(str(candidato_id or ""))
+            if existente is not None and existente["id"] not in usados:
+                reservados[indice] = existente
+                usados.add(existente["id"])
+                break
+
+    # Segunda pasada: emparejado por firma (tipo + titulo + campos). Cada
+    # existente se consume una sola vez, para que dos visuales identicos no se
+    # emparejen ambos con el mismo del spec.
     disponibles: Dict[tuple, List[Dict[str, Any]]] = {}
     for v in existentes:
-        disponibles.setdefault(_firma_de_existente(v), []).append(v)
+        if v["id"] not in usados:
+            disponibles.setdefault(_firma_de_existente(v), []).append(v)
 
     archivos: Dict[Path, Any] = {}
     kept, added, updated = [], [], []
-    usados: set = set()
+    colisiones: List[Dict[str, Any]] = []
 
-    for c in compilado["visuals"]:
+    for indice, c in enumerate(compilado["visuals"]):
         firma = _firma_de_compilado(c)
-        pareja = None
-        cola = disponibles.get(firma) or []
-        while cola:
-            candidato = cola.pop(0)
-            if candidato["id"] not in usados:
-                pareja = candidato
-                break
+        pareja = reservados.get(indice)
+        emparejado_por_id = pareja is not None
+        if pareja is None:
+            cola = disponibles.get(firma) or []
+            while cola:
+                candidato = cola.pop(0)
+                if candidato["id"] not in usados:
+                    pareja = candidato
+                    break
 
         datos = copy.deepcopy(c["visual"])
+        # Un textbox no tiene titulo ni campos: su firma es solo el tipo, y
+        # DOS textbox distintos (titulo y subtitulo) comparten firma. Antes el
+        # merge emparejaba el subtitulo del spec con el titulo existente y le
+        # REEMPLAZABA el texto: perdida silenciosa de contenido. Si la firma
+        # no distingue y el contenido difiere, es un conflicto que decide el
+        # autor, nunca un update callado. En 'replace' no aplica: ahi el spec
+        # declara la pagina completa y sustituir contenido es lo pedido.
+        if (pareja is not None and not emparejado_por_id
+                and sync_mode == MERGE and firma[1:] == ("", (), ())):
+            anterior_visual = read_json(Path(pareja["file"])).get("visual")
+            if anterior_visual != datos.get("visual"):
+                colisiones.append({
+                    "spec_index": indice, "type": firma[0],
+                    "existing_id": pareja["id"]})
+                continue
+
         if pareja is not None:
             # Se CONSERVA el id: es lo que mantiene vivas las referencias.
             datos["name"] = pareja["id"]
@@ -233,6 +269,18 @@ def _planificar_update(active: ActivePbip, compilado: Dict[str, Any],
             added.append(vid)
         datos.setdefault("$schema", pbir_writer.SCHEMA_VISUAL)
         archivos[destino] = datos
+
+    if colisiones:
+        raise PageConflict(
+            f"{len(colisiones)} visual(es) del spec comparten firma con uno "
+            "existente pero difieren en contenido; actualizarlos a ciegas "
+            "reemplazaria contenido ajeno (p.ej. el subtitulo del spec "
+            "pisando el texto del titulo). Ponle al visual del spec un 'id' "
+            "con el id real del visual a actualizar, o cambia a "
+            "sync_mode='replace' si el spec describe la pagina completa.",
+            details={"collisions": colisiones,
+                     "existing_ids": {c["existing_id"]: c["type"]
+                                      for c in colisiones}})
 
     sobrantes = [v for v in existentes if v["id"] not in usados]
     borrados: List[Path] = []

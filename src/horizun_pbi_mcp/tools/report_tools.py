@@ -132,6 +132,7 @@ def register(mcp) -> None:
                         data_colors: Optional[List[str]] = None,
                         theme_json: Optional[Dict[str, Any]] = None,
                         fonts: Optional[Dict[str, str]] = None,
+                        patch: Optional[Dict[str, Any]] = None,
                         request_id: Optional[str] = None) -> Dict[str, Any]:
         """Aplica un tema de colores al informe .pbip activo.
 
@@ -151,6 +152,12 @@ def register(mcp) -> None:
         `fonts`: {'title'|'body'|'callout': 'Familia'} fija las fuentes via
         textClasses, sobre el preset o sobre tu theme_json.
 
+        `patch`: cambios PARCIALES sobre el tema que el informe YA tiene, sin
+        reenviar el tema completo (p.ej. {"visualStyles": {...}} para retocar
+        un estilo). Los dicts se fusionan en profundidad; las listas se
+        reemplazan enteras. Con `patch`, el resto de parametros no se usa y
+        hace falta que el informe ya tenga un tema propio.
+
         Si el informe ya tenia un tema con contenido DISTINTO (p.ej. editado a
         mano), se reemplaza avisandolo en `warnings`; la version anterior queda
         recuperable en el backup de la transaccion.
@@ -161,9 +168,17 @@ def register(mcp) -> None:
 
         def _impl():
             activo = _tema_activo()
-            construido = theme.build_theme(preset=preset, name=name,
-                                           data_colors=data_colors,
-                                           theme_json=theme_json, fonts=fonts)
+            if patch:
+                base = theme.current_theme(activo)
+                if not base:
+                    raise theme.ThemeError(
+                        "`patch` retoca el tema existente y este informe no "
+                        "tiene tema propio; aplica primero un tema completo.")
+                construido = theme.patch_theme(base, patch)
+            else:
+                construido = theme.build_theme(
+                    preset=preset, name=name, data_colors=data_colors,
+                    theme_json=theme_json, fonts=fonts)
             return theme.apply_theme(activo, construido)
 
         return guard_mutation(_impl)
@@ -216,10 +231,19 @@ def register(mcp) -> None:
             _active(), page, visual_id, confirm))
 
     @mcp.tool()
-    def pbi_set_visual_title(page: str, visual_id: str, title: str, request_id: str = "") -> Dict[str, Any]:
-        """Cambia el titulo de un visual PRESERVANDO su formato (fuente, color)."""
+    def pbi_set_visual_title(page: str, visual_id: str,
+                             title: Optional[str] = None,
+                             show: Optional[bool] = None,
+                             request_id: str = "") -> Dict[str, Any]:
+        """Cambia u oculta el titulo de un visual PRESERVANDO su formato.
+
+        `title`: el texto nuevo. `show=false`: oculta el titulo SIN borrar su
+        texto ni formato (el rodeo de poner texto vacio dejaba la banda del
+        titulo ocupando altura); `show=true` lo vuelve a mostrar. Se puede
+        pasar solo uno de los dos, o ambos.
+        """
         return guard_mutation(lambda: pbir_edit.set_visual_title(
-            _active(), page, visual_id, title))
+            _active(), page, visual_id, title, show=show))
 
     @mcp.tool()
     def pbi_set_conditional_format(page: str, visual_id: str, field: str,
@@ -227,16 +251,25 @@ def register(mcp) -> None:
                                    target: str = "background",
                                    mid_color: Optional[str] = None,
                                    null_strategy: str = "asZero",
+                                   target_column: Optional[str] = None,
+                                   min_value: Optional[float] = None,
+                                   mid_value: Optional[float] = None,
+                                   max_value: Optional[float] = None,
                                    request_id: str = "") -> Dict[str, Any]:
         """Colorea un visual segun el valor de un campo (degradado).
 
         Es lo que convierte una matriz de numeros en un mapa de calor, o unas
         barras planas en una escala de semaforo.
 
-        `field`: 'Tabla[Campo]' o '[Medida]' de donde sale el valor.
+        `field`: 'Tabla[Campo]' o '[Medida]' de donde sale el VALOR.
+        `target_column`: que columna del visual se pinta con ese valor; sin
+        ella se pinta la columna del propio `field`. Debe estar proyectada en
+        el visual (p.ej. pintar 'Resumen[semaforo]' con '[Puntaje promedio]').
         `target`: 'background' o 'font' para tablas y matrices; 'bars' para
         barras, columnas y puntos. `mid_color`: si lo indicas, el degradado
         tiene tres paradas en vez de dos, util cuando hay un punto neutro.
+        `min_value`/`mid_value`/`max_value`: anclas numericas de las paradas
+        (sin ellas, Power BI usa el minimo y maximo observados).
         `null_strategy`: asZero | none | specificColor.
 
         Si el visual ya tenia una regla en ese mismo destino, se sustituye:
@@ -247,6 +280,33 @@ def register(mcp) -> None:
         return guard_mutation(lambda: pbir_edit.set_conditional_format(
             _active(), page, visual_id, field, min_color, max_color,
             target=target, mid_color=mid_color, null_strategy=null_strategy,
+            target_column=target_column, min_value=min_value,
+            mid_value=mid_value, max_value=max_value,
+            measure_index=_measure_index(_model_data())))
+
+    @mcp.tool()
+    def pbi_set_color_from_field(page: str, visual_id: str, field: str,
+                                 target: str = "background",
+                                 target_column: Optional[str] = None,
+                                 request_id: str = "") -> Dict[str, Any]:
+        """Colorea un visual con el color que DEVUELVE una medida.
+
+        Es el modo "valor de campo" de Power BI: la medida entrega '#D03B3B'
+        o un nombre de color, y el visual lo aplica tal cual. Es el patron
+        tipico de un semaforo calculado en DAX.
+
+        `field`: '[Medida]' o 'Tabla[Medida]' que devuelve el color.
+        `target`: 'background' o 'font' (tablas y matrices), 'bars' (barras,
+        columnas y puntos). La matriz de que combinacion funciona en que tipo
+        de visual vive en el servidor y se valida antes de escribir.
+        `target_column`: columna proyectada a pintar; sin ella se pinta la
+        columna del propio campo.
+        """
+        from horizun_pbi_mcp.tools.visual_tools import _measure_index, _model_data
+
+        return guard_mutation(lambda: pbir_edit.set_color_from_field(
+            _active(), page, visual_id, field, target=target,
+            target_column=target_column,
             measure_index=_measure_index(_model_data())))
 
     @mcp.tool()

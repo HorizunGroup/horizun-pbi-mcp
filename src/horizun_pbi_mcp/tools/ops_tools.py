@@ -137,9 +137,18 @@ def register(mcp) -> None:
                     requerido=False)
 
             pbip = session.active_pbip
-            add("active_pbip", pbip is not None,
-                f"{Path(pbip.pbip_path).name}" if pbip else "sin proyecto activo",
-                requerido=False)
+            restaurado = session.restored_pbip
+            if pbip is None and restaurado is not None:
+                add("active_pbip", False,
+                    f"sin proyecto activo; la sesion anterior termino con "
+                    f"'{Path(restaurado.pbip_path).name}' — confirmalo con "
+                    "pbi_open_pbip_project si es el que quieres",
+                    requerido=False)
+            else:
+                add("active_pbip", pbip is not None,
+                    f"{Path(pbip.pbip_path).name}" if pbip
+                    else "sin proyecto activo",
+                    requerido=False)
 
             # Con los dos estados activos hay una pregunta que ninguna otra
             # comprobacion hacia: ¿son el MISMO archivo? Puede haber un modelo

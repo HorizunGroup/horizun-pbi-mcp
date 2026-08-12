@@ -251,6 +251,9 @@ class Session:
         self._verified_identity: Optional[tuple[Any, ...]] = None
         self._verified_at_monotonic: Optional[float] = None
         self._session_file = settings.outputs_dir / "session.json"
+        # Proyecto que quedo activo en la sesion ANTERIOR. Se ofrece, no se
+        # reactiva: ver `_load_persisted` y `require_active_pbip`.
+        self._pbip_restaurado: Optional[ActivePbip] = None
         # Lo pone `_load_persisted`; se declara aqui para que `_persist`
         # nunca pueda mirarlo antes de que exista.
         self._session_corrupta: Optional[str] = None
@@ -382,9 +385,16 @@ class Session:
         with self._lock:
             return self._active_pbip
 
+    @property
+    def restored_pbip(self) -> Optional[ActivePbip]:
+        """Proyecto de la sesion anterior, pendiente de confirmacion."""
+        with self._lock:
+            return self._pbip_restaurado
+
     def set_active_pbip(self, pbip: ActivePbip) -> None:
         with self._lock:
             self._active_pbip = pbip
+            self._pbip_restaurado = None
             self._persist()
 
     def require_active_pbip(self) -> ActivePbip:
@@ -392,6 +402,18 @@ class Session:
 
         with self._lock:
             if self._active_pbip is None:
+                if self._pbip_restaurado is not None:
+                    # Reactivarlo en silencio corria tools contra el proyecto
+                    # de AYER sin que nadie lo pidiera. Se exige un acto
+                    # explicito, y el error trae la ruta para que sea UNA
+                    # llamada, no una busqueda.
+                    raise NoActivePbipError(
+                        "No hay un proyecto .pbip activo en ESTA sesion. La "
+                        "anterior termino con "
+                        f"'{self._pbip_restaurado.pbip_path}' activo; si es el "
+                        "que quieres, confirmalo con pbi_open_pbip_project.",
+                        details={"restored_path": self._pbip_restaurado.pbip_path,
+                                 "reason": "pbip_restored_needs_confirmation"})
                 raise NoActivePbipError(
                     "No hay un proyecto .pbip activo. Ejecuta pbi_open_pbip_project primero."
                 )
@@ -432,9 +454,14 @@ class Session:
                 "No se persiste la sesion: %s esta corrupto (%s). Se deja "
                 "intacto.", self._session_file, self._session_corrupta)
             return
+        # Si aun no se confirmo un proyecto en ESTA sesion, se conserva el
+        # candidato restaurado: persistir None lo borraria de session.json en
+        # cuanto otra cosa (p.ej. elegir modelo) persistiera, y la pista de
+        # "que estaba abierto ayer" se perderia antes de poder confirmarla.
+        pbip = self._active_pbip or self._pbip_restaurado
         data = {
             "active_model": self._active_model.to_dict() if self._active_model else None,
-            "active_pbip": self._active_pbip.to_dict() if self._active_pbip else None,
+            "active_pbip": pbip.to_dict() if pbip else None,
         }
         try:
             self._session_file.parent.mkdir(parents=True, exist_ok=True)
@@ -469,7 +496,11 @@ class Session:
             if am:
                 self._active_model = ActiveModel(**am)
             if ap:
-                self._active_pbip = ActivePbip(**ap)
+                # El proyecto de la sesion anterior NO se reactiva solo: queda
+                # como candidato y la primera tool que lo necesite exige
+                # confirmarlo. Reactivarlo en silencio hizo que un validador
+                # corriera contra el proyecto del dia anterior sin avisar.
+                self._pbip_restaurado = ActivePbip(**ap)
         except (TypeError, AttributeError) as exc:
             # JSON valido pero con otra forma: no es corrupcion del archivo, y
             # reescribirlo con la forma buena es justo lo que toca.

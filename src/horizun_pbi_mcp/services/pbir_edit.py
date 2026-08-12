@@ -296,24 +296,34 @@ def delete_visual(active: ActivePbip, page: str, visual_id: str,
             "backup": cm.result["journal"], "transaction": cm.result}
 
 
-def _fijar_titulo(datos: Dict[str, Any], titulo: str) -> None:
-    """Cambia el TEXTO del titulo conservando su formato."""
-    valor = "'" + str(titulo).replace("'", "''") + "'"
+def _fijar_titulo(datos: Dict[str, Any], titulo: Optional[str],
+                  show: Optional[bool] = None) -> None:
+    """Cambia el TEXTO del titulo conservando su formato.
+
+    `show=False` OCULTA el titulo sin borrar texto ni formato: antes no habia
+    forma de esconderlo y el rodeo era escribir texto vacio, que deja la banda
+    del titulo ocupando altura. `show=True` lo vuelve a mostrar.
+    """
     vis = datos.setdefault("visual", {})
     vco = vis.setdefault("visualContainerObjects", {})
     arr = vco.get("title")
-    if isinstance(arr, list) and arr and isinstance(arr[0], dict):
-        arr[0].setdefault("properties", {})["text"] = {
-            "expr": {"Literal": {"Value": valor}}}
-    else:
-        vco["title"] = [{"properties": {
-            "text": {"expr": {"Literal": {"Value": valor}}}}}]
+    if not (isinstance(arr, list) and arr and isinstance(arr[0], dict)):
+        arr = [{"properties": {}}]
+        vco["title"] = arr
+    propiedades = arr[0].setdefault("properties", {})
+    if titulo is not None:
+        valor = "'" + str(titulo).replace("'", "''") + "'"
+        propiedades["text"] = {"expr": {"Literal": {"Value": valor}}}
+    if show is not None:
+        propiedades["show"] = {"expr": {"Literal": {
+            "Value": "true" if show else "false"}}}
 
 
 def set_visual_title(active: ActivePbip, page: str, visual_id: str,
-                     title: str) -> Dict[str, Any]:
+                     title: Optional[str] = None,
+                     show: Optional[bool] = None) -> Dict[str, Any]:
     """Cambia el titulo de un visual, preservando su formato."""
-    plan = plan_set_visual_title(active, page, visual_id, title)
+    plan = plan_set_visual_title(active, page, visual_id, title, show=show)
 
     assert_escritura_pbir(active, operation="Cambiar el titulo de un visual")
     cm = txn_service.project_transaction(
@@ -321,50 +331,42 @@ def set_visual_title(active: ActivePbip, page: str, visual_id: str,
     with cm as t:
         t.write_json(plan["path"], plan["data"])
     return {"visual_id": visual_id, "page": page, "before": plan["before"],
-            "after": title, "backup": cm.result["journal"],
+            "after": title, "show": show, "backup": cm.result["journal"],
             "transaction": cm.result}
 
 
 def plan_set_visual_title(active: ActivePbip, page: str, visual_id: str,
-                          title: str) -> Dict[str, Any]:
+                          title: Optional[str] = None,
+                          show: Optional[bool] = None) -> Dict[str, Any]:
     """Calcula el visual final sin escribir ni abrir una transaccion."""
+    if title is None and show is None:
+        raise ValidationError(
+            "Indica un titulo nuevo, show=false para ocultarlo, o ambos.")
     ruta = _visual_file(active, page, visual_id)
     if not ruta.exists():
         raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
     datos = read_json(ruta)
     antes = pbir_reader.read_visual_file(ruta).get("title")
-    _fijar_titulo(datos, title)
+    _fijar_titulo(datos, title, show)
     return {"visual_id": visual_id, "page": page, "path": ruta,
             "data": datos, "before": antes, "after": title}
 
 
-def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
-                           field_ref: str, min_color: str, max_color: str, *,
-                           target: str = "background",
-                           mid_color: Optional[str] = None,
-                           null_strategy: str = "asZero",
-                           measure_index: Optional[Dict[str, str]] = None
-                           ) -> Dict[str, Any]:
-    """Pinta un visual segun el valor de un campo (degradado).
+def _resolver_campo_de_color(datos: Dict[str, Any], field_ref: str,
+                             measure_index: Optional[Dict[str, str]],
+                             avisos: List[str]) -> Dict[str, Any]:
+    """Proyeccion del campo que gobierna un color, sin adivinar agregaciones.
 
-    `field_ref` se resuelve igual que en el resto del servidor ('Tabla[Campo]'),
-    de modo que la referencia del color y la de la consulta son la misma cosa.
+    El visual es la fuente autoritativa del nodo de campo. Reconstruirlo
+    desde ``Tabla[Campo]`` perdia Aggregation.Function en columnas numericas
+    importadas. Una medida que no se muestra SI se puede resolver sin
+    adivinar gracias al indice del modelo; una columna ausente no, porque se
+    desconoce si Desktop debe usar Sum, Avg, Min u otra agregacion.
     """
-    from horizun_pbi_mcp.pbip import conditional_format, theme, visual_factory
+    from horizun_pbi_mcp.pbip import conditional_format, visual_factory
 
-    ruta = _visual_file(active, page, visual_id)
-    if not ruta.exists():
-        raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
-    datos = read_json(ruta)
-
-    avisos: List[str] = []
-    # El visual es la fuente autoritativa del nodo de campo. Reconstruirlo
-    # desde ``Tabla[Campo]`` perdia Aggregation.Function en columnas numericas
-    # importadas. Una medida que no se muestra SI se puede resolver sin
-    # adivinar gracias al indice del modelo; una columna ausente no, porque se
-    # desconoce si Desktop debe usar Sum, Avg, Min u otra agregacion.
     try:
-        proyeccion = conditional_format.resolve_projection(datos, field_ref)
+        return conditional_format.resolve_projection(datos, field_ref)
     except conditional_format.ConditionalFormatError as exc:
         if exc.details.get("rule") != "format_field_not_projected":
             raise
@@ -374,14 +376,57 @@ def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
         if not tabla_medida or (tabla_pedida and
                                 tabla_pedida.casefold() != tabla_medida.casefold()):
             raise
-        proyeccion = visual_factory._field_node(              # noqa: SLF001
+        return visual_factory._field_node(                    # noqa: SLF001
             field_ref, "measure", measure_index, avisos)
+
+
+def _metadata_de_destino(datos: Dict[str, Any],
+                         target_column: Optional[str]) -> Optional[str]:
+    """`selector.metadata` de la columna destino, validada contra el visual."""
+    if not target_column:
+        return None
+    from horizun_pbi_mcp.pbip import conditional_format
+
+    destino = conditional_format.resolve_target_projection(datos, target_column)
+    return destino["queryRef"]
+
+
+def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
+                           field_ref: str, min_color: str, max_color: str, *,
+                           target: str = "background",
+                           mid_color: Optional[str] = None,
+                           null_strategy: str = "asZero",
+                           target_column: Optional[str] = None,
+                           min_value: Optional[float] = None,
+                           mid_value: Optional[float] = None,
+                           max_value: Optional[float] = None,
+                           measure_index: Optional[Dict[str, str]] = None
+                           ) -> Dict[str, Any]:
+    """Pinta un visual segun el valor de un campo (degradado).
+
+    `field_ref` se resuelve igual que en el resto del servidor ('Tabla[Campo]'),
+    de modo que la referencia del color y la de la consulta son la misma cosa.
+    `target_column` separa entrada de destino: el valor sale de `field_ref` y
+    lo pintado es la columna destino, validada contra las proyecciones.
+    """
+    from horizun_pbi_mcp.pbip import conditional_format, theme
+
+    ruta = _visual_file(active, page, visual_id)
+    if not ruta.exists():
+        raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
+    datos = read_json(ruta)
+
+    avisos: List[str] = []
+    proyeccion = _resolver_campo_de_color(datos, field_ref, measure_index,
+                                          avisos)
     nodo = proyeccion["field"]
 
     detalle = conditional_format.apply_to_visual(
         datos, nodo, min_color, max_color, target=target,
         mid_color=mid_color, null_strategy=null_strategy,
-        projection_query_ref=proyeccion.get("queryRef"))
+        projection_query_ref=proyeccion.get("queryRef"),
+        metadata_query_ref=_metadata_de_destino(datos, target_column),
+        min_value=min_value, mid_value=mid_value, max_value=max_value)
     avisos.extend(conditional_format.contrast_warnings(
         min_color, max_color, target=target,
         theme_data=theme.current_theme(active)))
@@ -392,6 +437,46 @@ def set_conditional_format(active: ActivePbip, page: str, visual_id: str,
     with cm as t:
         t.write_json(ruta, datos)
     return {"visual_id": visual_id, "page": page, "field": field_ref,
+            "target_column": target_column,
+            **detalle, "warnings": avisos,
+            "backup": cm.result["journal"], "transaction": cm.result}
+
+
+def set_color_from_field(active: ActivePbip, page: str, visual_id: str,
+                         field_ref: str, *,
+                         target: str = "background",
+                         target_column: Optional[str] = None,
+                         measure_index: Optional[Dict[str, str]] = None
+                         ) -> Dict[str, Any]:
+    """Colorea un visual con el color que DEVUELVE una medida (valor de campo).
+
+    La medida debe devolver un color ('#D03B3B' o un nombre CSS valido para
+    Power BI). `target_column` funciona igual que en el degradado: sin el se
+    pinta la columna del propio campo.
+    """
+    from horizun_pbi_mcp.pbip import conditional_format
+
+    ruta = _visual_file(active, page, visual_id)
+    if not ruta.exists():
+        raise ValidationError(f"No existe el visual '{visual_id}' en '{page}'.")
+    datos = read_json(ruta)
+
+    avisos: List[str] = []
+    proyeccion = _resolver_campo_de_color(datos, field_ref, measure_index,
+                                          avisos)
+
+    detalle = conditional_format.apply_field_value_to_visual(
+        datos, proyeccion["field"], target=target,
+        projection_query_ref=proyeccion.get("queryRef"),
+        metadata_query_ref=_metadata_de_destino(datos, target_column))
+
+    assert_escritura_pbir(active, operation="Aplicar color por valor de campo")
+    cm = txn_service.project_transaction(active, [ruta],
+                                         tool="pbi_set_color_from_field")
+    with cm as t:
+        t.write_json(ruta, datos)
+    return {"visual_id": visual_id, "page": page, "field": field_ref,
+            "target_column": target_column,
             **detalle, "warnings": avisos,
             "backup": cm.result["journal"], "transaction": cm.result}
 

@@ -149,6 +149,32 @@ def detect_issues(visuals: List[Dict[str, Any]],
             "Estos visuales no declaran z mientras otros si: el apilado queda "
             "a merced del orden de lectura.", True))
 
+    # --- vacio interno ----------------------------------------------------
+    # Una matriz de 4 columnas estirada a 1248px deja un hueco enorme dentro
+    # de su propia caja; el JSON es valido, el layout no solapa nada y solo lo
+    # veia un humano mirando la pantalla. La estimacion es deliberadamente
+    # generosa: solo avisa cuando el ancho casi dobla al contenido estimado.
+    _TABULARES = {"table", "tableEx", "matrix", "pivotTable"}
+    for v in ordenados:
+        if str(v.get("type") or "") not in _TABULARES:
+            continue
+        campos = len(v.get("measures") or []) + len(v.get("columns") or [])
+        if campos == 0:
+            continue                      # sin campos no hay estimacion honesta
+        x1, _y1, x2, _y2 = _caja(v)
+        ancho = x2 - x1
+        estimado = 60 + campos * 140
+        if ancho > estimado * 1.8 and ancho - estimado > 350:
+            hallazgos.append(_hallazgo(
+                "layout_internal_void", "info",
+                {"kind": "visual", "id": v["id"], "type": v.get("type")},
+                {"width": round(ancho, 1), "columns": campos,
+                 "estimated_content_width": estimado},
+                f"La caja mide {round(ancho)}px pero sus {campos} columna(s) "
+                f"ocupan unos {estimado}px: el resto queda como un vacio "
+                "dentro del visual. Dimensiona al contenido o enriquece el "
+                "visual con mas campos.", False))
+
     # --- saturacion -------------------------------------------------------
     if len(ordenados) > SATURACION:
         hallazgos.append(_hallazgo(
@@ -303,4 +329,32 @@ def normalize(visuals: List[Dict[str, Any]],
         if (round(x), round(y), round(w), round(h)) != (
                 round(x1), round(y1), round(x2 - x1), round(y2 - y1)):
             salida.append(nueva)
+
+    # Orden Z: `detect_issues` marcaba los duplicados con
+    # `auto_fix_available: true` y ninguna tool ejecutaba ese autofix. Con la
+    # Z empatada (o mezclada con visuales sin z), cual queda encima es
+    # indefinido. Se reasigna una secuencia unica 0..n-1 conservando el orden
+    # de apilado actual; solo se toca si HAY conflicto.
+    def _z(v: Dict[str, Any]) -> Any:
+        return (v.get("position") or {}).get("z")
+
+    con_z = [float(_z(v)) for v in visuals if _z(v) is not None]
+    hay_conflicto = (len(con_z) != len(set(con_z))
+                     or (con_z and len(con_z) != len(visuals)))
+    if hay_conflicto:
+        por_id = {p["visual_id"]: p for p in salida}
+        apilados = sorted(visuals, key=lambda v: (
+            float(_z(v)) if _z(v) is not None else float("inf"),
+            v.get("id") or ""))
+        for indice, v in enumerate(apilados):
+            if _z(v) is not None and float(_z(v)) == float(indice):
+                continue
+            parche = por_id.get(v["id"])
+            if parche is None:
+                x1, y1, x2, y2 = _caja(v)
+                parche = {"visual_id": v["id"], "x": round(x1), "y": round(y1),
+                          "width": round(x2 - x1), "height": round(y2 - y1)}
+                salida.append(parche)
+                por_id[v["id"]] = parche
+            parche["z"] = float(indice)
     return salida

@@ -281,6 +281,30 @@ def current_theme(active: ActivePbip) -> Optional[Dict[str, Any]]:
     return None
 
 
+def patch_theme(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    """Fusiona `patch` sobre el tema `base` sin reenviar el tema entero.
+
+    Regla de fusion: los dicts se combinan clave a clave en profundidad; todo
+    lo demas (listas incluidas) se REEMPLAZA. Un `visualStyles` parcial toca
+    solo las propiedades que menciona, pero una lista de `dataColors` es una
+    paleta completa: fusionar colores por posicion produciria una paleta que
+    nadie pidio.
+    """
+    import copy
+
+    def _merge(destino: Dict[str, Any], cambios: Dict[str, Any]) -> None:
+        for clave, valor in cambios.items():
+            if (isinstance(valor, dict)
+                    and isinstance(destino.get(clave), dict)):
+                _merge(destino[clave], valor)
+            else:
+                destino[clave] = copy.deepcopy(valor)
+
+    resultado = copy.deepcopy(base)
+    _merge(resultado, patch)
+    return resultado
+
+
 def _paquete_recursos(paquetes: Any, archivo: str) -> List[Dict[str, Any]]:
     """Declara el tema dentro de `RegisteredResources`, creandolo si no existe."""
     paquetes = list(paquetes or [])

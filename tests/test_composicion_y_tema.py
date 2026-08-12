@@ -645,6 +645,125 @@ def test_fontColor_no_se_ofrece_en_la_matrix_clasica():
     assert "objects" not in vis["visual"]
 
 
+def _visual_matriz_con_proyecciones():
+    """Matriz que muestra `semaforo` y `Puntaje promedio` a la vez."""
+    vis = _visual_matriz()
+    vis["visual"]["query"] = {"queryState": {"Values": {"projections": [
+        {"field": {"Column": {"Expression": {"SourceRef": {"Entity": "qa"}},
+                              "Property": "semaforo"}},
+         "queryRef": "qa.semaforo"},
+        {"field": _campo(), "queryRef": "qa.Puntaje"},
+    ]}}}
+    return vis
+
+
+def test_target_column_pinta_la_columna_destino_no_la_de_entrada():
+    """El caso Torre Aurora: pintar `semaforo` con el valor de [Puntaje].
+
+    Sin `target_column` la regla se escribia sobre la columna del campo de
+    entrada: un no-op invisible reportado como exito.
+    """
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = _visual_matriz_con_proyecciones()
+    r = cf.apply_to_visual(vis, _campo(), "#D03B3B", "#0CA30C",
+                           metadata_query_ref="qa.semaforo")
+
+    bloque = vis["visual"]["objects"]["values"][0]
+    assert bloque["selector"]["metadata"] == "qa.semaforo"
+    entrada = (bloque["properties"]["backColor"]["solid"]["color"]["expr"]
+               ["FillRule"]["Input"])
+    assert entrada == _campo(), "el valor sigue saliendo del campo de entrada"
+    assert r["field_ref"] == "qa.semaforo"
+
+
+def test_target_column_se_valida_contra_las_proyecciones():
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = _visual_matriz_con_proyecciones()
+    destino = cf.resolve_target_projection(vis, "qa[semaforo]")
+    assert destino["queryRef"] == "qa.semaforo"
+
+    with pytest.raises(cf.ConditionalFormatError) as exc:
+        cf.resolve_target_projection(vis, "qa[NoExiste]")
+    assert exc.value.details["rule"] == "format_target_not_projected"
+    assert "qa[semaforo]" in exc.value.details["projected"]
+
+
+def test_target_column_no_aplica_a_barras():
+    """En dataPoint el alcance es la serie: metadata cambiaria el significado."""
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = {"visual": {"visualType": "clusteredColumnChart"}}
+    with pytest.raises(cf.ConditionalFormatError) as exc:
+        cf.apply_to_visual(vis, _campo(), "#000000", "#FFFFFF", target="bars",
+                           metadata_query_ref="qa.semaforo")
+    assert exc.value.details["rule"] == "format_target_not_applicable"
+
+
+def test_anclas_numericas_en_las_paradas():
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    r = cf.build_fill_rule(_campo(), "#D03B3B", "#0CA30C",
+                           mid_color="#FAB219", min_value=0, mid_value=2.5,
+                           max_value=5)
+    grad = r["expr"]["FillRule"]["FillRule"]["linearGradient3"]
+    assert grad["min"]["value"]["Literal"]["Value"] == "0D"
+    assert grad["mid"]["value"]["Literal"]["Value"] == "2.5D"
+    assert grad["max"]["value"]["Literal"]["Value"] == "5D"
+    # Sin ancla no se escribe `value`: Power BI usa min/max observados.
+    sin = cf.build_fill_rule(_campo(), "#D03B3B", "#0CA30C")
+    assert "value" not in sin["expr"]["FillRule"]["FillRule"]["linearGradient2"]["min"]
+
+
+def test_anclas_invalidas_fallan_ruidosamente():
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    with pytest.raises(cf.ConditionalFormatError, match="mid_color"):
+        cf.build_fill_rule(_campo(), "#000000", "#FFFFFF", mid_value=2)
+    with pytest.raises(cf.ConditionalFormatError, match="creciente"):
+        cf.build_fill_rule(_campo(), "#000000", "#FFFFFF",
+                           min_value=10, max_value=1)
+    with pytest.raises(cf.ConditionalFormatError, match="numero"):
+        cf.build_fill_rule(_campo(), "#000000", "#FFFFFF", min_value="5")
+
+
+def test_valor_de_campo_escribe_el_campo_como_color():
+    """Modo 'Field value': la medida devuelve el color, sin FillRule."""
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = _visual_matriz_con_proyecciones()
+    r = cf.apply_field_value_to_visual(vis, _campo(),
+                                       metadata_query_ref="qa.semaforo")
+
+    bloque = vis["visual"]["objects"]["values"][0]
+    assert bloque["properties"]["backColor"]["solid"]["color"]["expr"] == _campo()
+    assert bloque["selector"]["metadata"] == "qa.semaforo"
+    assert r["mode"] == "field_value"
+
+
+def test_valor_de_campo_y_degradado_se_sustituyen_entre_si():
+    """Sobre el mismo campo no conviven dos reglas escondidas."""
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = {"visual": {"visualType": "clusteredColumnChart"}}
+    cf.apply_field_value_to_visual(vis, _campo(), target="bars")
+    r = cf.apply_to_visual(vis, _campo(), "#000000", "#FFFFFF", target="bars")
+
+    assert r["replaced"] is True
+    assert len(vis["visual"]["objects"]["dataPoint"]) == 1
+
+
+def test_valor_de_campo_respeta_la_matriz_de_tipos():
+    """La matriz de que-forma-va-en-que-visual vive en el tool, no en memoria."""
+    from horizun_pbi_mcp.pbip import conditional_format as cf
+
+    vis = {"visual": {"visualType": "textbox"}}
+    with pytest.raises(cf.ConditionalFormatError):
+        cf.apply_field_value_to_visual(vis, _campo(), target="bars")
+    assert "objects" not in vis["visual"]
+
+
 def test_degradado_blanco_avisa_sobre_tema_oscuro():
     from horizun_pbi_mcp.pbip import conditional_format as cf
 

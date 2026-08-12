@@ -249,6 +249,72 @@ def test_un_expr_solido_que_no_es_fillrule_se_bloquea_aunque_el_schema_lo_acepte
     }]
 
 
+def test_las_anclas_numericas_del_escritor_pasan_la_barrera():
+    from horizun_pbi_mcp.pbip import conditional_format
+
+    documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
+    conditional_format.apply_to_visual(
+        documento, _campo_de_prueba(), "#FFFFFF", "#2A78D6",
+        min_value=0, max_value=100)
+
+    assert pbir_schema.validar(documento)["validated"] is True
+
+
+def test_una_parada_con_expr_de_mas_se_bloquea():
+    """Regresion Torre Aurora: un `expr` de mas dentro de una parada dejaba el
+    mapa de calor sin pintar con todos los validadores en verde."""
+    documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
+    documento["visual"]["objects"] = {
+        "values": [{"properties": {
+            "backColor": {"solid": {"color": {"expr": {"FillRule": {
+                "Input": _campo_de_prueba(),
+                "FillRule": {"linearGradient2": {
+                    "min": {"color": {"expr": {
+                        "Literal": {"Value": "'#FFFFFF'"}}}},
+                    "max": {"color": {"Literal": {"Value": "'#2A78D6'"}}},
+                }}}}}}},
+        }}]}
+
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(documento)
+    reglas = {e["rule"] for e in exc.value.details["errors"]}
+    assert "format_gradient_color_literal" in reglas
+
+
+def test_un_ancla_malformada_se_bloquea():
+    documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
+    documento["visual"]["objects"] = {
+        "values": [{"properties": {
+            "backColor": {"solid": {"color": {"expr": {"FillRule": {
+                "Input": _campo_de_prueba(),
+                "FillRule": {"linearGradient2": {
+                    "min": {"color": {"Literal": {"Value": "'#FFFFFF'"}},
+                            "value": {"expr": {"Literal": {"Value": "0D"}}}},
+                    "max": {"color": {"Literal": {"Value": "'#2A78D6'"}}},
+                }}}}}}},
+        }}]}
+
+    with pytest.raises(SchemaValidationFailed) as exc:
+        pbir_schema.validar(documento)
+    reglas = {e["rule"] for e in exc.value.details["errors"]}
+    assert "format_gradient_anchor" in reglas
+
+
+def test_el_color_por_valor_de_campo_pasa_la_barrera():
+    """El modo 'Field value' escribe el campo como expresion de color."""
+    from horizun_pbi_mcp.pbip import conditional_format
+
+    documento = visual_valido()
+    documento["visual"]["visualType"] = "pivotTable"
+    conditional_format.apply_field_value_to_visual(
+        documento, _campo_de_prueba())
+
+    assert pbir_schema.validar(documento)["validated"] is True
+
+
 def test_un_expr_vacio_se_bloquea_aunque_el_schema_lo_acepte():
     documento = visual_valido()
     documento["visual"]["visualType"] = "pivotTable"

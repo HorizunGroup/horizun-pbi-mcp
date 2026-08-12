@@ -5,6 +5,71 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Torre Aurora field-report closure (134 tools). Everything below came from two
+real build sessions on 2026-08-11, triaged against the current code first —
+roughly half the report was already implemented; this closes the other half.
+
+### Added
+
+- **`pbi_set_color_from_field`** — Power BI's "Field value" conditional
+  formatting: a DAX measure returns the color and the visual applies it
+  as-is. The which-form-works-in-which-visual matrix lives in the server
+  (validated against the official catalog), not in anyone's memory. Hand-writing
+  it had two known failure modes: one variant crashed the page render, another
+  painted cards but not table cells.
+- **`pbi_set_conditional_format`**: `target_column` separates the gradient's
+  INPUT from the column being painted (paint `semaforo` with
+  `[Puntaje promedio]`), validated against the visual's projections instead of
+  silently writing a rule nobody renders; `min_value`/`mid_value`/`max_value`
+  numeric anchors for the gradient stops.
+- **`pbi_validate_desktop_render`**: `page` parameter (captures THAT page, not
+  whatever was left active) and `fit_to_page` (default on) which forces the
+  official `displayOption: FitToPage` so the capture shows the whole canvas,
+  not the top third at the saved zoom. Both edit the view before opening and
+  restore the files byte-for-byte afterwards.
+- **`pbi_set_visual_title`**: `show=false` hides a title WITHOUT deleting its
+  text or format (the empty-text workaround kept the title band occupying
+  height).
+- **`pbi_apply_theme`**: `patch` merges partial changes over the report's
+  current theme (deep-merge for dicts, whole-list replacement) instead of
+  resending the full theme.
+- Spec `format.header` toggles the slicer's field header (`header.show` in the
+  official catalog) — a polished dropdown no longer needs a hand patch.
+- `layout_internal_void` lint: a 4-column matrix stretched to 1248px leaves a
+  black hole inside its own box; only a human ever saw it. The estimate is
+  deliberately generous and only fires when the box nearly doubles the
+  estimated content width.
+
+### Changed
+
+- **Unknown spec options are now rejected loudly** with the valid list and a
+  hint (`style: "dropdown"` → `format.mode`; `min_value` → conditional-format
+  parameter). An accepted-but-unmaterialized option was the report's worst
+  bug class: `ok: true` and a visual that ignores what was asked.
+- **`pbi_apply_page_spec` merge pairs by id first** (the deterministic id from
+  the same seed, or the spec author's `id`), then by signature. Two textboxes
+  share a signature (no title, no fields): the spec's subtitle used to pair
+  with the EXISTING title and silently replace its text. A signature match
+  whose content differs is now a `page_conflict` telling the author how to
+  disambiguate; `replace` mode keeps its declare-the-whole-page semantics.
+- **`pbi_normalize_page_layout` executes the z-order autofix** the analyzer
+  had been advertising as `auto_fix_available: true` with no tool ever running
+  it: duplicated (or mixed missing) z values are reassigned as a unique
+  sequence preserving the current stacking order.
+- **A project restored from `session.json` is no longer reactivated
+  silently.** The previous session's project becomes a candidate: the first
+  tool that needs one fails with the restored path and asks for explicit
+  confirmation via `pbi_open_pbip_project` (it once ran the validator against
+  the previous day's `C:\Demos TorreAurora` without a word). `pbi_session_info`
+  shows the pending candidate.
+- `pbir_schema` now validates gradient stop anchors (`value` must be a literal
+  with the `D` suffix): one stray `expr` inside a stop used to leave the heat
+  map rendering nothing with every validator green.
+
+---
+
 ## [1.4.0] — 2026-08-06
 
 Five additive tools (133 total), zero breaking changes.

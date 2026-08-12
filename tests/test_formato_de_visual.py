@@ -66,6 +66,16 @@ def test_el_modo_del_segmentador_se_escribe_solo():
     assert rutas == [("objects", "data", "mode")]
 
 
+def test_el_header_del_segmentador_se_apaga_desde_el_spec():
+    """Ocultar el encabezado del campo era parche a mano en visual.json."""
+    vis = {"visualType": "slicer"}
+    rutas = visual_factory._aplicar_formato(vis, {"header": False})
+
+    assert vis["objects"]["header"][0]["properties"]["show"] == {
+        "expr": {"Literal": {"Value": "false"}}}
+    assert rutas == [("objects", "header", "show")]
+
+
 def test_las_etiquetas_de_datos_se_encienden_desde_el_spec():
     vis = {"visualType": "barChart"}
     visual_factory._aplicar_formato(vis, {"dataLabels": True})

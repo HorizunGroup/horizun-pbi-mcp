@@ -100,6 +100,39 @@ def test_reaplicar_el_mismo_tema_no_avisa(proyecto):
         "reaplicar identico no debe gritar: no se pierde nada")
 
 
+# ------------------------------------------------------------ patch ---
+def test_patch_fusiona_dicts_en_profundidad_y_reemplaza_listas():
+    base = {"name": "X", "dataColors": ["#111111", "#222222"],
+            "visualStyles": {"*": {"*": {"title": [{"show": True}],
+                                         "background": [{"show": False}]}}}}
+    parche = {"dataColors": ["#333333"],
+              "visualStyles": {"*": {"*": {"title": [{"show": False}]}}}}
+
+    resultado = theme.patch_theme(base, parche)
+
+    assert resultado["dataColors"] == ["#333333"], "las listas se reemplazan"
+    estilos = resultado["visualStyles"]["*"]["*"]
+    assert estilos["title"] == [{"show": False}]
+    assert estilos["background"] == [{"show": False}], (
+        "lo no mencionado por el patch sobrevive")
+    assert base["dataColors"] == ["#111111", "#222222"], "no muta la base"
+
+
+def test_patch_sobre_el_tema_aplicado_no_reenvia_el_tema_entero(proyecto):
+    theme.apply_theme(proyecto, theme.build_theme(preset=sorted(theme.PRESETS)[0]))
+    base = theme.current_theme(proyecto)
+    assert base is not None
+
+    parcheado = theme.patch_theme(
+        base, {"textClasses": {"title": {"fontFace": "Fuente Corporativa"}}})
+    theme.apply_theme(proyecto, parcheado)
+
+    vigente = theme.current_theme(proyecto)
+    assert vigente["textClasses"]["title"]["fontFace"] == "Fuente Corporativa"
+    assert vigente["dataColors"] == base["dataColors"], (
+        "el resto del tema quedo como estaba")
+
+
 def test_sustituir_un_tema_editado_a_mano_avisa_y_donde_recuperarlo(proyecto):
     """El riesgo real: las ediciones manuales se perdian en silencio."""
     primero = theme.apply_theme(

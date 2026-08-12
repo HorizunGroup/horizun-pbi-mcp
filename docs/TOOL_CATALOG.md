@@ -1,4 +1,4 @@
-# Tool catalog — 133
+# Tool catalog — 134
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -34,7 +34,8 @@ tools registered.
 | R — external sources | 1 |
 | S — ecosystem port | 2 |
 | T — exports and SharePoint | 5 |
-| **Total** | **133** |
+| U — Torre Aurora field report | 1 |
+| **Total** | **134** |
 
 ---
 
@@ -107,7 +108,8 @@ tools registered.
 | `pbi_apply_theme` | Writes the theme and declares it in the report (all three parts or none) |
 | `pbi_add_image_resource` | Embeds an image and declares it: without both, the visual comes out empty |
 | `pbi_list_report_resources` | Declared resources, on disk, and the ones that don't match |
-| `pbi_set_conditional_format` | Color driven by the data: turns a matrix into a heat map |
+| `pbi_set_conditional_format` | Color driven by the data: turns a matrix into a heat map. `target_column` paints one column with another field's value; `min/mid/max_value` anchor the gradient stops |
+| `pbi_set_color_from_field` | "Field value" mode: a measure returns the color and the visual applies it as-is |
 
 ## Semantic model authoring
 

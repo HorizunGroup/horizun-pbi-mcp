@@ -35,6 +35,111 @@ class DesktopCaptureError(PowerBIMCPError):
     code = "desktop_capture_failed"
 
 
+# ------------------------------------------------ vista para la captura ------
+def _definicion_de_report(pbip: Path) -> Path:
+    """Carpeta `definition/` del report que declara el propio .pbip."""
+    import json
+
+    datos = json.loads(pbip.read_text(encoding="utf-8-sig"))
+    for artefacto in datos.get("artifacts", []) or []:
+        ruta = ((artefacto or {}).get("report") or {}).get("path")
+        if ruta:
+            definicion = (pbip.parent / ruta / "definition").resolve()
+            if definicion.is_dir():
+                return definicion
+    raise ValidationError(
+        "El .pbip no declara un report con carpeta definition/; no se puede "
+        "preparar la vista de captura.", details={"path": str(pbip)})
+
+
+def _resolver_pagina_de_captura(paginas_dir: Path, page: str) -> str:
+    """Id de la pagina pedida (por id o por nombre visible)."""
+    import json
+
+    candidatas = []
+    for hija in sorted(paginas_dir.iterdir()):
+        page_json = hija / "page.json"
+        if not page_json.is_file():
+            continue
+        datos = json.loads(page_json.read_text(encoding="utf-8-sig"))
+        if hija.name == page or datos.get("name") == page:
+            return hija.name
+        if str(datos.get("displayName") or "").casefold() == page.casefold():
+            candidatas.append(hija.name)
+    if len(candidatas) == 1:
+        return candidatas[0]
+    raise ValidationError(
+        f"La pagina '{page}' no existe en el informe"
+        + (" o su nombre visible esta repetido" if candidatas else "")
+        + "; usa el id de la pagina.",
+        details={"page": page, "matches": candidatas})
+
+
+def preparar_vista_de_captura(path: str | Path, *,
+                              page: Optional[str] = None,
+                              fit_to_page: bool = True) -> dict[str, Any]:
+    """Deja el .pbip abriendo en la pagina pedida y ajustado al lienzo.
+
+    Sin esto la captura salia al zoom guardado y siempre de la pagina activa:
+    solo se veia el tercio superior del lienzo, y el 15% inferior no se podia
+    verificar nunca en remoto. `activePageName` decide que pagina abre Desktop
+    y `displayOption: FitToPage` (esquema oficial de pagina 2.1.0) escala el
+    lienzo completo al viewport.
+
+    Devuelve `{"restore": callable, ...}`: los archivos tocados se restauran
+    BYTE a BYTE al terminar, porque esto es una vista para la foto, no una
+    edicion del informe. Exige el proyecto cerrado; quien llama ya lo verifico.
+    """
+    import json
+
+    pbip = Path(path).expanduser().resolve()
+    definicion = _definicion_de_report(pbip)
+    paginas_dir = definicion / "pages"
+    pages_json = paginas_dir / "pages.json"
+    if not pages_json.is_file():
+        raise ValidationError(
+            "El report no tiene pages.json; no se puede preparar la vista.",
+            details={"path": str(pages_json)})
+
+    originales: dict[Path, bytes] = {pages_json: pages_json.read_bytes()}
+    metadatos = json.loads(originales[pages_json].decode("utf-8-sig"))
+
+    pagina_id = (_resolver_pagina_de_captura(paginas_dir, page)
+                 if page else str(metadatos.get("activePageName") or ""))
+    cambios: list[str] = []
+
+    if page and metadatos.get("activePageName") != pagina_id:
+        metadatos["activePageName"] = pagina_id
+        pages_json.write_bytes(
+            json.dumps(metadatos, indent=2).encode("utf-8").replace(b"\n", b"\r\n"))
+        cambios.append(f"activePageName -> {pagina_id}")
+
+    if fit_to_page and pagina_id:
+        page_json = paginas_dir / pagina_id / "page.json"
+        if page_json.is_file():
+            originales[page_json] = page_json.read_bytes()
+            datos = json.loads(originales[page_json].decode("utf-8-sig"))
+            if datos.get("displayOption") != "FitToPage":
+                datos["displayOption"] = "FitToPage"
+                page_json.write_bytes(
+                    json.dumps(datos, indent=2).encode("utf-8")
+                    .replace(b"\n", b"\r\n"))
+                cambios.append("displayOption -> FitToPage")
+
+    def _restore() -> list[str]:
+        """Restaura los originales; devuelve las rutas que NO pudo restaurar."""
+        residuos: list[str] = []
+        for ruta, contenido in originales.items():
+            try:
+                if ruta.read_bytes() != contenido:
+                    ruta.write_bytes(contenido)
+            except OSError:                               # pragma: no cover
+                residuos.append(str(ruta))
+        return residuos
+
+    return {"restore": _restore, "page_id": pagina_id, "changes": cambios}
+
+
 @dataclass(frozen=True)
 class DesktopWindow:
     hwnd: int

@@ -109,6 +109,101 @@ def test_conflicto_si_el_nombre_no_es_univoco(proyecto):
     assert len(exc.value.details["candidates"]) == 2
 
 
+# =========================== emparejado por id y colisiones de contenido =====
+def test_dos_textbox_distintos_no_se_pisan_en_merge(proyecto):
+    """REGRESION Torre Aurora: el subtitulo del spec se emparejo con el
+    textbox del TITULO (misma firma: textbox sin titulo ni campos) y le
+    reemplazo el texto. Perdida silenciosa de contenido."""
+    _s, active, md, _r = proyecto
+    existente = pagina_existente(active)
+
+    s1 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Torre Aurora"}}])
+    page_spec.apply_spec(active, compilar(active, md, s1, seed="titulo"),
+                         sync_mode=page_update.MERGE)
+
+    s2 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Informe mensual 5D"}}])
+    with pytest.raises(PageConflict) as exc:
+        page_update.planificar(active,
+                               compilar(active, md, s2, seed="subtitulo"))
+    assert exc.value.details["collisions"][0]["type"] == "textbox"
+
+    # El texto original sigue intacto: el conflicto se detecta al planificar.
+    visuales = pbir_reader.list_visuals(active, existente["name"])
+    caja = next(v for v in visuales if v["type"] == "textbox")
+    crudo = json.loads(Path(caja["file"]).read_text(encoding="utf-8-sig"))
+    texto = (crudo["visual"]["objects"]["general"][0]["properties"]
+             ["paragraphs"][0]["textRuns"][0]["value"])
+    assert texto == "Torre Aurora"
+
+
+def test_el_id_del_spec_actualiza_el_textbox_correcto(proyecto):
+    """La salida del conflicto: nombrar el visual con su id real."""
+    _s, active, md, _r = proyecto
+    existente = pagina_existente(active)
+
+    s1 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Torre Aurora"}}])
+    page_spec.apply_spec(active, compilar(active, md, s1, seed="titulo"),
+                         sync_mode=page_update.MERGE)
+    visuales = pbir_reader.list_visuals(active, existente["name"])
+    caja = next(v for v in visuales if v["type"] == "textbox")
+
+    s2 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "id": caja["id"],
+         "options": {"text": "Torre Aurora — cierre agosto"}}])
+    r = page_spec.apply_spec(active, compilar(active, md, s2, seed="otro"),
+                             sync_mode=page_update.MERGE)
+
+    assert caja["id"] in r["updated"]
+    crudo = json.loads(Path(caja["file"]).read_text(encoding="utf-8-sig"))
+    texto = (crudo["visual"]["objects"]["general"][0]["properties"]
+             ["paragraphs"][0]["textRuns"][0]["value"])
+    assert texto == "Torre Aurora — cierre agosto"
+    n_textbox = sum(1 for v in pbir_reader.list_visuals(
+        active, existente["name"]) if v["type"] == "textbox")
+    assert n_textbox == 1, "actualizo el existente, no anadio otro"
+
+
+def test_misma_semilla_reaplica_el_textbox_sin_conflicto(proyecto):
+    """El id determinista de la misma semilla ES la identidad del visual."""
+    _s, active, md, _r = proyecto
+    existente = pagina_existente(active)
+
+    s1 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Torre Aurora"}}])
+    page_spec.apply_spec(active, compilar(active, md, s1, seed="fija"),
+                         sync_mode=page_update.MERGE)
+
+    s2 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Torre Aurora v2"}}])
+    r = page_spec.apply_spec(active, compilar(active, md, s2, seed="fija"),
+                             sync_mode=page_update.MERGE)
+
+    assert r["change"] == page_update.UPDATE
+    n_textbox = sum(1 for v in pbir_reader.list_visuals(
+        active, existente["name"]) if v["type"] == "textbox")
+    assert n_textbox == 1
+
+
+def test_replace_si_puede_sustituir_un_textbox(proyecto):
+    """En replace el spec declara la pagina entera: sustituir es lo pedido."""
+    _s, active, md, _r = proyecto
+    existente = pagina_existente(active)
+
+    s1 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Antes"}}])
+    page_spec.apply_spec(active, compilar(active, md, s1, seed="a"),
+                         sync_mode=page_update.MERGE)
+
+    s2 = spec(existente["display_name"], visuales=[
+        {"type": "textbox", "options": {"text": "Despues"}}])
+    r = page_spec.apply_spec(active, compilar(active, md, s2, seed="b"),
+                             sync_mode=page_update.REPLACE)
+    assert r["change"] == page_update.UPDATE
+
+
 # ============================================ que se conserva y que no ========
 def test_conserva_el_id_de_un_visual_que_no_cambia(proyecto):
     _s, active, md, _r = proyecto

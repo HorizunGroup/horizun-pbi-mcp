@@ -1096,6 +1096,10 @@ _FORMATOS_COMUNES: Dict[str, tuple] = {
     "legendPosition": ("objects", "legend", "position",
                        ("Top", "Bottom", "Left", "Right", "TopCenter",
                         "BottomCenter", "LeftCenter", "RightCenter")),
+    # El encabezado del campo del segmentador (`header.show` en el catalogo
+    # oficial del slicer). Un dropdown pulido lo lleva apagado; hasta ahora
+    # habia que parchear el visual.json a mano.
+    "header": ("objects", "header", "show", None),
 }
 
 
@@ -1294,6 +1298,70 @@ def find_template(active: ActivePbip, actual_type: str) -> Optional[Path]:
     return None
 
 
+#: Claves de `options` que entiende el MARCO de cualquier visual.
+_OPCIONES_CONTENEDOR = frozenset({
+    "background_color", "background_transparency",
+    "border_color", "border_radius", "show_title",
+})
+
+#: Claves propias de cada elemento de composicion.
+_OPCIONES_POR_DECORATIVO: Dict[str, frozenset] = {
+    "textbox": frozenset({"text", "font_size", "color", "bold", "font",
+                          "align"}),
+    "shape": frozenset({"shape", "angle", "fill", "transparency", "text",
+                        "font_size", "text_color"}),
+    "image": frozenset({"resource", "name", "scaling"}),
+    "pageNavigator": frozenset({"show_hidden", "show_current"}),
+    "actionButton": frozenset({"action", "icon", "text", "font_size",
+                               "text_color", "fill", "transparency",
+                               "target_page", "bookmark"}),
+}
+
+#: Claves propias de las tarjetas (card clasica y cardVisual).
+_OPCIONES_TARJETA = frozenset({"show_category_label", "value_font_size",
+                               "bold_value", "value_color"})
+
+
+def _validar_opciones(actual_type: str,
+                      opciones: Dict[str, Any]) -> None:
+    """Rechaza una clave de `options` que nadie va a leer.
+
+    Una opcion aceptada y no materializada es la peor clase de fallo: el spec
+    valida, la escritura reporta exito y el visual sale distinto de lo pedido
+    sin que nadie sepa por que. Paso de verdad con `style: "dropdown"` (la
+    clave real es `format.mode`) y con `min_value`/`mid_value` (que son
+    parametros de `pbi_set_conditional_format`, no de `options`).
+    """
+    admitidas = set(_OPCIONES_CONTENEDOR)
+    if actual_type in DECORATIVOS:
+        admitidas |= _OPCIONES_POR_DECORATIVO[actual_type]
+    else:
+        admitidas.add("format")
+    if actual_type in ("card", "cardVisual"):
+        admitidas |= _OPCIONES_TARJETA
+
+    desconocidas = sorted(set(opciones) - admitidas)
+    if not desconocidas:
+        return
+    pistas = []
+    if "style" in desconocidas or "mode" in desconocidas:
+        pistas.append("el modo del segmentador va en format.mode "
+                      "('Dropdown', 'List'...)")
+    if {"min_value", "mid_value", "max_value"} & set(desconocidas):
+        pistas.append("las anclas del degradado son parametros de "
+                      "pbi_set_conditional_format, no de options")
+    if "format" in desconocidas:
+        pistas.append(f"un '{actual_type}' no consulta datos y no admite el "
+                      "bloque format")
+    raise VisualFactoryError(
+        f"Opciones desconocidas para '{actual_type}': {desconocidas}. "
+        f"Admitidas: {sorted(admitidas)}."
+        + (" Pistas: " + "; ".join(pistas) + "." if pistas else ""),
+        details={"unsupported": desconocidas,
+                 "supported": sorted(admitidas),
+                 "visual_type": actual_type})
+
+
 def build_visual(
     active: ActivePbip,
     visual_type: str,
@@ -1305,6 +1373,7 @@ def build_visual(
 ) -> Dict[str, Any]:
     """Devuelve (visual_dict, meta) donde meta incluye warnings y origen."""
     actual_type = resolve_type(visual_type, active)
+    _validar_opciones(actual_type, options or {})
     warnings: List[str] = []
 
     # Un personalizado trae su propio contrato de roles en el manifiesto que el

@@ -1,6 +1,7 @@
 """Tools de conexion y ejecucion DAX (Fases 1 y 2)."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session
@@ -97,7 +98,9 @@ def register(mcp) -> None:
     @mcp.tool()
     def pbi_validate_desktop_render(path: str, timeout: int = 300,
                                     capture_timeout: int = 30,
-                                    reuse_open: bool = True) -> Dict[str, Any]:
+                                    reuse_open: bool = True,
+                                    page: Optional[str] = None,
+                                    fit_to_page: bool = True) -> Dict[str, Any]:
         """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
 
         Es la comprobacion visual automatizable que complementa al validador
@@ -106,6 +109,14 @@ def register(mcp) -> None:
         La captura no activa ni trae Desktop al frente, por lo que no puede
         fotografiar por accidente otra ventana que tape el informe.
 
+        `page` (solo .pbip): captura ESA pagina (id o nombre visible), no la
+        que quedo activa. `fit_to_page` (solo .pbip, activado por defecto):
+        fuerza la vista "Ajustar a la pagina" para que salga el lienzo COMPLETO
+        y no el tercio superior al zoom guardado. Ambos ajustan la vista antes
+        de abrir y la restauran byte a byte al terminar; exigen que el proyecto
+        no este ya abierto (con sesion reutilizada no se pueden aplicar: `page`
+        falla y `fit_to_page` degrada a un aviso).
+
         Si la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la
         captura falla). Si el informe ya estaba abierto, reutiliza esa sesion y
         nunca cierra la ventana del usuario.
@@ -113,8 +124,44 @@ def register(mcp) -> None:
         def _impl():
             from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
 
-            opened = desktop_launcher.open_pbix(
-                path, timeout=timeout, reuse_open=reuse_open)
+            pbix = Path(path).expanduser().resolve()
+            avisos: List[str] = []
+            vista: Optional[Dict[str, Any]] = None
+            quiere_vista = bool(page) or fit_to_page
+            if quiere_vista and pbix.suffix.casefold() != ".pbip":
+                if page:
+                    raise ValidationError(
+                        "Elegir pagina de captura requiere un proyecto .pbip: "
+                        "un .pbix compilado no se puede preparar sin editarlo.",
+                        details={"path": str(pbix), "page": page})
+                avisos.append("fit_to_page solo aplica a .pbip; la captura "
+                              "sale al zoom guardado del .pbix.")
+            elif quiere_vista:
+                pid = desktop_launcher.proceso_con_archivo_abierto(pbix)
+                if pid and page:
+                    raise ValidationError(
+                        "El proyecto ya esta abierto en Desktop y la pagina "
+                        "activa no se puede cambiar desde fuera; cierra la "
+                        "sesion (pbi_close_desktop) y reintenta.",
+                        details={"path": str(pbix), "pid": pid, "page": page,
+                                 "reason": "desktop_open_page_unavailable"})
+                if pid:
+                    avisos.append(
+                        "Sesion reutilizada: no se pudo forzar 'Ajustar a la "
+                        "pagina'; la captura sale al zoom actual de Desktop.")
+                else:
+                    vista = desktop_capture.preparar_vista_de_captura(
+                        pbix, page=page, fit_to_page=fit_to_page)
+
+            try:
+                opened = desktop_launcher.open_pbix(
+                    path, timeout=timeout, reuse_open=reuse_open)
+            except BaseException:
+                # Desktop nunca llego a abrir: la vista temporal no puede
+                # quedarse escrita como si fuera una edicion del informe.
+                if vista is not None:
+                    vista["restore"]()
+                raise
             close_result: Dict[str, Any] = {
                 "closed": False,
                 "reason": "la sesion ya estaba abierta; no se toca",
@@ -132,6 +179,9 @@ def register(mcp) -> None:
                     "waited_seconds": opened.waited_seconds,
                     "capture": capture,
                 }
+                if vista is not None:
+                    result["capture_view"] = {"page_id": vista["page_id"],
+                                              "changes": vista["changes"]}
             finally:
                 # Incluso ante KeyboardInterrupt/SystemExit se intenta compensar
                 # la ventana que esta llamada abrio. `close` revalida nombre y
@@ -149,12 +199,22 @@ def register(mcp) -> None:
                             "error_type": type(exc).__name__,
                             "message": str(exc),
                         }
+                # La vista era para la foto, no una edicion: se restaura
+                # byte a byte DESPUES de cerrar Desktop.
+                if vista is not None:
+                    for ruta in vista["restore"]():     # pragma: no cover
+                        avisos.append(
+                            "No se pudo restaurar la vista de captura de "
+                            f"{ruta}; revierte activePageName/displayOption "
+                            "a mano.")
             assert result is not None
             result["desktop_close"] = close_result
             if opened.launched_by_us and not close_result.get("closed"):
-                result.setdefault("warnings", []).append(
+                avisos.append(
                     "La captura termino, pero Desktop no se cerro porque su "
                     "identidad ya no pudo verificarse; no se termino otro proceso.")
+            if avisos:
+                result.setdefault("warnings", []).extend(avisos)
             return result
         return guard(_impl)
 

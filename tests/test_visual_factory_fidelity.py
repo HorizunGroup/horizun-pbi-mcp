@@ -61,6 +61,47 @@ def test_title_none_no_hereda_el_titulo_de_la_plantilla(proyecto_con_plantillas)
     assert "title" not in vco
 
 
+def test_una_opcion_desconocida_se_rechaza_con_la_lista_de_validas(
+        proyecto_con_plantillas):
+    """`style: "dropdown"` pasaba la validacion sin queja y no hacia nada."""
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            proyecto_con_plantillas, "slicer", {"values": ["Calendar[Year]"]},
+            POS, options={"style": "dropdown"})
+    assert "style" in exc.value.details["unsupported"]
+    assert "format.mode" in str(exc.value), "la pista debe decir donde va"
+
+
+def test_las_anclas_del_degradado_no_son_opciones_del_visual(
+        proyecto_con_plantillas):
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            proyecto_con_plantillas, "card", {"values": ["[Ratio Pct]"]}, POS,
+            measure_index={"Ratio Pct": "Fact"},
+            options={"min_value": 0, "mid_value": 50})
+    assert "pbi_set_conditional_format" in str(exc.value)
+
+
+def test_opciones_de_tarjeta_en_un_grafico_se_rechazan(
+        proyecto_con_plantillas):
+    """`value_color` en un barChart se ignoraba en silencio."""
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            proyecto_con_plantillas, "clusteredColumnChart",
+            {"y": ["[Ratio Pct]"], "category": ["Calendar[Year]"]}, POS,
+            measure_index={"Ratio Pct": "Fact"},
+            options={"value_color": "#FF0000"})
+    assert "value_color" in exc.value.details["unsupported"]
+
+
+def test_un_decorativo_no_admite_el_bloque_format(proyecto_con_plantillas):
+    with pytest.raises(VisualFactoryError) as exc:
+        visual_factory.build_visual(
+            proyecto_con_plantillas, "textbox", {}, POS,
+            options={"text": "Hola", "format": {"dataLabels": True}})
+    assert "format" in exc.value.details["unsupported"]
+
+
 def test_build_visual_de_extremo_a_extremo_aplica_marco_de_color(
         proyecto_con_plantillas):
     """No solo la funcion interna: el camino completo (clonar plantilla +

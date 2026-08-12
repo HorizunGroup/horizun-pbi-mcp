@@ -193,11 +193,12 @@ def register(mcp) -> None:
         - `pageNavigator`: `show_hidden`, `show_current`.
         - `actionButton`: `action`, `icon`, `target_page`, `text`.
         - `format`: formato del VISUAL, no del contenedor. `mode`
-          (segmentador: Dropdown, List, Between...), `dataLabels` (bool),
-          `legend` (bool), `legendPosition` (Top, Bottom, Left, Right...). Una
-          clave desconocida aqui SE RECHAZA con la lista de las validas: un
-          formato que se pide y no se aplica deja el informe distinto de lo que
-          se penso sin decir por que.
+          (segmentador: Dropdown, List, Between...), `header` (bool: el
+          encabezado del campo del segmentador; false lo oculta), `dataLabels`
+          (bool), `legend` (bool), `legendPosition` (Top, Bottom, Left,
+          Right...). Una clave desconocida aqui SE RECHAZA con la lista de las
+          validas: un formato que se pide y no se aplica deja el informe
+          distinto de lo que se penso sin decir por que.
 
         `position`: {x, y, width, height} (z opcional).
         Clona un visual del mismo tipo como plantilla si existe. Hace backup.

@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 133,
+  "tool_count": 134,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -480,7 +480,7 @@
     },
     {
       "name": "pbi_apply_theme",
-      "description": "Aplica un tema de colores al informe .pbip activo.\n\nEscribe el JSON del tema en StaticResources/RegisteredResources y lo\ndeclara en report.json (themeCollection + resourcePackages). Sin las\ntres cosas Power BI Desktop lo ignora en silencio.\n\n`preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de\nseries por la tuya (#RRGGBB); ojo, entonces el orden deja de estar\nverificado contra daltonismo. `name`: nombre visible del tema.\n\n`theme_json`: un tema COMPLETO tuyo (el objeto JSON), que se escribe\ntal cual — para tipografia corporativa o formatos que los presets no\ncubren, sin tener que sobrescribir el archivo a mano despues. Cuando lo\npasas, `preset` no se usa; `data_colors` y `fonts` se aplican encima.\n\n`fonts`: {'title'|'body'|'callout': 'Familia'} fija las fuentes via\ntextClasses, sobre el preset o sobre tu theme_json.\n\nSi el informe ya tenia un tema con contenido DISTINTO (p.ej. editado a\nmano), se reemplaza avisandolo en `warnings`; la version anterior queda\nrecuperable en el backup de la transaccion.\n\nRequiere el proyecto CERRADO en Power BI Desktop.",
+      "description": "Aplica un tema de colores al informe .pbip activo.\n\nEscribe el JSON del tema en StaticResources/RegisteredResources y lo\ndeclara en report.json (themeCollection + resourcePackages). Sin las\ntres cosas Power BI Desktop lo ignora en silencio.\n\n`preset`: ver pbi_list_themes. `data_colors`: sustituye la paleta de\nseries por la tuya (#RRGGBB); ojo, entonces el orden deja de estar\nverificado contra daltonismo. `name`: nombre visible del tema.\n\n`theme_json`: un tema COMPLETO tuyo (el objeto JSON), que se escribe\ntal cual — para tipografia corporativa o formatos que los presets no\ncubren, sin tener que sobrescribir el archivo a mano despues. Cuando lo\npasas, `preset` no se usa; `data_colors` y `fonts` se aplican encima.\n\n`fonts`: {'title'|'body'|'callout': 'Familia'} fija las fuentes via\ntextClasses, sobre el preset o sobre tu theme_json.\n\n`patch`: cambios PARCIALES sobre el tema que el informe YA tiene, sin\nreenviar el tema completo (p.ej. {\"visualStyles\": {...}} para retocar\nun estilo). Los dicts se fusionan en profundidad; las listas se\nreemplazan enteras. Con `patch`, el resto de parametros no se usa y\nhace falta que el informe ya tenga un tema propio.\n\nSi el informe ya tenia un tema con contenido DISTINTO (p.ej. editado a\nmano), se reemplaza avisandolo en `warnings`; la version anterior queda\nrecuperable en el backup de la transaccion.\n\nRequiere el proyecto CERRADO en Power BI Desktop.",
       "params": {
         "data_colors": {
           "required": false,
@@ -495,6 +495,11 @@
         "name": {
           "required": false,
           "type": "null|string",
+          "default": null
+        },
+        "patch": {
+          "required": false,
+          "type": "null|object",
           "default": null
         },
         "preset": {
@@ -1780,7 +1785,7 @@
     },
     {
       "name": "pbi_create_visual",
-      "description": "Crea un visual PBIR en una pagina.\n\n`visual_type` acepta: actionButton, areaChart, barChart, button, card,\ncardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,\ndonutChart, funnel, gauge, htmlContent,\nhtmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,\nmatrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,\nrectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,\ntext, textbox, treemap, waterfall y waterfallChart.\n\nPara visuales con datos, valida antes de escribir los roles obligatorios,\nla cardinalidad maxima de cada rol y el tipo de campo admitido: dimension\n(`Grouping`), medida (`Measure`) o cualquiera de ambos\n(`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,\nnavegador y boton) rechazan `fields` porque no llevan consulta.\n\n`fields`: rol -> campos, p.ej. {\"category\":\"Tabla[Col]\",\n          \"values\":[\"[Medida]\"], \"legend\":\"Tabla[Col]\"}.\n\nEl rol se reconoce escrito como sea: el logico (`values`), el nombre\nque usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,\n`Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede\nser `\"Tabla[Campo]\"` o el objeto que devuelve `pbi_list_visuals`, para\npoder leer una pagina y rehacerla sin traducir nada.\n\nUn rol que ese tipo de visual no tiene se RECHAZA con la lista de los\nvalidos. Antes se descartaba en silencio y el visual salia sin datos.\n\n`options`: formato adicional. Llaves reconocidas (una clave no\nreconocida se ignora, no se rechaza; ver `pbi_get_visual` para\ncomprobar que quedo escrito):\n- `background_color`, `border_color` ('#RRGGBB'), `background_transparency`\n  (0-100), `border_radius` (px): el marco de CUALQUIER visual (panel\n  General > Efectos de Desktop). Sin `background_color`/`border_color`\n  no se toca el marco.\n- `card`/`cardVisual`: `show_category_label`, `value_font_size`,\n  `bold_value`, `value_color`.\n- `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.\n- `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.\n  El texto va en `options.text`, NO en `fields` ni en la raiz:\n  {\"type\": \"textbox\", \"options\": {\"text\": \"Resumen\", \"font_size\": 20}}.\n- `image`: `resource` (ItemName ya registrado con\n  `pbi_add_image_resource`), `name`, `scaling`.\n- `pageNavigator`: `show_hidden`, `show_current`.\n- `actionButton`: `action`, `icon`, `target_page`, `text`.\n- `format`: formato del VISUAL, no del contenedor. `mode`\n  (segmentador: Dropdown, List, Between...), `dataLabels` (bool),\n  `legend` (bool), `legendPosition` (Top, Bottom, Left, Right...). Una\n  clave desconocida aqui SE RECHAZA con la lista de las validas: un\n  formato que se pide y no se aplica deja el informe distinto de lo que\n  se penso sin decir por que.\n\n`position`: {x, y, width, height} (z opcional).\nClona un visual del mismo tipo como plantilla si existe. Hace backup.",
+      "description": "Crea un visual PBIR en una pagina.\n\n`visual_type` acepta: actionButton, areaChart, barChart, button, card,\ncardVisual, clusteredBarChart, clusteredColumnChart, columnChart, donut,\ndonutChart, funnel, gauge, htmlContent,\nhtmlContent443BE3AD55E043BF878BED274D3A6855, image, kpi, lineChart,\nmatrix, multiRowCard, navigation, pageNavigator, pieChart, pivotTable,\nrectangle, ribbonChart, scatterChart, shape, slicer, table, tableEx,\ntext, textbox, treemap, waterfall y waterfallChart.\n\nPara visuales con datos, valida antes de escribir los roles obligatorios,\nla cardinalidad maxima de cada rol y el tipo de campo admitido: dimension\n(`Grouping`), medida (`Measure`) o cualquiera de ambos\n(`GroupingOrMeasure`). Los elementos decorativos (texto, forma, imagen,\nnavegador y boton) rechazan `fields` porque no llevan consulta.\n\n`fields`: rol -> campos, p.ej. {\"category\":\"Tabla[Col]\",\n          \"values\":[\"[Medida]\"], \"legend\":\"Tabla[Col]\"}.\n\nEl rol se reconoce escrito como sea: el logico (`values`), el nombre\nque usa PBIR y que devuelve `pbi_list_visuals` (`Values`, `Y`,\n`Category`, `Data`) o un sinonimo (`measure`, `axis`). Cada campo puede\nser `\"Tabla[Campo]\"` o el objeto que devuelve `pbi_list_visuals`, para\npoder leer una pagina y rehacerla sin traducir nada.\n\nUn rol que ese tipo de visual no tiene se RECHAZA con la lista de los\nvalidos. Antes se descartaba en silencio y el visual salia sin datos.\n\n`options`: formato adicional. Llaves reconocidas (una clave no\nreconocida se ignora, no se rechaza; ver `pbi_get_visual` para\ncomprobar que quedo escrito):\n- `background_color`, `border_color` ('#RRGGBB'), `background_transparency`\n  (0-100), `border_radius` (px): el marco de CUALQUIER visual (panel\n  General > Efectos de Desktop). Sin `background_color`/`border_color`\n  no se toca el marco.\n- `card`/`cardVisual`: `show_category_label`, `value_font_size`,\n  `bold_value`, `value_color`.\n- `shape`: `fill`, `transparency`, `text`, `font_size`, `text_color`.\n- `textbox`: `text`, `font_size`, `color`, `bold`, `font`, `align`.\n  El texto va en `options.text`, NO en `fields` ni en la raiz:\n  {\"type\": \"textbox\", \"options\": {\"text\": \"Resumen\", \"font_size\": 20}}.\n- `image`: `resource` (ItemName ya registrado con\n  `pbi_add_image_resource`), `name`, `scaling`.\n- `pageNavigator`: `show_hidden`, `show_current`.\n- `actionButton`: `action`, `icon`, `target_page`, `text`.\n- `format`: formato del VISUAL, no del contenedor. `mode`\n  (segmentador: Dropdown, List, Between...), `header` (bool: el\n  encabezado del campo del segmentador; false lo oculta), `dataLabels`\n  (bool), `legend` (bool), `legendPosition` (Top, Bottom, Left,\n  Right...). Una clave desconocida aqui SE RECHAZA con la lista de las\n  validas: un formato que se pide y no se aplica deja el informe\n  distinto de lo que se penso sin decir por que.\n\n`position`: {x, y, width, height} (z opcional).\nClona un visual del mismo tipo como plantilla si existe. Hace backup.",
       "params": {
         "fields": {
           "required": true,
@@ -4424,6 +4429,59 @@
       }
     },
     {
+      "name": "pbi_set_color_from_field",
+      "description": "Colorea un visual con el color que DEVUELVE una medida.\n\nEs el modo \"valor de campo\" de Power BI: la medida entrega '#D03B3B'\no un nombre de color, y el visual lo aplica tal cual. Es el patron\ntipico de un semaforo calculado en DAX.\n\n`field`: '[Medida]' o 'Tabla[Medida]' que devuelve el color.\n`target`: 'background' o 'font' (tablas y matrices), 'bars' (barras,\ncolumnas y puntos). La matriz de que combinacion funciona en que tipo\nde visual vive en el servidor y se valida antes de escribir.\n`target_column`: columna proyectada a pintar; sin ella se pinta la\ncolumna del propio campo.",
+      "params": {
+        "field": {
+          "required": true,
+          "type": "string"
+        },
+        "page": {
+          "required": true,
+          "type": "string"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "target": {
+          "required": false,
+          "type": "string",
+          "default": "background"
+        },
+        "target_column": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "visual_id": {
+          "required": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "page",
+        "visual_id"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_set_column_visibility",
       "description": "Oculta o muestra una columna del modelo (p.ej. ocultar columnas de ID).\n\nmode='both' esta temporalmente deshabilitado bajo la politica estricta:\n'live' necesita Power BI Desktop abierto y 'pbip' lo necesita cerrado,\nasi que una sola llamada aplicaria solo uno de los dos destinos. Elige\n'live' o 'pbip', o usa 'auto' y se mira el estado para elegir. Si estas\nconstruyendo desde cero, 'auto' o 'pbip': el defecto es 'live' y exige\nDesktop abierto.",
       "params": {
@@ -4473,7 +4531,7 @@
     },
     {
       "name": "pbi_set_conditional_format",
-      "description": "Colorea un visual segun el valor de un campo (degradado).\n\nEs lo que convierte una matriz de numeros en un mapa de calor, o unas\nbarras planas en una escala de semaforo.\n\n`field`: 'Tabla[Campo]' o '[Medida]' de donde sale el valor.\n`target`: 'background' o 'font' para tablas y matrices; 'bars' para\nbarras, columnas y puntos. `mid_color`: si lo indicas, el degradado\ntiene tres paradas en vez de dos, util cuando hay un punto neutro.\n`null_strategy`: asZero | none | specificColor.\n\nSi el visual ya tenia una regla en ese mismo destino, se sustituye:\ndos degradados sobre la misma propiedad no se suman, se pisan.",
+      "description": "Colorea un visual segun el valor de un campo (degradado).\n\nEs lo que convierte una matriz de numeros en un mapa de calor, o unas\nbarras planas en una escala de semaforo.\n\n`field`: 'Tabla[Campo]' o '[Medida]' de donde sale el VALOR.\n`target_column`: que columna del visual se pinta con ese valor; sin\nella se pinta la columna del propio `field`. Debe estar proyectada en\nel visual (p.ej. pintar 'Resumen[semaforo]' con '[Puntaje promedio]').\n`target`: 'background' o 'font' para tablas y matrices; 'bars' para\nbarras, columnas y puntos. `mid_color`: si lo indicas, el degradado\ntiene tres paradas en vez de dos, util cuando hay un punto neutro.\n`min_value`/`mid_value`/`max_value`: anclas numericas de las paradas\n(sin ellas, Power BI usa el minimo y maximo observados).\n`null_strategy`: asZero | none | specificColor.\n\nSi el visual ya tenia una regla en ese mismo destino, se sustituye:\ndos degradados sobre la misma propiedad no se suman, se pisan.",
       "params": {
         "field": {
           "required": true,
@@ -4483,14 +4541,29 @@
           "required": true,
           "type": "string"
         },
+        "max_value": {
+          "required": false,
+          "type": "null|number",
+          "default": null
+        },
         "mid_color": {
           "required": false,
           "type": "null|string",
           "default": null
         },
+        "mid_value": {
+          "required": false,
+          "type": "null|number",
+          "default": null
+        },
         "min_color": {
           "required": true,
           "type": "string"
+        },
+        "min_value": {
+          "required": false,
+          "type": "null|number",
+          "default": null
         },
         "null_strategy": {
           "required": false,
@@ -4510,6 +4583,11 @@
           "required": false,
           "type": "string",
           "default": "background"
+        },
+        "target_column": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "visual_id": {
           "required": true,
@@ -4670,7 +4748,7 @@
     },
     {
       "name": "pbi_set_visual_title",
-      "description": "Cambia el titulo de un visual PRESERVANDO su formato (fuente, color).",
+      "description": "Cambia u oculta el titulo de un visual PRESERVANDO su formato.\n\n`title`: el texto nuevo. `show=false`: oculta el titulo SIN borrar su\ntexto ni formato (el rodeo de poner texto vacio dejaba la banda del\ntitulo ocupando altura); `show=true` lo vuelve a mostrar. Se puede\npasar solo uno de los dos, o ambos.",
       "params": {
         "page": {
           "required": true,
@@ -4681,9 +4759,15 @@
           "type": "string",
           "default": ""
         },
+        "show": {
+          "required": false,
+          "type": "boolean|null",
+          "default": null
+        },
         "title": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "visual_id": {
           "required": true,
@@ -4692,7 +4776,6 @@
       },
       "required": [
         "page",
-        "title",
         "visual_id"
       ],
       "output_shape": {
@@ -5025,12 +5108,22 @@
     },
     {
       "name": "pbi_validate_desktop_render",
-      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
       "params": {
         "capture_timeout": {
           "required": false,
           "type": "integer",
           "default": 30
+        },
+        "fit_to_page": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "page": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "path": {
           "required": true,

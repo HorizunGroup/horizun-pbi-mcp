@@ -35,6 +35,88 @@ def _opened(*, launched_by_us=True):
     )
 
 
+# ------------------------------------------ vista de captura (page + fit) ----
+@pytest.fixture
+def pbip_sintetico(session, tmp_path):
+    from horizun_pbi_mcp.pbip import project_locator
+    from tests.fixtures import synthetic
+
+    pbip = synthetic.materialize(tmp_path)
+    project_locator.open_project(session, str(pbip))
+    return pbip, session.require_active_pbip()
+
+
+def test_preparar_vista_fuerza_fit_y_restaura_byte_a_byte(pbip_sintetico):
+    import json
+
+    pbip, active = pbip_sintetico
+    from horizun_pbi_mcp.pbip import pbir_reader
+
+    pagina = pbir_reader.list_pages(active)[0]["name"]
+    page_json = Path(pbir_reader.pages_dir(active)) / pagina / "page.json"
+    antes = page_json.read_bytes()
+
+    vista = desktop_capture.preparar_vista_de_captura(pbip, fit_to_page=True)
+    datos = json.loads(page_json.read_text(encoding="utf-8-sig"))
+    assert datos["displayOption"] == "FitToPage"
+    assert vista["page_id"] == pagina or vista["page_id"] == ""
+
+    assert vista["restore"]() == []
+    assert page_json.read_bytes() == antes, "restaura byte a byte"
+
+
+def test_preparar_vista_cambia_la_pagina_activa_y_la_restaura(pbip_sintetico):
+    import json
+
+    pbip, active = pbip_sintetico
+    from horizun_pbi_mcp.pbip import pbir_reader
+    from horizun_pbi_mcp.services import pbir_edit
+
+    nueva = pbir_edit.duplicate_page(
+        active, pbir_reader.list_pages(active)[0]["display_name"], "Detalle")
+    pages_json = Path(pbir_reader.pages_dir(active)) / "pages.json"
+    antes = pages_json.read_bytes()
+
+    vista = desktop_capture.preparar_vista_de_captura(pbip, page="Detalle")
+    metadatos = json.loads(pages_json.read_text(encoding="utf-8-sig"))
+    assert metadatos["activePageName"] == nueva["page_id"]
+    assert vista["page_id"] == nueva["page_id"]
+
+    vista["restore"]()
+    assert pages_json.read_bytes() == antes
+
+
+def test_preparar_vista_rechaza_pagina_inexistente(pbip_sintetico):
+    pbip, _active = pbip_sintetico
+    with pytest.raises(ValidationError) as exc:
+        desktop_capture.preparar_vista_de_captura(pbip, page="NoExiste")
+    assert exc.value.details["page"] == "NoExiste"
+
+
+def test_render_con_page_exige_pbip(monkeypatch, tmp_path):
+    """Un .pbix compilado no se puede preparar sin editarlo."""
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    pbix = tmp_path / "Ventas.pbix"
+    pbix.write_bytes(b"pbix")
+
+    r = mcp.tools["pbi_validate_desktop_render"](str(pbix), page="Portada")
+    assert r["ok"] is False
+    assert "pbip" in r["message"].casefold()
+
+
+def test_render_con_sesion_abierta_y_page_falla_claro(pbip_sintetico, monkeypatch):
+    pbip, _active = pbip_sintetico
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    monkeypatch.setattr(desktop_launcher, "proceso_con_archivo_abierto",
+                        lambda _p: 4242)
+
+    r = mcp.tools["pbi_validate_desktop_render"](str(pbip), page="Portada")
+    assert r["ok"] is False
+    assert r["details"]["reason"] == "desktop_open_page_unavailable"
+
+
 def test_elige_informe_por_titulo_antes_que_splash_mas_grande():
     splash = desktop_capture.DesktopWindow(
         1, 777, "Power BI Desktop", "Splash", 1800, 1200)

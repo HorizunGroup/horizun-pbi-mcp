@@ -437,6 +437,17 @@ def _validar_expresion_formato(valor: Any, ruta: str,
                 or not isinstance(literal_color.get("Value"), str)):
             errores.append(_error_formato(_ruta_hija(ruta_color, "color"),
                                           "format_gradient_color_literal"))
+        # El ancla numerica es opcional; si esta, es un Literal con sufijo D.
+        # Un nivel `expr` de mas aqui es JSON valido que deja el degradado sin
+        # pintar, y solo lo detectaba un humano mirando la captura.
+        ancla = color.get("value")
+        if ancla is not None:
+            literal_ancla = (ancla.get("Literal")
+                             if isinstance(ancla, dict) else None)
+            if (not isinstance(literal_ancla, dict)
+                    or not isinstance(literal_ancla.get("Value"), str)):
+                errores.append(_error_formato(_ruta_hija(ruta_color, "value"),
+                                              "format_gradient_anchor"))
 
 
 def _validar_valor_formato(valor: Any, ruta: str,

@@ -78,6 +78,23 @@ def _color(valor: str) -> Dict[str, Any]:
     return {"color": {"Literal": {"Value": "'" + str(valor).replace("'", "''") + "'"}}}
 
 
+def _ancla(valor: float) -> Dict[str, Any]:
+    """Ancla numerica de una parada, como la escribe Desktop: literal `D`."""
+    numero = float(valor)
+    texto = str(int(numero)) if numero.is_integer() else repr(numero)
+    return {"Literal": {"Value": f"{texto}D"}}
+
+
+def _validar_ancla(valor: Any, etiqueta: str) -> Optional[float]:
+    if valor is None:
+        return None
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        raise ConditionalFormatError(
+            f"{etiqueta} debe ser un numero (el valor del dato donde ancla la "
+            f"parada); se recibio {type(valor).__name__}.")
+    return float(valor)
+
+
 def _validar_color(valor: str, etiqueta: str) -> str:
     if not (isinstance(valor, str) and _HEX_COLOR.fullmatch(valor)):
         raise ConditionalFormatError(
@@ -129,12 +146,18 @@ def contrast_warnings(min_color: str, max_color: str, *, target: str,
 
 def build_fill_rule(field: Dict[str, Any], min_color: str, max_color: str,
                     mid_color: Optional[str] = None,
-                    null_strategy: str = "asZero") -> Dict[str, Any]:
+                    null_strategy: str = "asZero",
+                    min_value: Optional[float] = None,
+                    mid_value: Optional[float] = None,
+                    max_value: Optional[float] = None) -> Dict[str, Any]:
     """Expresion de color degradado a partir de un campo del modelo.
 
     `field` es el nodo de campo tal cual lo escribe el resto del servidor
     (`{"Measure": {...}}` o `{"Column": {...}}`), para que la referencia sea la
     misma en la consulta del visual y en la regla de color.
+
+    `min_value`/`mid_value`/`max_value` anclan las paradas a valores concretos
+    del dato en vez de al minimo/maximo observado; cada una es opcional.
     """
     _validar_color(min_color, "min_color")
     _validar_color(max_color, "max_color")
@@ -142,17 +165,42 @@ def build_fill_rule(field: Dict[str, Any], min_color: str, max_color: str,
         raise ConditionalFormatError(
             f"Estrategia de nulos no soportada: '{null_strategy}'. "
             f"Usa una de {list(ESTRATEGIAS_NULOS)}.")
+    anclas = {"min": _validar_ancla(min_value, "min_value"),
+              "mid": _validar_ancla(mid_value, "mid_value"),
+              "max": _validar_ancla(max_value, "max_value")}
+    if anclas["mid"] is not None and not mid_color:
+        raise ConditionalFormatError(
+            "mid_value ancla la parada intermedia, y esa parada solo existe "
+            "con mid_color. Indica tambien mid_color.")
+    # Un orden invertido no falla en Desktop: pinta un degradado sin sentido.
+    presentes = [(n, v) for n, v in (("min_value", anclas["min"]),
+                                     ("mid_value", anclas["mid"]),
+                                     ("max_value", anclas["max"]))
+                 if v is not None]
+    for (n1, v1), (n2, v2) in zip(presentes, presentes[1:]):
+        if v1 > v2:
+            raise ConditionalFormatError(
+                f"Las anclas deben ir en orden creciente: {n1}={v1} es mayor "
+                f"que {n2}={v2}.")
+
+    def _parada(color: str, ancla: Optional[float]) -> Dict[str, Any]:
+        parada = _color(color)
+        if ancla is not None:
+            parada["value"] = _ancla(ancla)
+        return parada
 
     if mid_color:
         _validar_color(mid_color, "mid_color")
         gradiente = {"linearGradient3": {
-            "min": _color(min_color), "mid": _color(mid_color),
-            "max": _color(max_color),
+            "min": _parada(min_color, anclas["min"]),
+            "mid": _parada(mid_color, anclas["mid"]),
+            "max": _parada(max_color, anclas["max"]),
             "nullColoringStrategy": {"strategy": {"Literal": {
                 "Value": f"'{null_strategy}'"}}}}}
     else:
         gradiente = {"linearGradient2": {
-            "min": _color(min_color), "max": _color(max_color),
+            "min": _parada(min_color, anclas["min"]),
+            "max": _parada(max_color, anclas["max"]),
             "nullColoringStrategy": {"strategy": {"Literal": {
                 "Value": f"'{null_strategy}'"}}}}}
 
@@ -233,6 +281,26 @@ def _fill_rule_input(value: Any) -> Optional[Dict[str, Any]]:
     except (KeyError, TypeError):
         return None
     return entrada if isinstance(entrada, dict) else None
+
+
+def _campo_que_pinta(value: Any) -> Optional[Dict[str, Any]]:
+    """Nodo de campo que gobierna el color de una propiedad escrita.
+
+    Cubre las dos formas que escribe este servidor: el `Input` de un
+    `FillRule` (degradado) y el campo directo de un color "valor de campo".
+    Compartir esta identidad es lo que hace que un degradado y un valor de
+    campo sobre el MISMO campo se sustituyan en vez de convivir escondidos.
+    """
+    entrada = _fill_rule_input(value)
+    if entrada is not None:
+        return entrada
+    try:
+        expresion = value["solid"]["color"]["expr"]
+    except (KeyError, TypeError):
+        return None
+    if not isinstance(expresion, dict) or "FillRule" in expresion:
+        return None
+    return expresion if _field_identity(expresion) is not None else None
 
 
 def resolve_projection(visual: Dict[str, Any], field_ref: str) -> Dict[str, Any]:
@@ -316,6 +384,80 @@ def resolve_projection(visual: Dict[str, Any], field_ref: str) -> Dict[str, Any]
     return copy.deepcopy(elegido)
 
 
+def resolve_target_projection(visual: Dict[str, Any],
+                              column_ref: str) -> Dict[str, Any]:
+    """Proyeccion MOSTRADA que corresponde a la columna que se quiere pintar.
+
+    Es la mitad que le faltaba al formato condicional: `field` dice de donde
+    sale el VALOR del degradado; esto dice QUE columna del visual se pinta con
+    el. Sin esta separacion, pintar `semaforo` con [Puntaje promedio] escribia
+    la regla sobre una columna inexistente y el resultado era un no-op
+    invisible reportado como exito.
+
+    A diferencia de `resolve_projection`, aqui NO vale un campo que solo viva
+    en una regla existente: lo que se pinta tiene que estar proyectado y tener
+    `queryRef`, porque ese `queryRef` es el `selector.metadata` de la regla.
+    """
+    if not isinstance(column_ref, str) or not column_ref.strip():
+        raise ConditionalFormatError("La referencia de la columna destino esta vacia.")
+    texto = column_ref.strip()
+    if "[" in texto and texto.endswith("]"):
+        tabla_pedida = texto[:texto.index("[")].strip()
+        propiedad_pedida = texto[texto.index("[") + 1:-1].strip()
+    else:
+        tabla_pedida = ""
+        propiedad_pedida = texto.strip("[] ")
+    if not propiedad_pedida:
+        raise ConditionalFormatError(
+            f"Referencia de columna destino invalida: {column_ref!r}.")
+
+    nodo_visual = visual.get("visual")
+    estados = (((nodo_visual or {}).get("query") or {}).get("queryState") or {})
+    disponibles: List[str] = []
+    candidatos: List[Dict[str, Any]] = []
+    for estado in estados.values():
+        for proyeccion in (estado or {}).get("projections", []) or []:
+            if not isinstance(proyeccion, dict):
+                continue
+            identidad = _field_identity(proyeccion.get("field"))
+            if identidad is None:
+                continue
+            tabla, propiedad = identidad
+            disponibles.append(f"{tabla}[{propiedad}]" if tabla
+                               else f"[{propiedad}]")
+            if propiedad.casefold() != propiedad_pedida.casefold():
+                continue
+            if tabla_pedida and tabla.casefold() != tabla_pedida.casefold():
+                continue
+            candidatos.append(proyeccion)
+
+    if not candidatos:
+        raise ConditionalFormatError(
+            f"La columna destino {column_ref!r} no esta entre las proyecciones "
+            "del visual; solo se puede pintar una columna que el visual "
+            f"muestra. Proyectadas: {sorted(set(disponibles))}.",
+            details={"target_column": column_ref,
+                     "rule": "format_target_not_projected",
+                     "projected": sorted(set(disponibles))})
+    if len(candidatos) > 1:
+        firmas = {_field_signature(c.get("field")) for c in candidatos}
+        if len(firmas) > 1:
+            raise ConditionalFormatError(
+                f"La columna destino {column_ref!r} aparece en varias "
+                "proyecciones; usa 'Tabla[Columna]' completo.",
+                details={"target_column": column_ref,
+                         "rule": "format_target_ambiguous",
+                         "matches": len(candidatos)})
+    elegido = next((c for c in candidatos if c.get("queryRef")), None)
+    if elegido is None:
+        raise ConditionalFormatError(
+            f"La proyeccion de {column_ref!r} no tiene queryRef; sin el no se "
+            "puede acotar la regla a esa columna.",
+            details={"target_column": column_ref,
+                     "rule": "format_target_without_queryref"})
+    return copy.deepcopy(elegido)
+
+
 def _propiedad_de_color(regla: Dict[str, Any]) -> Dict[str, Any]:
     """Envuelve la regla como lo que es: el COLOR de un relleno solido.
 
@@ -344,24 +486,9 @@ def _selector(referencia: Optional[str]) -> Dict[str, Any]:
     return selector
 
 
-def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
-                    min_color: str, max_color: str, *,
-                    target: str = "background",
-                    mid_color: Optional[str] = None,
-                    null_strategy: str = "asZero",
-                    projection_query_ref: Optional[str] = None) -> Dict[str, Any]:
-    """Añade la regla al visual (se modifica en el sitio) y describe el cambio.
-
-    Se sustituye la regla del MISMO campo, y solo esa. Antes se reemplazaba
-    cualquier bloque que tuviera esa propiedad, sin mirar a que campo apuntaba:
-    colorear una segunda medida borraba el degradado de la primera, y en una
-    matriz de varias metricas acababa pintada solo la ultima. El rodeo conocido
-    era dinamizar las metricas a filas para tener una sola medida; ya no hace
-    falta.
-
-    Dos degradados sobre la misma propiedad no se pisan mientras cada uno este
-    acotado a su campo con `selector.metadata`.
-    """
+def _resolver_destino(visual: Dict[str, Any], target: str,
+                      metadata_query_ref: Optional[str]) -> tuple:
+    """Valida destino y tipo de visual; devuelve (clave, grupo, propiedad)."""
     clave = str(target).strip().lower()
     if clave not in DESTINOS:
         raise ConditionalFormatError(
@@ -369,11 +496,16 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
             f"{sorted(set(DESTINOS))} (background y font para tablas y "
             "matrices; bars para barras y columnas).")
     grupo, propiedad = DESTINOS[clave]
+    if metadata_query_ref and grupo != "values":
+        raise ConditionalFormatError(
+            "target_column solo aplica a 'background' y 'font' de tablas y "
+            "matrices: en barras y puntos la regla alcanza a la serie entera, "
+            "no a una columna.",
+            details={"target": clave, "rule": "format_target_not_applicable"})
 
     nodo = visual.get("visual")
     if not isinstance(nodo, dict):
         raise ConditionalFormatError("El visual no tiene nodo 'visual'.")
-
     tipo = nodo.get("visualType")
     permitidos = _TIPOS_POR_DESTINO[clave]
     if tipo not in permitidos:
@@ -383,12 +515,24 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
             details={"target": clave, "object_group": grupo,
                      "visual_type": tipo, "compatible_visual_types":
                      sorted(permitidos)})
+    return clave, grupo, propiedad
 
-    regla = build_fill_rule(field, min_color, max_color, mid_color, null_strategy)
+
+def _escribir_regla(visual: Dict[str, Any], regla: Dict[str, Any],
+                    field: Dict[str, Any], grupo: str, propiedad: str,
+                    referencia: Optional[str]) -> Dict[str, Any]:
+    """Coloca la regla en `objects` sustituyendo la del mismo alcance.
+
+    Se sustituye la regla del MISMO campo, y solo esa. Antes se reemplazaba
+    cualquier bloque que tuviera esa propiedad, sin mirar a que campo apuntaba:
+    colorear una segunda medida borraba el degradado de la primera. Dos reglas
+    sobre la misma propiedad conviven mientras cada una este acotada a su
+    columna con `selector.metadata`.
+    """
+    nodo = visual["visual"]
     objetos = nodo.setdefault("objects", {})
     bloques: List[Dict[str, Any]] = objetos.setdefault(grupo, [])
 
-    referencia = projection_query_ref or query_ref(field)
     # Los visual.json exportados por Desktop acotan ``values`` a la columna
     # con selector.metadata, lo que permite una regla por medida. Para
     # ``dataPoint.fill`` escriben solo el wildcard de datos: añadir metadata
@@ -399,14 +543,11 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
         props = bloque.get("properties") or {}
         if propiedad not in props:
             continue
-        # El campo al que apunta el bloque es lo que decide si esto es la misma
-        # regla o una distinta. Sin esta comparacion, colorear una medida
-        # borraba el degradado de la anterior.
         if grupo == "values":
             if (bloque.get("selector") or {}).get("metadata") != referencia:
                 continue
         else:
-            existente = _fill_rule_input(props.get(propiedad))
+            existente = _campo_que_pinta(props.get(propiedad))
             if _field_signature(existente) != _field_signature(field):
                 continue
         props[propiedad] = _propiedad_de_color(regla)
@@ -426,13 +567,73 @@ def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
     format_oracle.assert_managed_paths(
         visual, [("objects", grupo, propiedad)])
 
+    return {"replaced": reemplazado,
+            "rules_on_property": sum(
+                1 for b in bloques if propiedad in (b.get("properties") or {}))}
+
+
+def apply_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
+                    min_color: str, max_color: str, *,
+                    target: str = "background",
+                    mid_color: Optional[str] = None,
+                    null_strategy: str = "asZero",
+                    projection_query_ref: Optional[str] = None,
+                    metadata_query_ref: Optional[str] = None,
+                    min_value: Optional[float] = None,
+                    mid_value: Optional[float] = None,
+                    max_value: Optional[float] = None) -> Dict[str, Any]:
+    """Añade la regla al visual (se modifica en el sitio) y describe el cambio.
+
+    `field` dice de donde sale el VALOR del degradado. `metadata_query_ref`,
+    si se indica, dice QUE columna del visual se pinta con el (el
+    `selector.metadata` de la regla); sin el, se pinta la columna del propio
+    `field`, que es el caso comun.
+    """
+    clave, grupo, propiedad = _resolver_destino(visual, target,
+                                                metadata_query_ref)
+    regla = build_fill_rule(field, min_color, max_color, mid_color,
+                            null_strategy, min_value=min_value,
+                            mid_value=mid_value, max_value=max_value)
+    referencia = (metadata_query_ref or projection_query_ref
+                  or query_ref(field))
+    escrito = _escribir_regla(visual, regla, field, grupo, propiedad,
+                              referencia)
+
     log.info("Formato condicional en %s.%s sobre %s (%s)", grupo, propiedad,
              referencia or "campo sin referencia",
-             "sustituido" if reemplazado else "anadido")
+             "sustituido" if escrito["replaced"] else "anadido")
     return {"target": clave, "object_group": grupo, "property": propiedad,
-            "field_ref": referencia, "replaced": reemplazado,
-            "rules_on_property": sum(
-                1 for b in bloques if propiedad in (b.get("properties") or {})),
+            "field_ref": referencia, **escrito,
             "gradient": "linearGradient3" if mid_color else "linearGradient2",
             "colors": {"min": min_color, "mid": mid_color, "max": max_color},
+            "anchors": {"min": min_value, "mid": mid_value, "max": max_value},
             "null_strategy": null_strategy}
+
+
+def apply_field_value_to_visual(visual: Dict[str, Any], field: Dict[str, Any],
+                                *, target: str = "background",
+                                projection_query_ref: Optional[str] = None,
+                                metadata_query_ref: Optional[str] = None
+                                ) -> Dict[str, Any]:
+    """Colorea con el modo "valor de campo": la medida DEVUELVE el color.
+
+    La expresion es el propio nodo de campo puesto donde iria un color
+    literal: `{"solid": {"color": {"expr": {"Measure": ...}}}}`. Es la forma
+    que exporta Desktop para 'Field value'. Hecho a mano era campo minado:
+    una variante crasheaba el render de la pagina entera y otra pintaba en
+    tarjetas pero no en celdas de tabla; la matriz de que forma va en que
+    visual vive aqui (`_TIPOS_POR_DESTINO`), no en la memoria de nadie.
+    """
+    clave, grupo, propiedad = _resolver_destino(visual, target,
+                                                metadata_query_ref)
+    regla = {"expr": copy.deepcopy(field)}
+    referencia = (metadata_query_ref or projection_query_ref
+                  or query_ref(field))
+    escrito = _escribir_regla(visual, regla, field, grupo, propiedad,
+                              referencia)
+
+    log.info("Color por valor de campo en %s.%s sobre %s (%s)", grupo,
+             propiedad, referencia or "campo sin referencia",
+             "sustituido" if escrito["replaced"] else "anadido")
+    return {"target": clave, "object_group": grupo, "property": propiedad,
+            "field_ref": referencia, "mode": "field_value", **escrito}
