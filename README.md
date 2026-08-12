@@ -2,7 +2,17 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.5.0** — 134 tools. Covers two complementary Power BI layers plus verified document exports, report **content** export and read-only SharePoint ingestion:
+**v1.5.1** — 134 tools. Covers two complementary Power BI layers plus verified document exports, report **content** export and read-only SharePoint ingestion:
+
+**Install = one prompt.** With Claude Code open, paste:
+
+> Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp): agrega su marketplace, instala el plugin, corre su instalador de un pegado si falta algún prerequisito, resuelve los pendientes que marque, y no pares hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
+
+No Claude Code yet? One paste in a normal PowerShell window (no admin; it can install Claude Code too — details in [`docs/INSTALL.md`](docs/INSTALL.md)):
+
+```powershell
+irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+```
 
 | Layer | For what | How |
 |---|---|---|

@@ -17,7 +17,7 @@ import venv
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -82,8 +82,24 @@ def runtime_env(p: dict[str, Path]) -> dict[str, str]:
     return env
 
 
-def _run(command: list[str], *, env: dict[str, str]) -> None:
-    subprocess.run(command, cwd=str(PLUGIN_ROOT), env=env, check=True)
+def _run(command: list[str], *, env: dict[str, str], intentos: int = 3) -> None:
+    """Ejecuta un paso con reintentos.
+
+    Todos los pasos que pasan por aqui son descargas (PyPI, NuGet,
+    developer.microsoft.com, npm) y el equipo tiene MEDIDA una carrera DNS
+    IPv6 que las tumba de forma intermitente. Un fallo transitorio no puede
+    costar la instalacion entera: se reintenta con espera creciente, y solo
+    el tercer fallo consecutivo es un fallo de verdad. Las descargas se
+    verifican por hash y son idempotentes, asi que reintentar es gratis.
+    """
+    for intento in range(1, intentos + 1):
+        try:
+            subprocess.run(command, cwd=str(PLUGIN_ROOT), env=env, check=True)
+            return
+        except subprocess.CalledProcessError:
+            if intento == intentos:
+                raise
+            time.sleep(4 * intento)
 
 
 def install(base: Path | None = None, *, include_validator: bool = True) -> int:
@@ -138,8 +154,11 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                       message="Runtime listo. Reinicia Codex o Claude.")
         return 0
     except Exception as exc:
-        _write_status(p, state="failed", ready=False,
-                      message=f"{type(exc).__name__}: {exc}")
+        _write_status(
+            p, state="failed", ready=False,
+            message=(f"{type(exc).__name__}: {exc}. Relanzar la instalacion "
+                     "REANUDA desde este paso: lo ya descargado esta "
+                     "verificado por hash y no se repite."))
         return 1
     finally:
         try:

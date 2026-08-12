@@ -5,6 +5,44 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.5.1] — 2026-08-12
+
+Installation, measured in the field the same morning: a 2h11m training session
+with six users spent most of its time installing. Everything below attacks
+that funnel; no tool changes (134, contract untouched).
+
+### Added
+
+- **One-paste installer** — `scripts/instalar.ps1`, run as
+  `irm .../scripts/instalar.ps1 | iex` in a NORMAL PowerShell window. Installs
+  every prerequisite at **user level** (real Python dodging the Store alias,
+  Git, optional Node, execution policy, Claude Code via npm when available)
+  and registers the plugin. Idempotent: fix what it marks pending and paste
+  the same command again. When IT blocks winget, its output IS the ticket to
+  hand over (exact user-scope package ids). ASCII-only on purpose: PS 5.1
+  reads UTF-8-without-BOM with the OEM codepage and mangles accents.
+- `docs/INSTALL.md` opens with the one-paste path plus a field-symptom table
+  (dead plugin with no error, "Git is required", mid-install network death,
+  "running scripts is disabled", "not recognized" after installing).
+
+### Fixed
+
+- **The Microsoft Store `python` alias killed the plugin before it could say
+  anything.** The manifests declared `"command": "python"`; on machines where
+  that resolves to the WindowsApps shim, the launcher — and with it
+  `pbi_install_status`, the one piece that self-diagnoses — never ran. Both
+  plugin manifests now launch through `scripts/launch.cmd`, which resolves a
+  REAL interpreter (`py -3` first, then any PATH python that is not the
+  WindowsApps shim) and, when none exists, explains the remedy via stderr.
+  Unix users of the plugin path: register via `make_mcp_config.py` (the
+  generic stdio path is unchanged).
+- **A transient network failure no longer costs the whole runtime install.**
+  The bootstrap's four download steps (PyPI, NuGet DLLs, PBIR schemas, npm
+  validator) retry 3x with increasing backoff — the team has a MEASURED
+  IPv6 DNS race against nuget.org/developer.microsoft.com — and the failure
+  status now says that relaunching resumes from the same step
+  (hash-verified downloads are never repeated).
+
 ## [1.5.0] — 2026-08-12
 
 Torre Aurora field-report closure (134 tools, one additive). Everything below

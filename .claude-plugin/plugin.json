@@ -1,6 +1,6 @@
 {
   "name": "horizun-pbi-mcp",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Power BI Desktop y PBIP desde Claude: DAX, TOM, TMDL, PBIR, visuales, auditoría y flujos seguros.",
   "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
   "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",
@@ -10,8 +10,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "horizun-pbi-mcp": {
-      "command": "python",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/plugin_launcher.py"]
+      "command": "cmd",
+      "args": ["/d", "/c", "${CLAUDE_PLUGIN_ROOT}/scripts/launch.cmd"]
     }
   }
 }

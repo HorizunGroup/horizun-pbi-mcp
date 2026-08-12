@@ -3,7 +3,7 @@
   "name": "io.github.HorizunGroup/horizun-pbi-mcp",
   "title": "Horizun PBI MCP",
   "description": "Open-source MCP server for Power BI Desktop, DAX, PBIP, TMDL and PBIR automation.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "repository": {
     "url": "https://github.com/HorizunGroup/horizun-pbi-mcp",
     "source": "github"

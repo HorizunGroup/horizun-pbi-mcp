@@ -1,5 +1,53 @@
 # Installing and registering Horizun PBI MCP
 
+## If you already have Claude Code: ONE PROMPT — start here
+
+Paste this into Claude Code and let the agent fight the dependencies for you:
+
+> Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp):
+> agrega su marketplace, instala el plugin, corre su instalador de un pegado
+> si falta algún prerequisito, resuelve los pendientes que marque, y no pares
+> hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
+
+The plugin ships a setup skill (`horizun-pbi-setup`) with the full runbook —
+field symptoms included — so the agent knows every remedy: the Store-alias
+trap, missing Git, execution policy, stale PATH, network races, and what to
+request from IT when nothing can be installed.
+
+## No Claude Code yet: one-paste install (Windows, no admin)
+
+Paste this into **PowerShell** (a normal window; administrator NOT needed).
+It also installs Claude Code itself when npm is available:
+
+```powershell
+irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+```
+
+It checks and installs everything at **user level**: real Python (dodging the
+Microsoft Store alias that silently kills MCP servers), Git, optional Node for
+the official PBIR validator, the user execution policy, Claude Code itself (via
+npm when available) and the plugin registration. It is **idempotent**: if
+something stays pending (e.g. IT must approve an install), fix it and paste the
+same command again — nothing is repeated, nothing breaks.
+
+When it prints `LISTO`, open Claude Code: the first session prepares the
+runtime by itself (`pbi_install_status` shows progress), then restart Claude
+once and the `pbi_*` tools appear.
+
+**If IT blocks winget**: the script prints exactly which package ids to request
+(`Python.Python.3.12`, `Git.Git`, `OpenJS.NodeJS.LTS` — all user-scope). That
+printout is the ticket to hand to your IT team.
+
+### Known traps this path already dodges
+
+| Symptom in the field | Cause | Handled by |
+|---|---|---|
+| Plugin dead, no error anywhere | `python` resolves to the Microsoft Store alias (WindowsApps shim) | `launch.cmd` resolves a REAL interpreter (`py -3` first) and explains via stderr if none exists |
+| "Git is required for local sessions" | Claude Code needs Git | installer installs `Git.Git` user-scope |
+| Install fails halfway on network | Measured IPv6 DNS race against nuget.org / developer.microsoft.com | bootstrap retries each download step 3x; relaunching resumes (hash-verified) |
+| "running scripts is disabled" | PowerShell execution policy | installer sets `RemoteSigned` for the current user only |
+| Freshly installed tool "not recognized" | stale PATH in the open terminal | installer refreshes PATH in-session; if it still hides, close and reopen the terminal |
+
 ## Direct plugin for Codex and Claude Code
 
 This is the recommended path for end users. It doesn't require a dedicated

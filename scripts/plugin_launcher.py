@@ -80,7 +80,11 @@ def bootstrap_server() -> int:
     ]
     for line in sys.stdin:
         try:
-            request = json.loads(line)
+            # Un BOM UTF-8 por linea no viene de un cliente MCP real, pero SI
+            # de terminales Windows haciendo pruebas a mano (PowerShell 5.1 lo
+            # anade al pipear). Tolerarlo cuesta una linea y evita un launcher
+            # mudo justo cuando alguien intenta diagnosticarlo.
+            request = json.loads(line.lstrip("\ufeff"))
             method = request.get("method")
             request_id = request.get("id")
             if method == "initialize":
