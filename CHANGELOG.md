@@ -5,6 +5,48 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.5.2] — 2026-08-12
+
+Same day, second pass on the same funnel. 1.5.1 taught the launcher to reject
+the Microsoft Store alias; this one teaches it that **rejecting a bad name is
+not the same as picking a working interpreter**. No tool changes (134,
+contract untouched).
+
+### Fixed
+
+- **`launch.cmd` chose an interpreter for existing, not for running.** Three
+  states reproduced in a terminal, each of which passed the old presence test
+  without serving:
+  - an **orphaned `py.exe`** (Python uninstalled, launcher left behind): it was
+    picked, died with `Python 3.x not found` and exit 103 without naming any
+    remedy, and never tried the real `python` that WAS on the PATH;
+  - a **Python below the 3.10 floor** declared in `pyproject.toml`: starts
+    fine, then fails much later and worse, inside the server;
+  - a **`.bat`/`.cmd` candidate** (pyenv-win shims, corporate wrappers):
+    invoked without `call`, a batch file takes the control and never returns
+    it, leaving the plugin mute inside the very file written to prevent that.
+
+  Now a candidate is accepted only if it RUNS and meets the floor, every
+  invocation (including the final launch) goes through `call`, and when none
+  works the message distinguishes "no Python" from "Python too old", because
+  the remedy differs.
+
+### Added
+
+- **Last-resort interpreter lookup** in the folders winget installs into
+  (`%LOCALAPPDATA%\Programs\Python`, `%LOCALAPPDATA%\Python`, `%ProgramFiles%`),
+  for the field case "I just installed it and this console doesn't see it" —
+  so nobody is asked to close and reopen windows.
+- **Guided install prompt in the README**, with its eight rules (plan before
+  action, announce every step with an ETA, refresh PATH, drive
+  `pbi_install_status` to `ready`, end any failure in a diagnosis plus the fix
+  command) and, folded away for maintainers, the field-failure table each rule
+  answers to.
+- Four tests in `tests/test_plugin_distribution.py` that execute the launcher
+  for real against controlled shims, plus a guard tying its version floor to
+  `pyproject.toml`. Verified by mutation: dropping the `call` fails three,
+  lowering the floor fails one.
+
 ## [1.5.1] — 2026-08-12
 
 Installation, measured in the field the same morning: a 2h11m training session
