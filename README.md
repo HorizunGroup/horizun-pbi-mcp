@@ -16,6 +16,10 @@ No Claude Code yet? One paste in a normal PowerShell window (no admin; it can in
 irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
 ```
 
+Prefer the install narrated step by step — plan first, honest ETAs, evidence
+after every step? Paste the [guided install prompt](#installation) instead
+(Spanish full version + English short version).
+
 | Layer | For what | How |
 |---|---|---|
 | **Live** (Power BI Desktop open on `localhost:<port>`) | Query data (DAX), document the model, create/edit measures, refresh | ADOMD.NET + TOM via `pythonnet` |
@@ -83,23 +87,86 @@ irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/
 
 ## Installation
 
-### One prompt (recommended)
+### Instalación asistida por IA — pega un prompt y mira cómo se instala solo
 
-With Claude Code (or Codex) open, paste this and let the agent fight every
-dependency for you — Store-alias Python, missing Git, execution policy, stale
-PATH, network races. The bundled `horizun-pbi-setup` skill carries the full
-field runbook, so this really is the whole install. English or Spanish, same
-result:
+¿Tienes Claude (la app de escritorio con acceso a terminal, o Claude Code)?
+Entonces no sigas pasos manuales: copia el prompt de abajo, pégaselo a Claude,
+y él instala todo narrando cada paso. Es el único requisito: alguna forma de
+Claude que pueda ejecutar comandos. Si no tienes ninguna, instala primero el
+CLI (`irm https://claude.ai/install.ps1 | iex` en PowerShell) y luego pega el
+prompt.
 
-> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its
-> marketplace, install the plugin, run its one-paste installer if any
-> prerequisite is missing, resolve whatever it marks as pending, and don't
-> stop until `pbi_install_status` says `ready` and the `pbi_*` tools appear.
+**Tiempos honestos:** PC sin nada ≈ 10–20 min (casi todo es descarga). Con
+Python y Claude ya presentes ≈ 2–4 min.
 
-> Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp):
-> agrega su marketplace, instala el plugin, corre su instalador de un pegado
-> si falta algún prerequisito, resuelve los pendientes que marque, y no pares
-> hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
+**EL PROMPT (cópialo completo):**
+
+```text
+Instala el Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) en este equipo, de punta a punta, bajo estas reglas:
+1. PRIMERO EL PLAN, DESPUÉS LA ACCIÓN. En una sola pasada revisa qué existe ya: Python real >=3.10
+   (cuidado: el alias de la Microsoft Store NO cuenta), el CLI de claude, winget y Power BI Desktop.
+   Dime la lista de lo que falta con el tiempo estimado TOTAL antes de instalar nada.
+2. NUNCA TRABAJES EN SILENCIO. Antes de cada paso anuncia "Paso N de M — qué voy a hacer — cuánto tarda (~X min)".
+   Si un comando va a demorar más de un minuto, dilo ANTES de correrlo. Al terminar cada paso muestra la
+   evidencia (versión instalada, ruta). Si algo lleva más de lo estimado, repórtalo en vez de dejarme esperando.
+3. Instala SOLO lo que falte, en ámbito de usuario, sin pedir administrador:
+   - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+   - Claude Code CLI (si no existe): irm https://claude.ai/install.ps1 | iex
+   Recuerda que la terminal donde instalaste NO ve el PATH nuevo: usa rutas absolutas o refresca el PATH del
+   proceso tú mismo; no me pidas cerrar y abrir ventanas a mí.
+4. Si hace falta iniciar sesión en Claude, ese es el ÚNICO paso mío: dime exactamente qué hacer y espérame.
+5. Registra el plugin:
+   claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
+   claude plugin install horizun-pbi-mcp@horizun
+6. Arranca el setup del runtime y monitorea pbi_install_status, contándome cada cambio de estado
+   (descarga de DLLs, creación del entorno, esquemas). No pares hasta que diga ready.
+7. Cierra con la verificación completa: python --version, claude --version, claude plugin list, y
+   recuérdame reiniciar la sesión de Claude para que aparezcan las herramientas pbi_*.
+8. Si algo falla: dime QUÉ falló, POR QUÉ, y el comando exacto para arreglarlo. Nunca me dejes en un
+   estado a medias sin describirlo.
+Referencia de tiempos reales para tus estimaciones: Python 2-4 min, CLI de Claude 2-3 min,
+marketplace ~1 min, runtime del plugin 3-6 min. No prometas menos de eso.
+```
+
+**English version (short):**
+
+```text
+Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) end-to-end under these rules: (1) One-pass
+precheck first (real Python >=3.10 — Store alias doesn't count —, claude CLI, winget, Power BI Desktop);
+tell me what's missing with a total ETA before installing anything. (2) Never work silently: announce
+"Step N of M — what — ETA" before each step, show evidence after, report overruns. (3) Install only what's
+missing, user scope, no admin: Python via winget (Python.Python.3.12), Claude Code via
+irm https://claude.ai/install.ps1 | iex; refresh this process's PATH yourself. (4) Claude login is my only
+step — tell me exactly what to do and wait. (5) claude plugin marketplace add HorizunGroup/horizun-pbi-mcp,
+then claude plugin install horizun-pbi-mcp@horizun. (6) Drive the runtime setup and monitor
+pbi_install_status, narrating every state change until it says ready. (7) Verify: python --version,
+claude --version, claude plugin list; remind me to restart the session so pbi_* tools load. (8) On any
+failure: what broke, why, and the exact fix command. Reference timings: Python 2-4 min, CLI 2-3 min,
+marketplace ~1 min, runtime 3-6 min — never promise less.
+```
+
+Already have Claude Code set up and just want the fast path? The short
+bilingual prompt at the top of this page does the same job, leaning on the
+bundled `horizun-pbi-setup` skill that carries the full field runbook.
+
+<details>
+<summary><b>Por qué el prompt tiene estas reglas (para mantenedores)</b></summary>
+
+Prueba de campo (2026-08-12, PC virgen): una instalación agentic SIN estas
+reglas gastó 15+ minutos percibidos como cuelgue, y el usuario abandonó. Las
+causas, y la regla que las mata:
+
+| Falla observada | Regla que la corrige |
+|---|---|
+| Pasos largos sin ninguna señal → se siente colgado | Regla 2: anunciar duración ANTES y reportar si se excede |
+| El agente auditó/verificó en 8+ llamadas secuenciales antes de empezar | Regla 1: UNA pasada de precheck y el plan completo |
+| "claude no se reconoce" tras instalar (PATH de la terminal vieja) | Regla 3: el agente refresca el PATH él mismo |
+| El usuario no sabía cuánto faltaba ni si valía la pena esperar | Plan con estimación total + tiempos de referencia al final |
+| Fallo a mitad de camino = sistema en estado desconocido | Regla 8: todo fallo termina en diagnóstico + comando de arreglo |
+
+</details>
+
+### No Claude at all? One-paste PowerShell installer
 
 No Claude Code on the machine yet? One paste in a normal PowerShell window
 (no admin; it can install Claude Code too, and when IT blocks installs its
