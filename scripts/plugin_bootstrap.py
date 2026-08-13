@@ -1,6 +1,6 @@
 """Prepara el runtime aislado usado por los plugins de Codex y Claude.
 
-Solo usa la biblioteca estÃ¡ndar del Python anfitriÃ³n. Las dependencias del
+Solo usa la biblioteca estándar del Python anfitrión. Las dependencias del
 producto, las DLL de Microsoft y los esquemas PBIR quedan bajo el directorio de
 datos del plugin, nunca dentro del checkout ni de un proyecto del usuario.
 """
@@ -17,7 +17,7 @@ import venv
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -110,7 +110,7 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
         os.close(fd)
     except FileExistsError:
         _write_status(p, state="installing", ready=False,
-                      message="Ya hay una instalaciÃ³n en curso.")
+                      message="Ya hay una instalación en curso.")
         return 0
 
     try:

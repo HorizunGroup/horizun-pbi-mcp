@@ -5,6 +5,44 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.5.3] — 2026-08-12
+
+Install trust and clarity. No tool changes (134, contract untouched).
+
+### Fixed
+
+- **1.5.2 shipped mojibake.** Its version bump was done with PowerShell 5.1,
+  where `Get-Content -Raw` reads using the ANSI codepage and `WriteAllText`
+  writes UTF-8. Accented text in **both** `plugin.json` descriptions and in the
+  install messages of `plugin_bootstrap.py` — text the user reads on screen and
+  in the plugin marketplace — was published corrupted. No test caught it
+  because every test checks *content*, never *encoding*. There is now a guard
+  over the published manifests, installer text and front documentation, and it
+  was verified against the actual file 1.5.2 shipped.
+- **The one-paste installer could not install Claude Code without npm.** It
+  depended on Node, whose MSI is usually per-machine and fails without
+  administrator — exactly the empty PC the script exists to rescue. It now uses
+  Anthropic's official installer first (`irm https://claude.ai/install.ps1`),
+  keeps npm as a fallback, and adds `~\.local\bin` to the running process's
+  PATH so the very next step finds `claude` without reopening the terminal.
+- **The installer claimed success it had not checked.** It printed "plugin
+  registered" unconditionally, so a dead install said goodbye in green. It now
+  re-reads `claude plugin list` and reports what it actually finds.
+- **False pending on the execution policy.** `Set-ExecutionPolicy` can write
+  the setting *and still throw* when a more specific scope overrides it, so a
+  correct install ended in yellow. The verdict now comes from re-reading the
+  effective policy, not from the exception.
+
+### Changed
+
+- **README rewritten around installing and trusting it.** The install is two
+  labelled paths (you have Claude / you have nothing), one paste each, with
+  measured timings; and a new section states, point by point and checkable in
+  this repository, that it needs no administrator, sends nothing anywhere,
+  reaches the network only for pinned SHA-256-verified downloads, backs up
+  before writing, and blocks a write it cannot prove is safe. The guided prompt
+  now leads in English, with the Spanish version folded.
+
 ## [1.5.2] — 2026-08-12
 
 Same day, second pass on the same funnel. 1.5.1 taught the launcher to reject

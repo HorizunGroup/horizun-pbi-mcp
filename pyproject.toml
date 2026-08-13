@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "horizun-pbi-mcp"
 # PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
-version = "1.5.2"
+version = "1.5.3"
 description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
 requires-python = ">=3.10"

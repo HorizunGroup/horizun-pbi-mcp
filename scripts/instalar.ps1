@@ -29,6 +29,43 @@ function Refresh-Path {
 
 function Tiene($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
 
+function SumarAlPathDeSesion($carpeta) {
+    # El instalador nativo deja claude en ~\.local\bin. Esa carpeta entra en el
+    # PATH del USUARIO, pero este proceso ya arranco con el PATH viejo: sin
+    # esto, el paso siguiente no encuentra 'claude' y habria que pedirle a la
+    # persona que cierre y reabra la terminal, que es justo lo que este
+    # instalador existe para evitar.
+    if ((Test-Path -LiteralPath $carpeta) -and ($env:Path -notlike ("*" + $carpeta + "*"))) {
+        $env:Path = $carpeta + ";" + $env:Path
+    }
+}
+
+function InstalarClaudeCode {
+    # 1) Instalador NATIVO de Anthropic: no necesita Node ni npm. Es el camino
+    #    principal a proposito - el MSI de Node suele ser por-maquina y sin
+    #    administrador falla, asi que colgar Claude Code de npm dejaba la
+    #    instalacion muerta justo en el PC vacio que este script debe resolver.
+    Write-Host "  instalando Claude Code (instalador oficial, nivel usuario)..."
+    try {
+        $script = (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1' -UseBasicParsing)
+        Invoke-Expression $script
+    } catch {
+        Fallo ("el instalador oficial de Claude Code fallo: " + $_.Exception.Message)
+    }
+    Refresh-Path
+    SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
+    if (Tiene 'claude') { return $true }
+
+    # 2) Respaldo por npm, si esta disponible.
+    if (Tiene 'npm') {
+        Write-Host "  reintentando con npm..."
+        & npm install -g "@anthropic-ai/claude-code" | Out-Null
+        Refresh-Path
+        SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
+    }
+    return (Tiene 'claude')
+}
+
 function PythonReal {
     # El alias de la Store (WindowsApps) NO cuenta como Python.
     if (Tiene 'py') {
@@ -68,15 +105,28 @@ Write-Host "-------------------------------------------------------------"
 
 # --- 1. Politica de ejecucion del usuario ------------------------------------
 Paso "Politica de ejecucion de PowerShell (solo tu usuario)"
+$permisivas = @('RemoteSigned', 'Unrestricted', 'Bypass')
 try {
     $actual = Get-ExecutionPolicy -Scope CurrentUser
     if ($actual -in @('Restricted', 'Undefined', 'AllSigned')) {
         Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
-        Ok "Ajustada a RemoteSigned (antes: $actual)."
-    } else {
-        Ok "Ya estaba en $actual."
     }
-} catch { Aviso "No se pudo ajustar la politica de ejecucion: $($_.Exception.Message)" }
+} catch {
+    # No se decide por la excepcion: Set-ExecutionPolicy puede ESCRIBIR el
+    # ajuste y lanzar igualmente (pasa cuando un ambito mas especifico, como el
+    # -ExecutionPolicy de la propia linea de comandos, manda sobre CurrentUser).
+    # Fiarse del error daba un PENDIENTE falso y una instalacion correcta se
+    # despedia en amarillo. Se comprueba releyendo, abajo.
+    $script:policyError = $_.Exception.Message
+}
+$efectiva = Get-ExecutionPolicy
+$deUsuario = Get-ExecutionPolicy -Scope CurrentUser
+if ($efectiva -in $permisivas -or $deUsuario -in $permisivas) {
+    Ok ("Los scripts pueden ejecutarse (efectiva: " + $efectiva + "; tu usuario: " + $deUsuario + ").")
+} else {
+    $detalle = if ($script:policyError) { " (" + $script:policyError + ")" } else { "" }
+    Aviso ("La politica de ejecucion sigue bloqueando scripts (efectiva: " + $efectiva + ")" + $detalle + ". Ejecuta: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned")
+}
 
 # --- 2. Python real (no el alias de la Store) --------------------------------
 Paso "Python 3.10+ real"
@@ -119,16 +169,13 @@ else {
 
 # --- 5. Claude Code ----------------------------------------------------------
 Paso "Claude Code"
+SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
 if (Tiene 'claude') {
     Ok ("claude " + ((& claude --version 2>$null | Select-Object -First 1)))
-} elseif (Tiene 'npm') {
-    Write-Host "  instalando Claude Code con npm (nivel usuario)..."
-    & npm install -g "@anthropic-ai/claude-code" | Out-Null
-    Refresh-Path
-    if (Tiene 'claude') { Ok "Claude Code instalado." }
-    else { Aviso "npm termino pero 'claude' no aparece en el PATH: cierra y reabre la terminal, y repega este comando." }
+} elseif (InstalarClaudeCode) {
+    Ok ("claude " + ((& claude --version 2>$null | Select-Object -First 1)))
 } else {
-    Aviso "Claude Code no esta y no hay npm para instalarlo. Instalalo desde la documentacion oficial de Anthropic y repega este comando."
+    Aviso "No se pudo instalar Claude Code. Instalalo con: irm https://claude.ai/install.ps1 | iex  y vuelve a pegar este comando."
 }
 
 # --- 6. Registrar el plugin en Claude Code -----------------------------------
@@ -136,7 +183,15 @@ Paso "Plugin horizun-pbi-mcp en Claude Code"
 if (Tiene 'claude') {
     & claude plugin marketplace add HorizunGroup/horizun-pbi-mcp 2>&1 | Out-Null
     & claude plugin install horizun-pbi-mcp@horizun 2>&1 | Out-Null
-    Ok "Plugin registrado (si ya estaba, no pasa nada: es idempotente)."
+    # No basta con que los comandos no fallen: se COMPRUEBA releyendo la lista.
+    # Antes se anunciaba "registrado" pase lo que pase, asi que una instalacion
+    # muerta se despedia en verde y la persona lo descubria mucho despues.
+    $lista = (& claude plugin list 2>&1 | Out-String)
+    if ($lista -match 'horizun-pbi-mcp') {
+        Ok "Plugin registrado y verificado en 'claude plugin list'."
+    } else {
+        Aviso "El plugin NO aparece en 'claude plugin list'. Reintenta con: claude plugin marketplace add HorizunGroup/horizun-pbi-mcp ; claude plugin install horizun-pbi-mcp@horizun"
+    }
 } else {
     Aviso "Sin Claude Code no se puede registrar el plugin todavia."
 }

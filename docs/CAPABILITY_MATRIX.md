@@ -19,7 +19,7 @@ Every statement carries its **verification level**. They are not mixed.
 
 | Server | Version | Status | Highest level reached |
 |---|---|---|---|
-| **Horizun PBI MCP** (this repo) | 1.5.2 | Present, starts | **Tested** — stdio handshake, 134 tools, live DAX, PBIR fixture, verified Excel/PDF exports, Desktop capture by PID and simulated Graph folder traversal/download |
+| **Horizun PBI MCP** (this repo) | 1.5.3 | Present, starts | **Tested** — stdio handshake, 134 tools, live DAX, PBIR fixture, verified Excel/PDF exports, Desktop capture by PID and simulated Graph folder traversal/download |
 | **powerbi-report-mcp** | 0.9.6 | Present and built at `..\PowerBI MCP\powerbi-report-mcp\dist\index.js` | **Observed** — 57 tool names extracted from the bundle and the README. **Not run** |
 | **@microsoft/powerbi-modeling-mcp** | 0.5.0-beta.11 | Downloaded to a temp folder, extracted and read. **Not run** | **Declared** — README + CHANGELOG + `index.js`. Execution **halted** due to a stop condition (§2.1) |
 

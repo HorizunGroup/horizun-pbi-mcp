@@ -2,23 +2,86 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.5.2** — 134 tools. Covers two complementary Power BI layers plus verified document exports, report **content** export and read-only SharePoint ingestion:
+**v1.5.3** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
 
-**Install = one prompt.** With Claude Code open, paste (English or Spanish, same result):
+---
 
-> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its marketplace, install the plugin, run its one-paste installer if any prerequisite is missing, resolve whatever it marks as pending, and don't stop until `pbi_install_status` says `ready` and the `pbi_*` tools appear.
+# Install it in one paste
 
-> Instala el MCP de Power BI de Horizun (HorizunGroup/horizun-pbi-mcp): agrega su marketplace, instala el plugin, corre su instalador de un pegado si falta algún prerequisito, resuelve los pendientes que marque, y no pares hasta que `pbi_install_status` diga `ready` y aparezcan las tools `pbi_*`.
+There is nothing to download, no `.exe` to trust, and no configuration file to
+hand-edit. **Pick the one line that matches your machine.**
 
-No Claude Code yet? One paste in a normal PowerShell window (no admin; it can install Claude Code too — details in [`docs/INSTALL.md`](docs/INSTALL.md)):
+### You already have Claude Code
+
+Paste this into the chat. It installs whatever is missing and keeps going until
+the tools are live:
+
+> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its marketplace, install the plugin, run its one-paste installer if any prerequisite is missing, and don't stop until `pbi_install_status` says `ready`. Tell me what you're doing at each step and how long is left.
+
+### You have nothing — not even Claude
+
+Open **PowerShell** (a normal window — *not* "as administrator") and paste:
 
 ```powershell
 irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
 ```
 
-Prefer the install narrated step by step — plan first, honest ETAs, evidence
-after every step? Paste the [guided install prompt](#installation) instead
-(Spanish full version + English short version).
+It installs the prerequisites for your user account only, installs Claude Code
+itself, and registers the plugin. Run it twice if you like — it is idempotent
+and repeating it fixes nothing twice.
+
+### Then
+
+**Restart Claude once.** The 134 `pbi_*` tools appear. That's the whole install.
+
+| Starting point | How long | What happens |
+|---|---|---|
+| Python and Claude already installed | **~1 min** + **78 s** | plugin registers, then the runtime prepares itself |
+| Empty PC | 10–20 min | almost entirely downloads (Python, Claude Code, the runtime) |
+
+*Any language works — it's an LLM reading the prompt, not a parser. The English
+version above is simply the one that is kept up to date.*
+
+> Prefer to watch it happen? The [guided install prompt](#installation) makes
+> the agent announce every step with an ETA and show its evidence.
+
+---
+
+## Why this is safe to run on a work machine
+
+Ease of install is worthless if the thing you installed is a liability. This is
+what the server does and does not do — each point is checkable in this
+repository, not a promise:
+
+- **No administrator rights, ever.** Everything installs at user scope. The
+  installer contains no elevation path at all, and a test enforces that.
+- **Nothing you do leaves your machine.** There is no telemetry, no account, no
+  sign-up and no phone-home. The `telemetry` module is *local structured
+  logging to stderr*, and it redacts by design: DAX queries, result rows,
+  measure expressions and anything secret-shaped are recorded by **shape**
+  (length, row count) and never by content.
+- **It only talks to your local Power BI.** The live layer connects to the
+  engine Power BI Desktop already runs on `localhost`. It **cannot** publish or
+  refresh anything in the Power BI Service — that isn't a policy, it simply
+  isn't implemented.
+- **The only network access is the install itself**, and every download is
+  **pinned to a version and verified by SHA-256 before use** — no `latest`, no
+  `npx`, fail-closed. (The one exception is SharePoint ingestion, which does
+  nothing until *you* provide credentials, reads only, and takes secrets from
+  the environment — never as a tool argument.)
+- **Your files are backed up before they are touched.** Every `.pbip` write
+  makes an automatic backup first, JSON is written atomically so a crash can't
+  leave a corrupt file, destructive operations refuse to run without
+  `confirm=true`, and everything is appended to a `change_log.md`.
+- **It refuses to guess.** If it can't verify that Power BI Desktop has your
+  project closed, it **blocks the write** instead of risking a silent
+  overwrite — even when merely uncertain.
+- **Apache-2.0, and the awkward parts are written down.** See
+  [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model and what it
+  explicitly does **not** promise, and [`docs/BACKLOG.md`](docs/BACKLOG.md) for
+  what is still open.
+
+---
 
 | Layer | For what | How |
 |---|---|---|
@@ -87,19 +150,43 @@ after every step? Paste the [guided install prompt](#installation) instead
 
 ## Installation
 
-### Instalación asistida por IA — pega un prompt y mira cómo se instala solo
+### The guided prompt — watch it install itself
 
-¿Tienes Claude (la app de escritorio con acceso a terminal, o Claude Code)?
-Entonces no sigas pasos manuales: copia el prompt de abajo, pégaselo a Claude,
-y él instala todo narrando cada paso. Es el único requisito: alguna forma de
-Claude que pueda ejecutar comandos. Si no tienes ninguna, instala primero el
-CLI (`irm https://claude.ai/install.ps1 | iex` en PowerShell) y luego pega el
-prompt.
+Use this instead of the short prompt when you want the agent to *narrate*: a
+plan before it touches anything, an ETA before every step, and evidence after
+each one. Any Claude that can run commands will do (Claude Code, or the desktop
+app with terminal access). If you have none, install the CLI first with
+`irm https://claude.ai/install.ps1 | iex` and then paste this:
 
-**Tiempos honestos:** PC sin nada ≈ 10–20 min (casi todo es descarga). Con
-Python y Claude ya presentes ≈ 2–4 min.
+```text
+Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) on this machine, end to end, under these rules:
+1. PLAN FIRST, ACT SECOND. In a SINGLE pass, check what is already here: real Python >=3.10 (careful: the
+   Microsoft Store alias does NOT count), the claude CLI, winget, and Power BI Desktop. Tell me the list of
+   what's missing with a TOTAL time estimate before installing anything.
+2. NEVER WORK SILENTLY. Before each step announce "Step N of M - what I'm about to do - how long (~X min)".
+   If a command will take more than a minute, say so BEFORE running it. After each step show the evidence
+   (version installed, path). If something takes longer than estimated, report it instead of leaving me waiting.
+3. Install ONLY what is missing, at user scope, without asking for administrator:
+   - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+   - Claude Code CLI (if absent): irm https://claude.ai/install.ps1 | iex
+   Remember the terminal you installed from does NOT see the new PATH: use absolute paths or refresh this
+   process's PATH yourself; do not ask me to close and reopen windows.
+4. If signing in to Claude is needed, that is my ONLY step: tell me exactly what to do and wait for me.
+5. Register the plugin:
+   claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
+   claude plugin install horizun-pbi-mcp@horizun
+6. Start the runtime setup and monitor pbi_install_status, telling me every state change (DLL downloads,
+   environment creation, schemas). Do not stop until it says ready.
+7. Finish with the full verification: python --version, claude --version, claude plugin list, and remind me
+   to restart the Claude session so the pbi_* tools load.
+8. If anything fails: tell me WHAT failed, WHY, and the exact command to fix it. Never leave me in a
+   half-finished state without describing it.
+Real reference timings for your estimates: Python 2-4 min, Claude CLI 2-3 min, marketplace ~1 min,
+plugin runtime 3-6 min. Do not promise less than that.
+```
 
-**EL PROMPT (cópialo completo):**
+<details>
+<summary>Same prompt in Spanish</summary>
 
 ```text
 Instala el Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) en este equipo, de punta a punta, bajo estas reglas:
@@ -128,26 +215,7 @@ Referencia de tiempos reales para tus estimaciones: Python 2-4 min, CLI de Claud
 marketplace ~1 min, runtime del plugin 3-6 min. No prometas menos de eso.
 ```
 
-**English version (short):**
-
-```text
-Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) end-to-end under these rules: (1) One-pass
-precheck first (real Python >=3.10 — Store alias doesn't count —, claude CLI, winget, Power BI Desktop);
-tell me what's missing with a total ETA before installing anything. (2) Never work silently: announce
-"Step N of M — what — ETA" before each step, show evidence after, report overruns. (3) Install only what's
-missing, user scope, no admin: Python via winget (Python.Python.3.12), Claude Code via
-irm https://claude.ai/install.ps1 | iex; refresh this process's PATH yourself. (4) Claude login is my only
-step — tell me exactly what to do and wait. (5) claude plugin marketplace add HorizunGroup/horizun-pbi-mcp,
-then claude plugin install horizun-pbi-mcp@horizun. (6) Drive the runtime setup and monitor
-pbi_install_status, narrating every state change until it says ready. (7) Verify: python --version,
-claude --version, claude plugin list; remind me to restart the session so pbi_* tools load. (8) On any
-failure: what broke, why, and the exact fix command. Reference timings: Python 2-4 min, CLI 2-3 min,
-marketplace ~1 min, runtime 3-6 min — never promise less.
-```
-
-Already have Claude Code set up and just want the fast path? The short
-bilingual prompt at the top of this page does the same job, leaning on the
-bundled `horizun-pbi-setup` skill that carries the full field runbook.
+</details>
 
 <details>
 <summary><b>Por qué el prompt tiene estas reglas (para mantenedores)</b></summary>

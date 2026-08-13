@@ -32,6 +32,42 @@ def test_los_dos_manifiestos_son_coherentes_y_apache():
                                   "${CLAUDE_PLUGIN_ROOT}/scripts/launch.cmd"]
 
 
+def test_ningun_fichero_publicado_lleva_acentos_rotos():
+    """Mojibake: UTF-8 leido como ANSI. Se publico de verdad en la 1.5.2.
+
+    Un bump de version hecho con PowerShell 5.1 (`Get-Content -Raw` lee con la
+    codepage ANSI y `WriteAllText` escribe UTF-8) convirtio 'auditoria' con
+    tilde en 'auditorA-a' dentro de la descripcion de los DOS plugin.json y de
+    los mensajes de instalacion que la persona ve en pantalla. Ningun test lo
+    vio porque todos comprueban el contenido, no como esta codificado.
+
+    Se revisan los ficheros que el usuario acaba leyendo: manifiestos, textos
+    del instalador y documentacion de portada.
+    """
+    sospechosas = ("Ã", "â€", "Â\xa0", "ï»¿")
+    objetivos = [
+        ".claude-plugin/plugin.json", ".codex-plugin/plugin.json",
+        ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json",
+        ".mcp/server.json", "scripts/plugin_bootstrap.py",
+        "scripts/plugin_launcher.py", "README.md", "docs/INSTALL.md",
+        "CHANGELOG.md",
+    ]
+    sucios = []
+    for relativo in objetivos:
+        ruta = REPO / relativo
+        if not ruta.exists():
+            continue
+        texto = ruta.read_text(encoding="utf-8")
+        for aguja in sospechosas:
+            if aguja in texto:
+                linea = next((n for n, l in enumerate(texto.splitlines(), 1)
+                              if aguja in l), 0)
+                sucios.append(f"{relativo}:{linea} contiene {aguja!r}")
+    assert not sucios, (
+        "acentos rotos por codificacion (edita con UTF-8 explicito, nunca con "
+        "Get-Content/WriteAllText de PowerShell):\n  " + "\n  ".join(sucios))
+
+
 def test_el_lanzador_cmd_esquiva_el_alias_de_la_store():
     """launch.cmd debe resolver un Python REAL y explicar el fallo si no hay."""
     contenido = (REPO / "scripts/launch.cmd").read_text(encoding="ascii")
