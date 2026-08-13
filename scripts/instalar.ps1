@@ -80,19 +80,41 @@ function PythonReal {
     return $null
 }
 
+function WingetIntento($id, $conScope) {
+    # Devuelve el codigo de salida de winget. 0 = instalado;
+    # -1978335189 (0x8A15002B) = ya estaba instalado, que para nosotros es exito.
+    if ($conScope) {
+        & winget install -e --id $id --scope user --silent --accept-source-agreements --accept-package-agreements | Out-Null
+    } else {
+        & winget install -e --id $id --silent --accept-source-agreements --accept-package-agreements | Out-Null
+    }
+    return $LASTEXITCODE
+}
+
 function InstalarConWinget($id, $nombre) {
     if (-not (Tiene 'winget')) {
         Aviso ("winget no esta disponible; instala " + $nombre + " a mano (busca '" + $id + "').")
         return $false
     }
     Write-Host ("  instalando " + $nombre + " (nivel usuario)...")
+    $exitos = @(0, -1978335189)
     # Un fallo de red aqui es transitorio con frecuencia (carrera DNS IPv6
     # medida por el equipo): dos intentos antes de rendirse.
     foreach ($intento in 1, 2) {
-        & winget install -e --id $id --scope user --silent --accept-source-agreements --accept-package-agreements | Out-Null
-        $codigo = $LASTEXITCODE
-        # 0 = instalado; -1978335189 (0x8A15002B) = ya estaba instalado.
-        if ($codigo -eq 0 -or $codigo -eq -1978335189) { Refresh-Path; return $true }
+        $codigo = WingetIntento $id $true
+        if ($exitos -contains $codigo) { Refresh-Path; return $true }
+
+        # SEGUNDA OPORTUNIDAD SIN --scope. No todos los paquetes publican un
+        # instalador marcado como 'user', y cuando no lo hacen winget responde
+        # "No applicable installer found" (0x8A150044) y se planta, aunque el
+        # instalador por defecto SI instale en el perfil del usuario. Depender
+        # de como este etiquetado un manifiesto ajeno es apostar a un dato que
+        # Microsoft puede cambiar sin avisar: se prueban las dos formas. Sigue
+        # sin haber elevacion: si algo exigiera administrador, winget falla y
+        # se reporta como pendiente, nunca se pide UAC.
+        $codigo = WingetIntento $id $false
+        if ($exitos -contains $codigo) { Refresh-Path; return $true }
+
         if ($intento -eq 1) { Start-Sleep -Seconds 4 }
     }
     Aviso ($nombre + " no se pudo instalar con winget (codigo " + $codigo + "). Si tu equipo bloquea winget, pide a TI: " + $id + " a nivel usuario.")
@@ -202,7 +224,9 @@ Write-Host "-------------------------------------------------------------"
 if ($script:Pendientes.Count -eq 0) {
     Write-Host "LISTO. Un solo paso restante:" -ForegroundColor Green
     Write-Host "  1. Abre (o reinicia) Claude Code: la primera sesion prepara el runtime SOLA."
-    Write-Host "  2. Escribe 'pbi_install_status' si quieres ver el avance."
+    Write-Host "     (Si es la primera vez en este equipo, Claude te pedira iniciar sesion:"
+    Write-Host "      eso es normal, no es un fallo de la instalacion.)"
+    Write-Host "  2. Escribe 'pbi_install_status' si quieres ver el avance (tarda ~1-2 min)."
     Write-Host "  3. Cuando diga 'Runtime listo', reinicia Claude Code una vez: apareceran las tools pbi_*."
 } else {
     Write-Host ("QUEDARON " + $script:Pendientes.Count + " PENDIENTE(S):") -ForegroundColor Yellow

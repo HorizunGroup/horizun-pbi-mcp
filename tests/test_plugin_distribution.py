@@ -165,12 +165,37 @@ def test_el_instalador_de_un_pegado_es_ascii_y_sin_admin():
     crudo = (REPO / "scripts/instalar.ps1").read_bytes()
     crudo.decode("ascii")  # explota si alguien cuela un acento
     texto = crudo.decode("ascii")
-    assert "--scope user" in texto, "toda instalacion winget es a nivel usuario"
+    assert "--scope user" in texto, "toda instalacion winget se intenta a nivel usuario"
     assert "RunAs" not in texto and "Start-Process -Verb" not in texto, (
         "el instalador no puede pedir elevacion")
     assert "CurrentUser" in texto, "la politica de ejecucion se toca solo del usuario"
     docs = (REPO / "docs/INSTALL.md").read_text(encoding="utf-8")
     assert "instalar.ps1 | iex" in docs, "INSTALL.md debe abrir con el pegado"
+
+
+def test_el_instalador_no_se_rinde_si_winget_no_ofrece_scope_user():
+    """`--scope user` depende de como este etiquetado un manifiesto AJENO.
+
+    Cuando un paquete no publica instalador marcado como 'user', winget
+    responde `No applicable installer found` (0x8A150044) y se planta, aunque
+    su instalador por defecto si deje todo en el perfil del usuario. Colgar el
+    PC vacio de esa etiqueta es apostar a un dato que Microsoft puede cambiar
+    sin avisar, asi que se intentan las DOS formas antes de rendirse.
+
+    Verificado con un winget de mentira que rechaza el scope: la primera
+    llamada lleva `--scope user`, la segunda no, y la instalacion sale adelante.
+    """
+    texto = (REPO / "scripts/instalar.ps1").read_text(encoding="ascii")
+    assert "function WingetIntento" in texto, (
+        "el intento de winget debe ser reutilizable para poder reintentarlo")
+    assert "$conScope" in texto, "hay que poder llamar a winget sin --scope"
+    # El respaldo sin scope tiene que estar EN el bucle de reintento, no como
+    # comentario aspiracional.
+    assert texto.count("WingetIntento $id") >= 2, (
+        "faltan los dos intentos (con scope y sin scope)")
+    assert "1978335189" in texto, "'ya estaba instalado' cuenta como exito"
+    # Y sigue sin haber elevacion en ninguna de las dos formas.
+    assert "--scope machine" not in texto, "nunca se pide instalacion por maquina"
 
 
 def test_los_marketplaces_publican_el_mismo_plugin():

@@ -2,48 +2,40 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.5.3** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
+**v1.5.4** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
 
 ---
 
-# Install it in one paste
+# Install: one command, any Windows PC
 
-There is nothing to download, no `.exe` to trust, and no configuration file to
-hand-edit. **Pick the one line that matches your machine.**
-
-### You already have Claude Code
-
-Paste this into the chat. It installs whatever is missing and keeps going until
-the tools are live:
-
-> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its marketplace, install the plugin, run its one-paste installer if any prerequisite is missing, and don't stop until `pbi_install_status` says `ready`. Tell me what you're doing at each step and how long is left.
-
-### You have nothing — not even Claude
-
-Open **PowerShell** (a normal window — *not* "as administrator") and paste:
+Open **PowerShell** — a normal window, *not* "as administrator" — and paste
+this. It works whether the machine is fully set up or completely empty:
 
 ```powershell
 irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
 ```
 
-It installs the prerequisites for your user account only, installs Claude Code
-itself, and registers the plugin. Run it twice if you like — it is idempotent
-and repeating it fixes nothing twice.
+Then **restart Claude once**, and the 134 `pbi_*` tools are there. That's the
+whole install: nothing to download by hand, no `.exe` to trust, no config file
+to edit.
 
-### Then
+It installs only what is missing — Python, Git, Claude Code itself — for **your
+user account**, and it tells you what it did at every step. It is idempotent:
+if something is left pending (say your IT department blocks an install), fix it
+and paste the same line again; nothing is repeated or broken.
 
-**Restart Claude once.** The 134 `pbi_*` tools appear. That's the whole install.
+| Starting point | How long |
+|---|---|
+| Python and Claude already installed | **~1 min**, plus **~70 s** while the runtime prepares itself |
+| Completely empty PC | 10–20 min, nearly all of it downloads |
 
-| Starting point | How long | What happens |
-|---|---|---|
-| Python and Claude already installed | **~1 min** + **78 s** | plugin registers, then the runtime prepares itself |
-| Empty PC | 10–20 min | almost entirely downloads (Python, Claude Code, the runtime) |
+**Already inside Claude Code?** You can just ask instead of opening a terminal:
 
-*Any language works — it's an LLM reading the prompt, not a parser. The English
-version above is simply the one that is kept up to date.*
+> Install the Horizun Power BI MCP (HorizunGroup/horizun-pbi-mcp): add its marketplace, install the plugin, run its one-paste installer if any prerequisite is missing, and don't stop until `pbi_install_status` says `ready`. Tell me what you're doing at each step and how long is left.
 
-> Prefer to watch it happen? The [guided install prompt](#installation) makes
-> the agent announce every step with an ETA and show its evidence.
+*Any language works — an LLM is reading that, not a parser. English is simply
+the version kept up to date.* If you want the agent to narrate the whole thing
+with a plan and ETAs, use the [guided install prompt](#installation).
 
 ---
 

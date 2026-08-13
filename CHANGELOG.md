@@ -5,6 +5,33 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.5.4] — 2026-08-13
+
+The empty-PC path, verified instead of assumed. No tool changes (134, contract
+untouched).
+
+### Fixed
+
+- **`--scope user` could stop the install dead on a clean machine.** When a
+  package doesn't publish an installer *tagged* as user-scope, winget answers
+  `No applicable installer found` (0x8A150044) and gives up — even though its
+  default installer would have installed into the user profile anyway. Whether
+  a given package carries that tag is a fact in **someone else's** manifest,
+  free to change without notice. Each install is now attempted **both ways**:
+  with `--scope user` first, then without. Still no elevation anywhere: if
+  something genuinely required administrator, winget fails and it is reported
+  as pending, with the exact package id to hand to IT.
+
+### Changed
+
+- **README leads with one command for everyone.** The install no longer asks
+  the reader to classify their own machine first: the same PowerShell line
+  works on a fully-equipped PC and on an empty one, with the in-chat prompt
+  offered afterwards as a convenience.
+- The installer's closing message says that **the first launch will ask you to
+  sign in to Claude** — normal, not a failed install — and how long the runtime
+  takes.
+
 ## [1.5.3] — 2026-08-12
 
 Install trust and clarity. No tool changes (134, contract untouched).
