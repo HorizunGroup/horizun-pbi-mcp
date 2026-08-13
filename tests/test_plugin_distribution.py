@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from horizun_pbi_mcp import branding
 REPO = Path(__file__).resolve().parent.parent
 
@@ -35,8 +37,88 @@ def test_el_lanzador_cmd_esquiva_el_alias_de_la_store():
     contenido = (REPO / "scripts/launch.cmd").read_text(encoding="ascii")
     assert "plugin_launcher.py" in contenido, "debe delegar en el launcher real"
     assert "WindowsApps" in contenido, "debe filtrar el alias de la Store"
-    assert "where py" in contenido, "el py launcher es la primera opcion"
     assert "1>&2" in contenido, "el remedio sale por stderr, no por el stdio MCP"
+    # Un candidato se acepta por CORRER, no por existir: un py.exe huerfano
+    # supera cualquier prueba de presencia y luego muere con codigo 103.
+    assert "-c " in contenido, "cada candidato se prueba ejecutandolo"
+    # Sin CALL, un candidato .bat/.cmd (shims de pyenv-win, wrappers
+    # corporativos) se lleva el control y no lo devuelve: el lanzador moria
+    # mudo justo donde promete no hacerlo.
+    assert "call %*" in contenido, "los candidatos se invocan con call"
+    assert "call %PYREAL%" in contenido, "el arranque final tambien usa call"
+
+
+def test_el_piso_de_version_del_lanzador_sigue_al_de_pyproject():
+    """Si pyproject sube el minimo, el lanzador tiene que enterarse.
+
+    El lanzador comprueba la version ANTES de arrancar el servidor; si se
+    queda atras, un Python demasiado viejo pasa el filtro y falla mucho mas
+    tarde, dentro del servidor, con un error que no menciona la version.
+    """
+    import re
+
+    pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    declarado = re.search(r'requires-python\s*=\s*">=\s*(\d+)\.(\d+)"', pyproject)
+    assert declarado, "pyproject.toml debe declarar requires-python"
+    esperado = (int(declarado.group(1)), int(declarado.group(2)))
+
+    lanzador = (REPO / "scripts/launch.cmd").read_text(encoding="ascii")
+    usado = re.search(r"version_info\[:2\]\s*>=\s*\((\d+),\s*(\d+)\)", lanzador)
+    assert usado, "launch.cmd debe comprobar la version del candidato"
+    assert (int(usado.group(1)), int(usado.group(2))) == esperado, (
+        f"launch.cmd exige {usado.group(1)}.{usado.group(2)} y pyproject "
+        f"{esperado[0]}.{esperado[1]}")
+
+
+def _correr_lanzador(tmp_path, candidatos: dict[str, int]) -> subprocess.CompletedProcess:
+    """Corre launch.cmd viendo SOLO los candidatos dados (Windows).
+
+    `candidatos` mapea nombre -> codigo de salida del shim, para simular las
+    formas medidas de "tener python y no tenerlo". Tambien se vacian las
+    carpetas conocidas, o el Python real de la maquina rescataria la prueba.
+    """
+    binarios = tmp_path / "bin"
+    binarios.mkdir(parents=True)
+    for nombre, codigo in candidatos.items():
+        (binarios / f"{nombre}.cmd").write_text(
+            f"@echo off\nexit /b {codigo}\n", encoding="ascii")
+    vacio = tmp_path / "sin-python"
+    vacio.mkdir(parents=True)
+    env = os.environ.copy()
+    env["PATH"] = str(binarios)
+    env["LOCALAPPDATA"] = str(vacio)
+    env["ProgramFiles"] = str(vacio)
+    env["HORIZUN_PBI_PLUGIN_NO_AUTO_INSTALL"] = "1"
+    return subprocess.run(
+        ["cmd", "/d", "/c", str(REPO / "scripts/launch.cmd")],
+        env=env, input="", capture_output=True, text=True, timeout=60)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="launch.cmd es el arranque de Windows")
+def test_el_lanzador_distingue_python_viejo_de_python_ausente(tmp_path):
+    """Los dos fallos tienen remedios distintos y no pueden dar el mismo texto."""
+    viejo = _correr_lanzador(tmp_path / "viejo", {"python": 9, "py": 9})
+    assert viejo.returncode == 1
+    assert "anterior a 3.10" in viejo.stderr, viejo.stderr
+    assert viejo.stdout == "", "un fallo no puede ensuciar el stdio MCP"
+
+    ausente = _correr_lanzador(tmp_path / "ausente", {})
+    assert ausente.returncode == 1
+    assert "No hay un Python real" in ausente.stderr, ausente.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="launch.cmd es el arranque de Windows")
+def test_el_lanzador_no_se_queda_con_un_py_huerfano(tmp_path):
+    """py.exe sobrevive a la desinstalacion de Python: existe y no sirve.
+
+    Antes se elegia por existir, se moria con 'Python 3.x not found' (103) y
+    el plugin quedaba mudo. Ahora ese candidato se descarta como cualquier
+    otro que no corre, y el mensaje es el de siempre, con su remedio.
+    """
+    huerfano = _correr_lanzador(tmp_path, {"py": 103})
+    assert huerfano.returncode == 1
+    assert "No hay un Python real" in huerfano.stderr, huerfano.stderr
+    assert "103" not in huerfano.stderr, "el codigo crudo no es un mensaje util"
 
 
 def test_el_instalador_de_un_pegado_es_ascii_y_sin_admin():

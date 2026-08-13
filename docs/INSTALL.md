@@ -48,7 +48,11 @@ printout is the ticket to hand to your IT team.
 
 | Symptom in the field | Cause | Handled by |
 |---|---|---|
-| Plugin dead, no error anywhere | `python` resolves to the Microsoft Store alias (WindowsApps shim) | `launch.cmd` resolves a REAL interpreter (`py -3` first) and explains via stderr if none exists |
+| Plugin dead, no error anywhere | `python` resolves to the Microsoft Store alias (WindowsApps shim) | `launch.cmd` rejects WindowsApps paths and explains via stderr if no real interpreter exists |
+| Plugin dead, exit code 103 | Orphaned `py.exe`: Python was uninstalled and the launcher survived, so `py -3` resolves nothing | `launch.cmd` accepts a candidate only if it actually RUNS, then falls through to the next one |
+| Obscure failure deep inside the server | Python older than the 3.10 floor: old enough to start, too old to work | each candidate is probed against `pyproject.toml`'s floor; a too-old interpreter gets its own message, not the generic one |
+| Plugin dead when Python comes from pyenv-win or a corporate wrapper | those shims are `.bat`/`.cmd`, and a batch file invoked without `call` takes the control and never returns it | every candidate — and the final launch — is invoked with `call` |
+| "I just installed it and it still doesn't work" | the already-open terminal keeps the old PATH | `launch.cmd` also probes where winget installs (`%LOCALAPPDATA%\Programs\Python`, `%LOCALAPPDATA%\Python`, `%ProgramFiles%`), so nobody has to reopen windows |
 | "Git is required for local sessions" | Claude Code needs Git | installer installs `Git.Git` user-scope |
 | Install fails halfway on network | Measured IPv6 DNS race against nuget.org / developer.microsoft.com | bootstrap retries each download step 3x; relaunching resumes (hash-verified) |
 | "running scripts is disabled" | PowerShell execution policy | installer sets `RemoteSigned` for the current user only |
