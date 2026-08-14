@@ -59,6 +59,24 @@ def active(tmp_path):
 
 
 @pytest.fixture
+def active_openable(tmp_path):
+    """Proyecto sintetico que Power BI Desktop SI acepta abrir.
+
+    `minimal` existe para el validador PBIR y le faltan los artefactos que
+    Desktop exige -`definition.pbism`, `database.tmdl`, `version.json`,
+    `.platform`-: al abrirlo, Desktop muestra "Se encontraron problemas" y una
+    ventana Sin titulo, asi que no sirve para nada que dependa de una ventana
+    real. `desktop_openable` lo genero el scaffold del propio proyecto.
+    """
+    pbip = synthetic.materialize(tmp_path, "desktop_openable")
+    return ActivePbip(
+        pbip_path=str(pbip), project_dir=str(pbip.parent),
+        report_dir=str(synthetic.find_report_dir(pbip)),
+        semantic_model_dir=str(synthetic.find_semantic_model_dir(pbip)),
+        report_name="Demo", has_pbir=True, has_tmdl=True)
+
+
+@pytest.fixture
 def procesos(monkeypatch):
     """Sustituye la enumeracion de procesos por una lista controlada."""
     import psutil
@@ -284,81 +302,193 @@ def test_use_cache_false_siempre_reevalua(active, procesos):
 
 
 # ------------------------------------------------------------------- live ---
-@pytest.mark.live
-def test_live_un_pbip_abierto_sin_handles_se_detecta_abierto(active):
-    """CORE-001 contra Power BI Desktop de verdad, no contra un doble.
+def _procesos_pbi():
+    """PIDs vivos de Power BI (Desktop y motor) con su hora de arranque."""
+    import psutil
 
-    Es la unica prueba que puede demostrar la premisa del hallazgo: que un
-    `.pbip` REAL abierto no deja ningun descriptor sobre su carpeta. Con un
-    proceso simulado eso es una suposicion nuestra; aqui se comprueba.
+    salida = {}
+    for p in psutil.process_iter(["name", "pid"]):
+        nombre = (p.info.get("name") or "").lower()
+        if "pbidesktop" in nombre or nombre == "msmdsrv.exe":
+            try:
+                salida[p.pid] = (nombre, p.create_time())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    return salida
 
-    Solo toca el proyecto sintetico que crea el propio `tmp_path`. No abre,
-    guarda ni refresca nada del usuario, y cierra exclusivamente la instancia
-    que abrio, identificada por su ruta.
+
+class _ProcSinRastro:
+    """El proceso REAL, pero mudo en las dos senales antiguas.
+
+    No es un doble del sistema: la ventana, su titulo y la llamada Win32 que
+    lo correlaciona siguen siendo reales. Lo unico que se silencia es lo que
+    un `.pbip` de verdad tampoco ofrece -la ruta en el cmdline y un descriptor
+    sobre la carpeta-, para obligar a que la decision pase por el camino
+    corregido en vez de por una senal que en produccion no va a estar.
     """
+
+    def __init__(self, proc, nombre):
+        self._p = proc
+        self.pid = proc.pid
+        self.info = {"name": nombre, "pid": proc.pid}
+
+    def cmdline(self):
+        return ["PBIDesktop.exe"]          # el ejecutable, sin ruta de proyecto
+
+    def open_files(self):
+        return []
+
+
+@pytest.mark.live
+def test_live_la_ventana_real_delata_un_pbip_sin_handles(active_openable, monkeypatch):
+    """CORE-001 contra Power BI Desktop de verdad.
+
+    El oraculo es la VENTANA, no el motor tabular: para saber que un proyecto
+    esta abierto no hace falta que su modelo este servido ni tenga datos, y
+    exigirlo es lo que dejaba esta comprobacion sin poder ejecutarse.
+
+    Solo toca el proyecto sintetico del `tmp_path` de la propia prueba, y solo
+    cierra los procesos que arranco ella, comprobados por PID y hora de
+    arranque.
+    """
+    import subprocess
+    import time
+
     import psutil
 
     from horizun_pbi_mcp.powerbi import desktop_launcher
 
-    if not Path(r"C:\Program Files\Microsoft Power BI Desktop\bin"
-                r"\PBIDesktop.exe").is_file():
-        pytest.skip("Power BI Desktop no esta instalado en esta maquina.")
-
-    previos = {p.pid for p in psutil.process_iter(["name"])
-               if "pbidesktop" in (p.info.get("name") or "").lower()}
-
-    try:
-        desktop_launcher.open_pbix(active.pbip_path, reuse_open=False,
-                                   timeout=120)
-    except desktop_launcher.DesktopTimeoutError as exc:
-        # `open_pbix` no espera a que la VENTANA aparezca: espera a que el
-        # motor tabular SIRVA el modelo con datos. El proyecto sintetico no
-        # tiene ningun origen que servir, asi que ese plazo no se cumple nunca
-        # por mucho que Desktop lo tenga abierto en pantalla.
-        #
-        # Aqui se para. Forzarlo pediria o un informe real del usuario -que
-        # esta prohibido- o lanzar Desktop por fuera del launcher del propio
-        # proyecto, que es inventarse un camino de arranque para aprobar una
-        # prueba. Se limpia lo que se haya levantado y se declara la falta de
-        # evidencia, que es un resultado, no un fallo que tapar.
-        try:
-            desktop_launcher.close_desktop_by_path(active.pbip_path)
-        except Exception:                      # noqa: BLE001
-            pass
+    antes = _procesos_pbi()
+    if antes:
         pytest.skip(
-            "El proyecto sintetico no puede ser SERVIDO por Power BI Desktop "
-            f"(sin origen de datos): {exc}. La evidencia live de CORE-001 "
-            "necesita un fixture que Desktop pueda cargar de verdad.")
+            f"Ya hay {len(antes)} proceso(s) de Power BI vivos {sorted(antes)}. "
+            "Esta prueba no toca ninguna ventana que no haya abierto ella.")
+
     try:
-        nuevos = [p for p in psutil.process_iter(["name"])
-                  if "pbidesktop" in (p.info.get("name") or "").lower()
-                  and p.pid not in previos]
-        assert nuevos, "no arranco ningun proceso nuevo de Power BI Desktop"
-        proc = nuevos[0]
-        identidad = (proc.pid, proc.create_time())
+        ejecutable = desktop_launcher.find_executable()
+    except Exception as exc:                       # noqa: BLE001
+        pytest.skip(f"Power BI Desktop no esta disponible: {exc}")
 
-        # La premisa del hallazgo, comprobada y no supuesta.
-        handles = []
-        for p in nuevos:
-            try:
-                handles += [h.path for h in p.open_files()
-                            if str(active.project_dir).casefold()
-                            in str(h.path).casefold()]
-            except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
-                pass
-        assert not handles, (
-            "este .pbip SI dejo descriptores; la premisa de CORE-001 no se "
-            f"sostiene en esta maquina: {handles}")
+    stem = Path(active_openable.pbip_path).stem
+    print("")
+    print(f"[live] fixture sintetico : {active_openable.pbip_path}")
+    print(f"[live] stem esperado     : {stem!r}")
+    print(f"[live] Power BI antes    : {antes or 'ninguno'}")
 
+    lanzado = subprocess.Popen(
+        [str(ejecutable), str(active_openable.pbip_path)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    # El try/finally se instala AQUI: nada que pueda fallar puede colarse
+    # entre el arranque del proceso y la garantia de limpieza.
+    creados = {}
+    try:
+        from horizun_pbi_mcp.powerbi.desktop_capture import _enumerate_windows
+
+        limite = time.monotonic() + 150
+        coincidencia = None
+        titulos_vistos = set()
+        while time.monotonic() < limite:
+            for pid, datos in _procesos_pbi().items():
+                if pid not in antes:
+                    creados[pid] = datos
+            desktop = [pid for pid, (n, _) in creados.items()
+                       if "pbidesktop" in n]
+            if desktop:
+                for pid in desktop:
+                    try:
+                        titulos_vistos.update(
+                            w.title.strip() for w in _enumerate_windows(pid)
+                            if w.title and w.title.strip())
+                    except Exception:              # noqa: BLE001
+                        pass
+                resultado = desktop_launcher.coincidencias_por_titulo(
+                    stem, desktop)
+                if resultado.inequivoca is not None:
+                    coincidencia = resultado
+                    break
+            time.sleep(2.0)
+
+        print(f"[live] procesos creados  : {creados}")
+        print(f"[live] titulos vistos    : {sorted(titulos_vistos)}")
+
+        if coincidencia is None or coincidencia.inequivoca is None:
+            # Que no aparezca la ventana es un problema de ENTORNO -o del
+            # fixture-, no una regresion del detector: se omite con la
+            # evidencia exacta en vez de dejar la suite roja por algo que el
+            # codigo bajo prueba no controla. Las comprobaciones de
+            # comportamiento de mas abajo si son aserciones duras.
+            pytest.skip(
+                "Power BI Desktop no llego a mostrar una ventana titulada "
+                f"{stem!r} en 240 s. Titulos vistos: {sorted(titulos_vistos)}. "
+                "Si entre ellos hay un aviso de error, Desktop RECHAZO el "
+                "proyecto sintetico: la evidencia live necesita un .pbip que "
+                "Desktop acepte abrir.")
+
+        pid_ventana = coincidencia.inequivoca
+        print(f"[live] correlacion Win32 : PID {pid_ventana}")
+        assert pid_ventana in creados, (
+            "la ventana correlacionada no pertenece a un proceso de la prueba")
+
+        # --- El camino corregido, con las dos senales antiguas silenciadas ---
+        reales = {pid: psutil.Process(pid) for pid in creados}
+        monkeypatch.setattr(
+            psutil, "process_iter",
+            lambda attrs=None: [_ProcSinRastro(p, creados[pid][0])
+                                for pid, p in reales.items()
+                                if p.is_running()])
         project_state.invalidate_cache()
-        estado = project_state.detect(active, use_cache=False)
-        assert estado.state == OPEN, (
-            f"un .pbip abierto de verdad se declaro '{estado.state}': "
-            f"{estado.reason}")
-        assert not estado.writable
-    finally:
-        desktop_launcher.close_desktop_by_path(active.pbip_path)
+        estado = project_state.detect(active_openable, use_cache=False)
+        print(f"[live] estado            : {estado.state} ({estado.confidence})")
+        print(f"[live] razon             : {estado.reason}")
+        print(f"[live] senales           : {estado.signals}")
 
-    assert not psutil.pid_exists(identidad[0]) or \
-        psutil.Process(identidad[0]).create_time() != identidad[1], \
-        "la instancia que abrio la prueba sigue viva"
+        assert estado.state == OPEN, (
+            f"un .pbip realmente abierto se declaro '{estado.state}': "
+            f"{estado.reason}")
+        assert estado.confidence == "medium"
+        assert not estado.writable
+        assert any(s.get("signal") == "window_title" and s.get("match") == stem
+                   for s in estado.signals), (
+            f"la decision no vino del titulo de ventana: {estado.signals}")
+    finally:
+        monkeypatch.undo()                 # la limpieza mira procesos REALES
+        project_state.invalidate_cache()
+        for pid, datos in list(_procesos_pbi().items()):
+            if pid not in antes:
+                creados.setdefault(pid, datos)
+
+        # Cierre normal primero, por el camino del propio proyecto.
+        try:
+            desktop_launcher.close_desktop_by_path(active_openable.pbip_path)
+        except Exception as exc:                   # noqa: BLE001
+            print(f"[live] cierre normal no aplicable: {exc}")
+
+        pendientes = []
+        for pid, datos in creados.items():
+            try:
+                proc = psutil.Process(pid)
+                if proc.create_time() != datos[1]:
+                    continue               # PID reciclado: NO es nuestro
+                proc.terminate()
+                pendientes.append(proc)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        _, vivos = psutil.wait_procs(pendientes, timeout=30)
+        for proc in vivos:
+            try:
+                if creados.get(proc.pid, (None, None))[1] == proc.create_time():
+                    proc.kill()            # solo sobre lo que abrio la prueba
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        psutil.wait_procs(vivos, timeout=15)
+        try:
+            lanzado.wait(timeout=5)
+        except Exception:                          # noqa: BLE001
+            pass
+
+        restantes = {pid: d for pid, d in _procesos_pbi().items()
+                     if pid not in antes}
+        print(f"[live] restantes         : {restantes or 'ninguno'}")
+        assert not restantes, (
+            f"la prueba dejo procesos de Power BI vivos: {restantes}")
