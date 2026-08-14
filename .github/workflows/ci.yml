@@ -1,9 +1,15 @@
 name: ci
 
-# Las acciones van en su mayor actual (checkout v7, setup-python v7,
-# setup-node v7, upload-artifact v7): las v4/v5 corren sobre un runtime Node
-# que el runner ya marca como obsoleto. Es INDEPENDIENTE del Node 20 que se
-# instala mas abajo para el validador PBIR de Microsoft.
+# Las acciones van en su mayor actual y PINEADAS POR SHA COMPLETO: un tag de
+# action es movil y quien controle ese repositorio puede reapuntarlo para
+# ejecutar codigo nuevo aqui sin cambiar una linea de este archivo. Los SHA
+# se resolvieron el 2026-08-14 con `git ls-remote --tags` contra los
+# repositorios oficiales. Es INDEPENDIENTE del Node 20 que se instala mas
+# abajo para el validador PBIR de Microsoft.
+#
+# Los TAGS ya no disparan este workflow: de v* se encarga release.yml de
+# principio a fin. Antes corrian los dos, y publish-pypi publicaba sin
+# esperar a que este terminara.
 #
 # Windows y solo Windows: Power BI Desktop es Windows-only, la capa en vivo usa
 # .NET Framework via pythonnet, y buena parte de la suite comprueba semantica de
@@ -12,7 +18,6 @@ name: ci
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -35,16 +40,16 @@ jobs:
         python-version: ["3.10", "3.13"]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
 
       # Node >= 20 para el validador PBIR oficial de Microsoft. Sin el, la
       # suite pasa igual: las pruebas usan un CLI falso determinista y la de
       # integracion real se omite sola.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "20"
 
@@ -81,9 +86,9 @@ jobs:
     runs-on: windows-latest
     needs: test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.13"
 
@@ -99,7 +104,7 @@ jobs:
           python -m pip install twine
           python -m twine check dist/*
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dist-${{ github.sha }}
           path: dist/
@@ -110,4 +115,6 @@ jobs:
 #   - no descarga modelos ni informes reales;
 #   - no ejecuta pruebas `live` ni `live_validator`: exigen Power BI Desktop
 #     abierto y se omiten solas;
-#   - no publica en PyPI.
+#   - no publica en PyPI ni en el MCP Registry: de eso se encarga
+#     release.yml, y solo despues de que la suite pase sobre el artefacto
+#     ya construido.

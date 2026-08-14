@@ -76,9 +76,9 @@ def test_el_manifest_no_admite_url_mutable_ni_hash_vacio():
 
 def test_el_workflow_y_el_manifest_no_divergen():
     """Un hash en dos sitios es un hash que acabara desincronizado."""
-    contenido = (RAIZ / ".github/workflows/publish-mcp.yml").read_text(encoding="utf-8")
+    contenido = (RAIZ / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "downloads_manifest.json" in contenido, (
-        "publish-mcp no consume el manifest; URL y hash podrian divergir")
+        "release.yml no consume el manifest; URL y hash podrian divergir")
     datos = json.loads(MANIFEST.read_text(encoding="utf-8"))
     pub = datos["downloads"]["mcp-publisher"]
     assert pub["url"] not in contenido, (
@@ -94,7 +94,7 @@ def test_ningun_workflow_descarga_desde_latest():
 
 
 def test_el_publisher_se_verifica_antes_de_extraer():
-    texto = (RAIZ / ".github/workflows/publish-mcp.yml").read_text(encoding="utf-8")
+    texto = (RAIZ / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "sha256sum" in texto, "no se comprueba el hash del publisher"
     assert "--max-filesize" in texto, "no se acota el tamano de la descarga"
     # El orden importa: verificar DESPUES de extraer no protege de nada.

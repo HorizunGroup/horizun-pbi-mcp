@@ -1,0 +1,257 @@
+name: release
+
+# RELEASE-001 / RELEASE-002 — se construye UNA vez y se publica ESO.
+#
+# Lo que habia antes: `ci.yml` probaba en windows-latest y `publish-pypi.yml`
+# volvia a construir en ubuntu-latest, con otra version de Python y otras
+# versiones de action, y publicaba ese segundo artefacto. Los bytes aprobados
+# por la suite y los bytes subidos a PyPI eran cosas distintas, y nada comparaba
+# sus digests. Ademas los dos workflows de publicacion se disparaban por su
+# cuenta con el mismo tag: la publicacion corria EN PARALELO al CI, asi que un
+# CI en rojo no impedia publicar nada.
+#
+# El DAG de ahora, de arriba abajo y sin atajos:
+#
+#   tag v*  ->  build (una construccion, hashes, SBOM, twine check, asset)
+#                 |
+#                 +-> test  (windows x {3.10, 3.13}) sobre ESOS bytes:
+#                 |         se verifica SHA256SUMS, se instala el wheel
+#                 |         construido y la suite corre contra el paquete
+#                 |         instalado, no contra src/
+#                 |
+#                 +--------> publicar-pypi   (needs: build + test)
+#                                |
+#                                +----------> publicar-mcp (needs: + pypi)
+#
+# Cada job consumidor descarga el MISMO artifact y llama a
+# scripts/release_verify.py antes de tocarlo. La logica vive en esos scripts y
+# no en pasos `run:` porque un workflow no se puede ejecutar en una maquina de
+# desarrollo: escrito asi, el flujo entero se prueba en local y con pruebas
+# normales (tests/test_release_pipeline.py).
+#
+# ACCIONES PINEADAS POR SHA COMPLETO. Un tag de action es movil: quien controle
+# el repositorio de la action puede reapuntarlo y ejecutar codigo nuevo en este
+# pipeline sin cambiar una linea de aqui. Los SHA se resolvieron el 2026-08-14
+# contra los repositorios oficiales con `git ls-remote --tags`; los de
+# `pypa/*` y `github/*` son tags ANOTADOS, asi que el SHA fijado es el commit
+# apuntado (`^{}`), no el objeto tag. Para re-verificar cualquiera:
+#   git ls-remote --tags https://github.com/actions/checkout | grep 'v7'
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: >-
+          Dejalo en 'no'. Para publicar a mano hay que escribir exactamente
+          PUBLICAR-<tag>, por ejemplo PUBLICAR-v1.5.5, y ejecutarlo DESDE el
+          tag. Un 'yes' o un 'true' no publican.
+        required: true
+        default: "no"
+        type: string
+
+# Minimo por defecto. Solo los dos jobs de publicacion suben de aqui, y solo
+# para pedir el token OIDC que necesitan.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ARTEFACTO: artefactos-${{ github.sha }}
+
+jobs:
+  # ---------------------------------------------------------------- build ---
+  build:
+    name: Construir una sola vez
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      # Construye wheel y sdist, pasa twine check --strict, genera el SBOM
+      # CycloneDX del entorno realmente resuelto, congela el asset del
+      # instalador comprobandolo contra downloads_manifest.json y escribe
+      # SHA256SUMS. Si algo no cuadra, sale distinto de cero aqui.
+      - name: Construir, verificar y firmar con hashes
+        run: python scripts/release_build.py --outdir artefactos
+
+      - name: Releer el artefacto como lo hara cualquier consumidor
+        run: python scripts/release_verify.py --dir artefactos
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ env.ARTEFACTO }}
+          path: artefactos/
+          retention-days: 14
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------- test ---
+  test:
+    name: Probar los bytes construidos
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # La minima que declara pyproject y una moderna. Windows y solo
+        # Windows: Power BI Desktop es Windows-only y la capa en vivo usa .NET
+        # Framework via pythonnet.
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.ARTEFACTO }}
+          path: artefactos
+
+      - name: Verificar el artefacto ANTES de instalarlo
+        run: python scripts/release_verify.py --dir artefactos
+
+      # Se instala EL WHEEL CONSTRUIDO, no el checkout. `-e .` resolveria todo
+      # desde src/ y la suite volveria a probar el arbol de fuentes en vez del
+      # artefacto que se va a publicar.
+      - name: Instalar el wheel construido
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          $wheel = (Get-ChildItem artefactos/dist/*.whl | Select-Object -First 1).FullName
+          if (-not $wheel) { throw "no hay wheel en el artefacto" }
+          python -m pip install $wheel
+          python -m pip install "pytest>=8.0" "pyyaml>=6,<7"
+
+      - name: Esquemas PBIR (verificados por SHA-256)
+        run: python scripts/fetch_pbir_schemas.py
+      - name: Validador PBIR oficial de Microsoft
+        run: python scripts/fetch_report_validator.py
+      - name: DLLs de Analysis Services (verificadas por SHA-256)
+        run: python scripts/fetch_libs.py
+
+      # `-o pythonpath=` anula el `pythonpath = ["src"]` de pyproject. Sin eso,
+      # src/ tapa al paquete instalado y este job no probaria el artefacto.
+      - name: Pruebas contra el paquete instalado
+        run: python -m pytest -q -o pythonpath=
+
+      - name: Diagnostico de la instalacion
+        run: python scripts/doctor.py
+      - name: Contrato MCP congelado
+        run: python -m tests.contract_utils
+
+  # -------------------------------------------------------- publicar PyPI ---
+  publicar-pypi:
+    name: Publicar en PyPI el artefacto probado
+    needs: [build, test]
+    # Tres condiciones a la vez: solo desde un tag (nunca desde una rama), y si
+    # la ejecucion es manual hay que haber escrito el tag exacto en el input.
+    # Un workflow_dispatch con los valores por defecto NO publica.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.ARTEFACTO }}
+          path: artefactos
+
+      # Ultima puerta: digests otra vez, y el tag contra los ocho sitios que
+      # declaran la version. Publicar 1.5.5 desde un arbol que dice 1.5.4 en
+      # tres archivos es como se rompe un marketplace en silencio.
+      - name: Verificar digests y que el tag y los manifiestos coincidan
+        run: >-
+          python scripts/release_verify.py --dir artefactos
+          --expect-version ${{ github.ref_name }}
+
+      # Sube EXACTAMENTE artefactos/dist, que solo contiene el wheel y el sdist
+      # verificados. No se reconstruye nada en este job.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: artefactos/dist
+
+  # ------------------------------------------------ publicar MCP Registry ---
+  publicar-mcp:
+    name: Publicar los metadatos en el MCP Registry
+    # Depende tambien de PyPI: el registro anuncia un paquete que tiene que
+    # existir ya. Al reves se publica un puntero a una version fantasma.
+    needs: [build, test, publicar-pypi]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
+    runs-on: ubuntu-latest
+    environment: mcp-registry
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.ARTEFACTO }}
+          path: artefactos
+
+      - name: Verificar digests y que el tag y los manifiestos coincidan
+        run: >-
+          python scripts/release_verify.py --dir artefactos
+          --expect-version ${{ github.ref_name }}
+
+      # Antes esto descargaba desde una URL movil y canalizaba los bytes
+      # directamente al extractor: el contenido servido puede cambiar sin que
+      # cambie el enlace, y HTTPS garantiza QUIEN te lo da, no QUE te da. Ahora:
+      # version fija, tamano acotado y SHA-256 verificado ANTES de extraer. Los
+      # tres valores viven en scripts/downloads_manifest.json para que no puedan
+      # divergir entre el workflow, el script y la documentacion.
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          leer() { python3 -c "import json,sys;print(json.load(open('scripts/downloads_manifest.json'))['downloads']['mcp-publisher'][sys.argv[1]])" "$1"; }
+          url=$(leer url); esperado=$(leer sha256); maximo=$(leer max_bytes)
+          tmp=$(mktemp -d)
+          trap 'rm -rf -- "$tmp"' EXIT
+          curl -fsSL --max-filesize "$maximo" -o "$tmp/publisher.tar.gz" "$url"
+          real=$(sha256sum "$tmp/publisher.tar.gz" | cut -d' ' -f1)
+          if [ "$real" != "$esperado" ]; then
+            echo "::error::SHA-256 de mcp-publisher no coincide (esperado=$esperado real=$real); no se extrae nada" >&2
+            exit 1
+          fi
+          tar xzf "$tmp/publisher.tar.gz" -C . mcp-publisher
+
+      - name: Validate server metadata
+        run: ./mcp-publisher validate .mcp/server.json
+
+      - name: Authenticate with the MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish Horizun PBI MCP metadata
+        run: ./mcp-publisher publish .mcp/server.json
