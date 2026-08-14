@@ -52,7 +52,9 @@ Documentation = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/
 Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+# pyyaml: tests/test_release_pipeline.py analiza el DAG de los workflows.
+# Sin el, esas guardas no se ejecutarian en CI, que es justo donde importan.
+test = ["pytest>=8.0", "pyyaml>=6,<7"]
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
