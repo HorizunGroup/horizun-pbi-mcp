@@ -120,15 +120,31 @@ def test_los_documentos_no_recomiendan_ejecutar_el_bootstrap_de_claude():
             f"{nombre} recomienda ejecutar codigo remoto sin verificar")
 
 
-# ------------------------------------------------------------- pendientes ----
-def test_el_one_paste_sigue_pendiente_y_esta_declarado():
-    """Honestidad sobre lo que AUN no esta arreglado.
+# ------------------------------------------------------------- el one-paste --
+def test_el_one_paste_ya_no_ejecuta_desde_una_rama():
+    """Lo que antes era un pendiente declarado, ahora es una regla.
 
-    El one-paste `irm .../main/instalar.ps1 | iex` sigue vivo: su hash solo se
-    puede fijar cuando `instalar.ps1` sea definitivo, en la fase siguiente.
-    Esta prueba existe para que el pendiente no se olvide ni se disfrace.
+    La version anterior de esta prueba EXIGIA que `instalar.ps1 | iex` siguiera
+    en el README: era un recordatorio de que el defecto seguia ahi y no se podia
+    arreglar todavia, porque el hash de un instalador que iba a cambiar no se
+    puede fijar. Ya se fijo, asi que el recordatorio se invierte y pasa a
+    prohibir lo que antes obligaba a conservar.
+
+    El detalle -los diez requisitos del bloque, servidor HTTP local incluido-
+    vive en tests/test_one_paste.py. Aqui queda la guarda de supply chain.
     """
     readme = (RAIZ / "README.md").read_text(encoding="utf-8")
-    assert "instalar.ps1 | iex" in readme, (
-        "si el one-paste ya se arreglo, retira esta prueba y cierra "
-        "INSTALL-003 en la matriz")
+    assert "instalar.ps1 | iex" not in readme, (
+        "el README volvio al one-paste que ejecuta lo que devuelva una rama")
+    assert (RAIZ / "scripts" / "one_paste.ps1").exists(), (
+        "falta la fuente canonica del bloque de un pegado")
+
+
+def test_el_instalador_publicado_esta_congelado_en_el_manifest():
+    """Un ejecutable publicado sin hash declarado es una URL en la que confiar."""
+    datos = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    entrada = datos["downloads"].get("instalar.ps1")
+    assert entrada, "instalar.ps1 no figura en el manifest de descargas"
+    assert entrada["source_path"] == "scripts/instalar.ps1"
+    assert entrada["eol"] == "lf" and entrada["encoding"] == "ascii"
+    assert entrada["bom"] is False

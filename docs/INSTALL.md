@@ -23,18 +23,79 @@ request from IT when nothing can be installed.
 ## No Claude Code yet: one-paste install (Windows, no admin)
 
 Paste this into **PowerShell** (a normal window; administrator NOT needed).
-It also installs Claude Code itself when npm is available:
+
+The block is deliberately not a one-liner. `irm <url> | iex` executes whatever
+the URL returns at that moment; this pins a released version, caps the download
+size, verifies the **SHA-256** and only then runs the script with `&` — never
+`iex`. A hash mismatch means **nothing is executed**. It is the same block as
+in the README and in the `horizun-pbi-setup` skill, kept identical by a test;
+the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
-irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1'
+$sha = '33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $real = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host "        No se ejecuto nada que no coincidiera con el hash publicado." -ForegroundColor Red
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 ```
 
 It checks and installs everything at **user level**: real Python (dodging the
 Microsoft Store alias that silently kills MCP servers), Git, optional Node for
-the official PBIR validator, the user execution policy, Claude Code itself (via
-npm when available) and the plugin registration. It is **idempotent**: if
-something stays pending (e.g. IT must approve an install), fix it and paste the
-same command again — nothing is repeated, nothing breaks.
+the official PBIR validator, the user execution policy and the plugin
+registration. **Claude Code itself is not installed by this script** — there is
+no pinned, hash-verifiable build to run, so it is detected, and if missing you
+get a pointer to Anthropic's official docs instead of a remote script piped
+into your shell. It is **idempotent**: if something stays pending (e.g. IT must
+approve an install), fix it and paste the same block again — nothing is
+repeated, nothing breaks.
+
+**To see the plan without any of it happening**, clone the repo and run
+`powershell -NoProfile -File scripts/instalar.ps1 -DryRun`. It reports detected
+prerequisites, missing dependencies, planned actions and registrable clients,
+and it cannot download, install, register, write a file or change the execution
+policy — every effect goes through a single gate that dry-run closes.
 
 When it prints `LISTO`, open Claude Code: the first session prepares the
 runtime by itself (`pbi_install_status` shows progress), then restart Claude

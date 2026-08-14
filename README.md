@@ -9,10 +9,63 @@
 # Install: one command, any Windows PC
 
 Open **PowerShell** — a normal window, *not* "as administrator" — and paste
-this. It works whether the machine is fully set up or completely empty:
+this. It works whether the machine is fully set up or completely empty.
+
+It is longer than a one-liner on purpose. The short version everyone writes —
+`irm <url> | iex` — runs whatever bytes that URL happens to return today, and
+HTTPS only tells you *who* served them, not *what* they are. This block pins a
+**released version**, caps the download size, checks the **SHA-256**, and only
+then runs the script — with `&`, never `iex`. If the hash doesn't match,
+**nothing executes** and the temp file is deleted anyway. Paste it whole:
 
 ```powershell
-irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1'
+$sha = '33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $real = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host "        No se ejecuto nada que no coincidiera con el hash publicado." -ForegroundColor Red
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 ```
 
 Then **restart Claude once**, and the 134 `pbi_*` tools are there. That's the
@@ -22,7 +75,23 @@ to edit.
 It installs only what is missing — Python, Git, Claude Code itself — for **your
 user account**, and it tells you what it did at every step. It is idempotent:
 if something is left pending (say your IT department blocks an install), fix it
-and paste the same line again; nothing is repeated or broken.
+and paste the same block again; nothing is repeated or broken.
+
+**Want to see what it would do before it does anything?** Clone the repository
+and run the installer in dry-run mode. It diagnoses the machine and prints the
+plan — detected prerequisites, missing dependencies, planned actions,
+registrable clients — without downloading, installing, registering, writing a
+single file or touching your execution policy:
+
+```bash
+powershell -NoProfile -File scripts/instalar.ps1 -DryRun
+```
+
+The exact bytes the block above downloads are `scripts/instalar.ps1`; their
+size and SHA-256 are recorded in
+[`scripts/downloads_manifest.json`](scripts/downloads_manifest.json), and a
+test checks the three against each other so the README can't drift from what is
+actually published.
 
 | Starting point | How long |
 |---|---|
@@ -228,12 +297,64 @@ causas, y la regla que las mata:
 
 ### No Claude at all? One-paste PowerShell installer
 
-No Claude Code on the machine yet? One paste in a normal PowerShell window
-(no admin; it can install Claude Code too, and when IT blocks installs its
-output is the exact user-scope ticket to hand over):
+No Claude Code on the machine yet? One paste in a normal PowerShell window (no
+admin). It installs the prerequisites it can — Python, Git, optional Node — and
+when IT blocks installs, its output is the exact user-scope ticket to hand
+over. **Claude Code itself it does not install**: there is no pinned, hashed
+build of it to verify, so the script detects it, points at Anthropic's official
+docs and carries on rather than piping a remote script into your shell.
+
+Same verified block as at the top of this file (pinned release, size cap,
+SHA-256 checked before anything runs):
 
 ```powershell
-irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1'
+$sha = '33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $real = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    Write-Host "        No se ejecuto nada que no coincidiera con el hash publicado." -ForegroundColor Red
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 ```
 
 ### What the agent runs underneath
