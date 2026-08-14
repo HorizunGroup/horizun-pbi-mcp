@@ -126,13 +126,13 @@ propio), no en cada CI.
 
 Cierra RELEASE-001, -002 e INSTALL-003.
 
-| # | Gate | Cómo se decide | Cierra |
-|---|---|---|---|
-| G6.1 | Se publica **el artefacto probado**, sin reconstruir | El digest publicado coincide con el que pasó la suite. Comparación de hashes, no de intenciones | RELEASE-001 |
-| G6.2 | Publicar exige CI verde sobre el mismo commit | Tag con la suite en rojo que no llega a publicar | RELEASE-002 |
-| G6.3 | Ningún camino publicado ejecuta desde `main` | Revisión de README, `docs/INSTALL.md`, `instalar.ps1` y `marketplace.json`: todo resuelve a tag o commit fijo | INSTALL-003 |
-| G6.4 | El script remoto se verifica antes de ejecutarse | Hash o firma comprobados antes del `Invoke-Expression` | INSTALL-003 |
-| G6.5 | Un solo entorno de build | Sin diferencias de runner ni de versión de action entre probar y publicar | RELEASE-001 |
+| # | Gate | Cómo se decide | Cierra | Estado |
+|---|---|---|---|---|
+| G6.1 | Se publica **el artefacto probado**, sin reconstruir | El digest publicado coincide con el que pasó la suite. Comparación de hashes, no de intenciones | RELEASE-001 | ⏳ pendiente de release real |
+| G6.2 | Publicar exige CI verde sobre el mismo commit | Tag con la suite en rojo que no llega a publicar | RELEASE-002 | ⏳ pendiente de release real |
+| G6.3 | Ningún camino publicado ejecuta desde `main` | Revisión de README, `docs/INSTALL.md`, `instalar.ps1` y `marketplace.json`: todo resuelve a tag o commit fijo | INSTALL-003 | ✅ **2026-08-14** |
+| G6.4 | El script remoto se verifica antes de ejecutarse | Hash o firma comprobados antes del `Invoke-Expression` | INSTALL-003 | 🟡 lógica probada contra servidor local en 11 escenarios; el asset de v1.5.5 no existe |
+| G6.5 | Un solo entorno de build | Sin diferencias de runner ni de versión de action entre probar y publicar | RELEASE-001 | ✅ **2026-08-14** |
 
 **Umbral: 5 de 5.** G6.3 y G6.4 son los de mayor severidad de todo el documento:
 son ejecución remota de código en la máquina de cada usuario.
@@ -150,7 +150,7 @@ Cierra RELEASE-003.
 | G7.3 | Dependabot *security updates* activo | `.github/dependabot.yml` + estado en el remoto | RELEASE-003 |
 | G7.4 | *Secret scanning* y *push protection* activos | `gh api` | RELEASE-003 |
 | G7.5 | *Private vulnerability reporting* activo | `gh api` | RELEASE-003 |
-| G7.6 | Actions pineadas por SHA | Revisión de los tres workflows: cero tags flotantes | RELEASE-003 |
+| G7.6 | Actions pineadas por SHA | Revisión de los tres workflows (`ci`, `release`, `codeql`): cero tags flotantes, y cada SHA con su versión humana al lado | RELEASE-003 — ✅ **2026-08-14** |
 
 **Umbral: 6 de 6.** G7.1–G7.5 son configuración del remoto: *pendiente de
 evidencia* hasta que haya salida de `gh api` guardada. G7.6 se decide leyendo el
@@ -165,8 +165,8 @@ Cierra TEST-001, DOC-001 … DOC-004.
 | # | Gate | Cómo se decide | Cierra |
 |---|---|---|---|
 | G8.1 | `python -m pytest -q` en verde, sin excluir `packaging` | Comando directo | TEST-001 |
-| G8.2 | En CI, un skip de packaging es un **fallo** | Wheel roto a propósito: la suite se pone roja, no amarilla | TEST-001 |
-| G8.3 | El venv de packaging es limpio | Sin `--system-site-packages`, con dependencias resueltas | TEST-001 |
+| G8.2 | En CI, un skip de packaging es un **fallo** | Wheel roto a propósito: la suite se pone roja, no amarilla | TEST-001 — ✅ **2026-08-14**, dos mutaciones medidas |
+| G8.3 | El venv de packaging es limpio | Sin `--system-site-packages`, con dependencias resueltas | TEST-001 — ✅ **2026-08-14** |
 | G8.4 | `scripts/doctor.py` sale 0 y sin traceback | Comando directo; un exit 0 con traceback impreso no cuenta | — |
 | G8.5 | El README no se contradice a sí mismo | Comprobación automática: `both` no aparece como valor ofrecido ni en ejemplos | DOC-001 |
 | G8.6 | La política de publicación es coherente | `AGENTS.md` y `CONTRIBUTING.md` describen lo que hacen los workflows | DOC-002 |
@@ -209,7 +209,44 @@ TEST-001 y RELEASE-001— son el mismo defecto repetido en tres capas.
 | G8.4 | `python scripts/doctor.py` | exit 0, sin traceback |
 
 Los tres skips son ambientales y ninguno es de packaging, así que G8.1 cuenta
-como cumplido bajo la regla 2. **Los otros 49 gates siguen pendientes**, y los
-tres cumplidos son justo los baratos: no dicen nada sobre instalación limpia,
-Desktop real, publicación ni controles del remoto, que es donde vive el
-problema.
+como cumplido bajo la regla 2. Los tres son justo los baratos: no dicen nada
+sobre instalación limpia, Desktop real, publicación ni controles del remoto,
+que es donde vive el problema.
+
+### Segunda pasada — cinco gates más, el 2026-08-14
+
+Rama `codex/install-003-immutable-sources`, seis commits sobre `b2d851a`.
+Todos se deciden leyendo el repositorio o ejecutando un comando, que es la
+condición para poder cumplirlos sin máquina limpia ni publicación real.
+
+| Gate | Cómo se comprobó | Resultado |
+|---|---|---|
+| G6.3 | Barrido de README, `docs/INSTALL.md`, la skill, `instalar.ps1`, los dos `marketplace.json` y los workflows | ✅ cero referencias móviles ejecutables |
+| G6.5 | `tests/test_release_pipeline.py::test_el_build_es_uno_solo_y_los_demas_lo_consumen` | ✅ un solo job construye; los otros tres descargan y verifican |
+| G7.6 | `tests/test_repo_security.py`, sobre los tres workflows | ✅ cero tags flotantes; cada SHA con su versión humana |
+| G8.2 | Dos mutaciones sobre el mismo árbol roto, viejas contra nuevas | ✅ verde/ámbar → rojo |
+| G8.3 | `tests/test_packaging.py`, venv sin `--system-site-packages` y sin `--no-deps` | ✅ resolución real de las diez dependencias |
+
+**G6.4 queda a medias, y es el matiz que importa.** El bloque de un pegado
+comprueba el SHA-256 antes de ejecutar nada, y las once rutas de fallo —hash
+incorrecto, ausente, malformado, `Content-Length` excesivo, stream excesivo,
+descarga truncada, HTTP 500, salida no cero— están probadas contra un servidor
+HTTP local con un centinela en disco como oráculo. Pero **el asset de v1.5.5 no
+existe**: la URL que ese bloque descargaría hoy devuelve 404. La lógica está
+cumplida; la evidencia de punta a punta, no. Bajo la regla 4, eso no es un gate
+cumplido.
+
+### Cómputo actualizado
+
+| | Gates |
+|---|---|
+| Cumplidos con evidencia | **8** (G2.1, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Parciales | **1** (G6.4) |
+| Pendientes | **43** |
+| **Total** | **52** |
+
+El total no se mueve: no se añadió ni se desdobló ningún gate. Los cuarenta y
+tres pendientes siguen siendo, en su mayoría, los que exigen una máquina
+limpia, un Desktop real, una publicación real o el remoto de GitHub — que es el
+hallazgo de fondo de la auditoría y no lo cambia ninguna cantidad de trabajo
+local.

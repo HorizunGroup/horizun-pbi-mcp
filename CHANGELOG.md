@@ -5,6 +5,76 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Supply chain and release pipeline. **No tool changes (134, contract untouched);
+nothing published yet.**
+
+### Security
+
+- **The one-paste installer no longer executes unverified bytes.** It used to be
+  `irm .../main/scripts/instalar.ps1 | iex`: two defects in one line. The branch
+  means the bytes can change under the same link without anyone noticing; the
+  `iex` means they run without being looked at. HTTPS fixes neither — it tells
+  you *who* served the bytes, not *what* they are. The published block now
+  downloads a **pinned release asset**, rejects an oversized `Content-Length`,
+  caps the stream while it downloads, verifies the **SHA-256** and only then
+  runs it with `&`. On any mismatch, **nothing executes** and the temp file is
+  removed anyway. Proven against a local HTTP server across eleven failure
+  paths, with an on-disk sentinel as the oracle rather than log inspection.
+- **The block lives in exactly one place**, `scripts/one_paste.ps1`; README,
+  `docs/INSTALL.md` and the setup skill embed it verbatim and a test forbids
+  drift. A block maintained in four places becomes four different blocks, and
+  the stale one is the one somebody pastes.
+- **All GitHub Actions are pinned by full commit SHA**, each with its human
+  version alongside. Dependabot (Actions + pip) and CodeQL — with a weekly run,
+  because a *new* query can find an *old* defect — are added, and a root
+  `SECURITY.md` describes private reporting, scope, supported versions and
+  response targets.
+
+### Added
+
+- **`scripts/instalar.ps1 -DryRun`**: diagnoses the machine and prints the plan
+  — detected prerequisites, missing dependencies, planned actions, registrable
+  clients — while being unable to download, install, register, start a client,
+  write a file or change the execution policy. Every effect goes through a
+  single gate that dry-run closes, which is what makes "zero effects" provable
+  rather than asserted.
+- **Build once**: `scripts/release_build.py` produces the wheel and sdist in a
+  single build, runs `twine check --strict`, emits `SHA256SUMS` and a
+  reproducible CycloneDX SBOM, and freezes the installer asset;
+  `scripts/release_verify.py` is the gate every consumer crosses before use.
+
+### Fixed
+
+- **`py -3` was downloading and installing a Python runtime during a
+  *diagnostic* probe.** On modern Windows `py` is the Python Install Manager:
+  asking it for an interpreter it does not have makes it fetch one. With a clean
+  `LOCALAPPDATA` a single probe left `pythoncore-3.14-64-3.14.7.zip` in the
+  cache — on the empty PC, which is the one case where a dry run matters. Dry
+  run now resolves Python by looking at disk, as `launch.cmd` already did.
+- **The packaging tests turned every failure into a skip**, and ran in a venv
+  built with `--system-site-packages` and installed with `--no-deps` — so the
+  dependencies they blessed came from the developer's environment. Measured: a
+  package declaring an unsatisfiable `mcp>=99,<100` was **fully green**, and one
+  that could not be built at all came out **amber**. Both are red now.
+- **The published artifact was not the tested one.** CI built and tested on
+  Windows; the publish workflow **rebuilt** on Ubuntu with a different Python
+  and different action versions, and published that. Publishing now consumes
+  exactly the verified artifact and never rebuilds.
+- **Publishing did not depend on a green CI.** The two publish workflows fired
+  on the same tag with no `needs`, running *in parallel* with CI, and their
+  `workflow_dispatch` published at the press of a button, from any branch. There
+  is now a single gated release DAG; manual publication requires typing the
+  exact tag, and only from a tag.
+
+### Removed
+
+- `.github/workflows/publish-pypi.yml` and `.github/workflows/publish-mcp.yml`,
+  folded into the gated `release.yml`.
+
+---
+
 ## [1.5.5] — 2026-08-14
 
 The install stops showing up on screen, and stops happening over and over. No

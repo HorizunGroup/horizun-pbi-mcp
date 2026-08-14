@@ -127,6 +127,47 @@ The version declared in `branding.VERSION` / `pyproject.toml` must match the tag
 > lesson is the stage, not the fix: **what only runs on the developer's own
 > machine only works there.**
 
+### Publishing: what actually happens on the tag
+
+Since the release pipeline was rebuilt (RELEASE-001/002), pushing `v*` starts
+**one** workflow, `release.yml`, and there is no other path to PyPI or to the
+MCP Registry — the two standalone publish workflows are gone.
+
+    tag v*  ->  build  ->  test (windows x 3.10/3.13)  ->  publicar-pypi
+                                                              -> publicar-mcp
+
+What that means in practice, and what to check before tagging:
+
+1. **The artifact is built once**, on `windows-latest`, and nothing rebuilds it
+   afterwards. Every consumer downloads the same artifact and runs
+   `scripts/release_verify.py` before touching it.
+2. **The test job installs the built wheel**, not the checkout, and runs the
+   suite with `-o pythonpath=` so `src/` cannot shadow it.
+3. **The tag must match all eight places that declare the version.**
+   `release_verify.py --expect-version` enforces it and stops the publish job
+   otherwise. Check it locally first:
+
+   ```bash
+   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 1.5.5
+   ```
+
+4. **The release asset `horizun-pbi-mcp-instalar.ps1` must be the frozen bytes**
+   of `scripts/instalar.ps1` — currently 21 016 bytes,
+   `33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5`.
+   Publishing anything else under that name breaks the one-paste installer for
+   everyone, which is exactly what the hash is there to guarantee. The build
+   emits the asset already verified against `scripts/downloads_manifest.json`.
+5. **`SHA256SUMS` and the CycloneDX SBOM** ship with the release.
+6. **Right after publishing**: download the asset from the release URL, compare
+   its SHA-256 with the value above, and only then flip
+   `status: pending_remote_release` in `scripts/downloads_manifest.json`. Until
+   that comparison exists, INSTALL-003, RELEASE-001 and RELEASE-002 stay
+   *partially closed* in `docs/MATRIZ_REMEDIACION.md`.
+
+The `pypi` and `mcp-registry` environments need required reviewers configured on
+GitHub; that, and the other remote controls, are listed in
+[`../SECURITY.md`](../SECURITY.md#pending-remote-controls).
+
 For this release, an isolated reproducible environment plus the CI matrix
 on clean GitHub machines is accepted; a second physical machine isn't needed:
 

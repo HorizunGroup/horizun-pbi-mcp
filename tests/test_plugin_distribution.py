@@ -188,7 +188,18 @@ def test_el_instalador_de_un_pegado_es_ascii_y_sin_admin():
         "el instalador no puede pedir elevacion")
     assert "CurrentUser" in texto, "la politica de ejecucion se toca solo del usuario"
     docs = (REPO / "docs/INSTALL.md").read_text(encoding="utf-8")
-    assert "instalar.ps1 | iex" in docs, "INSTALL.md debe abrir con el pegado"
+    # Lo que esta linea exige es que INSTALL.md ABRA con el pegado, no la forma
+    # concreta que tenia. Exigia literalmente `instalar.ps1 | iex`, que era el
+    # defecto de INSTALL-003: descargar de una rama y ejecutar sin mirar. Ahora
+    # se comprueba lo mismo contra la fuente canonica del bloque, de modo que
+    # el dia que el bloque vuelva a cambiar esta prueba siga midiendo la
+    # intencion y no una cadena que ya no existe.
+    canonico = (REPO / "scripts/one_paste.ps1").read_text(encoding="ascii")
+    primera = next(l for l in canonico.splitlines()
+                   if l.strip() and not l.startswith("#"))
+    assert primera in docs, "INSTALL.md debe abrir con el pegado"
+    assert "instalar.ps1 | iex" not in docs, (
+        "INSTALL.md volvio al pegado que ejecuta lo que devuelva una rama")
 
 
 def test_el_instalador_no_se_rinde_si_winget_no_ofrece_scope_user():

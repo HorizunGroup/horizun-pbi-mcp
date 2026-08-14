@@ -4,6 +4,14 @@ Ciclo abierto sobre la rama local `codex/p1-p4-audit-checkpoint`, base `2973f1d`
 (v1.5.5). Los cambios están **commiteados en local**; **sin push, sin PR, sin
 tag, sin publicación.**
 
+> **Segunda pasada — 2026-08-14, rama `codex/install-003-immutable-sources`.**
+> A diferencia de la primera, esta **sí remedia**: seis commits sobre `b2d851a`
+> que cierran TEST-001 y dejan parcialmente cerradas INSTALL-003, RELEASE-001,
+> RELEASE-002 y RELEASE-003. Cada una con su prueba en rojo contra el commit
+> anterior. El detalle está al final de este documento, en
+> [Segunda pasada](#segunda-pasada--2026-08-14). Sigue sin haber push, PR, tag
+> ni publicación.
+
 ## Los siete commits de código
 
 Historial lógico y bisectable: cada commit deja la suite en verde y, cuando
@@ -86,7 +94,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 |---|---|---|---|---|
 | INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Abierta** |
 | INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** |
-| INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Abierta** — bloque 1 hecho el 2026-08-14 (marketplaces pinneados, publisher verificado, bootstrap de Claude retirado); falta el one-paste |
+| INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Parcialmente cerrada** — 2026-08-14. Los cinco caminos resuelven a referencia fija y el one-paste verifica el SHA-256 antes de ejecutar; falta descargar el asset de v1.5.5 y comprobar sus bytes, y esa release no existe |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** |
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Abierta** |
 | INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** |
@@ -99,15 +107,15 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
-| RELEASE-001 | CI prueba en Windows; `publish-pypi` reconstruye en Ubuntu y publica eso | Crítica | G6.1, G6.5 | **Abierta** |
-| RELEASE-002 | Los workflows de publicación no dependen de un CI verde | Crítica | G6.2 | **Abierta** |
-| RELEASE-003 | Sin CodeQL ni Dependabot; actions con tags flotantes; controles del remoto sin comprobar | Alta | G7.1–G7.6 | **Abierta** |
+| RELEASE-001 | CI prueba en Windows; `publish-pypi` reconstruye en Ubuntu y publica eso | Crítica | G6.1, G6.5 | **Parcialmente cerrada** — 2026-08-14. Una sola construcción, `SHA256SUMS`, SBOM y verificación en cada consumidor; G6.5 cumplido. G6.1 exige una release real |
+| RELEASE-002 | Los workflows de publicación no dependen de un CI verde | Crítica | G6.2 | **Parcialmente cerrada** — 2026-08-14. Publicación con `needs` sobre build y test, solo desde tag, dispatch inerte por defecto y nueve guardas demostradas por mutación. G6.2 exige una release real |
+| RELEASE-003 | Sin CodeQL ni Dependabot; actions con tags flotantes; controles del remoto sin comprobar | Alta | G7.1–G7.6 | **Parcialmente cerrada** — 2026-08-14. G7.6 cumplido (cero tags flotantes), CodeQL y Dependabot añadidos, `SECURITY.md` creado. G7.1–G7.5 son ajustes del remoto |
 
 ## Pruebas y contrato
 
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
-| TEST-001 | `test_packaging` convierte fallos en skips y prueba en venv no limpio | Alta | G8.2, G8.3 | **Abierta** |
+| TEST-001 | `test_packaging` convierte fallos en skips y prueba en venv no limpio | Alta | G8.2, G8.3 | **Cerrada** — 2026-08-14, con dos mutaciones medidas: un paquete irresoluble y otro que no compila salían verde y ámbar, ahora salen rojo |
 | TEST-002 | Inventario de las 134 tools: ejecución MCP, casos negativos, payload congelado | Alta | G2.3, G2.4 | **Abierta** |
 | TEST-003 | Sin cobertura live verificada de los seis escenarios de Desktop | Alta | G5.1–G5.6 | **Abierta** |
 | TEST-004 | `isolated_settings` deja sin DLL de Analysis Services a las pruebas live | Media | G5.2, G5.4, G5.6 | **Cerrada** — 2026-08-14 |
@@ -117,16 +125,21 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
 | DOC-001 | El README ofrece `mode=both` —con ejemplo— y lo declara bloqueado en el mismo archivo | Media | G8.5 | **Abierta** |
-| DOC-002 | `AGENTS.md:126` niega la publicación en PyPI que hace `publish-pypi.yml` | Media | G8.6 | **Abierta** |
+| DOC-002 | `AGENTS.md:126` niega la publicación en PyPI que ahora hace `release.yml` (antes `publish-pypi.yml`, retirado el 2026-08-14) | Media | G8.6 | **Abierta** |
 | DOC-003 | "Completely empty PC" no dice que Power BI Desktop queda fuera | Baja | G8.7 | **Abierta** |
 | DOC-004 | Sin runbook de update, rollback, uninstall, purge, proxy ni offline | Media | G8.8 | **Abierta** |
 | CLI-001 | El one-paste instala y verifica solo Claude | Media | G3.2 | **Parcialmente cerrada** |
 
 ## Cuentas
 
-30 entradas: **4 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-004),
-5 parcialmente cerradas, 21 abiertas. Conteo verificado sobre las filas, no
-escrito de memoria.
+30 entradas: **5 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-001,
+TEST-004), **9 parcialmente cerradas** (CORE-003, INSTALL-002, INSTALL-003,
+INSTALL-004, INSTALL-006, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
+**16 abiertas**. Conteo verificado sobre las filas, no escrito de memoria.
+
+Al 2026-08-14, tras la segunda pasada. La cuenta anterior era 4 / 5 / 21: se
+cerró TEST-001 y pasaron a parciales INSTALL-003, RELEASE-001, RELEASE-002 y
+RELEASE-003.
 
 CORE-002 se cerró el 2026-08-14 tras destrabar TEST-004: captura live real con
 página explícita y fit-to-page, PNG producido, **14 archivos antes y 14 después
@@ -147,11 +160,14 @@ La evidencia completa está en
 **R2 sigue pendiente de revisión independiente.** Cerrar CORE-001 no lo
 reclasifica: eso exige su propia prueba que falle antes y pase después.
 Cinco de severidad crítica: CORE-001, CORE-002, INSTALL-003, RELEASE-001,
-RELEASE-002.
+RELEASE-002. Las dos primeras están cerradas y las tres restantes,
+parcialmente: **ninguna crítica sigue enteramente abierta**, y lo que les falta
+a las tres es la misma cosa — una release real de v1.5.5, que no existe.
 
-**Ninguna entrada de la auditoría se cerró en esta pasada.** Es un triaje
-documental: se verificó el estado real de cada hallazgo contra el código de hoy,
-no se remedió ninguno.
+**Ninguna entrada de la auditoría se cerró en la PRIMERA pasada.** Aquella fue
+un triaje documental: se verificó el estado real de cada hallazgo contra el
+código de hoy, sin remediar ninguno. La segunda pasada sí remedia, y está al
+final de este documento.
 
 Tres hallazgos resultaron distintos de como los describía el reporte original
 —CORE-003, INSTALL-002 e INSTALL-004, todos parcialmente atendidos ya— y uno
@@ -389,3 +405,129 @@ el golden, o ambas cosas.
 **Abierta — pendiente de remediación.** Sin diagnóstico cerrado, sin propuesta
 elegida y sin autorización pedida. No bloquea CONTRACT-001, que quedó cerrada
 con su propio alcance.
+
+---
+
+## Segunda pasada — 2026-08-14
+
+Rama `codex/install-003-immutable-sources`, base `b2d851a`. Seis commits
+locales. **Sin push, sin PR, sin tag, sin publicación.**
+
+| Hash | Commit | Cierra |
+|---|---|---|
+| `103162c` | `fix(installer): add side-effect-free dry run and lock release asset` | INSTALL-003 (1/2) |
+| `7ac01ee` | `fix(installer): verify immutable release bootstrap` | INSTALL-003 (2/2) |
+| `67719ed` | `test(packaging): fail closed in clean wheel and sdist installs` | TEST-001 |
+| `dec1318` | `ci(release): build once and test published artifacts` | RELEASE-001 |
+| `0a2e618` | `ci(release): gate publishing on verified artifacts` | RELEASE-002 |
+| `c74dd11` | `ci(security): pin actions and add repository security checks` | RELEASE-003 |
+
+### El rojo de cada uno
+
+Ninguna corrección se aceptó sin ver antes fallar su prueba contra el commit
+anterior. No es ceremonia: una prueba que nunca ha estado en rojo no ha
+demostrado que ate nada.
+
+| Corrección | Rojo contra | Resultado |
+|---|---|---|
+| `-DryRun` sin efectos | `b2d851a` | 9 de 12 fallando. El log de sombras dejó escrito lo que el instalador viejo hacía con `-DryRun`: `claude --version`, `claude plugin marketplace add`, `claude plugin install`, `claude plugin list`. Sin `param()`, PowerShell se traga la bandera como argumento suelto e **instalaba de verdad** |
+| One-paste verificado | `b2d851a` | **28 de 28** fallando |
+| Packaging fail-closed | `7ac01ee`, dos mutaciones | ver abajo |
+| DAG de publicación | — | 9 guardas × 9 mutaciones, cada una enciende la suya y ninguna apaga de más |
+
+### Un defecto del propio ciclo: la suite estuvo en rojo cinco commits
+
+Conviene dejarlo escrito en vez de que lo descubra quien bisecte.
+
+La prueba que exigía conservar `instalar.ps1 | iex` estaba en **dos** sitios, no
+en uno. El de `tests/test_supply_chain.py` se invirtió al arreglar el one-paste;
+el de `tests/test_plugin_distribution.py:191` —`assert "instalar.ps1 | iex" in
+docs`— no se vio hasta correr la suite **completa** al final del ciclo, porque
+entre commit y commit solo se corrieron las pruebas focalizadas.
+
+Consecuencia: desde `7ac01ee` hasta `c74dd11`, **una** aserción falla. Los seis
+commits son correctos en lo suyo y su evidencia se sostiene, pero
+`python -m pytest -q` no sale limpio en ese rango, que es exactamente lo que
+`AGENTS.md` pide de cada commit. Se corrige en el commit siguiente. Para
+bisectar dentro de ese tramo:
+
+```bash
+python -m pytest -q -k "not test_el_instalador_de_un_pegado_es_ascii_y_sin_admin"
+```
+
+La lección es la de siempre en este documento: **una prueba focalizada verde no
+es la suite verde**, y es el mismo error de forma que TEST-001 describe — creer
+una señal más estrecha de lo que aparenta.
+
+### TEST-001 — las dos mutaciones
+
+El punto del hallazgo no era que faltaran pruebas, sino que las que había eran
+**estructuralmente incapaces** de fallar. Se midió sobre el mismo árbol roto,
+con las pruebas viejas y las nuevas:
+
+| Mutación | Pruebas viejas | Pruebas nuevas |
+|---|---|---|
+| `mcp>=99,<100` — dependencia que no existe | **14 passed** (verde con un paquete que nadie puede instalar) | **10 failed**, con el listado de versiones reales de PyPI |
+| `build-system` con un requisito inexistente | **3 passed, 11 skipped** (ámbar con un paquete que no compila) | **10 failed, 11 errors** |
+
+El ámbar es el hallazgo: entre 2263 pruebas, un skip es invisible.
+
+### `py -3` no era una sonda inocente
+
+Lo encontró la prueba de «cero efectos», no la lectura del código. En Windows
+moderno `py` es el Python Install Manager: preguntarle por un intérprete que no
+tiene lo hace **descargarlo e instalarlo**. Con `LOCALAPPDATA` limpio, un solo
+`py -3 -c "import sys;print(sys.executable)"` dejó `pythoncore-3.14-64-3.14.7.zip`,
+su `.job` y `last_welcome.txt` en el caché.
+
+Es decir: en el PC vacío —el único caso donde `-DryRun` de verdad importa— la
+sonda de diagnóstico instalaba Python. En seco ahora se resuelve mirando disco,
+como ya hacía `launch.cmd`, y el diagnóstico no empeora.
+
+### El asset congelado
+
+| Dato | Valor |
+|---|---|
+| Archivo | `scripts/instalar.ps1` |
+| Nombre del asset | `horizun-pbi-mcp-instalar.ps1` |
+| Tamaño | **21 016 bytes** |
+| SHA-256 | `33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5` |
+| Codificación | ASCII, sin BOM, LF, cero CRLF |
+| Blob de git | byte a byte idéntico al árbol de trabajo |
+| Estado del asset remoto | `pending_remote_release` |
+
+`git ls-remote --tags origin` el 2026-08-14: el último tag publicado es
+**v1.5.4**. **v1.5.5 no existe en el remoto**, y ni el manifest ni esta matriz
+afirman lo contrario. Ese es exactamente el motivo de que INSTALL-003 quede
+parcial: la lógica del one-paste está probada contra un servidor HTTP local en
+los once escenarios, pero el asset que descargaría hoy devuelve 404.
+
+### Lo que sigue faltando, y por qué
+
+Cuatro entradas quedan parciales por la **misma** razón, y conviene decirlo una
+vez en vez de cuatro: **hace falta una release real de v1.5.5**.
+
+| Entrada | Lo que falta | Gate |
+|---|---|---|
+| INSTALL-003 | Descargar el asset publicado y comprobar que sus bytes son los congelados | G6.4 |
+| RELEASE-001 | Comparar el digest publicado con el que pasó la suite | G6.1 |
+| RELEASE-002 | Un tag con la suite en rojo que no llegue a publicar | G6.2 |
+| RELEASE-003 | Los seis ajustes del remoto, con salida de `gh api` guardada | G7.1–G7.5 |
+
+Ninguna de las cuatro se puede cerrar leyendo código, y ninguna se va a marcar
+cerrada por haber terminado el ciclo.
+
+### Acciones humanas necesarias
+
+Nada de esto está autorizado en este ciclo y ninguna se ha hecho:
+
+1. Revisar y fusionar la rama; crear el tag `v1.5.5`.
+2. Publicar la release **con el asset exacto** de 21 016 bytes y ese SHA-256.
+   Publicar cualquier otro contenido bajo ese nombre rompe el one-paste — que
+   es justo lo que se pretende.
+3. Crear los environments `pypi` y `mcp-registry` con revisores requeridos.
+4. Activar los seis controles del remoto listados en
+   [`SECURITY.md`](../SECURITY.md#pending-remote-controls) y guardar la salida
+   de `gh api` como evidencia.
+5. Después de publicar: descargar el asset, comparar hashes y cerrar la parte
+   remota de INSTALL-003, RELEASE-001 y RELEASE-002.
