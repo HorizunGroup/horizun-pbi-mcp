@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.5.4** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
+**v1.5.5** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
 
 ---
 

@@ -5,6 +5,57 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [1.5.5] — 2026-08-14
+
+The install stops showing up on screen, and stops happening over and over. No
+tool changes (134, contract untouched).
+
+### Fixed
+
+- **A `pip` console popped up on every start.** The installer runs
+  `DETACHED_PROCESS`, that is, with **no console of its own**. On Windows, when
+  a process without a console starts a console application, the system creates
+  a **visible** console for the child unless *that* `CreateProcess` asks
+  otherwise — the parent's `CREATE_NO_WINDOW` is not inherited. So every `pip`,
+  every `npm` and every download opened a window in the user's face. Every
+  subprocess of the install now goes through a single helper
+  (`flags_sin_ventana()`), and a test walks the AST of the bootstrap scripts so
+  the next download script added can't forget it. Redirecting stdout never
+  helped: the console is assigned regardless.
+- **The runtime rebuilt itself whenever the client renamed its data folder.**
+  The install root hung off `CLAUDE_PLUGIN_DATA`, whose *name* the client
+  chooses: on one machine it went from `horizun-pbi-mcp-horizun` to
+  `horizun-pbi-mcp-inline` in under 15 hours, and the whole runtime — venv,
+  pip, Analysis Services DLLs, 23 PBIR schemas, 586 npm files of the validator
+  — was built again from scratch, leaving the previous ~1 GB folder behind
+  forever. The runtime now lives at a **stable** root
+  (`%LOCALAPPDATA%\HorizunPbiMcp\plugin\<version>`), and only the explicit
+  `HORIZUN_PBI_PLUGIN_DATA` override can move it.
+- **An orphaned `install.lock` froze the plugin at `installing` forever.**
+  Killing the installer half-way (closing the PC, for instance) left a lock
+  nobody owned: the next installer gave up on sight, and the launcher only ever
+  retried on `not_installed` or a version change. The lock now records its PID
+  and is stolen when that process is gone — which also unfreezes machines
+  already stuck by 1.5.4. On Windows the liveness check uses `OpenProcess`,
+  never `os.kill(pid, 0)`: there, signal 0 doesn't ask, it **terminates**.
+
+### Changed
+
+- **Upgrading no longer re-downloads what's already verified.** A new version
+  seeds its runtime from the previous one (or from the pre-1.5.5 layout) before
+  installing: pip upgrades the package inside the existing venv and the
+  hash-verified downloads are skipped.
+- **User data is no longer versioned.** `outputs/` and `backups/` sit at the
+  stable root and survive every upgrade. Only rebuildable content lives under
+  the version folder, which is what makes deleting orphans safe.
+- **Orphaned data folders are cleaned up after a successful install** — caches
+  of other versions, leftovers of the old layout and client folders left behind
+  by a previous name, including the empty ones. Anything the user generated in
+  those folders is moved to the stable root first, never deleted, and the
+  removals are listed in `pbi_install_status`.
+
+---
+
 ## [1.5.4] — 2026-08-13
 
 The empty-PC path, verified instead of assumed. No tool changes (134, contract

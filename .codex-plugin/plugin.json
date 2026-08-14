@@ -1,6 +1,6 @@
 {
   "name": "horizun-pbi-mcp",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Power BI Desktop y PBIP desde Codex: DAX, TOM, TMDL, PBIR, visuales, auditoría y flujos seguros.",
   "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
   "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",

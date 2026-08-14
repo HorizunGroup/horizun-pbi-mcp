@@ -30,10 +30,12 @@ def _tool_text(data: dict[str, Any], *, error: bool = False) -> dict[str, Any]:
 
 def _start_install() -> dict[str, Any]:
     status = bootstrap.read_status()
-    if status.get("state") == "installing":
+    # `installing` a secas no basta: un instalador matado a media faena deja
+    # ese estado escrito para siempre y nadie reintentaria.
+    if bootstrap.instalacion_en_curso(status=status):
         return status
     p = bootstrap.paths()
-    p["root"].mkdir(parents=True, exist_ok=True)
+    p["cache"].mkdir(parents=True, exist_ok=True)
     bootstrap._write_status(  # noqa: SLF001 - coordinacion del launcher hermano
         p, state="installing", ready=False, step="starting",
         message="Iniciando la preparación automática del runtime.")
@@ -41,13 +43,17 @@ def _start_install() -> dict[str, Any]:
     command = [sys.executable, str(Path(__file__).with_name("plugin_bootstrap.py"))]
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": log,
                               "stderr": subprocess.STDOUT, "close_fds": True}
+    # DETACHED_PROCESS ademas de CREATE_NO_WINDOW: la instalacion tiene que
+    # sobrevivir a que el cliente reinicie el servidor MCP a media faena. El
+    # precio es que el instalador se queda sin consola, y por eso CADA
+    # subproceso suyo debe pedir su propio CREATE_NO_WINDOW.
+    flags = bootstrap.flags_sin_ventana().get("creationflags", 0)
     if os.name == "nt":
-        kwargs["creationflags"] = (getattr(subprocess, "CREATE_NO_WINDOW", 0) |
-                                   getattr(subprocess, "DETACHED_PROCESS", 0))
+        flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
     else:
         kwargs["start_new_session"] = True
     try:
-        process = subprocess.Popen(command, **kwargs)
+        process = subprocess.Popen(command, creationflags=flags, **kwargs)
     except Exception as exc:
         bootstrap._write_status(  # noqa: SLF001
             p, state="failed", ready=False,
@@ -63,8 +69,11 @@ def _start_install() -> dict[str, Any]:
 def bootstrap_server() -> int:
     status = bootstrap.read_status()
     auto_install = os.environ.get("HORIZUN_PBI_PLUGIN_NO_AUTO_INSTALL") != "1"
-    if auto_install and (status.get("state") == "not_installed" or
-                         status.get("version") != bootstrap.VERSION):
+    pendiente = (status.get("state") == "not_installed" or
+                 status.get("version") != bootstrap.VERSION or
+                 (status.get("state") == "installing" and
+                  not bootstrap.instalacion_en_curso(status=status)))
+    if auto_install and pendiente:
         try:
             _start_install()
         except Exception as exc:
@@ -124,6 +133,12 @@ def main() -> int:
         # arbol de fuentes.
         command = [str(p["python"]), "-m", "horizun_pbi_mcp.server"]
         if os.name == "nt":
+            # SIN creationflags, a proposito y medido: esta llamada no redirige
+            # el stdio, asi que el hijo hereda el del cliente. Pedir
+            # CREATE_NO_WINDOW le daria una consola NUEVA y el servidor leeria
+            # de ella en vez de las tuberias del cliente: el handshake MCP se
+            # queda colgado para siempre. Aqui no hay ventana que evitar: el
+            # cliente ya arranca al lanzador sin ella.
             return subprocess.call(command, cwd=str(bootstrap.PLUGIN_ROOT), env=env)
         os.execve(str(p["python"]), command, env)
     return bootstrap_server()

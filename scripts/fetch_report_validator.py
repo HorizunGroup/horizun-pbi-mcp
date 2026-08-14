@@ -26,6 +26,11 @@ from pathlib import Path
 
 RAIZ_REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ_REPO / "src"))
+# El propio directorio de scripts: al ejecutar el fichero ya esta en sys.path,
+# pero no cuando lo carga una prueba por ruta.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plugin_bootstrap import flags_sin_ventana  # noqa: E402
 
 PAQUETE = "@microsoft/powerbi-report-authoring-cli"
 VERSION = "0.1.4"
@@ -42,8 +47,11 @@ class InstalacionFallida(RuntimeError):
 
 
 def _correr(args, cwd=None, timeout=900):
+    # `capture_output` redirige los handles, pero NO evita que Windows le
+    # asigne una consola visible al hijo cuando el padre no tiene ninguna:
+    # `node` y `npm` estrenaban ventana en cada instalacion del validador.
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                          shell=False, timeout=timeout)
+                          shell=False, timeout=timeout, **flags_sin_ventana())
 
 
 def comprobar_node() -> int:
