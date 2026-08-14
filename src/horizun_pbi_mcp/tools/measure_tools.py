@@ -66,6 +66,7 @@ def register(mcp) -> None:
                     session.require_active_pbip(), table, name, expression,
                     format_string, description, display_folder, overwrite,
                     data_category=data_category),
+                session,
             )
         return guard_mutation(_impl)
 
@@ -99,6 +100,7 @@ def register(mcp) -> None:
                 lambda: tmdl_writer.update_measure_pbip(
                     session.require_active_pbip(), table, name, expression,
                     format_string, description, display_folder),
+                session,
             )
         return guard_mutation(_impl)
 
@@ -125,6 +127,7 @@ def register(mcp) -> None:
                 lambda: model_writer.delete_measure(session, table, name),
                 lambda: tmdl_writer.delete_measure_pbip(
                     session.require_active_pbip(), table, name),
+                session,
             )
         return guard_mutation(_impl)
 
