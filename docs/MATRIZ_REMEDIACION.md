@@ -74,7 +74,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
 | CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Cerrada** — 2026-08-14, con evidencia live |
-| CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Parcialmente cerrada** |
+| CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Parcialmente cerrada** — remediado y probado el 2026-08-14; falta evidencia live |
 | CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Parcialmente cerrada** |
 | CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
 | CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Abierta** |
@@ -124,7 +124,10 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 ## Cuentas
 
 29 entradas: **2 cerradas** (CONTRACT-001, CORE-001), 6 parcialmente cerradas,
-21 abiertas.
+21 abiertas. Los conteos no cambian con CORE-002: ya figuraba como
+parcialmente cerrada, y su remediación del 2026-08-14 —contención de rutas y
+parche temporal atómico— no la cierra porque la captura live sigue sin poder
+ejecutarse (`open_pbix` espera un modelo servido, no una ventana).
 
 CORE-001 se cerró el 2026-08-14 en la rama `codex/core-001-desktop-state`:
 rojo demostrado sobre `85e433a` (6 failed / 15 passed, con el caso literal

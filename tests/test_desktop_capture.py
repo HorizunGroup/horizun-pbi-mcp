@@ -50,9 +50,8 @@ def pbip_sintetico(session, tmp_path, monkeypatch):
     return pbip, session.require_active_pbip()
 
 
-def test_preparar_vista_fuerza_fit_y_restaura_byte_a_byte(pbip_sintetico):
-    import json
-
+def test_planificar_vista_propone_fit_sin_escribir(pbip_sintetico):
+    """El planificador DECIDE; no toca el disco. Ahi vive la atomicidad."""
     pbip, active = pbip_sintetico
     from horizun_pbi_mcp.pbip import pbir_reader
 
@@ -60,16 +59,17 @@ def test_preparar_vista_fuerza_fit_y_restaura_byte_a_byte(pbip_sintetico):
     page_json = Path(pbir_reader.pages_dir(active)) / pagina / "page.json"
     antes = page_json.read_bytes()
 
-    vista = desktop_capture.preparar_vista_de_captura(pbip, fit_to_page=True)
-    datos = json.loads(page_json.read_text(encoding="utf-8-sig"))
-    assert datos["displayOption"] == "FitToPage"
-    assert vista["page_id"] == pagina or vista["page_id"] == ""
+    plan = desktop_capture.planificar_vista_de_captura(pbip, fit_to_page=True)
 
-    assert vista["restore"]() == []
-    assert page_json.read_bytes() == antes, "restaura byte a byte"
+    assert page_json.read_bytes() == antes, "el planificador escribio en disco"
+    assert plan["page_id"] in (pagina, "")
+    if plan["cambios"]:
+        import json as _json
+        propuesto = _json.loads(plan["cambios"][page_json].decode("utf-8"))
+        assert propuesto["displayOption"] == "FitToPage"
 
 
-def test_preparar_vista_cambia_la_pagina_activa_y_la_restaura(pbip_sintetico):
+def test_planificar_vista_propone_la_pagina_activa(pbip_sintetico):
     import json
 
     pbip, active = pbip_sintetico
@@ -81,19 +81,18 @@ def test_preparar_vista_cambia_la_pagina_activa_y_la_restaura(pbip_sintetico):
     pages_json = Path(pbir_reader.pages_dir(active)) / "pages.json"
     antes = pages_json.read_bytes()
 
-    vista = desktop_capture.preparar_vista_de_captura(pbip, page="Detalle")
-    metadatos = json.loads(pages_json.read_text(encoding="utf-8-sig"))
-    assert metadatos["activePageName"] == nueva["page_id"]
-    assert vista["page_id"] == nueva["page_id"]
+    plan = desktop_capture.planificar_vista_de_captura(pbip, page="Detalle")
 
-    vista["restore"]()
-    assert pages_json.read_bytes() == antes
+    assert pages_json.read_bytes() == antes, "el planificador escribio en disco"
+    assert plan["page_id"] == nueva["page_id"]
+    propuesto = json.loads(plan["cambios"][pages_json].decode("utf-8"))
+    assert propuesto["activePageName"] == nueva["page_id"]
 
 
-def test_preparar_vista_rechaza_pagina_inexistente(pbip_sintetico):
+def test_planificar_vista_rechaza_pagina_inexistente(pbip_sintetico):
     pbip, _active = pbip_sintetico
     with pytest.raises(ValidationError) as exc:
-        desktop_capture.preparar_vista_de_captura(pbip, page="NoExiste")
+        desktop_capture.planificar_vista_de_captura(pbip, page="NoExiste")
     assert exc.value.details["page"] == "NoExiste"
 
 

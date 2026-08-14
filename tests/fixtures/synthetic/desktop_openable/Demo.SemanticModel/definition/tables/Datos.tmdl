@@ -1,0 +1,10 @@
+table Datos
+
+	column Valor
+		dataType: int64
+		summarizeBy: sum
+		sourceColumn: Valor
+
+	partition Datos = calculated
+		mode: import
+		source = ROW("Valor", 1)

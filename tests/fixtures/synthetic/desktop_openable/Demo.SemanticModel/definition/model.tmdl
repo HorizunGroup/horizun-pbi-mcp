@@ -4,3 +4,5 @@ model Model
 	discourageImplicitMeasures
 
 annotation __PBI_TimeIntelligenceEnabled = 0
+
+ref table Datos

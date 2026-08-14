@@ -22,6 +22,30 @@ def _estado_de_datos(instance: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return refresh_mod.estado_de_datos(conexion, (instance or {}).get("catalog"))
 
 
+
+def _activo_para(pbix):
+    """`ActivePbip` del proyecto que se va a capturar.
+
+    El parche temporal necesita la raiz del proyecto y su carpeta de backups.
+    Si la sesion ya tiene abierto ESE proyecto se reutiliza tal cual; si no, se
+    resuelve el .pbip indicado sin tocar cual es el proyecto activo, porque
+    capturar un informe no es cambiar de proyecto.
+    """
+    from pathlib import Path
+
+    from horizun_pbi_mcp.pbip import project_locator
+
+    sesion = get_session()
+    activo = sesion.active_pbip
+    if activo is not None:
+        try:
+            if Path(activo.pbip_path).resolve() == Path(pbix).resolve():
+                return activo
+        except OSError:
+            pass
+    return project_locator._build_active_pbip(Path(pbix))  # noqa: SLF001
+
+
 def register(mcp) -> None:
     @mcp.tool()
     def pbi_list_desktop_models() -> Dict[str, Any]:
@@ -158,7 +182,11 @@ def register(mcp) -> None:
         ventana del usuario.
         """
         def _impl():
+            from contextlib import ExitStack
+
             from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
+            from horizun_pbi_mcp.services import project_state
+            from horizun_pbi_mcp.services import txn as txn_mod
 
             pbix = _ruta_de_proyecto(path, pbip_path)
             avisos: List[str] = []
@@ -186,18 +214,28 @@ def register(mcp) -> None:
                         "Sesion reutilizada: no se pudo forzar 'Ajustar a la "
                         "pagina'; la captura sale al zoom actual de Desktop.")
                 else:
-                    vista = desktop_capture.preparar_vista_de_captura(
+                    vista = desktop_capture.planificar_vista_de_captura(
                         pbix, page=page, fit_to_page=fit_to_page)
 
-            try:
-                opened = desktop_launcher.open_pbix(
-                    str(pbix), timeout=timeout, reuse_open=reuse_open)
-            except BaseException:
-                # Desktop nunca llego a abrir: la vista temporal no puede
-                # quedarse escrita como si fuera una edicion del informe.
-                if vista is not None:
-                    vista["restore"]()
-                raise
+            pila = ExitStack()
+            if vista is not None and vista["cambios"]:
+                activo = _activo_para(pbix)
+                # OPEN y UNKNOWN bloquean ANTES de la primera escritura: si no
+                # se puede demostrar que Desktop no lo tiene abierto, no se
+                # toca el informe ni para una vista temporal.
+                project_state.assert_writable(
+                    activo, operation="vista temporal de captura")
+                pila.enter_context(txn_mod.parche_temporal(
+                    activo, vista["cambios"],
+                    tool="pbi_validate_desktop_render"))
+            with pila:
+                return _con_desktop(pbix, vista, avisos)
+
+        def _con_desktop(pbix, vista, avisos):
+            from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
+
+            opened = desktop_launcher.open_pbix(
+                str(pbix), timeout=timeout, reuse_open=reuse_open)
             close_result: Dict[str, Any] = {
                 "closed": False,
                 "reason": "la sesion ya estaba abierta; no se toca",
@@ -274,14 +312,6 @@ def register(mcp) -> None:
                 # `stale_session` que nadie pidio.
                 if modelo_seleccionado and close_result.get("closed"):
                     get_session().restore_active_model(modelo_previo)
-                # La vista era para la foto, no una edicion: se restaura
-                # byte a byte DESPUES de cerrar Desktop.
-                if vista is not None:
-                    for ruta in vista["restore"]():     # pragma: no cover
-                        avisos.append(
-                            "No se pudo restaurar la vista de captura de "
-                            f"{ruta}; revierte activePageName/displayOption "
-                            "a mano.")
             assert result is not None
             result["desktop_close"] = close_result
             if opened.launched_by_us and not close_result.get("closed"):

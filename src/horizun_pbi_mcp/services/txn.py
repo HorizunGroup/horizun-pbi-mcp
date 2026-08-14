@@ -26,6 +26,7 @@ siendo EL QUE ESCRIBIMOS NOSOTROS. Si alguien lo cambio despues, se marca
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -862,3 +863,74 @@ class transaction:
                 "estaba. Revisa el journal: contiene los originales.",
                 details={"cause": str(exc), **self.result}) from exc
         return False
+
+
+# --------------------------------------------------- parche TEMPORAL ---------
+class TemporaryPatchNotRestored(PowerBIMCPError):
+    """El parche temporal se aplico y NO se pudo deshacer del todo.
+
+    Es el unico desenlace del ciclo de captura que deja el proyecto distinto de
+    como estaba. Tiene codigo propio porque la accion de quien llama es otra:
+    no es reintentar, es mirar el journal y recuperar.
+    """
+
+    code = "temporary_patch_not_restored"
+
+
+@contextlib.contextmanager
+def parche_temporal(active, cambios: Dict[Path, bytes], *, tool: str,
+                    request_id: Optional[str] = None):
+    """Aplica un parche TEMPORAL sobre el proyecto y lo deshace SIEMPRE.
+
+    Es la abstraccion unica del ciclo "tocar el proyecto un rato para mirarlo,
+    y devolverlo exactamente como estaba". Antes ese ciclo estaba repartido
+    entre `desktop_capture` -que escribia y construia su propio `_restore`- y
+    `dax_tools` -que lo llamaba a mano en dos sitios-, y bastaba con que una
+    excepcion cayera entre medias para dejar el informe con una preferencia de
+    vista que el usuario nunca pidio.
+
+    No es una segunda implementacion de atomicidad: se apoya en `Transaction`,
+    que ya sabe planificar, respaldar, escribir de forma durable, validar el
+    esquema, revertir byte a byte y dejar journal. La unica diferencia con una
+    escritura normal es el desenlace: aqui NUNCA se hace commit. El exito del
+    bloque termina igual que el fracaso, en `rollback`.
+
+    Que la transaccion siga abierta mientras Power BI Desktop lee el proyecto
+    no le estorba: `durable_write` cierra su descriptor en cada escritura -no
+    deja handles abiertos sobre el .pbip- y `resolve_backup_root` prohibe que
+    los backups y el journal vivan dentro del proyecto, asi que Desktop no ve
+    ningun archivo nuestro en su arbol. Y tenerla abierta es justo lo que hace
+    recuperable un corte de luz a mitad de captura: el journal queda pendiente
+    y `list_journals(only_pending=True)` lo encuentra.
+
+    `cambios` mapea ruta -> bytes finales. Todas las rutas se contienen contra
+    la raiz del proyecto ANTES de la primera escritura.
+    """
+    from horizun_pbi_mcp.utils.validation import ensure_within_base
+
+    raiz = Path(active.project_dir).resolve()
+    planeados: Dict[Path, bytes] = {}
+    for destino, datos in (cambios or {}).items():
+        planeados[ensure_within_base(raiz, destino)] = datos
+
+    txn_obj = Transaction(raiz, project_backup_root(active), tool=tool,
+                          request_id=request_id)
+    txn_obj.plan(planeados.keys())
+    try:
+        # Orden estable: el mismo journal para la misma operacion.
+        for destino in sorted(planeados):
+            txn_obj.write_bytes(destino, planeados[destino], _json_validator)
+        yield txn_obj
+    finally:
+        resultado = txn_obj.rollback(cause=f"parche temporal de {tool}")
+        # `clean` es False si algun archivo quedo en ROLLBACK_FAILED o en
+        # ROLLBACK_CONFLICT: en los dos casos el proyecto NO esta como estaba.
+        if not resultado.get("clean"):
+            raise TemporaryPatchNotRestored(
+                "El parche temporal de la captura se aplico y no se pudo "
+                "deshacer entero. El proyecto NO esta como estaba: revisa el "
+                "journal antes de volver a escribir.",
+                details={"intervention_required": True,
+                         "rollback": resultado,
+                         "journal": resultado.get("journal"),
+                         "tool": tool})
