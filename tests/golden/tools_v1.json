@@ -941,7 +941,7 @@
     },
     {
       "name": "pbi_close_desktop",
-      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).",
+      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).\n\n`path` (o `pbip_path`) se puede omitir: se cierra el proyecto activo,\nque es el que el servidor ya conoce.",
       "params": {
         "confirm": {
           "required": false,
@@ -949,8 +949,14 @@
           "default": false
         },
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "request_id": {
           "required": false,
@@ -958,9 +964,7 @@
           "default": ""
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3542,11 +3546,17 @@
     },
     {
       "name": "pbi_open_and_refresh",
-      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.",
+      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\n`path` y `pbip_path` son el mismo parametro -el segundo es como lo\nllama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa\nel proyecto .pbip activo.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.",
       "params": {
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "refresh_timeout_seconds": {
           "required": false,
@@ -3579,9 +3589,7 @@
           "default": "full"
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3600,11 +3608,17 @@
     },
     {
       "name": "pbi_open_in_desktop",
-      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
+      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\n`path` (o `pbip_path`, como lo llama `pbi_session_info`) se puede\nomitir: entonces se abre el proyecto .pbip activo.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
       "params": {
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "reuse_open": {
           "required": false,
@@ -3622,9 +3636,7 @@
           "default": 300
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [

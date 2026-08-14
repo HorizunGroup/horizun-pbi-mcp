@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import refresh
-from horizun_pbi_mcp.tools._common import guard, guard_mutation
+from horizun_pbi_mcp.tools._common import guard, guard_mutation, ruta_de_proyecto
 
 
 def register(mcp) -> None:
@@ -44,16 +44,21 @@ def register(mcp) -> None:
             get_session(), type, tables, timeout_seconds))
 
     @mcp.tool()
-    def pbi_open_and_refresh(path: str, timeout: int = 300,
+    def pbi_open_and_refresh(path: Optional[str] = None, timeout: int = 300,
                              reuse_open: bool = True, type: str = "full",
                              tables: Optional[List[str]] = None,
                              refresh_timeout_seconds: Optional[int] = None,
+                             pbip_path: Optional[str] = None,
                              request_id: str = "") -> Dict[str, Any]:
         """Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.
 
         Es la secuencia real de trabajo y siempre eran dos llamadas de unos
         catorce segundos cada una, porque un `.pbip` recien abierto trae el
         modelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.
+
+        `path` y `pbip_path` son el mismo parametro -el segundo es como lo
+        llama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa
+        el proyecto .pbip activo.
 
         Devuelve lo mismo que las dos por separado, incluido `rows_by_table`.
         Si el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).
@@ -66,7 +71,8 @@ def register(mcp) -> None:
             from horizun_pbi_mcp.powerbi import desktop_discovery, desktop_launcher
 
             abierto = desktop_launcher.open_pbix(
-                path, timeout=timeout, reuse_open=reuse_open)
+                str(ruta_de_proyecto(path, pbip_path)),
+                timeout=timeout, reuse_open=reuse_open)
             salida: Dict[str, Any] = {
                 "path": abierto.pbix_path,
                 "instance": abierto.instance,

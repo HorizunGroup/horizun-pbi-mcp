@@ -66,6 +66,38 @@ def _es_seguro_reintentar(salida: Dict[str, Any]) -> bool:
     return salida.get("status") not in ("rollback_incomplete", "partial_failure")
 
 
+def ruta_de_proyecto(path: Optional[str] = None,
+                     pbip_path: Optional[str] = None):
+    """La ruta del proyecto sobre la que operar, con los dos nombres y el activo.
+
+    `pbi_session_info` devuelve `active_pbip.pbip_path`, asi que ese es el
+    nombre que uno escribe despues; pero las tools de Desktop lo llamaban
+    `path` y rechazaban el otro con un error de validacion. Se aceptan los dos
+    -y ninguno: entonces se usa el proyecto activo, que el servidor ya conoce-.
+    """
+    from pathlib import Path
+
+    from horizun_pbi_mcp.config import get_session
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+
+    elegida = next((p for p in (path, pbip_path) if p and str(p).strip()), None)
+    if elegida is None:
+        activo = get_session().active_pbip
+        if activo is None:
+            raise ValidationError(
+                "No se indico proyecto y no hay ninguno activo. Pasa `path` "
+                "(o `pbip_path`), o abre uno con pbi_open_pbip_project.",
+                details={"parameter": "path"})
+        elegida = activo.pbip_path
+    if (path and pbip_path
+            and str(path).strip() != str(pbip_path).strip()):
+        raise ValidationError(
+            "`path` y `pbip_path` son el mismo parametro y llegaron distintos; "
+            "no se adivina cual vale.",
+            details={"path": path, "pbip_path": pbip_path})
+    return Path(str(elegida)).expanduser().resolve()
+
+
 def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
           request_id: Optional[str] = None) -> Dict[str, Any]:
     """Ejecuta `fn` y devuelve siempre un dict serializable con envelope.

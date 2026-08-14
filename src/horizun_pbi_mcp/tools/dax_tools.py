@@ -8,7 +8,7 @@ from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import dax_runner, desktop_discovery
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
-from horizun_pbi_mcp.tools._common import guard
+from horizun_pbi_mcp.tools._common import guard, ruta_de_proyecto as _ruta_de_proyecto
 
 
 def register(mcp) -> None:
@@ -45,9 +45,10 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
-    def pbi_open_in_desktop(path: str, timeout: int = 300,
+    def pbi_open_in_desktop(path: Optional[str] = None, timeout: int = 300,
                             reuse_open: bool = True,
-                            select: bool = True) -> Dict[str, Any]:
+                            select: bool = True,
+                            pbip_path: Optional[str] = None) -> Dict[str, Any]:
         """Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.
 
         Cierra el ciclo de trabajo: despues de editar un proyecto, esto permite
@@ -61,6 +62,9 @@ def register(mcp) -> None:
         Si el archivo ya estaba abierto se reutiliza esa sesion y no se toca
         nada (`reuse_open`). Nunca cierra una ventana del usuario.
 
+        `path` (o `pbip_path`, como lo llama `pbi_session_info`) se puede
+        omitir: entonces se abre el proyecto .pbip activo.
+
         Ojo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues
         con pbi_refresh_model si vas a comprobar valores.
         """
@@ -68,7 +72,8 @@ def register(mcp) -> None:
             from horizun_pbi_mcp.powerbi import desktop_launcher
 
             abierto = desktop_launcher.open_pbix(
-                path, timeout=timeout, reuse_open=reuse_open)
+                str(_ruta_de_proyecto(path, pbip_path)),
+                timeout=timeout, reuse_open=reuse_open)
             salida: Dict[str, Any] = {
                 "path": abierto.pbix_path,
                 "instance": abierto.instance,
@@ -256,7 +261,8 @@ def register(mcp) -> None:
         return guard(lambda: dax_runner.validate_measures(get_session(), measures))
 
     @mcp.tool()
-    def pbi_close_desktop(path: str, confirm: bool = False,
+    def pbi_close_desktop(path: Optional[str] = None, confirm: bool = False,
+                          pbip_path: Optional[str] = None,
                           request_id: str = "") -> Dict[str, Any]:
         """Cierra la instancia de Power BI Desktop que sirve ESE proyecto.
 
@@ -273,6 +279,9 @@ def register(mcp) -> None:
         un .pbip eso incluye los datos refrescados de la sesion-. Por eso
         exige `confirm=true`. Si el archivo no estaba abierto, no hace nada y
         lo dice (`was_open: false`).
+
+        `path` (o `pbip_path`) se puede omitir: se cierra el proyecto activo,
+        que es el que el servidor ya conoce.
         """
         def _impl():
             if not confirm:
@@ -282,5 +291,6 @@ def register(mcp) -> None:
                     "si es lo que quieres.")
             from horizun_pbi_mcp.powerbi import desktop_launcher
 
-            return desktop_launcher.close_desktop_by_path(path)
+            return desktop_launcher.close_desktop_by_path(
+                str(_ruta_de_proyecto(path, pbip_path)))
         return guard(_impl)
