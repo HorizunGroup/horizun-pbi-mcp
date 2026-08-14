@@ -45,7 +45,14 @@ version del propio `$schema` (`$.$schema`, regla `const`). El contenido validaba
 entero. El formato crece por adicion, y ahora esta comprobado.
 
 Si no hay ninguna version anterior en la cache (`bookmarks/2.0.0` es el caso),
-se mantiene el bloqueo: sin nada contra que comparar, adivinar seria peor.
+no hay nada contra que comparar. Antes eso bloqueaba la escritura; pero el
+bloqueo no protegia el archivo, solo empujaba a editarlo a mano —sin
+transaccion, sin journal y sin ninguna de las reglas estructurales de aqui-.
+Ahora se escribe, se comprueban las reglas de formato que SI conocemos y el
+resultado sale marcado `schema_unchecked: true` con el motivo, para que quien
+llama sepa exactamente que no se verifico. Que la CACHE no este instalada es
+otra cosa —un problema de instalacion, no un hueco de Microsoft- y sigue
+fallando cerrado.
 
 Cobertura medida sobre el PB4 real (solo lectura, 443 JSON del informe):
 176 cumplen, 240 bloqueados por esquema no publicado, 25 fuera del ambito
@@ -653,7 +660,28 @@ def validar(datos: Any, *, archivo: Optional[Any] = None,
                      "exempt": sorted(SIN_ESQUEMA_PERMITIDO),
                      "rule": "tipo_desconocido_en_pbir"})
 
-    esquema, comprobado_con = cargar(url, permitir_cercana=True)
+    try:
+        esquema, comprobado_con = cargar(url, permitir_cercana=True)
+    except SchemaUnavailable as exc:
+        if (exc.details or {}).get("rule") != "no_publicado_upstream":
+            raise
+        # Power BI declara un esquema que Microsoft no publica y del que no hay
+        # ninguna version anterior en la familia. Bloquear aqui no protegia
+        # nada: la unica salida era editar el archivo a mano, sin transaccion,
+        # sin journal y sin ninguna de las reglas de abajo. Se escribe, se
+        # comprueba lo que SI se puede comprobar, y se dice claramente que el
+        # esquema no se verifico.
+        errores_formato = validar_objetos_visual(datos, previo=previo)
+        if errores_formato:
+            raise SchemaValidationFailed(
+                f"{len(errores_formato)} error(es) estructural(es) de formato en "
+                f"{Path(archivo).name if archivo else 'el visual'}.",
+                details={"file": str(archivo) if archivo else None,
+                         "schema": url, "errors": errores_formato[:20],
+                         "error_count": len(errores_formato),
+                         "rule": "format_objects"}) from exc
+        return {"validated": False, "schema_unchecked": True, "schema": url,
+                "reason": exc.message, "rule": "no_publicado_upstream"}
     degradado = comprobado_con != url
     registry = _registry()
 

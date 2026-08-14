@@ -252,6 +252,10 @@ class Transaction:
         self.records: Dict[str, FileRecord] = {}
         self.committed = False
         self._rolled_back = False
+        self.schemas_validados = 0
+        # Archivos escritos cuyo `$schema` Power BI declara y Microsoft no
+        # publica. No es un fallo, pero quien llama tiene derecho a saberlo.
+        self.esquemas_sin_comprobar: List[Dict[str, Any]] = []
         # Directorios que NO existian al planificar y que la escritura creara.
         # Si hay rollback hay que retirarlos: un `<pageId>/` vacio sin page.json
         # dentro es basura que Power BI y nuestro propio lector interpretan mal.
@@ -437,7 +441,12 @@ class Transaction:
         resultado = pbir_schema.validar(data, archivo=target,
                                         previo=self._contenido_previo(target))
         if resultado.get("validated"):
-            self.schemas_validados = getattr(self, "schemas_validados", 0) + 1
+            self.schemas_validados += 1
+        if resultado.get("schema_unchecked"):
+            self.esquemas_sin_comprobar.append(
+                {"file": safe_paths.relative_key(self.project_dir, target),
+                 "schema": resultado.get("schema"),
+                 "reason": resultado.get("reason")})
 
     def write_text(self, target: Path, text: str) -> None:
         self.write_bytes(target, text.encode("utf-8"))
@@ -578,6 +587,8 @@ class Transaction:
             "files": [r.to_dict() for r in self.records.values()],
             "removed_dirs": getattr(self, "_removed_dirs", []),
         }
+        if self.esquemas_sin_comprobar:
+            salida["schema_unchecked"] = self.esquemas_sin_comprobar
         # `by_outcome` solo cuando DIAGNOSTICA algo: en una transaccion limpia
         # y confirmada es la misma lista de rutas de `files` reagrupada bajo
         # "committed" -la tercera copia de cada ruta en la respuesta, junto a

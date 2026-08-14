@@ -70,7 +70,14 @@ def _cap_validador_oficial() -> Dict[str, Any]:
     from horizun_pbi_mcp.services import pbir_schema, report_validator as rv
 
     estado = rv.estado()
-    no_pub = sorted(pbir_schema.no_publicados()) if pbir_schema.estado_cache()["ready"] else []
+    listo = pbir_schema.estado_cache()["ready"]
+    no_pub = sorted(pbir_schema.no_publicados()) if listo else []
+    # Un esquema que Microsoft no publica no bloquea si hay una version
+    # anterior de su familia contra la que comprobar (el caso de
+    # visualContainer 2.10/2.11 -> 2.7). Sin ella, se escribe igual y la
+    # respuesta sale marcada `schema_unchecked`.
+    sin_comprobar = [u for u in no_pub
+                     if pbir_schema.version_mas_cercana(u) is None]
     return {
         "available": estado["available"],
         "reason": estado["reason"],
@@ -78,15 +85,24 @@ def _cap_validador_oficial() -> Dict[str, Any]:
         "expected_version": estado["expected_version"],
         "install_hint": estado["install_hint"],
         # Lo que de verdad importa saber antes de intentar escribir.
-        "can_write_recent_schemas": False,
+        "can_write_recent_schemas": listo,
         "blocked_reason": (
-            "Ni el validador interno ni el CLI oficial pueden comprobar "
-            f"{len(no_pub)} esquema(s) que Power BI declara y Microsoft no "
-            "publica (404). Las escrituras sobre archivos que los declaren se "
-            "bloquean con schema_unavailable."),
+            "" if listo else
+            "Faltan los esquemas oficiales en la cache local; sin ellos no se "
+            "puede comprobar lo que se escribiria. Ejecuta: python "
+            "scripts/fetch_pbir_schemas.py"),
         "unvalidatable_schemas": no_pub,
+        "written_unchecked_schemas": sin_comprobar,
+        "unchecked_note": (
+            f"{len(sin_comprobar)} esquema(s) que Power BI declara, Microsoft "
+            "no publica (404) y no tienen version anterior en su familia. Los "
+            "archivos que los declaren SE ESCRIBEN, con las reglas de formato "
+            "que si conocemos, y la respuesta lo dice en `schema_unchecked`. "
+            "El resto cae a la version anterior de la misma familia."),
         "note": ("Valida el informe completo: objetos de formato por tipo de "
-                 "visual, roles, temas y referencias cruzadas."),
+                 "visual, roles, temas y referencias cruzadas. Los catalogos "
+                 "de formato se comprueban solo sobre el DELTA de cada "
+                 "escritura: lo que ya estaba en el archivo no bloquea."),
     }
 
 def register(mcp) -> None:

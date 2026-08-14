@@ -147,20 +147,25 @@ Power BI Desktop writes `visualContainer/2.10.0` in recent reports. **That URL r
 
 It's an **upstream** incompatibility, not this server's.
 
-**Practical consequence:** writes on files declaring those schemas are blocked with `schema_unavailable` and `rule=no_publicado_upstream`.
+**What happens now**, in two cases:
 
-Blocking was chosen over guessing. Validating 2.10.0 against 2.7.0 would give false negatives —`additionalProperties: false` would reject legitimate new properties— and false positives on whatever 2.10.0 may have relaxed.
-
-Measured on a real 443-document report:
-
-| | |
+| Situation | Behavior |
 |---|---|
-| Validate | **176** |
-| Blocked for unpublished schema | **240** |
-| Out of scope (`CustomVisuals/`, `StaticResources/`) | 25 |
-| Genuinely non-compliant | 2 |
+| There's an earlier version of the same family in cache (2.10/2.11 → 2.7.0) | Validated against it. Only what a later version could *add* is forgiven: a new property or a new enum value. A wrong type or a missing required field still blocks. Measured on **275 real files**: the only mismatch was the `$schema` string itself. |
+| There isn't one (`bookmarks/2.0.0`) | **It's written**, the format rules we do know are checked, and the result is marked `schema_unchecked: true` with the reason. The transaction summary lists them. |
 
-**G10 remains a documented release exception.**
+The second case used to block. It protected nothing: the only way out was
+editing the file by hand — no transaction, no journal, no rules. What can't be
+done is *pretending* it was validated, so it's said out loud.
+
+**The cache being missing is a different thing** — an install problem, not an
+upstream gap — and still fails closed with `schema_unavailable`.
+
+Re-measured on two real reports that declare `visualContainer/2.10.0`
+(117 and 74 documents): **185 validate**, 6 out of scope
+(`CustomVisuals/`, `StaticResources/`), **0 blocked**. The earlier figure in
+this table — 240 blocked out of 443 — is what it looked like *before*
+falling back to the nearest version of the family.
 
 ---
 
