@@ -178,6 +178,32 @@ def update_visual_position(
             "transaction": result}
 
 
+def _fusionar_filtros(antes: Optional[Dict[str, Any]],
+                      nuevo: Optional[Dict[str, Any]]
+                      ) -> Optional[Dict[str, Any]]:
+    """Anade los filtros nuevos a los que el visual ya tenia.
+
+    Un slicer suele traer un filtro `Categorical` que Power BI usa de marcador
+    y donde vive la SELECCION del usuario. Reemplazar el array entero para
+    anadir un filtro de medida borraba esa seleccion sin decir nada. Un filtro
+    entrante sustituye al que tenga su mismo `name` o su mismo `field`; el
+    resto se conserva.
+    """
+    existentes = [f for f in ((antes or {}).get("filters") or [])
+                  if isinstance(f, dict)]
+    for entrante in ((nuevo or {}).get("filters") or []):
+        for indice, existente in enumerate(existentes):
+            mismo_nombre = existente.get("name") == entrante.get("name")
+            mismo_campo = (entrante.get("field") is not None
+                           and existente.get("field") == entrante.get("field"))
+            if mismo_nombre or mismo_campo:
+                existentes[indice] = entrante
+                break
+        else:
+            existentes.append(entrante)
+    return {"filters": existentes} if existentes else None
+
+
 def update_visual_filters(
     active: ActivePbip,
     page: str,
@@ -185,13 +211,17 @@ def update_visual_filters(
     filters: List[Dict[str, Any]],
     do_backup: bool = True,
     tx: Optional[txn_service.Transaction] = None,
+    merge: bool = False,
 ) -> Dict[str, Any]:
-    """Reemplaza el `filterConfig` de un visual EXISTENTE.
+    """Reemplaza (o fusiona, con `merge`) el `filterConfig` de un visual.
 
     `filters` llega en el formato de `filter_builder.build_filter` (una lista
     vacia quita el filterConfig del visual por completo, no lo deja vacio:
     Power BI no distingue "sin filtros" de "filterConfig: {filters: []}", y
     dejar la clave vacia es basura que ningun lector espera).
+
+    Con `merge=True` los filtros entrantes se ANADEN a los que ya estaban, y
+    una lista vacia no quita nada.
     """
     from horizun_pbi_mcp.pbip import filter_builder
 
@@ -204,6 +234,8 @@ def update_visual_filters(
     data = read_json(target)
     antes = data.get("filterConfig")
     nuevo = filter_builder.build_filter_config(filters)
+    if merge:
+        nuevo = _fusionar_filtros(antes, nuevo)
     if nuevo is None:
         data.pop("filterConfig", None)
     else:

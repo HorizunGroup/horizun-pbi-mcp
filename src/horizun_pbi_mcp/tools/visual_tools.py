@@ -290,10 +290,11 @@ def register(mcp) -> None:
         page: str,
         visual_id: str,
         filters: List[Dict[str, Any]],
+        merge: bool = False,
     request_id: str = "") -> Dict[str, Any]:
         """Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.
 
-        `filters`: lista de specs, cada uno
+        `filters`: lista de specs. Por COLUMNA,
         `{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |
         'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',
         exclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,
@@ -302,20 +303,29 @@ def register(mcp) -> None:
         SIN acotar, como el panel de filtros vacio. `raw` pasa una consulta
         semantica ya construida, para lo que este constructor no cubre.
 
-        `field` va con el NOMBRE real de la tabla. La mitad interna de la
-        consulta usa un ALIAS (`SourceRef.Source`) que esta tool resuelve
-        sola: escribirlo a mano ahi es el error mas comun al construir un
-        filtro de visual, y Power BI lo ignora sin decir por que.
+        Por MEDIDA, `{measure: 'Tabla[Medida]', condition: 'GreaterThan',
+        value: 0}` (`condition`: Equal | NotEqual | GreaterThan |
+        GreaterThanOrEqual | LessThan | LessThanOrEqual, o los simbolos
+        `> >= < <= = !=`). Es la forma de ENCADENAR slicers de dimension
+        cuando varias tablas de hechos cuelgan de las mismas dimensiones y
+        una relacion bidireccional crearia ambiguedad.
 
-        Una lista vacia QUITA todos los filtros del visual (no los deja
-        declarados sin valor). No comprueba `field` contra el modelo: un
-        campo que no existe se escribe igual y Power BI lo resuelve en
-        silencio a nada, igual que si se escribiera a mano.
+        `field`/`measure` van con el NOMBRE real de la tabla. La mitad interna
+        de la consulta usa un ALIAS (`SourceRef.Source`) que esta tool
+        resuelve sola: escribirlo a mano ahi es el error mas comun al
+        construir un filtro de visual, y Power BI lo ignora sin decir por que.
+
+        Por defecto REEMPLAZA los filtros del visual, y una lista vacia los
+        quita todos. **Cuidado con los slicers**: suelen traer un filtro
+        `Categorical` donde vive la seleccion del usuario, y reemplazarlo la
+        borra. Para anadir sin pisar, `merge=true` (ahi una lista vacia no
+        quita nada). No comprueba el campo contra el modelo: uno que no existe
+        se escribe igual y Power BI lo resuelve en silencio a nada.
         """
         def _impl():
             active = get_session().require_active_pbip()
             res = pbir_writer.update_visual_filters(
-                active, page, visual_id, filters or [])
+                active, page, visual_id, filters or [], merge=merge)
             res["reload_hint"] = RELOAD_HINT
             return res
         return guard_mutation(_impl)

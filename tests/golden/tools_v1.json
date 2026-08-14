@@ -4705,11 +4705,16 @@
     },
     {
       "name": "pbi_set_visual_filter",
-      "description": "Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.\n\n`filters`: lista de specs, cada uno\n`{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |\n'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',\nexclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,\ndisplay_name?: str}`. Con `values` se arma un filtro de lista\n(Categorical); sin `values` ni `raw` el campo queda declarado pero\nSIN acotar, como el panel de filtros vacio. `raw` pasa una consulta\nsemantica ya construida, para lo que este constructor no cubre.\n\n`field` va con el NOMBRE real de la tabla. La mitad interna de la\nconsulta usa un ALIAS (`SourceRef.Source`) que esta tool resuelve\nsola: escribirlo a mano ahi es el error mas comun al construir un\nfiltro de visual, y Power BI lo ignora sin decir por que.\n\nUna lista vacia QUITA todos los filtros del visual (no los deja\ndeclarados sin valor). No comprueba `field` contra el modelo: un\ncampo que no existe se escribe igual y Power BI lo resuelve en\nsilencio a nada, igual que si se escribiera a mano.",
+      "description": "Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.\n\n`filters`: lista de specs. Por COLUMNA,\n`{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |\n'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',\nexclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,\ndisplay_name?: str}`. Con `values` se arma un filtro de lista\n(Categorical); sin `values` ni `raw` el campo queda declarado pero\nSIN acotar, como el panel de filtros vacio. `raw` pasa una consulta\nsemantica ya construida, para lo que este constructor no cubre.\n\nPor MEDIDA, `{measure: 'Tabla[Medida]', condition: 'GreaterThan',\nvalue: 0}` (`condition`: Equal | NotEqual | GreaterThan |\nGreaterThanOrEqual | LessThan | LessThanOrEqual, o los simbolos\n`> >= < <= = !=`). Es la forma de ENCADENAR slicers de dimension\ncuando varias tablas de hechos cuelgan de las mismas dimensiones y\nuna relacion bidireccional crearia ambiguedad.\n\n`field`/`measure` van con el NOMBRE real de la tabla. La mitad interna\nde la consulta usa un ALIAS (`SourceRef.Source`) que esta tool\nresuelve sola: escribirlo a mano ahi es el error mas comun al\nconstruir un filtro de visual, y Power BI lo ignora sin decir por que.\n\nPor defecto REEMPLAZA los filtros del visual, y una lista vacia los\nquita todos. **Cuidado con los slicers**: suelen traer un filtro\n`Categorical` donde vive la seleccion del usuario, y reemplazarlo la\nborra. Para anadir sin pisar, `merge=true` (ahi una lista vacia no\nquita nada). No comprueba el campo contra el modelo: uno que no existe\nse escribe igual y Power BI lo resuelve en silencio a nada.",
       "params": {
         "filters": {
           "required": true,
           "type": "array[object]"
+        },
+        "merge": {
+          "required": false,
+          "type": "boolean",
+          "default": false
         },
         "page": {
           "required": true,

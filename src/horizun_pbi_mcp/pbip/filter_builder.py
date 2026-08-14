@@ -45,6 +45,20 @@ _ALIAS_INTERACCION = {
 #: tal cual con `raw`, pero no se generan a partir de valores.
 TIPOS = ("Categorical", "Advanced", "TopN", "Range", "RelativeDate", "Passthrough")
 
+#: `ComparisonKind` del PBIR, con los nombres y los simbolos que un humano
+#: escribiria. Es la mitad que faltaba para filtrar por una MEDIDA, que es como
+#: se encadenan dos slicers de dimension cuando varias tablas de hechos cuelgan
+#: de las mismas dimensiones y una relacion bidireccional crearia ambiguedad.
+COMPARACIONES = {
+    "equal": 0, "=": 0, "==": 0, "eq": 0,
+    "greaterthan": 1, ">": 1, "gt": 1,
+    "greaterthanorequal": 2, ">=": 2, "gte": 2, "ge": 2,
+    "lessthan": 3, "<": 3, "lt": 3,
+    "lessthanorequal": 4, "<=": 4, "lte": 4, "le": 4,
+}
+#: Se expresa como `Not(Equal)`: el PBIR no tiene un ComparisonKind propio.
+_DISTINTO = {"notequal", "!=", "<>", "ne", "neq"}
+
 
 class FilterBuildError(PowerBIMCPError):
     code = "filter_build_error"
@@ -71,6 +85,42 @@ def _literal(valor: Any) -> Dict[str, Any]:
 def _campo_por_alias(tabla: str, columna: str) -> Dict[str, Any]:
     return {"Column": {"Expression": {"SourceRef": {"Source": _alias(tabla)}},
                        "Property": columna}}
+
+
+def _medida_por_alias(tabla: str, medida: str) -> Dict[str, Any]:
+    return {"Measure": {"Expression": {"SourceRef": {"Source": _alias(tabla)}},
+                        "Property": medida}}
+
+
+def build_measure_comparison(table: str, measure: str, condition: str,
+                             value: Any) -> Dict[str, Any]:
+    """Filtro de nivel visual sobre una MEDIDA: "[Medida] > 0".
+
+    Es el caso canonico para encadenar slicers de dimension (al filtrar por
+    proyecto, que el slicer de responsable muestre solo a los suyos). Con
+    varias tablas de hechos colgando de las mismas dimensiones no se puede
+    resolver con relaciones bidireccionales -crean ambiguedad-, asi que la via
+    correcta es esta.
+    """
+    clave = str(condition or "").strip().casefold()
+    negar = clave in _DISTINTO
+    kind = 0 if negar else COMPARACIONES.get(clave)
+    if kind is None:
+        raise FilterBuildError(
+            f"Comparacion no soportada: '{condition}'. Usa una de "
+            f"{sorted(set(COMPARACIONES) | _DISTINTO)}.",
+            details={"valid": sorted(set(COMPARACIONES) | _DISTINTO)})
+    condicion: Dict[str, Any] = {"Comparison": {
+        "ComparisonKind": kind,
+        "Left": _medida_por_alias(table, measure),
+        "Right": _literal(value)}}
+    if negar:
+        condicion = {"Not": {"Expression": condicion}}
+    return {
+        "Version": 2,
+        "From": [{"Name": _alias(table), "Entity": table, "Type": 0}],
+        "Where": [{"Condition": condicion}],
+    }
 
 
 def _nombre_estable(contenido: Dict[str, Any]) -> str:
@@ -101,23 +151,38 @@ def build_categorical(table: str, column: str, values: List[Any], *,
     }
 
 
+def _partir_referencia(referencia: Any, clave: str) -> tuple:
+    texto = str(referencia or "").strip()
+    if "[" not in texto or not texto.endswith("]"):
+        raise FilterBuildError(
+            f"'{clave}' debe tener la forma 'Tabla[{'Medida' if clave == 'measure' else 'Columna'}]'; "
+            f"se recibio {referencia!r}.")
+    tabla = texto[:texto.index("[")].strip()
+    nombre = texto[texto.index("[") + 1:-1]
+    if not tabla or not nombre:
+        raise FilterBuildError(f"Referencia de campo incompleta: {texto!r}.")
+    return tabla, nombre
+
+
 def build_filter(spec: Dict[str, Any]) -> Dict[str, Any]:
     """Un elemento de `filterConfig.filters` a partir de una descripcion simple.
 
     `spec`: {field: 'Tabla[Columna]', type?, values?, exclude?, raw?,
              hidden?, locked?, display_name?}
+    o, para filtrar por una MEDIDA:
+    `{measure: 'Tabla[Medida]', condition: 'GreaterThan', value: 0}`.
+
     Con `raw` se pasa una consulta semantica ya construida, sin interpretarla:
     la valvula de escape para lo que este constructor no cubre.
     """
-    referencia = str(spec.get("field") or "").strip()
-    if "[" not in referencia or not referencia.endswith("]"):
-        raise FilterBuildError(
-            f"'field' debe tener la forma 'Tabla[Columna]'; se recibio "
-            f"{spec.get('field')!r}.")
-    tabla = referencia[:referencia.index("[")].strip()
-    columna = referencia[referencia.index("[") + 1:-1]
-    if not tabla or not columna:
-        raise FilterBuildError(f"Referencia de campo incompleta: {referencia!r}.")
+    if spec.get("measure"):
+        if spec.get("field"):
+            raise FilterBuildError(
+                "Un filtro es de columna ('field') o de medida ('measure'), no "
+                "de las dos cosas.")
+        return _build_measure_filter(spec)
+
+    tabla, columna = _partir_referencia(spec.get("field"), "field")
 
     tipo = spec.get("type") or ("Categorical" if spec.get("values") else "Advanced")
     if tipo not in TIPOS:
@@ -137,6 +202,44 @@ def build_filter(spec: Dict[str, Any]) -> Dict[str, Any]:
     # Sin `filter` el elemento describe un filtro presente pero sin seleccion:
     # es lo que Power BI escribe cuando el campo esta en el panel sin acotar.
 
+    return _decorar(salida, spec)
+
+
+def _build_measure_filter(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """La mitad `Advanced` de un filtro de medida, con su `field` de medida.
+
+    El `field` va por NOMBRE de tabla (`SourceRef.Entity`) y la consulta de
+    dentro por ALIAS (`SourceRef.Source`), igual que en los de columna: es la
+    confusion que hace que Power BI ignore el filtro sin decir nada.
+    """
+    tabla, medida = _partir_referencia(spec.get("measure"), "measure")
+    tipo = spec.get("type") or "Advanced"
+    if tipo not in TIPOS:
+        raise FilterBuildError(
+            f"Tipo de filtro no soportado: '{tipo}'. Usa uno de {list(TIPOS)}.")
+
+    salida: Dict[str, Any] = {
+        "field": {"Measure": {"Expression": {"SourceRef": {"Entity": tabla}},
+                              "Property": medida}},
+        "type": tipo,
+    }
+    if spec.get("raw") is not None:
+        salida["filter"] = spec["raw"]
+    elif spec.get("condition"):
+        salida["filter"] = build_measure_comparison(
+            tabla, medida, spec["condition"], spec.get("value"))
+    elif "value" in spec:
+        raise FilterBuildError(
+            "Un filtro de medida con 'value' necesita 'condition' (por ejemplo "
+            "'GreaterThan'); si no, no se sabe que comparar.")
+    # `howCreated: User` es lo que Desktop escribe para un filtro que el usuario
+    # anade con un campo que el visual no proyecta -justo este caso-.
+    salida["howCreated"] = spec.get("how_created") or "User"
+    return _decorar(salida, spec)
+
+
+def _decorar(salida: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Metadatos comunes del contenedor de filtro y su nombre estable."""
     if spec.get("display_name"):
         salida["displayName"] = spec["display_name"]
     if spec.get("hidden"):
