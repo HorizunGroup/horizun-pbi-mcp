@@ -86,7 +86,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 |---|---|---|---|---|
 | INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Abierta** |
 | INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** |
-| INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Abierta** |
+| INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Abierta** — bloque 1 hecho el 2026-08-14 (marketplaces pinneados, publisher verificado, bootstrap de Claude retirado); falta el one-paste |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** |
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Abierta** |
 | INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** |

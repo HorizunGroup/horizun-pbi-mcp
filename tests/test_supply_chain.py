@@ -105,6 +105,21 @@ def test_el_publisher_se_verifica_antes_de_extraer():
     assert "trap 'rm -rf" in texto, "el temporal no se limpia siempre"
 
 
+# ------------------------------------------------- instalador y Claude -------
+def test_el_instalador_no_ejecuta_el_bootstrap_remoto_de_claude():
+    texto = INSTALADOR.read_text(encoding="utf-8")
+    assert "claude.ai/install.ps1" not in texto, (
+        "instalar.ps1 sigue ofreciendo ejecutar un instalador remoto de "
+        "Anthropic; no hay version inmutable ni hash que verificar")
+
+
+def test_los_documentos_no_recomiendan_ejecutar_el_bootstrap_de_claude():
+    for nombre in ("README.md", "docs/INSTALL.md"):
+        texto = (RAIZ / nombre).read_text(encoding="utf-8")
+        assert "claude.ai/install.ps1 | iex" not in texto, (
+            f"{nombre} recomienda ejecutar codigo remoto sin verificar")
+
+
 # ------------------------------------------------------------- pendientes ----
 def test_el_one_paste_sigue_pendiente_y_esta_declarado():
     """Honestidad sobre lo que AUN no esta arreglado.

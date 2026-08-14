@@ -40,29 +40,19 @@ function SumarAlPathDeSesion($carpeta) {
     }
 }
 
-function InstalarClaudeCode {
-    # 1) Instalador NATIVO de Anthropic: no necesita Node ni npm. Es el camino
-    #    principal a proposito - el MSI de Node suele ser por-maquina y sin
-    #    administrador falla, asi que colgar Claude Code de npm dejaba la
-    #    instalacion muerta justo en el PC vacio que este script debe resolver.
-    Write-Host "  instalando Claude Code (instalador oficial, nivel usuario)..."
-    try {
-        $script = (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1' -UseBasicParsing)
-        Invoke-Expression $script
-    } catch {
-        Fallo ("el instalador oficial de Claude Code fallo: " + $_.Exception.Message)
-    }
+function DetectarClaudeCode {
+    # Antes esto descargaba un script de Anthropic y lo pasaba por
+    # Invoke-Expression. Ejecutar lo que devuelva una URL es confiar en que
+    # nadie cambio esos bytes desde la ultima vez que alguien los miro, y no
+    # hay version fija ni SHA-256 publicado con el que comprobarlo. HTTPS dice
+    # QUIEN te lo da, no QUE te da.
+    #
+    # Claude Code es un requisito EXTERNO y opcional de este instalador: sin el
+    # se instala igual el MCP, solo queda sin registrar en ese cliente. Asi que
+    # se detecta y, si falta, se dice como instalarlo desde la fuente oficial y
+    # se sigue. Instalarlo es decision de quien usa la maquina, no nuestra.
     Refresh-Path
     SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
-    if (Tiene 'claude') { return $true }
-
-    # 2) Respaldo por npm, si esta disponible.
-    if (Tiene 'npm') {
-        Write-Host "  reintentando con npm..."
-        & npm install -g "@anthropic-ai/claude-code" | Out-Null
-        Refresh-Path
-        SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
-    }
     return (Tiene 'claude')
 }
 
@@ -192,12 +182,14 @@ else {
 # --- 5. Claude Code ----------------------------------------------------------
 Paso "Claude Code"
 SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
-if (Tiene 'claude') {
-    Ok ("claude " + ((& claude --version 2>$null | Select-Object -First 1)))
-} elseif (InstalarClaudeCode) {
+if (DetectarClaudeCode) {
     Ok ("claude " + ((& claude --version 2>$null | Select-Object -First 1)))
 } else {
-    Aviso "No se pudo instalar Claude Code. Instalalo con: irm https://claude.ai/install.ps1 | iex  y vuelve a pegar este comando."
+    Aviso ("Claude Code no esta instalado. Es un requisito EXTERNO y opcional: " +
+           "el MCP queda instalado igual, pero sin registrar en Claude Code. " +
+           "Instalalo desde la documentacion oficial de Anthropic " +
+           "(https://docs.anthropic.com/en/docs/claude-code) y vuelve a pegar " +
+           "este comando para que se registre el plugin.")
 }
 
 # --- 6. Registrar el plugin en Claude Code -----------------------------------

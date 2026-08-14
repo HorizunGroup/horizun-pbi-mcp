@@ -148,7 +148,7 @@ Use this instead of the short prompt when you want the agent to *narrate*: a
 plan before it touches anything, an ETA before every step, and evidence after
 each one. Any Claude that can run commands will do (Claude Code, or the desktop
 app with terminal access). If you have none, install the CLI first with
-`irm https://claude.ai/install.ps1 | iex` and then paste this:
+the CLI from Anthropic's official documentation ([https://docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code)) and then paste this:
 
 ```text
 Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) on this machine, end to end, under these rules:
@@ -160,7 +160,7 @@ Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) on this machine, end 
    (version installed, path). If something takes longer than estimated, report it instead of leaving me waiting.
 3. Install ONLY what is missing, at user scope, without asking for administrator:
    - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-   - Claude Code CLI (if absent): irm https://claude.ai/install.ps1 | iex
+   - Claude Code CLI (if absent): install it yourself from https://docs.anthropic.com/en/docs/claude-code — this script never downloads or runs an Anthropic installer for you
    Remember the terminal you installed from does NOT see the new PATH: use absolute paths or refresh this
    process's PATH yourself; do not ask me to close and reopen windows.
 4. If signing in to Claude is needed, that is my ONLY step: tell me exactly what to do and wait for me.
@@ -190,7 +190,7 @@ Instala el Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) en este equipo, de pun
    evidencia (versión instalada, ruta). Si algo lleva más de lo estimado, repórtalo en vez de dejarme esperando.
 3. Instala SOLO lo que falte, en ámbito de usuario, sin pedir administrador:
    - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-   - Claude Code CLI (si no existe): irm https://claude.ai/install.ps1 | iex
+   - Claude Code CLI (si no existe): instalalo tu desde https://docs.anthropic.com/en/docs/claude-code — este script nunca descarga ni ejecuta un instalador de Anthropic por ti
    Recuerda que la terminal donde instalaste NO ve el PATH nuevo: usa rutas absolutas o refresca el PATH del
    proceso tú mismo; no me pidas cerrar y abrir ventanas a mí.
 4. Si hace falta iniciar sesión en Claude, ese es el ÚNICO paso mío: dime exactamente qué hacer y espérame.
