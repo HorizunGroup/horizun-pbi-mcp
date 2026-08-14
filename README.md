@@ -169,6 +169,7 @@ repository, not a promise:
 | [`docs/BACKLOG.md`](docs/BACKLOG.md) | What remains open, with evidence and how to check it |
 | [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | From installation to a dashboard, step by step |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, guarantees and what it does **not** promise |
+| [`SECURITY.md`](SECURITY.md) | How to report a vulnerability privately, response times, supported versions |
 | [`docs/RECOVERY.md`](docs/RECOVERY.md) | What to do when something is left half-done |
 | [`docs/PHASE_1A_DESIGN.md`](docs/PHASE_1A_DESIGN.md) | Design of the security layer |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
