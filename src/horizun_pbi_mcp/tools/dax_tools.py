@@ -11,6 +11,17 @@ from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
 from horizun_pbi_mcp.tools._common import guard, ruta_de_proyecto as _ruta_de_proyecto
 
 
+def _estado_de_datos(instance: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Si el modelo recien abierto tiene datos. Nunca lanza: es diagnostico."""
+    from horizun_pbi_mcp.powerbi import refresh as refresh_mod
+
+    conexion = (instance or {}).get("connection_string")
+    if not conexion:
+        return {"data_loaded": None,
+                "reason": "la instancia no expone cadena de conexion"}
+    return refresh_mod.estado_de_datos(conexion, (instance or {}).get("catalog"))
+
+
 def register(mcp) -> None:
     @mcp.tool()
     def pbi_list_desktop_models() -> Dict[str, Any]:
@@ -101,11 +112,15 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
-    def pbi_validate_desktop_render(path: str, timeout: int = 300,
+    def pbi_validate_desktop_render(path: Optional[str] = None,
+                                    timeout: int = 300,
                                     capture_timeout: int = 30,
                                     reuse_open: bool = True,
                                     page: Optional[str] = None,
-                                    fit_to_page: bool = True) -> Dict[str, Any]:
+                                    fit_to_page: bool = True,
+                                    refresh: bool = False,
+                                    refresh_timeout_seconds: Optional[int] = None,
+                                    pbip_path: Optional[str] = None) -> Dict[str, Any]:
         """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
 
         Es la comprobacion visual automatizable que complementa al validador
@@ -113,6 +128,21 @@ def register(mcp) -> None:
         y la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.
         La captura no activa ni trae Desktop al frente, por lo que no puede
         fotografiar por accidente otra ventana que tape el informe.
+
+        `path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)
+        se puede omitir: entonces se usa el proyecto .pbip activo.
+
+        **`refresh=true` es lo que hace que la captura signifique algo en un
+        .pbip**: ese formato guarda la definicion, no los datos, asi que recien
+        abierto el modelo viene VACIO y las tablas y matrices salen en blanco
+        aunque el informe este perfecto. Con `refresh` se abre, se refresca, se
+        espera a que la ventana deje de repintar y se captura. Ese es tambien
+        el camino para fotografiar OTRA pagina con datos: `page` exige abrir el
+        proyecto, y al abrirlo hay que volver a refrescar.
+
+        Pase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la
+        captura no es representativa del informe, es la foto de un modelo sin
+        datos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.
 
         `page` (solo .pbip): captura ESA pagina (id o nombre visible), no la
         que quedo activa. `fit_to_page` (solo .pbip, activado por defecto):
@@ -123,13 +153,14 @@ def register(mcp) -> None:
         falla y `fit_to_page` degrada a un aviso).
 
         Si la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la
-        captura falla). Si el informe ya estaba abierto, reutiliza esa sesion y
-        nunca cierra la ventana del usuario.
+        captura falla) y devuelve la seleccion de modelo a como estaba. Si el
+        informe ya estaba abierto, reutiliza esa sesion y nunca cierra la
+        ventana del usuario.
         """
         def _impl():
             from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
 
-            pbix = Path(path).expanduser().resolve()
+            pbix = _ruta_de_proyecto(path, pbip_path)
             avisos: List[str] = []
             vista: Optional[Dict[str, Any]] = None
             quiere_vista = bool(page) or fit_to_page
@@ -160,7 +191,7 @@ def register(mcp) -> None:
 
             try:
                 opened = desktop_launcher.open_pbix(
-                    path, timeout=timeout, reuse_open=reuse_open)
+                    str(pbix), timeout=timeout, reuse_open=reuse_open)
             except BaseException:
                 # Desktop nunca llego a abrir: la vista temporal no puede
                 # quedarse escrita como si fuera una edicion del informe.
@@ -172,9 +203,26 @@ def register(mcp) -> None:
                 "reason": "la sesion ya estaba abierta; no se toca",
             }
             result: Optional[Dict[str, Any]] = None
+            modelo_previo = get_session().active_model
+            modelo_seleccionado = False
             try:
+                refresco: Optional[Dict[str, Any]] = None
+                if refresh:
+                    from horizun_pbi_mcp.powerbi import refresh as refresh_mod
+
+                    session = get_session()
+                    desktop_discovery.select_model(
+                        session, port=opened.instance.get("port"))
+                    modelo_seleccionado = True
+                    refresco = refresh_mod.refresh_model(
+                        session, "full", None, refresh_timeout_seconds)
+                datos = _estado_de_datos(opened.instance)
                 capture = desktop_capture.capture_opened(
-                    opened, timeout=capture_timeout)
+                    opened, timeout=capture_timeout,
+                    # Tras refrescar, Desktop vuelve a lanzar las consultas de
+                    # la pagina: capturar en ese instante fotografia el
+                    # repintado a medias.
+                    settle_seconds=8.0 if refresh else 0.0)
                 result = {
                     "path": opened.pbix_path,
                     "instance": opened.instance,
@@ -183,7 +231,23 @@ def register(mcp) -> None:
                     "reused_open_session": not opened.launched_by_us,
                     "waited_seconds": opened.waited_seconds,
                     "capture": capture,
+                    "data_loaded": datos.get("data_loaded"),
                 }
+                if refresco is not None:
+                    result["refresh"] = refresco
+                if datos.get("data_loaded") is False:
+                    avisos.append(
+                        "El modelo no tiene datos cargados: la captura NO es "
+                        "representativa (las tablas y matrices salen en "
+                        "blanco). Repite con refresh=true.")
+                elif datos.get("data_loaded") is None:
+                    avisos.append(
+                        "No se pudo comprobar si el modelo tiene datos"
+                        + (f": {datos['reason']}." if datos.get("reason") else "."))
+                if capture.get("frame_settled") is False:
+                    avisos.append(
+                        "La ventana seguia repintando al agotarse el margen; "
+                        "la captura puede mostrar visuales a medio cargar.")
                 if vista is not None:
                     result["capture_view"] = {"page_id": vista["page_id"],
                                               "changes": vista["changes"]}
@@ -204,6 +268,12 @@ def register(mcp) -> None:
                             "error_type": type(exc).__name__,
                             "message": str(exc),
                         }
+                # Si esta llamada selecciono el modelo solo para refrescar y
+                # ademas cerro la ventana, dejar la sesion apuntando a ese
+                # puerto muerto convierte la siguiente tool en un
+                # `stale_session` que nadie pidio.
+                if modelo_seleccionado and close_result.get("closed"):
+                    get_session().restore_active_model(modelo_previo)
                 # La vista era para la foto, no una edicion: se restaura
                 # byte a byte DESPUES de cerrar Desktop.
                 if vista is not None:

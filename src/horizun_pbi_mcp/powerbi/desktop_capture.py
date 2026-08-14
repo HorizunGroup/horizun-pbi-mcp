@@ -89,6 +89,12 @@ def preparar_vista_de_captura(path: str | Path, *,
     Devuelve `{"restore": callable, ...}`: los archivos tocados se restauran
     BYTE a BYTE al terminar, porque esto es una vista para la foto, no una
     edicion del informe. Exige el proyecto cerrado; quien llama ya lo verifico.
+
+    TRAMPA, para quien copie esto a mano: `activePageName` vive en
+    `pages/pages.json`. Escribirlo en `report.json` deja el informe abriendo EN
+    BLANCO -sin error, con la validacion en verde y sin nada que lo explique-.
+    Y aunque se escriba donde toca, hay que QUITARLO despues: es una vista para
+    la captura, no una preferencia del informe. `_restore` es esa mitad.
     """
     import json
 
@@ -491,9 +497,39 @@ def _write_atomic(path: Path, data: bytes) -> None:
                 pass
 
 
+def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
+                       segundos: float) -> tuple[int, int, bytes, bool]:
+    """Repite la captura hasta que DOS fotogramas salgan identicos.
+
+    Despues de un refresh, Desktop vuelve a lanzar las consultas de la pagina y
+    tarda en repintar. No hay ningun evento que avisar desde fuera, asi que la
+    sincronizacion se hace sobre lo unico observable: los pixeles. Esperar un
+    plazo fijo seria adivinar; esto termina en cuanto la ventana deja de
+    cambiar, y si nunca se estabiliza lo dice en vez de fingir.
+    """
+    fin = time.monotonic() + segundos
+    while time.monotonic() < fin:
+        time.sleep(0.5)
+        try:
+            ancho, alto, pixeles = _capture_window_bgra(hwnd)
+            actual = _encode_png(ancho, alto, pixeles)
+        except (DesktopCaptureError, ValidationError):
+            continue                      # aun repintando: se reintenta
+        if actual == png and (ancho, alto) == (width, height):
+            return width, height, png, True
+        png, width, height = actual, ancho, alto
+    return width, height, png, False
+
+
 def capture_opened(opened: Any, *, timeout: int = 30,
-                   output_dir: Optional[Path] = None) -> dict[str, Any]:
-    """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado."""
+                   output_dir: Optional[Path] = None,
+                   settle_seconds: float = 0.0) -> dict[str, Any]:
+    """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado.
+
+    Con `settle_seconds` se espera a que la ventana deje de cambiar antes de
+    dar la captura por buena; es lo que hace falta justo despues de un refresh,
+    cuando la pagina todavia se esta repintando.
+    """
     timeout = validate_limit(timeout, "capture_timeout", 120)
     assert timeout is not None
     pid = getattr(opened, "desktop_pid", None)
@@ -522,15 +558,23 @@ def capture_opened(opened: Any, *, timeout: int = 30,
                 ) from exc
             time.sleep(0.5)
 
+    estable: Optional[bool] = None
+    if settle_seconds > 0:
+        width, height, png, estable = _fotograma_estable(
+            window.hwnd, png, width, height, float(settle_seconds))
+
     root = Path(output_dir) if output_dir is not None else (
         get_settings().outputs_dir / "desktop_captures")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     target = root / f"{_safe_stem(report_path)}_{stamp}_{uuid.uuid4().hex[:8]}.png"
     _write_atomic(target, png)
-    return {
+    salida = {
         "path": str(target.resolve()), "format": "png",
         "width": width, "height": height, "bytes": len(png),
         "desktop_pid": int(pid), "hwnd": window.hwnd,
         "window_title": window.title, "capture_method": "PrintWindow",
         "focus_required": False,
     }
+    if estable is not None:
+        salida["frame_settled"] = estable
+    return salida

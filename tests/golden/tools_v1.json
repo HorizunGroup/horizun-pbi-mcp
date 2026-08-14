@@ -5125,7 +5125,7 @@
     },
     {
       "name": "pbi_validate_desktop_render",
-      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
       "params": {
         "capture_timeout": {
           "required": false,
@@ -5143,8 +5143,24 @@
           "default": null
         },
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "refresh": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "refresh_timeout_seconds": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
         },
         "reuse_open": {
           "required": false,
@@ -5157,9 +5173,7 @@
           "default": 300
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [

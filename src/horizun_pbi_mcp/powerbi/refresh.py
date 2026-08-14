@@ -311,6 +311,65 @@ def _guardar_con_plazo(server, mdl, timeout_seconds: int) -> None:
         })
 
 
+#: Tablas que Power BI genera solo para la jerarquia automatica de fechas. No
+#: dicen nada sobre si el modelo tiene datos del negocio cargados.
+_TABLAS_AUTOMATICAS = ("LocalDateTable_", "DateTableTemplate_")
+
+
+def estado_de_datos(connection_string: str, catalog: Optional[str] = None,
+                    *, limite_tablas: int = 60) -> Dict[str, Any]:
+    """Si el modelo ABIERTO tiene filas cargadas. Nunca lanza.
+
+    Un `.pbip` guarda la definicion, no los datos: recien abierto, el modelo
+    esta vacio y las tablas y matrices salen EN BLANCO. Power BI lo avisa en una
+    barra dentro de la propia ventana ("algunas de las tablas tienen datos
+    incompletos o no tienen datos"), asi que una captura de esa ventana miente
+    en silencio a quien no sepa leerla.
+
+    `data_loaded` es `None` cuando no se pudo comprobar: preferimos decir que no
+    se sabe a afirmar cualquiera de las dos cosas.
+    """
+    from horizun_pbi_mcp.powerbi.adomd_client import AdomdClient
+
+    salida: Dict[str, Any] = {"data_loaded": None, "tables_checked": 0,
+                              "tables_with_rows": 0}
+    try:
+        with AdomdClient(connection_string, catalog) as cli:
+            _cols, filas, _t, _ms = cli.execute_reader(
+                "SELECT [Name] FROM $SYSTEM.TMSCHEMA_TABLES",
+                max_rows=limite_tablas)
+            nombres = [str(f[0]) for f in filas if f and f[0] is not None]
+            nombres = [n for n in nombres
+                       if not n.startswith(_TABLAS_AUTOMATICAS)]
+            if not nombres:
+                salida["reason"] = "el modelo no declara tablas consultables"
+                return salida
+            contadas = 0
+            for nombre in nombres:
+                escapado = nombre.replace("'", "''")
+                try:
+                    valor = cli.execute_scalar(
+                        f"EVALUATE ROW(\"n\", COUNTROWS('{escapado}'))")
+                except Exception:                        # noqa: BLE001
+                    continue                             # DirectQuery, error...
+                contadas += 1
+                if valor:
+                    salida["tables_with_rows"] += 1
+            salida["tables_checked"] = contadas
+            if not contadas:
+                salida["reason"] = "ninguna tabla se pudo contar"
+                return salida
+            salida["data_loaded"] = salida["tables_with_rows"] > 0
+            if not salida["data_loaded"]:
+                salida["reason"] = (
+                    "el modelo esta abierto pero SIN datos: un .pbip no los "
+                    "guarda. Refresca antes de creerte una captura.")
+            return salida
+    except Exception as exc:                             # noqa: BLE001
+        salida["reason"] = f"no se pudo consultar el modelo: {type(exc).__name__}"
+        return salida
+
+
 def _nombres_de_tablas(model) -> List[str]:
     """Tablas del modelo TOM, como texto."""
     return [str(t.Name) for t in model.Tables]

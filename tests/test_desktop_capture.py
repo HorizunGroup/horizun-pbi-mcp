@@ -37,12 +37,16 @@ def _opened(*, launched_by_us=True):
 
 # ------------------------------------------ vista de captura (page + fit) ----
 @pytest.fixture
-def pbip_sintetico(session, tmp_path):
+def pbip_sintetico(session, tmp_path, monkeypatch):
+    from horizun_pbi_mcp import config as cfg
     from horizun_pbi_mcp.pbip import project_locator
     from tests.fixtures import synthetic
 
     pbip = synthetic.materialize(tmp_path)
     project_locator.open_project(session, str(pbip))
+    # Las tools resuelven la sesion con `get_session()`: sin inyectarla, una
+    # prueba de tool leeria el singleton real de quien ejecuta la suite.
+    monkeypatch.setattr(cfg, "_session", session)
     return pbip, session.require_active_pbip()
 
 
@@ -208,7 +212,7 @@ def test_tool_cierra_solo_el_desktop_que_ella_abrio(monkeypatch):
         lambda value: closed.append(value) or {"closed": True, "pid": 777})
     monkeypatch.setattr(
         desktop_capture, "capture_opened",
-        lambda value, timeout: {"path": "capture.png", "desktop_pid": 777})
+        lambda value, **_kw: {"path": "capture.png", "desktop_pid": 777})
 
     result = mcp.tools["pbi_validate_desktop_render"]("Ventas.pbix")
 
@@ -224,7 +228,7 @@ def test_tool_no_cierra_una_sesion_preexistente(monkeypatch):
     monkeypatch.setattr(desktop_launcher, "open_pbix", lambda *a, **k: opened)
     monkeypatch.setattr(
         desktop_capture, "capture_opened",
-        lambda value, timeout: {"path": "capture.png", "desktop_pid": 777})
+        lambda value, **_kw: {"path": "capture.png", "desktop_pid": 777})
     monkeypatch.setattr(
         desktop_launcher, "close",
         lambda value: pytest.fail("no debe cerrar una ventana del usuario"))
@@ -264,7 +268,7 @@ def test_fallo_al_cerrar_no_enmascara_una_captura_valida(monkeypatch):
     monkeypatch.setattr(desktop_launcher, "open_pbix", lambda *a, **k: opened)
     monkeypatch.setattr(
         desktop_capture, "capture_opened",
-        lambda value, timeout: {"path": "capture.png", "desktop_pid": 777})
+        lambda value, **_kw: {"path": "capture.png", "desktop_pid": 777})
     monkeypatch.setattr(
         desktop_launcher, "close",
         lambda value: (_ for _ in ()).throw(OSError("acceso denegado")))
@@ -274,6 +278,163 @@ def test_fallo_al_cerrar_no_enmascara_una_captura_valida(monkeypatch):
     assert result["ok"] is True
     assert result["desktop_close"]["reason"] == "desktop_close_failed"
     assert result["warnings"]
+
+
+# ------------------------------------- captura con datos (refresh + aviso) ---
+def _sin_datos(*_a, **_k):
+    return {"data_loaded": False, "tables_checked": 3, "tables_with_rows": 0,
+            "reason": "el modelo esta abierto pero SIN datos"}
+
+
+def test_la_captura_avisa_cuando_el_modelo_no_tiene_datos(monkeypatch):
+    """Un .pbip recien abierto rinde tablas EN BLANCO: la foto no es prueba."""
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    monkeypatch.setattr(desktop_launcher, "open_pbix",
+                        lambda *a, **k: _opened(launched_by_us=False))
+    monkeypatch.setattr(
+        desktop_capture, "capture_opened",
+        lambda value, **_kw: {"path": "capture.png", "desktop_pid": 777})
+    monkeypatch.setattr(dax_tools, "_estado_de_datos", _sin_datos)
+
+    result = mcp.tools["pbi_validate_desktop_render"]("Ventas.pbix")
+
+    assert result["ok"] is True
+    assert result["data_loaded"] is False
+    assert any("NO es representativa" in w for w in result["warnings"])
+
+
+def test_refresh_true_refresca_antes_de_capturar(monkeypatch):
+    """El orden importa: refrescar DESPUES de capturar no sirve de nada."""
+    from horizun_pbi_mcp.powerbi import desktop_discovery
+    from horizun_pbi_mcp.powerbi import refresh as refresh_mod
+
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    orden = []
+    monkeypatch.setattr(desktop_launcher, "open_pbix",
+                        lambda *a, **k: _opened(launched_by_us=False))
+    monkeypatch.setattr(desktop_discovery, "select_model",
+                        lambda *a, **k: SimpleNamespace(to_dict=dict))
+    monkeypatch.setattr(
+        refresh_mod, "refresh_model",
+        lambda *a, **k: orden.append("refresh") or {"status": "ok"})
+    monkeypatch.setattr(dax_tools, "_estado_de_datos",
+                        lambda *a, **k: {"data_loaded": True})
+
+    def captura(value, **kw):
+        orden.append(("captura", kw.get("settle_seconds")))
+        return {"path": "capture.png", "desktop_pid": 777}
+
+    monkeypatch.setattr(desktop_capture, "capture_opened", captura)
+
+    result = mcp.tools["pbi_validate_desktop_render"](
+        "Ventas.pbix", refresh=True)
+
+    assert result["ok"] is True
+    assert orden[0] == "refresh"
+    assert orden[1][0] == "captura" and orden[1][1] > 0, (
+        "tras refrescar hay que esperar a que la ventana deje de repintar")
+    assert result["refresh"]["status"] == "ok"
+
+
+def test_sin_refresh_no_se_toca_la_seleccion_de_modelo(monkeypatch):
+    from horizun_pbi_mcp.powerbi import desktop_discovery
+
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    monkeypatch.setattr(desktop_launcher, "open_pbix",
+                        lambda *a, **k: _opened(launched_by_us=False))
+    monkeypatch.setattr(
+        desktop_capture, "capture_opened",
+        lambda value, **_kw: {"path": "capture.png", "desktop_pid": 777})
+    monkeypatch.setattr(dax_tools, "_estado_de_datos",
+                        lambda *a, **k: {"data_loaded": True})
+    monkeypatch.setattr(
+        desktop_discovery, "select_model",
+        lambda *a, **k: pytest.fail("sin refresh no hay que seleccionar nada"))
+
+    assert mcp.tools["pbi_validate_desktop_render"]("Ventas.pbix")["ok"] is True
+
+
+def test_el_fotograma_se_da_por_bueno_cuando_deja_de_cambiar(monkeypatch):
+    """La sincronizacion es por evento observable, no por un plazo fijo."""
+    frames = [(2, 1, b"\x00" * 8), (2, 1, b"\x01" * 8), (2, 1, b"\x01" * 8)]
+    monkeypatch.setattr(desktop_capture, "time",
+                        SimpleNamespace(monotonic=lambda: 0.0,
+                                        sleep=lambda _s: None))
+    monkeypatch.setattr(desktop_capture, "_capture_window_bgra",
+                        lambda _h: frames.pop(0))
+    inicial = desktop_capture._encode_png(2, 1, b"\xAA" * 8)
+
+    # monotonic fijo en 0 agotaria el bucle; se usa un reloj que avanza.
+    reloj = iter([0.0, 1.0, 2.0, 3.0, 4.0, 99.0])
+    monkeypatch.setattr(desktop_capture, "time",
+                        SimpleNamespace(monotonic=lambda: next(reloj),
+                                        sleep=lambda _s: None))
+
+    ancho, alto, png, estable = desktop_capture._fotograma_estable(
+        1, inicial, 2, 1, 10.0)
+
+    assert estable is True
+    assert (ancho, alto) == (2, 1)
+    assert png == desktop_capture._encode_png(2, 1, b"\x01" * 8)
+
+
+# ------------------------------------------------- path / pbip_path / activo --
+def test_las_tools_de_desktop_aceptan_pbip_path(monkeypatch, pbip_sintetico):
+    pbip, _active = pbip_sintetico
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    vistos = []
+    monkeypatch.setattr(
+        desktop_launcher, "close_desktop_by_path",
+        lambda p: vistos.append(p) or {"was_open": False, "closed": False})
+
+    result = mcp.tools["pbi_close_desktop"](pbip_path=str(pbip), confirm=True)
+
+    assert result["ok"] is True
+    assert vistos == [str(Path(pbip).resolve())]
+
+
+def test_close_desktop_sin_ruta_usa_el_proyecto_activo(monkeypatch, pbip_sintetico):
+    pbip, _active = pbip_sintetico
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+    vistos = []
+    monkeypatch.setattr(
+        desktop_launcher, "close_desktop_by_path",
+        lambda p: vistos.append(p) or {"was_open": False, "closed": False})
+
+    result = mcp.tools["pbi_close_desktop"](confirm=True)
+
+    assert result["ok"] is True
+    assert vistos == [str(Path(pbip).resolve())]
+
+
+def test_sin_ruta_ni_proyecto_activo_se_dice_que_falta(session, monkeypatch):
+    from horizun_pbi_mcp import config as cfg
+
+    monkeypatch.setattr(cfg, "_session", session)
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+
+    result = mcp.tools["pbi_close_desktop"](confirm=True)
+
+    assert result["ok"] is False
+    assert result["error"] == "validation_error"
+
+
+def test_path_y_pbip_path_distintos_no_se_adivinan(pbip_sintetico):
+    pbip, _active = pbip_sintetico
+    mcp = _McpCaptura()
+    dax_tools.register(mcp)
+
+    result = mcp.tools["pbi_close_desktop"](
+        path=str(pbip), pbip_path=str(pbip) + "x", confirm=True)
+
+    assert result["ok"] is False
+    assert result["error"] == "validation_error"
 
 
 def test_launcher_no_marca_como_propia_una_ventana_existente_al_forzar(

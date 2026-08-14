@@ -275,6 +275,23 @@ class Session:
                 self._verified_at_monotonic = time.monotonic()
                 self._persist()
 
+    def restore_active_model(self, model: Optional[ActiveModel]) -> None:
+        """Devuelve la seleccion de modelo a como estaba, incluido "no habia".
+
+        Existe para las tools que abren Desktop, seleccionan su modelo para
+        hacer algo y luego CIERRAN esa ventana: dejar apuntando a un puerto que
+        acaban de matar convierte la siguiente llamada en un `stale_session`
+        que nadie pidio.
+        """
+        if model is not None:
+            self.set_active_model(model)
+            return
+        with self._model_operation_lock:
+            with self._lock:
+                self._active_model = None
+                self._invalidate_model_verification()
+                self._persist()
+
     @staticmethod
     def _model_identity(model: ActiveModel) -> tuple[Any, ...]:
         """Identidad inmutable usada para ligar la cache a una seleccion."""
