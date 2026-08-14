@@ -7,6 +7,12 @@ consulta ese catalogo fijado por :mod:`services.report_validator`, lo cachea y
 compara SOLO las rutas que Horizun acaba de generar. No examina ni bloquea
 propiedades ajenas heredadas de una plantilla, por lo que una version nueva de
 Desktop puede conservar extensiones que nuestro catalogo aun no conozca.
+
+Esa promesa se cumple de dos formas: `compare_managed_paths` recibe la lista de
+rutas que el escritor produjo, y `compare_all_managed_objects` recibe ademas el
+documento PREVIO en disco y descarta lo que no cambia. Sin lo segundo, un
+slicer creado por Desktop bloqueaba cualquier escritura por su propio
+`general.orientation`.
 """
 from __future__ import annotations
 
@@ -187,6 +193,20 @@ def _unquote(raw: str) -> str:
     return raw
 
 
+def _como_numero(texto: str) -> Optional[float]:
+    """El valor numerico de un literal PBIR, o None si no lo es.
+
+    Los literales del PBIR llevan sufijo de tipo (`0D`, `1L`). El catalogo
+    oficial enumera los enums numericos SIN sufijo (`"0"`, `"1"`), asi que
+    comparar las cadenas tal cual daba por invalido lo que Desktop escribe.
+    """
+    limpio = texto[:-1] if texto[-1:] in ("D", "L") else texto
+    try:
+        return float(limpio)
+    except ValueError:
+        return None
+
+
 def _matches_kind(value: Any, definition: Dict[str, Any]) -> bool:
     kind = definition.get("type")
     if kind in ("unknown", "formatting", "expr"):
@@ -225,11 +245,70 @@ def _matches_kind(value: Any, definition: Dict[str, Any]) -> bool:
     if kind == "text":
         return len(raw) >= 2 and raw[0] == raw[-1] == "'"
     if kind == "enum":
-        return limpio in {str(v) for v in definition.get("values", [])}
+        valores = [str(v) for v in definition.get("values", [])]
+        if limpio in valores:
+            return True
+        # Enum NUMERICO: el catalogo lista "0"/"1" y Desktop escribe el literal
+        # `0D`. Es el caso de `slicer.general.orientation`, que bloqueaba
+        # cualquier escritura sobre un slicer creado por Desktop.
+        numero = _como_numero(raw)
+        return numero is not None and any(
+            _como_numero(v) == numero for v in valores)
     return True
 
 
 PathSpec = Tuple[str, str, str]
+
+
+def valores_de_ruta(document: Dict[str, Any], ruta: PathSpec) -> List[Any]:
+    """Los valores que un visual tiene en `(scope, grupo, propiedad)`.
+
+    Una propiedad puede aparecer en varios bloques del mismo grupo (uno por
+    selector), asi que la unidad de comparacion es la LISTA de valores.
+    """
+    visual = document.get("visual") if isinstance(document, dict) else None
+    if not isinstance(visual, dict):
+        return []
+    scope, group, prop = ruta
+    bloques = ((visual.get(scope) or {}).get(group) or [])
+    if not isinstance(bloques, list):
+        return []
+    return [(b.get("properties") or {}).get(prop) for b in bloques
+            if isinstance(b, dict) and isinstance(b.get("properties"), dict)
+            and prop in b["properties"]]
+
+
+def rutas_del_delta(document: Dict[str, Any], previo: Optional[Dict[str, Any]],
+                    rutas: Iterable[PathSpec]
+                    ) -> Tuple[List[PathSpec], List[PathSpec]]:
+    """Separa las rutas que esta escritura cambia de las que ya estaban igual.
+
+    Sin esto, una escritura que solo toca el titulo se rechazaba por una
+    propiedad que Power BI Desktop habia escrito antes y que nuestro catalogo
+    no reconoce. Lo preexistente ya esta en el archivo: no puede ser motivo
+    para negarse a escribir otra cosa.
+    """
+    rutas = list(rutas)
+    if previo is None:
+        return rutas, []
+    cambiadas, intactas = [], []
+    for ruta in rutas:
+        if (_huella(valores_de_ruta(document, ruta))
+                == _huella(valores_de_ruta(previo, ruta))):
+            intactas.append(ruta)
+        else:
+            cambiadas.append(ruta)
+    return cambiadas, intactas
+
+
+def _huella(valores: List[Any]) -> List[str]:
+    """Los valores de una ruta como conjunto comparable, sin importar el orden.
+
+    Reescribir un visual entero puede reordenar los bloques de un grupo sin
+    cambiar nada de lo que contienen; eso no es un delta.
+    """
+    return sorted(json.dumps(v, sort_keys=True, ensure_ascii=False, default=str)
+                  for v in valores)
 
 
 def compare_managed_paths(document: Dict[str, Any], paths: Iterable[PathSpec],
@@ -278,9 +357,7 @@ def compare_managed_paths(document: Dict[str, Any], paths: Iterable[PathSpec],
         if not isinstance(prop_def, dict):
             errores.append({"path": ruta, "rule": "format_property_unknown"})
             continue
-        bloques = ((visual.get(scope) or {}).get(group) or [])
-        valores = [(b.get("properties") or {}).get(prop) for b in bloques
-                   if isinstance(b, dict) and prop in (b.get("properties") or {})]
+        valores = valores_de_ruta(document, (scope, group, prop))
         if not valores:
             errores.append({"path": ruta, "rule": "format_property_missing"})
             continue
@@ -331,17 +408,26 @@ def all_object_paths(document: Dict[str, Any]) -> List[PathSpec]:
     return rutas
 
 
-def compare_all_managed_objects(document: Dict[str, Any]) -> Dict[str, Any]:
-    """Compara todas las rutas del visual contra el catálogo de Desktop.
+def compare_all_managed_objects(document: Dict[str, Any], *,
+                                previo: Optional[Dict[str, Any]] = None
+                                ) -> Dict[str, Any]:
+    """Compara las rutas del visual contra el catálogo de Desktop.
 
     Solo se considera evidencia de equivalencia cuando procede del CLI oficial
     (`source=official_cli`). El snapshot offline sigue siendo una barrera para
     las rutas administradas, pero no pretende describir cada propiedad que un
     informe real puede conservar.
+
+    Con `previo` (el documento tal como esta en disco antes de escribir) se
+    comprueba SOLO el delta. Un informe real conserva formato que ni el
+    catalogo oficial ni nosotros conocemos; bloquear una escritura por eso
+    dejaba el archivo fuera del alcance de las tools sin mejorar nada.
     """
     rutas = all_object_paths(document)
+    rutas, intactas = rutas_del_delta(document, previo, rutas)
     if not rutas:
-        return {"available": False, "source": "none", "errors": []}
+        return {"available": False, "source": "none", "errors": [],
+                "preexisting_skipped": len(intactas)}
     visual = document.get("visual") if isinstance(document, dict) else None
     visual_type = visual.get("visualType") if isinstance(visual, dict) else None
     catalogo_oficial = (_load_catalog(visual_type)
@@ -351,9 +437,11 @@ def compare_all_managed_objects(document: Dict[str, Any]) -> Dict[str, Any]:
             document, rutas, catalog=catalogo_oficial)
         resultado["source"] = "official_cli"
         resultado["equivalence_checked"] = True
+        resultado["preexisting_skipped"] = len(intactas)
         return resultado
 
     resultado = compare_managed_paths(document, rutas)
+    resultado["preexisting_skipped"] = len(intactas)
     if resultado.get("source") != "official_cli":
         resultado = dict(resultado)
         resultado["errors"] = []

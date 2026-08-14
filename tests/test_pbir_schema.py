@@ -340,7 +340,7 @@ def test_el_oraculo_completo_bloquea_propiedad_desconocida(monkeypatch):
     }
     monkeypatch.setattr(
         format_oracle, "compare_all_managed_objects",
-        lambda _doc: {"equivalence_checked": True,
+        lambda _doc, **_kw: {"equivalence_checked": True,
                       "errors": [{"path": "$.visual.objects.values[0].properties.propiedadInventada",
                                    "rule": "format_property_unknown"}],
                       "visual_type": "card"})

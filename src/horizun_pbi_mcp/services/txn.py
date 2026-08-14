@@ -409,6 +409,22 @@ class Transaction:
         datos = text.encode("utf-8").replace(b"\n", detect_newline(target))
         self.write_bytes(target, datos, _json_validator)
 
+    def _contenido_previo(self, target: Path) -> Optional[Dict[str, Any]]:
+        """El JSON que hay AHORA en disco, o None si no hay o no parsea.
+
+        Es la referencia para validar solo el delta. Si el archivo no existe,
+        no se puede leer o trae basura, se devuelve None y la validacion vuelve
+        a mirar el documento entero: no saber que habia antes nunca puede
+        relajar la comprobacion.
+        """
+        try:
+            if not target.is_file():
+                return None
+            previo = json.loads(target.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return None
+        return previo if isinstance(previo, dict) else None
+
     def _validar_esquema(self, target: Path, data: Any) -> None:
         """Valida contra el esquema local. Solo aplica a archivos del PBIR.
 
@@ -418,7 +434,8 @@ class Transaction:
         """
         from horizun_pbi_mcp.services import pbir_schema
 
-        resultado = pbir_schema.validar(data, archivo=target)
+        resultado = pbir_schema.validar(data, archivo=target,
+                                        previo=self._contenido_previo(target))
         if resultado.get("validated"):
             self.schemas_validados = getattr(self, "schemas_validados", 0) + 1
 

@@ -160,6 +160,76 @@ def test_oraculo_acepta_fillrule_exportado_por_desktop():
     assert result["errors"] == []
 
 
+def test_enum_numerico_del_catalogo_acepta_el_literal_de_desktop():
+    """`slicer.general.orientation`: el catalogo lista "0"/"1", Desktop escribe 0D.
+
+    Comparar las cadenas tal cual daba `format_property_shape` sobre un slicer
+    de dropdown creado por el propio Desktop.
+    """
+    catalogo = {"visualObjects": {
+        "general": {"orientation": {"type": "enum", "values": ["0", "1"]}}}}
+    doc = {"visual": {"visualType": "slicer", "objects": {
+        "general": [{"properties": {"orientation": _lit("0D")}}]}}}
+
+    result = format_oracle.compare_managed_paths(
+        doc, [("objects", "general", "orientation")], catalog=catalogo)
+
+    assert result["errors"] == []
+
+
+def test_enum_numerico_sigue_rechazando_un_valor_que_no_existe():
+    catalogo = {"visualObjects": {
+        "general": {"orientation": {"type": "enum", "values": ["0", "1"]}}}}
+    doc = {"visual": {"visualType": "slicer", "objects": {
+        "general": [{"properties": {"orientation": _lit("7D")}}]}}}
+
+    result = format_oracle.compare_managed_paths(
+        doc, [("objects", "general", "orientation")], catalog=catalogo)
+
+    assert [e["rule"] for e in result["errors"]] == ["format_property_shape"]
+
+
+def test_lo_preexistente_no_se_comprueba_al_escribir_otra_cosa(monkeypatch):
+    """La propiedad que ya estaba en disco no puede bloquear una escritura."""
+    monkeypatch.setattr(format_oracle, "_load_catalog", lambda _vt: CATALOGO)
+    previo = _visual({"value": [{"properties": {
+        "propiedadQueDesktopEscribio": _lit("'x'")}}]})
+    nuevo = _visual({"value": [{"properties": {
+        "propiedadQueDesktopEscribio": _lit("'x'"),
+        "fontColor": {"solid": {"color": _lit("'#123456'")}},
+    }}]})
+
+    result = format_oracle.compare_all_managed_objects(nuevo, previo=previo)
+
+    assert result["errors"] == []
+    assert result["preexisting_skipped"] == 1
+
+
+def test_tocar_lo_preexistente_vuelve_a_comprobarlo(monkeypatch):
+    """Si la escritura CAMBIA el valor, deja de ser preexistente."""
+    monkeypatch.setattr(format_oracle, "_load_catalog", lambda _vt: CATALOGO)
+    previo = _visual({"value": [{"properties": {"inventada": _lit("'x'")}}]})
+    nuevo = _visual({"value": [{"properties": {"inventada": _lit("'y'")}}]})
+
+    result = format_oracle.compare_all_managed_objects(nuevo, previo=previo)
+
+    assert [e["rule"] for e in result["errors"]] == ["format_property_unknown"]
+
+
+def test_el_delta_ignora_el_orden_de_los_bloques(monkeypatch):
+    """Reescribir un visual puede reordenar los bloques sin cambiar nada."""
+    monkeypatch.setattr(format_oracle, "_load_catalog", lambda _vt: CATALOGO)
+    previo = _visual({"value": [
+        {"properties": {"inventada": _lit("'a'")}},
+        {"properties": {"inventada": _lit("'b'")}}]})
+    nuevo = _visual({"value": [
+        {"properties": {"inventada": _lit("'b'")}},
+        {"properties": {"inventada": _lit("'a'")}}]})
+
+    assert format_oracle.compare_all_managed_objects(
+        nuevo, previo=previo)["errors"] == []
+
+
 @pytest.mark.live_validator
 def test_snapshot_administrado_es_subconjunto_del_catalogo_oficial():
     """Impide que el fallback offline se separe silenciosamente de Desktop."""

@@ -491,7 +491,9 @@ def _validar_valor_formato(valor: Any, ruta: str,
 
 
 def _validar_bloque_objetos(objetos: Any, ruta: str,
-                             errores: List[Dict[str, str]]) -> None:
+                             errores: List[Dict[str, str]],
+                             previos: Optional[Dict[Tuple[str, str], List[Any]]] = None
+                             ) -> None:
     """Valida el armazon comun de ``objects`` y ``visualContainerObjects``."""
     if not isinstance(objetos, dict):
         errores.append(_error_formato(ruta, "format_objects_object"))
@@ -511,18 +513,53 @@ def _validar_bloque_objetos(objetos: Any, ruta: str,
                 errores.append(_error_formato(_ruta_hija(ruta_bloque, "selector"),
                                               "format_selector_object"))
             for propiedad, valor in bloque["properties"].items():
+                if previos is not None and valor in previos.get(
+                        (str(grupo), str(propiedad)), []):
+                    continue           # ya estaba en el archivo: no es del delta
                 _validar_valor_formato(valor,
                                        _ruta_hija(_ruta_hija(ruta_bloque, "properties"), propiedad),
                                        errores)
 
 
-def validar_objetos_visual(datos: Dict[str, Any]) -> List[Dict[str, str]]:
+def _valores_previos(previo: Optional[Dict[str, Any]], scope: str
+                     ) -> Optional[Dict[Tuple[str, str], List[Any]]]:
+    """Mapa `(grupo, propiedad) -> valores` que el archivo YA tenia.
+
+    La comparacion es por valor y no por posicion: reescribir un visual puede
+    reordenar los bloques de un grupo sin cambiar nada de lo que hay dentro.
+    """
+    if previo is None:
+        return None
+    visual = previo.get("visual") if isinstance(previo, dict) else None
+    grupos = visual.get(scope) if isinstance(visual, dict) else None
+    mapa: Dict[Tuple[str, str], List[Any]] = {}
+    if not isinstance(grupos, dict):
+        return mapa
+    for grupo, bloques in grupos.items():
+        if not isinstance(bloques, list):
+            continue
+        for bloque in bloques:
+            propiedades = bloque.get("properties") if isinstance(bloque, dict) else None
+            if not isinstance(propiedades, dict):
+                continue
+            for propiedad, valor in propiedades.items():
+                mapa.setdefault((str(grupo), str(propiedad)), []).append(valor)
+    return mapa
+
+
+def validar_objetos_visual(datos: Dict[str, Any], *,
+                           previo: Optional[Dict[str, Any]] = None
+                           ) -> List[Dict[str, str]]:
     """Reglas estructurales que el schema oficial omite dentro de un visual.
 
     Es una barrera deliberadamente acotada: detecta formas imposibles que
     generan nuestras propias rutas de formato, sin fingir que reemplaza un
     corpus exportado de Power BI Desktop. Ese corpus sigue siendo necesario
     para conocer propiedades y combinaciones que aun no escribimos.
+
+    Con `previo` se comprueba solo lo que esta escritura cambia: una propiedad
+    identica a la que ya estaba en disco no puede hacer fallar una operacion
+    que no la toca.
     """
     visual = datos.get("visual")
     if not isinstance(visual, dict):
@@ -530,7 +567,8 @@ def validar_objetos_visual(datos: Dict[str, Any]) -> List[Dict[str, str]]:
     errores: List[Dict[str, str]] = []
     for clave in ("objects", "visualContainerObjects"):
         if clave in visual:
-            _validar_bloque_objetos(visual[clave], f"$.visual.{clave}", errores)
+            _validar_bloque_objetos(visual[clave], f"$.visual.{clave}", errores,
+                                    _valores_previos(previo, clave))
     return errores
 
 
@@ -568,11 +606,17 @@ def _esquema_por_ubicacion(archivo: Optional[Any]) -> Optional[str]:
     return next((u for u in urls_soportadas() if u.endswith(sufijo)), None)
 
 
-def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
+def validar(datos: Any, *, archivo: Optional[Any] = None,
+            previo: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Valida un documento COMPLETO contra su esquema oficial.
 
-    Se valida el documento entero, no solo lo que cambio: una escritura puede
-    romper una regla que dependa de otra parte del archivo.
+    Contra el JSON Schema se valida el documento entero, no solo lo que cambio:
+    una escritura puede romper una regla que dependa de otra parte del archivo.
+
+    Los CATALOGOS de formato son otra cosa. Ni el esquema oficial ni el CLI
+    describen todo lo que un informe real conserva, asi que ahi se comprueba
+    solo el delta: `previo` es el documento tal como esta en disco antes de
+    escribir, y una propiedad que no cambia no puede bloquear la operacion.
     """
     import jsonschema
 
@@ -654,7 +698,7 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
     # color solido de una expresion mal anidada, pero Desktop si: la ignora.
     # Estas reglas cubren los envoltorios que escribimos sin intentar inventar
     # un catalogo de propiedades que Microsoft no publica.
-    errores_formato = validar_objetos_visual(datos)
+    errores_formato = validar_objetos_visual(datos, previo=previo)
     if errores_formato:
         raise SchemaValidationFailed(
             f"{len(errores_formato)} error(es) estructural(es) de formato en "
@@ -670,7 +714,7 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
     # no solo la propiedad que acaba de tocar el escritor. Sin ese runtime se
     # conserva el comportamiento offline y no se inventa un catálogo parcial.
     from horizun_pbi_mcp.services import format_oracle
-    equivalencia = format_oracle.compare_all_managed_objects(datos)
+    equivalencia = format_oracle.compare_all_managed_objects(datos, previo=previo)
     if equivalencia.get("equivalence_checked") and equivalencia.get("errors"):
         raise SchemaValidationFailed(
             "El visual contiene propiedades de formato que Desktop no reconoce.",
@@ -679,10 +723,14 @@ def validar(datos: Any, *, archivo: Optional[Any] = None) -> Dict[str, Any]:
                      "error_count": len(equivalencia["errors"]),
                      "visual_type": equivalencia.get("visual_type"),
                      "catalog_version": equivalencia.get("catalog_version"),
+                     "hint": ("Solo se comprueba lo que esta escritura cambia; "
+                              "estas rutas son parte del delta."),
                      "rule": "format_oracle"})
 
     salida = {"validated": True, "schema": url, "draft": esquema.get("$schema"),
               "validator": Validador.__name__}
+    if equivalencia.get("preexisting_skipped"):
+        salida["preexisting_skipped"] = equivalencia["preexisting_skipped"]
     if degradado:
         salida.update({"checked_against": comprobado_con, "degraded": True,
                        "tolerated": tolerados[:20],

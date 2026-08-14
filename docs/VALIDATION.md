@@ -60,10 +60,31 @@ It's always invoked with **`--no-schema`**: by default the CLI downloads schemas
 ## Oracle for managed format paths
 
 `services/format_oracle.py` queries `formatting effective-properties` from the
-pinned CLI and validates the visual's full `(scope, group, property)` paths,
-including those inherited from a template, with their value type and enums. A
-minimal snapshot enables the same offline barrier for the managed paths, and
-a live test checks it doesn't drift from the official catalog.
+pinned CLI and validates the visual's `(scope, group, property)` paths with
+their value type and enums. A minimal snapshot enables the same offline
+barrier for the managed paths, and a live test checks it doesn't drift from
+the official catalog.
+
+### Only the delta of each write
+
+The catalog describes what Microsoft's CLI knows *today*. A real report keeps
+format that neither the catalog nor we know — Desktop writes it and opens it
+without complaint. So the oracle compares **only what the write changes**: the
+transaction hands it the document as it is on disk, and any property whose
+value doesn't change is skipped (reported as `preexisting_skipped`).
+
+Without this, a dropdown slicer created by Desktop blocked *any* write on it
+because of its own `general.orientation` — a property that was already in the
+file and that the operation wasn't touching. Blocking there protected nothing:
+the only way out was editing the `visual.json` by hand, with no transaction,
+no journal and none of the rules below.
+
+The same rule applies to the structural format checks in `pbir_schema`. The
+official JSON Schema is still validated over the **whole** document: a write
+can break a rule that depends on another part of the file.
+
+Numeric enums are compared as numbers: the catalog lists `"0"`/`"1"` and
+Desktop writes the literal `0D`.
 
 The synthetic fixture `format_objects_corpus.json` adds independent evidence
 from visuals exported by Desktop: it keeps only structural keys and type
