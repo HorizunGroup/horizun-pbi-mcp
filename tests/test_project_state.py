@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
 
 from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.services import project_state
@@ -68,6 +69,39 @@ def procesos(monkeypatch):
     return _set
 
 
+@pytest.fixture
+def escaneo_que_falla(monkeypatch):
+    """`psutil.process_iter` revienta: no se pudo mirar NADA."""
+    import psutil
+
+    def _set(exc):
+        def _boom(attrs=None):
+            raise exc
+        monkeypatch.setattr(psutil, "process_iter", _boom)
+        project_state.invalidate_cache()
+    return _set
+
+
+@pytest.fixture
+def ventanas(monkeypatch):
+    """Controla la correlacion por titulo de ventana.
+
+    `raising=False` es deliberado: sobre el commit anterior a esta correccion
+    la funcion compartida no existe, y lo que tiene que fallar es la ASERCION
+    de estado -el defecto- y no el arranque de la prueba.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_launcher
+
+    def _set(*, pids=(), sin_titulos=(), error=None):
+        resultado = SimpleNamespace(pids=tuple(pids),
+                                    sin_titulos=tuple(sin_titulos),
+                                    error=error)
+        monkeypatch.setattr(desktop_launcher, "coincidencias_por_titulo",
+                            lambda stem, pids_: resultado, raising=False)
+        project_state.invalidate_cache()
+    return _set
+
+
 # ------------------------------------------------------------- deteccion ----
 def test_sin_procesos_es_cerrado(active, procesos):
     procesos([])
@@ -120,6 +154,76 @@ def test_varios_desktop_uno_con_el_proyecto(active, procesos, tmp_path):
     victima = Path(active.report_dir) / "definition" / "report.json"
     procesos([FakeProc("PBIDesktop.exe", 204, files=[otro]),
               FakeProc("PBIDesktop.exe", 205, files=[victima])])
+    assert project_state.detect(active).state == OPEN
+
+
+# ------------------------------------------- CORE-001: un .pbip no deja handle ---
+# Desktop NO deja ningun descriptor abierto sobre la carpeta de un .pbip
+# -medido en `desktop_launcher._pid_por_titulo_de_ventana`- y muchas veces
+# tampoco trae la ruta en la linea de comandos, porque se abrio desde la lista
+# de recientes. Con solo esas dos senales, el detector declaraba CERRADO un
+# proyecto que estaba ABIERTO y autorizaba la escritura.
+def test_pbip_sin_handles_pero_con_ventana_inequivoca_es_open(
+        active, procesos, ventanas):
+    """EL CASO LITERAL DEL HALLAZGO. Sobre 85e433a esto devolvia CLOSED."""
+    procesos([FakeProc("PBIDesktop.exe", 300)])
+    ventanas(pids=[300])
+    estado = project_state.detect(active)
+    assert estado.state == OPEN, (
+        "un .pbip abierto sin descriptores se estaba declarando cerrado")
+    assert not estado.writable
+
+
+def test_desktop_sin_identidad_suficiente_es_desconocido(
+        active, procesos, ventanas):
+    """Sin cmdline, sin handles y sin titulo legible no se sabe que tiene."""
+    procesos([FakeProc("PBIDesktop.exe", 301)])
+    ventanas(pids=[], sin_titulos=[301])
+    estado = project_state.detect(active)
+    assert estado.state == UNKNOWN
+    assert not estado.writable
+
+
+def test_dos_candidatos_con_el_mismo_nombre_es_desconocido(
+        active, procesos, ventanas):
+    """`Ventas.pbip` en dos carpetas: el titulo no distingue cual es."""
+    procesos([FakeProc("PBIDesktop.exe", 302), FakeProc("PBIDesktop.exe", 303)])
+    ventanas(pids=[302, 303])
+    estado = project_state.detect(active)
+    assert estado.state == UNKNOWN
+    assert not estado.writable
+
+
+def test_fallo_al_enumerar_ventanas_es_desconocido(active, procesos, ventanas):
+    procesos([FakeProc("PBIDesktop.exe", 304)])
+    ventanas(error="EnumWindows fallo (Win32 error 5)")
+    estado = project_state.detect(active)
+    assert estado.state == UNKNOWN
+    assert not estado.writable
+
+
+def test_fallo_al_enumerar_procesos_es_desconocido(active, escaneo_que_falla):
+    """Si ni siquiera se pudo listar procesos, no se puede afirmar nada."""
+    escaneo_que_falla(OSError("no se pudo abrir el snapshot de procesos"))
+    estado = project_state.detect(active)
+    assert estado.state == UNKNOWN
+    assert not estado.writable
+
+
+def test_escritura_bloqueada_cuando_el_detector_dice_desconocido(
+        active, procesos, ventanas):
+    procesos([FakeProc("PBIDesktop.exe", 305)])
+    ventanas(pids=[], sin_titulos=[305])
+    with pytest.raises(ProjectOpenInDesktopError) as exc:
+        project_state.assert_writable(active)
+    assert exc.value.details["state"] == UNKNOWN
+
+
+def test_la_ventana_no_pisa_una_deteccion_por_handle(active, procesos, ventanas):
+    """Las senales que ya funcionaban siguen mandando."""
+    victima = Path(active.report_dir) / "definition" / "report.json"
+    procesos([FakeProc("PBIDesktop.exe", 306, files=[victima])])
+    ventanas(pids=[])
     assert project_state.detect(active).state == OPEN
 
 
@@ -177,3 +281,84 @@ def test_la_cache_expira(active, procesos, monkeypatch):
 def test_use_cache_false_siempre_reevalua(active, procesos):
     procesos([])
     assert project_state.detect(active, use_cache=False).state == CLOSED
+
+
+# ------------------------------------------------------------------- live ---
+@pytest.mark.live
+def test_live_un_pbip_abierto_sin_handles_se_detecta_abierto(active):
+    """CORE-001 contra Power BI Desktop de verdad, no contra un doble.
+
+    Es la unica prueba que puede demostrar la premisa del hallazgo: que un
+    `.pbip` REAL abierto no deja ningun descriptor sobre su carpeta. Con un
+    proceso simulado eso es una suposicion nuestra; aqui se comprueba.
+
+    Solo toca el proyecto sintetico que crea el propio `tmp_path`. No abre,
+    guarda ni refresca nada del usuario, y cierra exclusivamente la instancia
+    que abrio, identificada por su ruta.
+    """
+    import psutil
+
+    from horizun_pbi_mcp.powerbi import desktop_launcher
+
+    if not Path(r"C:\Program Files\Microsoft Power BI Desktop\bin"
+                r"\PBIDesktop.exe").is_file():
+        pytest.skip("Power BI Desktop no esta instalado en esta maquina.")
+
+    previos = {p.pid for p in psutil.process_iter(["name"])
+               if "pbidesktop" in (p.info.get("name") or "").lower()}
+
+    try:
+        desktop_launcher.open_pbix(active.pbip_path, reuse_open=False,
+                                   timeout=120)
+    except desktop_launcher.DesktopTimeoutError as exc:
+        # `open_pbix` no espera a que la VENTANA aparezca: espera a que el
+        # motor tabular SIRVA el modelo con datos. El proyecto sintetico no
+        # tiene ningun origen que servir, asi que ese plazo no se cumple nunca
+        # por mucho que Desktop lo tenga abierto en pantalla.
+        #
+        # Aqui se para. Forzarlo pediria o un informe real del usuario -que
+        # esta prohibido- o lanzar Desktop por fuera del launcher del propio
+        # proyecto, que es inventarse un camino de arranque para aprobar una
+        # prueba. Se limpia lo que se haya levantado y se declara la falta de
+        # evidencia, que es un resultado, no un fallo que tapar.
+        try:
+            desktop_launcher.close_desktop_by_path(active.pbip_path)
+        except Exception:                      # noqa: BLE001
+            pass
+        pytest.skip(
+            "El proyecto sintetico no puede ser SERVIDO por Power BI Desktop "
+            f"(sin origen de datos): {exc}. La evidencia live de CORE-001 "
+            "necesita un fixture que Desktop pueda cargar de verdad.")
+    try:
+        nuevos = [p for p in psutil.process_iter(["name"])
+                  if "pbidesktop" in (p.info.get("name") or "").lower()
+                  and p.pid not in previos]
+        assert nuevos, "no arranco ningun proceso nuevo de Power BI Desktop"
+        proc = nuevos[0]
+        identidad = (proc.pid, proc.create_time())
+
+        # La premisa del hallazgo, comprobada y no supuesta.
+        handles = []
+        for p in nuevos:
+            try:
+                handles += [h.path for h in p.open_files()
+                            if str(active.project_dir).casefold()
+                            in str(h.path).casefold()]
+            except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+                pass
+        assert not handles, (
+            "este .pbip SI dejo descriptores; la premisa de CORE-001 no se "
+            f"sostiene en esta maquina: {handles}")
+
+        project_state.invalidate_cache()
+        estado = project_state.detect(active, use_cache=False)
+        assert estado.state == OPEN, (
+            f"un .pbip abierto de verdad se declaro '{estado.state}': "
+            f"{estado.reason}")
+        assert not estado.writable
+    finally:
+        desktop_launcher.close_desktop_by_path(active.pbip_path)
+
+    assert not psutil.pid_exists(identidad[0]) or \
+        psutil.Process(identidad[0]).create_time() != identidad[1], \
+        "la instancia que abrio la prueba sigue viva"

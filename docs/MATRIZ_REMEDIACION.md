@@ -73,7 +73,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
-| CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Abierta** |
+| CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Parcialmente cerrada** — remediado y probado el 2026-08-14; falta evidencia live |
 | CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Parcialmente cerrada** |
 | CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Parcialmente cerrada** |
 | CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
@@ -123,7 +123,16 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-29 entradas: 1 cerrada (CONTRACT-001), 6 parcialmente cerradas, 22 abiertas.
+29 entradas: 1 cerrada (CONTRACT-001), 7 parcialmente cerradas, 21 abiertas.
+
+CORE-001 pasó de abierta a parcialmente cerrada el 2026-08-14, en la rama
+`codex/core-001-desktop-state`: la corrección está implementada y probada
+—rojo demostrado sobre `85e433a`, verde después, suite completa en 2232— pero
+**no se cierra** porque la prueba live se omite con motivo. `open_pbix` espera a
+que el motor sirva el modelo *con datos* y el proyecto sintético no tiene origen
+que servir; forzarlo habría exigido un informe real del usuario o un camino de
+arranque inventado. La evidencia completa está en
+[`audits/AUDIT_2026-08-14.md`](audits/AUDIT_2026-08-14.md#core-001--detección-falsa-de-proyecto-cerrado).
 Cinco de severidad crítica: CORE-001, CORE-002, INSTALL-003, RELEASE-001,
 RELEASE-002.
 
