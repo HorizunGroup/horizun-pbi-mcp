@@ -1,0 +1,26 @@
+{
+  "manifest_version": 1,
+  "_comment": [
+    "Ejecutables que este repositorio descarga durante CI o instalacion.",
+    "Mismo patron que scripts/libs_manifest.json: nada se ejecuta sin URL",
+    "inmutable, tamano maximo y SHA-256 comprobado ANTES de extraer o correr.",
+    "Una URL con 'latest' o una rama no es inmutable: el contenido puede",
+    "cambiar bajo el mismo enlace, y HTTPS no protege de eso.",
+    "instalar.ps1 NO figura aqui todavia: su contenido cambia en la fase",
+    "siguiente y su hash solo puede fijarse cuando sea definitivo."
+  ],
+  "downloads": {
+    "mcp-publisher": {
+      "version": "1.8.1",
+      "platform": "linux_amd64",
+      "url": "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz",
+      "sha256": "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc",
+      "max_bytes": 20971520,
+      "actual_bytes": 7339841,
+      "official_source": "https://github.com/modelcontextprotocol/registry/releases/tag/v1.8.1",
+      "purpose": "Valida y publica .mcp/server.json en el MCP Registry.",
+      "verified_at": "2026-08-14",
+      "used_by": [".github/workflows/publish-mcp.yml"]
+    }
+  }
+}

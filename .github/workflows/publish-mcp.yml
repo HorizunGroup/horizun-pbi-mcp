@@ -15,10 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate server metadata
+      # Antes esto descargaba desde una URL movil y canalizaba los bytes
+      # directamente al extractor, sin comprobar nada: el contenido servido
+      # puede cambiar sin que cambie el enlace, y HTTPS garantiza QUIEN te lo
+      # da, no QUE te da. Ahora: version fija, tamano acotado y SHA-256
+      # verificado ANTES de extraer. Los tres valores viven en
+      # scripts/downloads_manifest.json para que no puedan divergir entre el
+      # workflow, el script y la documentacion.
+      - name: Download and verify mcp-publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
-          ./mcp-publisher validate .mcp/server.json
+          set -euo pipefail
+          leer() { python3 -c "import json,sys;print(json.load(open('scripts/downloads_manifest.json'))['downloads']['mcp-publisher'][sys.argv[1]])" "$1"; }
+          url=$(leer url); esperado=$(leer sha256); maximo=$(leer max_bytes)
+          tmp=$(mktemp -d)
+          trap 'rm -rf -- "$tmp"' EXIT
+          curl -fsSL --max-filesize "$maximo" -o "$tmp/publisher.tar.gz" "$url"
+          real=$(sha256sum "$tmp/publisher.tar.gz" | cut -d' ' -f1)
+          if [ "$real" != "$esperado" ]; then
+            echo "::error::SHA-256 de mcp-publisher no coincide (esperado=$esperado real=$real); no se extrae nada" >&2
+            exit 1
+          fi
+          tar xzf "$tmp/publisher.tar.gz" -C . mcp-publisher
+
+      - name: Validate server metadata
+        run: ./mcp-publisher validate .mcp/server.json
 
       # El registro rechaza republicar una version ya publicada (400
       # `cannot publish duplicate version`). Si el tag y el manifiesto no
