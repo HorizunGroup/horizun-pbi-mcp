@@ -171,6 +171,20 @@ def write_golden(snapshot: Dict[str, Any]) -> Path:
 
 
 # ------------------------------------------------------------------- diffing ---
+def _es_ampliacion(antes: str, ahora: str) -> bool:
+    """Si el tipo nuevo ACEPTA todo lo que aceptaba el viejo.
+
+    `string` -> `null|string` no rompe a nadie: toda llamada que pasaba una
+    cadena sigue valiendo, y lo unico que cambia es que ahora tambien se puede
+    omitir. Tratarlo como ruptura obligaba a regenerar el golden a ciegas, que
+    es justo como se pierde la senal que esta red de seguridad existe para dar.
+    Al reves -`null|string` -> `string`- si rompe, y sigue marcado.
+    """
+    viejos = set(antes.split("|"))
+    nuevos = set(ahora.split("|"))
+    return viejos < nuevos
+
+
 def diff_snapshots(golden: Dict[str, Any],
                    current: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     """Compara dos snapshots.
@@ -217,8 +231,13 @@ def diff_snapshots(golden: Dict[str, Any],
         for pname in sorted(set(g_params) & set(c_params)):
             gp, cp = g_params[pname], c_params[pname]
             if gp["type"] != cp["type"]:
-                breaking.append(
-                    f"{name}.{pname}: tipo {gp['type']} -> {cp['type']}")
+                if _es_ampliacion(gp["type"], cp["type"]):
+                    compatible.append(
+                        f"{name}.{pname}: tipo ampliado {gp['type']} -> "
+                        f"{cp['type']} (lo que valia antes sigue valiendo)")
+                else:
+                    breaking.append(
+                        f"{name}.{pname}: tipo {gp['type']} -> {cp['type']}")
             if gp["required"] != cp["required"]:
                 if cp["required"]:
                     breaking.append(
