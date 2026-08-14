@@ -111,11 +111,11 @@ Cierra TEST-003 y da la única evidencia posible de G1.1.
 | # | Gate | Cómo se decide | Cierra |
 |---|---|---|---|
 | G5.1 | Filtro por medida encadena slicers en un informe real | Aplicar y abrir; el visual filtra | TEST-003 |
-| G5.2 | `refresh` + captura produce una imagen con datos | `data_loaded: true` y tablas no vacías en la captura | TEST-003 |
+| G5.2 | `refresh` + captura produce una imagen con datos | `data_loaded: true` y tablas no vacías en la captura | TEST-003, TEST-004 |
 | G5.3 | `data_loaded: false` cuando el modelo está vacío | Capturar sin refrescar; exigir el aviso | TEST-003 |
-| G5.4 | El cambio de página captura la página pedida | Capturar una página no activa y verificar cuál salió | TEST-003 |
+| G5.4 | El cambio de página captura la página pedida | Capturar una página no activa y verificar cuál salió | TEST-003, TEST-004 |
 | G5.5 | Un `.pbip` abierto se detecta como abierto | Es G1.1 visto desde aquí | CORE-001 |
-| G5.6 | Un rollback real restaura byte a byte | Escritura fallida sobre informe real; comparar hashes antes/después | TEST-003 |
+| G5.6 | Un rollback real restaura byte a byte | Escritura fallida sobre informe real; comparar hashes antes/después | TEST-003, TEST-004 |
 
 **Umbral: 6 de 6, con corrida fechada.** Se ejecuta bajo demanda (marcador
 propio), no en cada CI.

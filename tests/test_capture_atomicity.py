@@ -332,7 +332,8 @@ def _pbi_vivos():
 
 
 @pytest.mark.live
-def test_live_captura_real_deja_el_proyecto_byte_a_byte_igual(proyecto):
+def test_live_captura_real_deja_el_proyecto_byte_a_byte_igual(
+        live_settings, proyecto, monkeypatch):
     """CORE-002 contra Power BI Desktop de verdad.
 
     Captura con pagina explicita y `fit_to_page`, que es el caso que SI escribe
@@ -346,7 +347,13 @@ def test_live_captura_real_deja_el_proyecto_byte_a_byte_igual(proyecto):
     """
     import psutil
 
+    from horizun_pbi_mcp import config as cfg
+
     pbip, active, tool = proyecto
+    # `proyecto` depende de `session`, que arrastra `isolated_settings` y pisa
+    # el singleton con un `libs_dir` vacio. Se reafirma DESPUES: es el orden lo
+    # que decide si esta prueba ve las DLL.
+    monkeypatch.setattr(cfg, "_settings", live_settings)
     raiz = pbip.parent
 
     antes_procesos = _pbi_vivos()
@@ -362,7 +369,7 @@ def test_live_captura_real_deja_el_proyecto_byte_a_byte_igual(proyecto):
 
     try:
         salida = tool(path=str(pbip), page=PAGINA_PEDIDA, fit_to_page=True,
-                      refresh=True, reuse_open=False, timeout=90)
+                      refresh=False, reuse_open=False, timeout=90)
     finally:
         restantes = {pid: d for pid, d in _pbi_vivos().items()
                      if pid not in antes_procesos}

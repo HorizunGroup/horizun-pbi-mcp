@@ -74,7 +74,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
 | CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Cerrada** — 2026-08-14, con evidencia live |
-| CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Parcialmente cerrada** — remediado y probado el 2026-08-14; falta evidencia live |
+| CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Cerrada** — 2026-08-14, con captura live e igualdad byte a byte |
 | CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Parcialmente cerrada** |
 | CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
 | CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Abierta** |
@@ -110,6 +110,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | TEST-001 | `test_packaging` convierte fallos en skips y prueba en venv no limpio | Alta | G8.2, G8.3 | **Abierta** |
 | TEST-002 | Inventario de las 134 tools: ejecución MCP, casos negativos, payload congelado | Alta | G2.3, G2.4 | **Abierta** |
 | TEST-003 | Sin cobertura live verificada de los seis escenarios de Desktop | Alta | G5.1–G5.6 | **Abierta** |
+| TEST-004 | `isolated_settings` deja sin DLL de Analysis Services a las pruebas live | Media | G5.2, G5.4, G5.6 | **Cerrada** — 2026-08-14 |
 
 ## Documentación y CLI
 
@@ -123,25 +124,22 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-29 entradas: **2 cerradas** (CONTRACT-001, CORE-001), 6 parcialmente cerradas,
-21 abiertas. Los conteos no cambian con CORE-002: ya figuraba como
-parcialmente cerrada, y su remediación del 2026-08-14 —contención de rutas y
-parche temporal atómico— no la cierra porque la captura live sigue sin poder
-ejecutarse (`open_pbix` espera un modelo servido, no una ventana).
+30 entradas: **4 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-004),
+5 parcialmente cerradas, 21 abiertas. Conteo verificado sobre las filas, no
+escrito de memoria.
 
-CORE-001 se cerró el 2026-08-14 en la rama `codex/core-001-desktop-state`:
-rojo demostrado sobre `85e433a` (6 failed / 15 passed, con el caso literal
-fallando `assert 'closed' == 'open'`), verde después, y **evidencia live** con
-Power BI Desktop real —`state=open`, `confidence=medium`, señales
-`open_files: no_match` seguido de `window_title: match 'Demo'`— sobre el fixture
-sintético nuevo `tests/fixtures/synthetic/desktop_openable/`, con limpieza
-verificada a cero procesos.
+CORE-002 se cerró el 2026-08-14 tras destrabar TEST-004: captura live real con
+página explícita y fit-to-page, PNG producido, **14 archivos antes y 14 después
+con el mismo hash**, cero `.tmp`, cero journals pendientes, cero procesos
+restantes, en 10,67 s.
 
-Ese fixture es un subproducto reutilizable: `minimal` sirve al validador PBIR
-pero Desktop lo rechaza por artefactos ausentes (`definition.pbism`,
-`database.tmdl`, `version.json`, `.platform`). **Cualquier gate live que
-necesite una ventana real de Desktop depende ahora de `desktop_openable`, no de
-`minimal`** — en particular TEST-003 y los gates G5.x, además de G1.1.
+TEST-004 nació de refutar una hipótesis. Se propuso registrar **CORE-007** —
+«`open_pbix` confunde ventana abierta, motor disponible y datos cargados»— y la
+medición instrumentada lo descartó: `open_pbix` resuelve las tres etapas en
+~10 s. El bloqueo era que `isolated_settings` apunta `libs_dir` a un `tmp_path`
+vacío, así que ADOMD no carga y `desktop_discovery` no puede leer `catalog` ni
+`table_count`. **CORE-007 no figura en esta matriz**: la causa propuesta no
+existía. La separación de readiness queda como posible mejora de diagnóstico.
 
 La evidencia completa está en
 [`audits/AUDIT_2026-08-14.md`](audits/AUDIT_2026-08-14.md#core-001--detección-falsa-de-proyecto-cerrado).

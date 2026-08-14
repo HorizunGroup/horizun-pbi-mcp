@@ -1,6 +1,8 @@
 """Fixtures compartidas: proyecto .pbip sintetico y Session aislada."""
 import json
 
+from pathlib import Path
+
 import pytest
 
 from horizun_pbi_mcp import config
@@ -60,6 +62,62 @@ def isolated_settings(tmp_path, monkeypatch):
     settings.ensure_dirs()
     monkeypatch.setattr(config, "_settings", settings)
     return settings
+
+
+#: DLL que `clr_bootstrap` carga por nombre. Si falta alguna, ADOMD no arranca
+#: y `desktop_discovery` no puede leer `catalog` ni `table_count`.
+LIBS_MINIMAS = (
+    "Microsoft.AnalysisServices.AdomdClient.dll",
+    "Microsoft.AnalysisServices.Tabular.dll",
+)
+
+#: Raiz del repositorio derivada de ESTE archivo, no del cwd: una prueba puede
+#: ejecutarse desde cualquier directorio.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def libs_reales() -> Path:
+    """Carpeta con las DLL de Analysis Services del repositorio."""
+    return REPO_ROOT / "libs"
+
+
+@pytest.fixture
+def live_settings(tmp_path, monkeypatch):
+    """Settings para pruebas LIVE: DLL reales, todo lo demas en `tmp_path`.
+
+    TEST-004. `isolated_settings` apunta `libs_dir` a un `tmp_path` vacio, que
+    es lo correcto para la suite unitaria pero deja sin ADOMD a cualquier
+    prueba que necesite el motor tabular: `desktop_discovery` no puede leer
+    `catalog` ni `table_count`, asi que toda instancia queda descartada y la
+    espera agota su plazo aunque Power BI Desktop este sirviendo el modelo.
+    Costo medido: 90/300 s de timeout donde el flujo real tarda 10,9 s.
+
+    Aqui se presta UNA sola cosa del entorno de verdad -las DLL, en solo
+    lectura- y se mantiene aislado todo lo que la prueba pueda ensuciar:
+    salidas, backups y sesion viven en `tmp_path`. No es autouse: quien la
+    quiera la pide.
+    """
+    libs = libs_reales()
+    faltan = [d for d in LIBS_MINIMAS if not (libs / d).is_file()]
+    if faltan:
+        # Antes de abrir nada: un skip que tarda milisegundos y dice como
+        # repararlo, en vez de un timeout de varios minutos sin explicacion.
+        pytest.skip(
+            f"Faltan las DLL de Analysis Services en {libs}: {faltan}. "
+            "Instalalas con: python scripts/fetch_libs.py")
+
+    settings = make_settings(tmp_path)
+    settings.libs_dir = libs
+    settings.ensure_dirs()
+    previo = config._settings
+    monkeypatch.setattr(config, "_settings", settings)
+    try:
+        yield settings
+    finally:
+        # `monkeypatch` ya restaura, pero se deja explicito: una prueba live
+        # que falle a mitad no puede dejar el singleton apuntando a las DLL
+        # reales para las que vengan detras.
+        config._settings = previo
 
 
 @pytest.fixture(autouse=True)
