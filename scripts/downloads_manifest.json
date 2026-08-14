@@ -6,10 +6,32 @@
     "inmutable, tamano maximo y SHA-256 comprobado ANTES de extraer o correr.",
     "Una URL con 'latest' o una rama no es inmutable: el contenido puede",
     "cambiar bajo el mismo enlace, y HTTPS no protege de eso.",
-    "instalar.ps1 NO figura aqui todavia: su contenido cambia en la fase",
-    "siguiente y su hash solo puede fijarse cuando sea definitivo."
+    "'status': published = el asset existe y se descargo para verificarlo;",
+    "pending_remote_release = el hash es de los bytes locales y el asset se",
+    "publicara con ESOS mismos bytes. Nunca se afirma que existe un asset",
+    "remoto que todavia no se ha creado."
   ],
   "downloads": {
+    "instalar.ps1": {
+      "name": "horizun-pbi-mcp-instalar.ps1",
+      "version": "1.5.5",
+      "platform": "windows",
+      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1",
+      "sha256": "33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5",
+      "max_bytes": 131072,
+      "actual_bytes": 21016,
+      "encoding": "ascii",
+      "eol": "lf",
+      "bom": false,
+      "source_path": "scripts/instalar.ps1",
+      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v1.5.5",
+      "purpose": "Instalador de un pegado para Windows sin administrador. El asset de la release es una copia byte a byte de scripts/instalar.ps1.",
+      "verified_at": "2026-08-14",
+      "status": "pending_remote_release",
+      "status_note": "El tag v1.5.5 y su release NO existen todavia en el remoto (comprobado con git ls-remote --tags: el ultimo publicado es v1.5.4). El SHA-256 es el de los bytes locales congelados; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende.",
+      "used_by": ["scripts/one_paste.ps1", "README.md", "docs/INSTALL.md",
+                  "skills/horizun-pbi-setup/SKILL.md"]
+    },
     "mcp-publisher": {
       "version": "1.8.1",
       "platform": "linux_amd64",
@@ -20,6 +42,7 @@
       "official_source": "https://github.com/modelcontextprotocol/registry/releases/tag/v1.8.1",
       "purpose": "Valida y publica .mcp/server.json en el MCP Registry.",
       "verified_at": "2026-08-14",
+      "status": "published",
       "used_by": [".github/workflows/publish-mcp.yml"]
     }
   }
