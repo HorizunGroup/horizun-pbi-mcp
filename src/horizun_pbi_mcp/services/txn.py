@@ -26,10 +26,12 @@ siendo EL QUE ESCRIBIMOS NOSOTROS. Si alguien lo cambio despues, se marca
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -38,7 +40,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.services import cerrojo as _cerrojo
 from horizun_pbi_mcp.services import paths as safe_paths
+
+#: Cuanto espera un cliente a que otro suelte el proyecto. Generoso: una
+#: transaccion con validacion del informe tarda segundos, y rendirse antes
+#: convertiria en fallo lo que solo era un turno.
+LOCK_PROYECTO_SEGUNDOS = 120.0
 
 log = get_logger("txn")
 
@@ -246,12 +254,19 @@ class Transaction:
     def __init__(self, project_dir: Path, backup_root: Path, *,
                  tool: str, request_id: Optional[str] = None):
         self.project_dir = Path(project_dir).resolve()
+        # Se guarda porque el cerrojo por proyecto (CORE-006) vive aqui:
+        # fuera del `.pbip` y con un subdirectorio por proyecto.
+        self.backup_root = Path(backup_root)
         self.tool = tool
         self.request_id = request_id or uuid.uuid4().hex[:12]
         self.started = datetime.now().isoformat(timespec="seconds")
         self.records: Dict[str, FileRecord] = {}
         self.committed = False
         self._rolled_back = False
+        self.schemas_validados = 0
+        # Archivos escritos cuyo `$schema` Power BI declara y Microsoft no
+        # publica. No es un fallo, pero quien llama tiene derecho a saberlo.
+        self.esquemas_sin_comprobar: List[Dict[str, Any]] = []
         # Directorios que NO existian al planificar y que la escritura creara.
         # Si hay rollback hay que retirarlos: un `<pageId>/` vacio sin page.json
         # dentro es basura que Power BI y nuestro propio lector interpretan mal.
@@ -409,6 +424,22 @@ class Transaction:
         datos = text.encode("utf-8").replace(b"\n", detect_newline(target))
         self.write_bytes(target, datos, _json_validator)
 
+    def _contenido_previo(self, target: Path) -> Optional[Dict[str, Any]]:
+        """El JSON que hay AHORA en disco, o None si no hay o no parsea.
+
+        Es la referencia para validar solo el delta. Si el archivo no existe,
+        no se puede leer o trae basura, se devuelve None y la validacion vuelve
+        a mirar el documento entero: no saber que habia antes nunca puede
+        relajar la comprobacion.
+        """
+        try:
+            if not target.is_file():
+                return None
+            previo = json.loads(target.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return None
+        return previo if isinstance(previo, dict) else None
+
     def _validar_esquema(self, target: Path, data: Any) -> None:
         """Valida contra el esquema local. Solo aplica a archivos del PBIR.
 
@@ -418,9 +449,15 @@ class Transaction:
         """
         from horizun_pbi_mcp.services import pbir_schema
 
-        resultado = pbir_schema.validar(data, archivo=target)
+        resultado = pbir_schema.validar(data, archivo=target,
+                                        previo=self._contenido_previo(target))
         if resultado.get("validated"):
-            self.schemas_validados = getattr(self, "schemas_validados", 0) + 1
+            self.schemas_validados += 1
+        if resultado.get("schema_unchecked"):
+            self.esquemas_sin_comprobar.append(
+                {"file": safe_paths.relative_key(self.project_dir, target),
+                 "schema": resultado.get("schema"),
+                 "reason": resultado.get("reason")})
 
     def write_text(self, target: Path, text: str) -> None:
         self.write_bytes(target, text.encode("utf-8"))
@@ -561,6 +598,8 @@ class Transaction:
             "files": [r.to_dict() for r in self.records.values()],
             "removed_dirs": getattr(self, "_removed_dirs", []),
         }
+        if self.esquemas_sin_comprobar:
+            salida["schema_unchecked"] = self.esquemas_sin_comprobar
         # `by_outcome` solo cuando DIAGNOSTICA algo: en una transaccion limpia
         # y confirmada es la misma lista de rutas de `files` reagrupada bajo
         # "committed" -la tercera copia de cada ruta en la respuesta, junto a
@@ -735,12 +774,44 @@ class transaction:
         #: Diagnosticos del validador oficial ANTES de escribir (baseline).
         self.validation: Optional[Dict[str, Any]] = None
         self._baseline: Optional[list] = None
+        self._cerrojo = None
 
     def __enter__(self) -> Transaction:
-        # El baseline se toma ANTES de tocar nada: sin el, los defectos que ya
-        # traia el informe se atribuirian a esta operacion.
-        self._baseline = self._diagnosticar()
-        self.txn.plan(self._targets)
+        # CORE-006 — cerrojo interproceso POR PROYECTO, tomado antes de
+        # planificar y soltado al confirmar o revertir.
+        #
+        # Que ya existiera una defensa conviene decirlo, porque cambia lo que
+        # esto arregla: `Transaction` compara la huella de cada archivo entre
+        # planificar y escribir, asi que dos clientes sobre el mismo `.pbip`
+        # NUNCA se pisaban en silencio -el segundo se encontraba la huella
+        # cambiada y se negaba a sobrescribir-. El *lost update* con las dos
+        # respuestas en verde no llega a ocurrir; se comprobo con dos procesos
+        # reales antes de escribir esta linea.
+        #
+        # Lo que cambia es el desenlace. Sin cerrojo, el segundo cliente FALLA y
+        # el trabajo se pierde aunque el conflicto fuera evitable; con el,
+        # ESPERA su turno, vuelve a leer y aplica. La huella sigue ahi como red
+        # de seguridad: protege tambien de lo que el cerrojo no ve -alguien
+        # editando el informe en Power BI Desktop mientras tanto-, y las dos
+        # juntas cubren mas que cualquiera sola.
+        self._cerrojo = _cerrojo.exclusion(
+            self.txn.backup_root / ".project.lock",
+            timeout=LOCK_PROYECTO_SEGUNDOS,
+            al_agotarse=lambda t: TransactionError(
+                f"Otro cliente lleva mas de {t:.0f}s escribiendo en este "
+                "proyecto y no se ha podido tomar el turno. No se toco nada.",
+                details={"project_dir": str(self.txn.project_dir),
+                         "lock_timeout_seconds": t}))
+        self._cerrojo.__enter__()
+        try:
+            # El baseline se toma ANTES de tocar nada: sin el, los defectos que
+            # ya traia el informe se atribuirian a esta operacion.
+            self._baseline = self._diagnosticar()
+            self.txn.plan(self._targets)
+        except BaseException:
+            self._cerrojo.__exit__(*sys.exc_info())
+            self._cerrojo = None
+            raise
         return self.txn
 
     def _diagnosticar(self) -> Optional[list]:
@@ -803,6 +874,17 @@ class transaction:
                 details=self.validation)
 
     def __exit__(self, exc_type, exc, tb) -> bool:
+        try:
+            return self._salir(exc_type, exc, tb)
+        finally:
+            # Pase lo que pase -commit, rollback, rollback sucio- el turno
+            # se suelta. Un cerrojo que sobrevive a su transaccion deja el
+            # proyecto bloqueado hasta que muera el proceso.
+            if self._cerrojo is not None:
+                self._cerrojo.__exit__(None, None, None)
+                self._cerrojo = None
+
+    def _salir(self, exc_type, exc, tb) -> bool:
         if exc_type is None:
             try:
                 self._validar_informe()
@@ -834,3 +916,74 @@ class transaction:
                 "estaba. Revisa el journal: contiene los originales.",
                 details={"cause": str(exc), **self.result}) from exc
         return False
+
+
+# --------------------------------------------------- parche TEMPORAL ---------
+class TemporaryPatchNotRestored(PowerBIMCPError):
+    """El parche temporal se aplico y NO se pudo deshacer del todo.
+
+    Es el unico desenlace del ciclo de captura que deja el proyecto distinto de
+    como estaba. Tiene codigo propio porque la accion de quien llama es otra:
+    no es reintentar, es mirar el journal y recuperar.
+    """
+
+    code = "temporary_patch_not_restored"
+
+
+@contextlib.contextmanager
+def parche_temporal(active, cambios: Dict[Path, bytes], *, tool: str,
+                    request_id: Optional[str] = None):
+    """Aplica un parche TEMPORAL sobre el proyecto y lo deshace SIEMPRE.
+
+    Es la abstraccion unica del ciclo "tocar el proyecto un rato para mirarlo,
+    y devolverlo exactamente como estaba". Antes ese ciclo estaba repartido
+    entre `desktop_capture` -que escribia y construia su propio `_restore`- y
+    `dax_tools` -que lo llamaba a mano en dos sitios-, y bastaba con que una
+    excepcion cayera entre medias para dejar el informe con una preferencia de
+    vista que el usuario nunca pidio.
+
+    No es una segunda implementacion de atomicidad: se apoya en `Transaction`,
+    que ya sabe planificar, respaldar, escribir de forma durable, validar el
+    esquema, revertir byte a byte y dejar journal. La unica diferencia con una
+    escritura normal es el desenlace: aqui NUNCA se hace commit. El exito del
+    bloque termina igual que el fracaso, en `rollback`.
+
+    Que la transaccion siga abierta mientras Power BI Desktop lee el proyecto
+    no le estorba: `durable_write` cierra su descriptor en cada escritura -no
+    deja handles abiertos sobre el .pbip- y `resolve_backup_root` prohibe que
+    los backups y el journal vivan dentro del proyecto, asi que Desktop no ve
+    ningun archivo nuestro en su arbol. Y tenerla abierta es justo lo que hace
+    recuperable un corte de luz a mitad de captura: el journal queda pendiente
+    y `list_journals(only_pending=True)` lo encuentra.
+
+    `cambios` mapea ruta -> bytes finales. Todas las rutas se contienen contra
+    la raiz del proyecto ANTES de la primera escritura.
+    """
+    from horizun_pbi_mcp.utils.validation import ensure_within_base
+
+    raiz = Path(active.project_dir).resolve()
+    planeados: Dict[Path, bytes] = {}
+    for destino, datos in (cambios or {}).items():
+        planeados[ensure_within_base(raiz, destino)] = datos
+
+    txn_obj = Transaction(raiz, project_backup_root(active), tool=tool,
+                          request_id=request_id)
+    txn_obj.plan(planeados.keys())
+    try:
+        # Orden estable: el mismo journal para la misma operacion.
+        for destino in sorted(planeados):
+            txn_obj.write_bytes(destino, planeados[destino], _json_validator)
+        yield txn_obj
+    finally:
+        resultado = txn_obj.rollback(cause=f"parche temporal de {tool}")
+        # `clean` es False si algun archivo quedo en ROLLBACK_FAILED o en
+        # ROLLBACK_CONFLICT: en los dos casos el proyecto NO esta como estaba.
+        if not resultado.get("clean"):
+            raise TemporaryPatchNotRestored(
+                "El parche temporal de la captura se aplico y no se pudo "
+                "deshacer entero. El proyecto NO esta como estaba: revisa el "
+                "journal antes de volver a escribir.",
+                details={"intervention_required": True,
+                         "rollback": resultado,
+                         "journal": resultado.get("journal"),
+                         "tool": tool})

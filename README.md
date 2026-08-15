@@ -2,17 +2,110 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v1.5.4** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion.
+**v2.0.0** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion. **Breaking:** three tools now require `confirm` or changed their annotations — see [the migration guide](docs/MIGRACION_1x_A_2.0.md).
 
 ---
 
 # Install: one command, any Windows PC
 
 Open **PowerShell** — a normal window, *not* "as administrator" — and paste
-this. It works whether the machine is fully set up or completely empty:
+this. It works whether the machine is fully set up or completely empty.
+
+> **What "completely empty" does and does not cover.** The installer brings
+> Python, Node and Claude Code. It does **not install Power BI Desktop**, and
+> Microsoft does not allow redistributing it. Without Desktop you still get the
+> whole `.pbip` side — read, author, validate and back up projects on disk — and
+> you do **not** get the LIVE layer: no DAX against a running model, no refresh,
+> no visual capture and no render validation. Install it separately from the
+> Microsoft Store when you need those.
+
+It is longer than a one-liner on purpose. The short version everyone writes —
+`irm <url> | iex` — runs whatever bytes that URL happens to return today, and
+HTTPS only tells you *who* served them, not *what* they are. This block pins a
+**released version**, caps the download size, checks the **SHA-256**, and only
+then runs the script — with `&`, never `iex`. If the hash doesn't match,
+**nothing executes** and the temp file is deleted anyway. Paste it whole:
 
 ```powershell
-irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
+$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+# En que punto se quedo, para que el mensaje final diga la verdad y no una
+# formula. Antes, un instalador que se ejecutaba y devolvia error terminaba
+# imprimiendo "No se ejecuto nada que no coincidiera con el hash publicado":
+# cierto en lo literal y enganoso en lo que la persona entiende, que es que no
+# se ejecuto nada.
+$fase = 'descarga'
+$ejecutado = $false
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $fase = 'verificacion'
+    if ($sha -cnotmatch '^[0-9a-f]{64}$') {
+        throw "El hash publicado en el bloque no es un SHA-256 de 64 hex en minusculas. No se ejecuta nada."
+    }
+    $flujo = [IO.File]::Open($tmp, 'Open', 'Read', 'Read')
+    try {
+        $algoritmo = [Security.Cryptography.SHA256]::Create()
+        try { $digest = $algoritmo.ComputeHash($flujo) } finally { $algoritmo.Dispose() }
+    } finally { $flujo.Dispose() }
+    $real = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+    if ($real.Length -ne 64) {
+        throw "No se pudo calcular el SHA-256 de lo descargado. No se ejecuta nada."
+    }
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    $fase = 'ejecucion'
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    $ps = [IO.Path]::Combine($PSHOME, 'powershell.exe')
+    if (-not [IO.File]::Exists($ps)) {
+        $ps = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    }
+    if (-not [IO.File]::Exists($ps)) {
+        throw "No se encontro Windows PowerShell. No se ejecuta nada."
+    }
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
+    $ejecutado = $true
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    if ($ejecutado) {
+        Write-Host "        El instalador SI llego a ejecutarse: sus bytes coincidian con el hash publicado, y fallo durante la instalacion." -ForegroundColor Red
+    } else {
+        Write-Host ("        No se ejecuto nada: se aborto en la fase '" + $fase + "', antes de lanzar el instalador.") -ForegroundColor Red
+    }
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 ```
 
 Then **restart Claude once**, and the 134 `pbi_*` tools are there. That's the
@@ -22,7 +115,23 @@ to edit.
 It installs only what is missing — Python, Git, Claude Code itself — for **your
 user account**, and it tells you what it did at every step. It is idempotent:
 if something is left pending (say your IT department blocks an install), fix it
-and paste the same line again; nothing is repeated or broken.
+and paste the same block again; nothing is repeated or broken.
+
+**Want to see what it would do before it does anything?** Clone the repository
+and run the installer in dry-run mode. It diagnoses the machine and prints the
+plan — detected prerequisites, missing dependencies, planned actions,
+registrable clients — without downloading, installing, registering, writing a
+single file or touching your execution policy:
+
+```bash
+powershell -NoProfile -File scripts/instalar.ps1 -DryRun
+```
+
+The exact bytes the block above downloads are `scripts/instalar.ps1`; their
+size and SHA-256 are recorded in
+[`scripts/downloads_manifest.json`](scripts/downloads_manifest.json), and a
+test checks the three against each other so the README can't drift from what is
+actually published.
 
 | Starting point | How long |
 |---|---|
@@ -100,6 +209,7 @@ repository, not a promise:
 | [`docs/BACKLOG.md`](docs/BACKLOG.md) | What remains open, with evidence and how to check it |
 | [`docs/TUTORIAL.md`](docs/TUTORIAL.md) | From installation to a dashboard, step by step |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, guarantees and what it does **not** promise |
+| [`SECURITY.md`](SECURITY.md) | How to report a vulnerability privately, response times, supported versions |
 | [`docs/RECOVERY.md`](docs/RECOVERY.md) | What to do when something is left half-done |
 | [`docs/PHASE_1A_DESIGN.md`](docs/PHASE_1A_DESIGN.md) | Design of the security layer |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version history |
@@ -111,7 +221,7 @@ repository, not a promise:
 
 - **Live DAX:** runs queries against the open model and returns columns/rows with timings.
 - **Documentation:** tables, columns, measures, relationships, hierarchies, roles (RLS) and quality analysis → Markdown.
-- **Measures:** create/edit/delete DAX measures in the open model (`live`), in the TMDL file (`pbip`) or in both (`both`).
+- **Measures:** create/edit/delete DAX measures in the open model (`live`) or in the TMDL file (`pbip`). Writing to **both in one call is blocked** — the two require opposite states of Desktop; see [`mode="both"` blocked](#modeboth-blocked).
 - **Local refresh:** refreshes the open model in Desktop (not the Service).
 - **PBIP:** open/validate projects, automatic backups.
 - **`.pbix` → `.pbip` conversion:** report to PBIR (copied if the `.pbix` already carries it, translated if it keeps the legacy format) and model to TMDL, single file or batch folder.
@@ -148,7 +258,7 @@ Use this instead of the short prompt when you want the agent to *narrate*: a
 plan before it touches anything, an ETA before every step, and evidence after
 each one. Any Claude that can run commands will do (Claude Code, or the desktop
 app with terminal access). If you have none, install the CLI first with
-`irm https://claude.ai/install.ps1 | iex` and then paste this:
+the CLI from Anthropic's official documentation ([https://docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code)) and then paste this:
 
 ```text
 Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) on this machine, end to end, under these rules:
@@ -160,7 +270,7 @@ Install the Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) on this machine, end 
    (version installed, path). If something takes longer than estimated, report it instead of leaving me waiting.
 3. Install ONLY what is missing, at user scope, without asking for administrator:
    - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-   - Claude Code CLI (if absent): irm https://claude.ai/install.ps1 | iex
+   - Claude Code CLI (if absent): install it yourself from https://docs.anthropic.com/en/docs/claude-code — this script never downloads or runs an Anthropic installer for you
    Remember the terminal you installed from does NOT see the new PATH: use absolute paths or refresh this
    process's PATH yourself; do not ask me to close and reopen windows.
 4. If signing in to Claude is needed, that is my ONLY step: tell me exactly what to do and wait for me.
@@ -190,7 +300,7 @@ Instala el Horizun PBI MCP (HorizunGroup/horizun-pbi-mcp) en este equipo, de pun
    evidencia (versión instalada, ruta). Si algo lleva más de lo estimado, repórtalo en vez de dejarme esperando.
 3. Instala SOLO lo que falte, en ámbito de usuario, sin pedir administrador:
    - Python: winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-   - Claude Code CLI (si no existe): irm https://claude.ai/install.ps1 | iex
+   - Claude Code CLI (si no existe): instalalo tu desde https://docs.anthropic.com/en/docs/claude-code — este script nunca descarga ni ejecuta un instalador de Anthropic por ti
    Recuerda que la terminal donde instalaste NO ve el PATH nuevo: usa rutas absolutas o refresca el PATH del
    proceso tú mismo; no me pidas cerrar y abrir ventanas a mí.
 4. Si hace falta iniciar sesión en Claude, ese es el ÚNICO paso mío: dime exactamente qué hacer y espérame.
@@ -228,12 +338,96 @@ causas, y la regla que las mata:
 
 ### No Claude at all? One-paste PowerShell installer
 
-No Claude Code on the machine yet? One paste in a normal PowerShell window
-(no admin; it can install Claude Code too, and when IT blocks installs its
-output is the exact user-scope ticket to hand over):
+No Claude Code on the machine yet? One paste in a normal PowerShell window (no
+admin). It installs the prerequisites it can — Python, Git, optional Node — and
+when IT blocks installs, its output is the exact user-scope ticket to hand
+over. **Claude Code itself it does not install**: there is no pinned, hashed
+build of it to verify, so the script detects it, points at Anthropic's official
+docs and carries on rather than piping a remote script into your shell.
+
+Same verified block as at the top of this file (pinned release, size cap,
+SHA-256 checked before anything runs):
 
 ```powershell
-irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
+$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+# En que punto se quedo, para que el mensaje final diga la verdad y no una
+# formula. Antes, un instalador que se ejecutaba y devolvia error terminaba
+# imprimiendo "No se ejecuto nada que no coincidiera con el hash publicado":
+# cierto en lo literal y enganoso en lo que la persona entiende, que es que no
+# se ejecuto nada.
+$fase = 'descarga'
+$ejecutado = $false
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $fase = 'verificacion'
+    if ($sha -cnotmatch '^[0-9a-f]{64}$') {
+        throw "El hash publicado en el bloque no es un SHA-256 de 64 hex en minusculas. No se ejecuta nada."
+    }
+    $flujo = [IO.File]::Open($tmp, 'Open', 'Read', 'Read')
+    try {
+        $algoritmo = [Security.Cryptography.SHA256]::Create()
+        try { $digest = $algoritmo.ComputeHash($flujo) } finally { $algoritmo.Dispose() }
+    } finally { $flujo.Dispose() }
+    $real = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+    if ($real.Length -ne 64) {
+        throw "No se pudo calcular el SHA-256 de lo descargado. No se ejecuta nada."
+    }
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    $fase = 'ejecucion'
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    $ps = [IO.Path]::Combine($PSHOME, 'powershell.exe')
+    if (-not [IO.File]::Exists($ps)) {
+        $ps = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    }
+    if (-not [IO.File]::Exists($ps)) {
+        throw "No se encontro Windows PowerShell. No se ejecuta nada."
+    }
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
+    $ejecutado = $true
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    if ($ejecutado) {
+        Write-Host "        El instalador SI llego a ejecutarse: sus bytes coincidian con el hash publicado, y fallo durante la instalacion." -ForegroundColor Red
+    } else {
+        Write-Host ("        No se ejecuto nada: se aborto en la fase '" + $fase + "', antes de lanzar el instalador.") -ForegroundColor Red
+    }
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
 ```
 
 ### What the agent runs underneath
@@ -386,7 +580,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 - `pbi_sharepoint_download_folder` — staged all-or-nothing download to `outputs/sharepoint/`, verified by size and SHA-256.
 - `pbi_export_report_content` — exports the report **content**: the data behind each visual, or a query the client declares. Needs the live model; refuses to export an unprocessed one instead of writing a blank file.
 
-**Measures (Phase 4)** — `mode: live|pbip|both`, `overwrite`
+**Measures (Phase 4)** — `mode: live|pbip` (`both` is blocked, R15), `overwrite`
 - `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructive: `confirm=true`).
 
 **Refresh (Phase 5)**
@@ -405,8 +599,8 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 > Power BI Desktop **does not open a `.pbip` with paths of 260 characters or more**: pick a short `out_dir` (`C:\pbip`). The tool checks this before writing and aborts with the detail instead of leaving a project that won't open.
 
 **Model editing**
-- `pbi_set_column_visibility` / `pbi_hide_columns` — hide/show columns (e.g. IDs). `mode: live|pbip|both`.
-- `pbi_set_relationship_direction` — cross filter `single|both` of a relationship. `mode: live|pbip|both`.
+- `pbi_set_column_visibility` / `pbi_hide_columns` — hide/show columns (e.g. IDs). `mode: live|pbip` (`both` blocked).
+- `pbi_set_relationship_direction` — cross filter `single|both` of a relationship (that `both` is the *filter direction*, unrelated to the write mode). `mode: live|pbip` (`both` blocked).
 - `pbi_disable_auto_date_time` — enables/disables "Auto date/time" (`pbip` only).
 
 **PBIR Report (Phases 7–10)**
@@ -436,7 +630,7 @@ Every tool returns `{"ok": true/false, ...}`; on error it includes `error` (code
 
 - **Run DAX:** *"List the open models, select the only one, and run `EVALUATE TOPN(10, Sales)`."*
 - **Document:** *"Document the active model and analyze its quality."* → generates `outputs/model_documentation_*.md`.
-- **Create measure:** *"Create the measure `Margin % = DIVIDE([Profit],[Sales])` in the Sales table, format `0.0%`, mode both."*
+- **Create measure:** *"Create the measure `Margin % = DIVIDE([Profit],[Sales])` in the Sales table, format `0.0%`, mode live."* (or `pbip` with Desktop closed — `both` is blocked, see below.)
 - **List visuals:** *"Open the `.pbip` at C:/…/Report.pbip and list the visuals on the 'Summary' page."*
 - **Create visual:** see [`examples/sample_visual_specs.json`](examples/sample_visual_specs.json).
 - **Arrange page:** *"Arrange the 'Summary' page with executive_summary layout."*
@@ -450,7 +644,7 @@ More DAX in [`examples/sample_queries.md`](examples/sample_queries.md).
 ## Troubleshooting
 
 - **Doesn't detect the port / "No se detecto ningun modelo":** open the report in Power BI Desktop; the port changes on every startup (the MCP discovers it on its own). If you use the Microsoft Store version, it's still detected by process.
-- **`adomd_not_installed` / `tom_not_installed`:** run `python scripts/fetch_libs.py`. Check that `libs/Microsoft.AnalysisServices.AdomdClient.dll` exists.
+- **`adomd_not_installed` / `tom_not_installed`:** run `horizun-pbi-completar` (installed package) or `python scripts/fetch_libs.py` (from the clone). Check that `libs/Microsoft.AnalysisServices.AdomdClient.dll` exists.
 - **`clr_not_available`:** .NET is missing; try `PBI_MCP_DOTNET_RUNTIME=coreclr`.
 - **DAX error:** the engine's message is returned as-is in `message`. Check the syntax (EVALUATE, quotes).
 - **`pbir_not_enabled`:** the report isn't in PBIR. Save as `.pbip` and enable *Power BI Project (PBIR) format* under Options → Preview Features (if applicable to your version) before saving.

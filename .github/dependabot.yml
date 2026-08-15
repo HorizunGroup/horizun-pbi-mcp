@@ -1,0 +1,49 @@
+# RELEASE-003 — que las dependencias no envejezcan en silencio.
+#
+# Dos ecosistemas, por dos motivos distintos:
+#
+#   github-actions: aqui TODAS las acciones estan pineadas por SHA completo, y
+#     un SHA no caduca ni avisa. Ese pin es lo correcto para la seguridad -un
+#     tag es movil y quien controle el repositorio de la action puede
+#     reapuntarlo- pero congela tambien los arreglos. Dependabot es la otra
+#     mitad del trato: propone el SHA nuevo con su changelog, y una persona
+#     decide. Sin esto, pinear seria simplemente quedarse atras para siempre.
+#
+#   pip: las dependencias de runtime estan acotadas por arriba a proposito
+#     (`mcp>=1.28.1,<2`), asi que un salto mayor NO entra solo. Justamente por
+#     eso hace falta que alguien avise de que existe: el tope protege de una
+#     rotura silenciosa, no del olvido.
+#
+# OJO CON LO QUE ESTE ARCHIVO NO HACE. Programar actualizaciones no es lo mismo
+# que activar las *Dependabot security updates*, que son un ajuste del remoto y
+# no se pueden encender desde aqui. Ver SECURITY.md, "Pending remote controls".
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Un PR por tanda para lo de pruebas: son ruido individualmente y se
+      # revisan mejor juntas.
+      herramientas-de-prueba:
+        patterns:
+          - "pytest*"
+          - "pyyaml"

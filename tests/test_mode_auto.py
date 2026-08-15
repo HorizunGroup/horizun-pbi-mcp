@@ -138,3 +138,30 @@ def test_auto_sin_sesion_no_adivina():
 def test_both_sigue_bloqueado_con_sesion():
     with pytest.raises(dual_mode.DualModeNotAvailableError):
         dual_mode.assert_mode_is_safely_executable("both", _Sesion(modelo=object()))
+
+
+def test_auto_se_resuelve_con_lo_que_detect_devuelve_de_verdad():
+    """`detect` devuelve un ProjectOpenState, NO un dict.
+
+    Las pruebas de arriba lo doblaban con `{"state": "closed"}`, asi que
+    ninguna veia que `estado.get(...)` reventaba con AttributeError contra el
+    objeto real -y salia como `unexpected`- en el unico camino que `auto`
+    existe para resolver.
+    """
+    from horizun_pbi_mcp.services import project_state
+
+    real = project_state.ProjectOpenState(
+        project_state.CLOSED, "high", "Desktop no tiene el proyecto abierto")
+    assert not hasattr(real, "get"), "si esto cambia, revisa los dobles"
+
+    class _SesionConEstadoReal(_Sesion):
+        pass
+
+    import horizun_pbi_mcp.services.dual_mode as dm
+
+    original = project_state.detect
+    project_state.detect = lambda _a, **_k: real
+    try:
+        assert dm.resolver_auto(_SesionConEstadoReal(pbip=object())) == "pbip"
+    finally:
+        project_state.detect = original

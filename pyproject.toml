@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "horizun-pbi-mcp"
 # PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
-version = "1.5.4"
+version = "2.0.0"
 description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,12 +52,22 @@ Documentation = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/
 Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+# pyyaml: tests/test_release_pipeline.py analiza el DAG de los workflows.
+# Sin el, esas guardas no se ejecutarian en CI, que es justo donde importan.
+# tomli: `scripts/generar_lock.py --check` lee pyproject y corre en CI
+# tambien en 3.10, donde `tomllib` todavia no existe.
+test = ["pytest>=8.0", "pyyaml>=6,<7", "tomli>=2; python_version < '3.11'"]
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
 # Alias legacy: se conserva para no romper instalaciones existentes.
 powerbi-mcp = "horizun_pbi_mcp.server:main"
+# INSTALL-005. El wheel no puede traer las DLL de Microsoft ni los esquemas
+# PBIR, asi que una instalacion por `pip` arranca pero no puede trabajar.
+# `pbi_health_check` ya lo decia; lo que faltaba era que el comando que
+# recomienda EXISTA en esa misma instalacion, y no en un `scripts/` que el
+# wheel no lleva.
+horizun-pbi-completar = "horizun_pbi_mcp.completado:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -68,6 +78,15 @@ package-dir = { "" = "src" }
 # El manifiesto (URLs + SHA-256) SI va en el paquete; los esquemas NO,
 # porque no declaran permiso de redistribucion.
 "horizun_pbi_mcp.services" = ["schemas/*.json"]
+# El contrato MCP que el healthcheck exige antes de dar una instalacion por
+# buena. Tiene que viajar en el wheel: el golden equivalente vive en `tests/`,
+# y una instalacion por `pip` no tiene `tests/`. Sin este archivo el oraculo
+# falla cerrado -no da nada por bueno- en vez de comprobar de menos.
+"horizun_pbi_mcp.lifecycle" = ["contract_baseline.json"]
+# Versiones y SHA-256 de las DLL de Analysis Services. El manifiesto SI viaja
+# -es una lista, no un binario-; las DLL no, que son de Microsoft. Sin el,
+# `horizun-pbi-completar` no sabria que descargar ni contra que verificarlo.
+"horizun_pbi_mcp.completado" = ["libs_manifest.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

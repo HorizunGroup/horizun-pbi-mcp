@@ -412,6 +412,27 @@ def test_diff_detects_type_change():
     assert any("tipo string -> integer" in b for b in breaking)
 
 
+def test_ampliar_un_tipo_no_es_ruptura():
+    """`string` -> `null|string` deja valida toda llamada que ya existia."""
+    after = _mini(params={
+        "a": {"required": False, "type": "null|string"},
+        "b": {"required": False, "type": "string", "default": "live"},
+    })
+    breaking, compatible = contract_utils.diff_snapshots(_mini(), after)
+    assert not breaking
+    assert any("tipo ampliado" in c for c in compatible)
+
+
+def test_estrechar_un_tipo_sigue_siendo_ruptura():
+    """Al reves si rompe: lo que se pasaba antes deja de ser valido."""
+    antes = _mini(params={
+        "a": {"required": True, "type": "null|string"},
+        "b": {"required": False, "type": "string", "default": "live"},
+    })
+    breaking, _ = contract_utils.diff_snapshots(antes, _mini())
+    assert any("tipo null|string -> string" in b for b in breaking)
+
+
 def test_diff_treats_new_optional_param_as_compatible():
     after = _mini(params={
         "a": {"required": True, "type": "string"},

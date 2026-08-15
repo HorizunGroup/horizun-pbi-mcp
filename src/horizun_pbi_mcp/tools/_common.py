@@ -54,16 +54,85 @@ def _argumentos_de_la_tool(frame) -> Dict[str, Any]:
             if n in locales and n not in ("request_id", "self", "mcp")}
 
 
+#: Errores que pueden haber dejado algo a medias. Reintentar sobre uno de estos
+#: no es reintentar: es aplicar dos veces media operacion.
+_NUNCA_REINTENTABLES = ("bulk_partially_applied", "rollback_incomplete",
+                        "unexpected")
+
+#: Errores que solo son reintentables si ELLOS MISMOS acreditan que lo que
+#: lanzaron ya termino. El hilo que ejecuta `SaveChanges()` es `daemon=True` y
+#: no se puede parar, asi que aqui no vale el silencio: si no consta que el
+#: motor confirmo la cancelacion, se asume que sigue corriendo.
+_REINTENTABLES_SOLO_SI_CANCELADO = ("refresh_timeout",)
+
+
 def _es_seguro_reintentar(salida: Dict[str, Any]) -> bool:
     """Si tras el fallo el proyecto quedo como estaba, reintentar es seguro.
 
     Ante la duda se dice que NO. Un `unexpected` pudo dejar algo a medias, y
     afirmar lo contrario seria inventarse una garantia.
+
+    CORE-003. La respuesta de un timeout de refresh decia dos cosas a la vez en
+    el mismo objeto: que el comando *puede seguir ejecutandose en Power BI
+    Desktop* (`cancel_confirmed: false`) y que reintentar era seguro. Las dos no
+    pueden ser verdad. Reintentar con ese consejo solapa dos `SaveChanges()`
+    sobre el mismo modelo.
+
+    La causa era la forma del clasificador, no un codigo olvidado: enumeraba lo
+    peligroso y daba por seguro TODO lo demas, asi que fallaba hacia el lado
+    optimista cada vez que aparecia un error nuevo. Por eso ademas de listar
+    `refresh_timeout` se mira el HECHO: cualquier salida que declare
+    `cancel_confirmed: false` esta afirmando que algo sigue corriendo, venga del
+    codigo que venga. La contradiccion pasa a ser inexpresable en vez de
+    improbable, que es lo que pedia el criterio de cierre.
     """
-    if salida.get("error") in ("bulk_partially_applied", "rollback_incomplete",
-                              "unexpected"):
+    if salida.get("error") in _NUNCA_REINTENTABLES:
+        return False
+    detalles = salida.get("details")
+    detalles = detalles if isinstance(detalles, dict) else {}
+    # El HECHO, venga del codigo que venga: declarar `cancel_confirmed: false`
+    # es afirmar que algo sigue corriendo.
+    if detalles.get("cancel_confirmed") is False:
+        return False
+    # Y para los que cancelan, el silencio tampoco acredita: hace falta un `true`
+    # explicito. Sin esto, un `refresh_timeout` al que le faltaran los detalles
+    # volveria a caer en el `True` por defecto.
+    if (salida.get("error") in _REINTENTABLES_SOLO_SI_CANCELADO
+            and detalles.get("cancel_confirmed") is not True):
         return False
     return salida.get("status") not in ("rollback_incomplete", "partial_failure")
+
+
+def ruta_de_proyecto(path: Optional[str] = None,
+                     pbip_path: Optional[str] = None):
+    """La ruta del proyecto sobre la que operar, con los dos nombres y el activo.
+
+    `pbi_session_info` devuelve `active_pbip.pbip_path`, asi que ese es el
+    nombre que uno escribe despues; pero las tools de Desktop lo llamaban
+    `path` y rechazaban el otro con un error de validacion. Se aceptan los dos
+    -y ninguno: entonces se usa el proyecto activo, que el servidor ya conoce-.
+    """
+    from pathlib import Path
+
+    from horizun_pbi_mcp.config import get_session
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+
+    elegida = next((p for p in (path, pbip_path) if p and str(p).strip()), None)
+    if elegida is None:
+        activo = get_session().active_pbip
+        if activo is None:
+            raise ValidationError(
+                "No se indico proyecto y no hay ninguno activo. Pasa `path` "
+                "(o `pbip_path`), o abre uno con pbi_open_pbip_project.",
+                details={"parameter": "path"})
+        elegida = activo.pbip_path
+    if (path and pbip_path
+            and str(path).strip() != str(pbip_path).strip()):
+        raise ValidationError(
+            "`path` y `pbip_path` son el mismo parametro y llegaron distintos; "
+            "no se adivina cual vale.",
+            details={"path": path, "pbip_path": pbip_path})
+    return Path(str(elegida)).expanduser().resolve()
 
 
 def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,

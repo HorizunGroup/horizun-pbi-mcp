@@ -79,7 +79,7 @@ def _add_reference(clr, libs_dir: Path, dll: str, friendly: str, error_cls) -> N
     except Exception as exc:
         raise error_cls(
             f"No se encontro la libreria '{friendly}'. Esperaba {dll_path} o el "
-            f"ensamblado en el GAC. Ejecuta:  python scripts/fetch_libs.py",
+            f"ensamblado en el GAC. Ejecuta:  horizun-pbi-completar",
             details={"expected": str(dll_path), "cause": str(exc)},
         ) from exc
 

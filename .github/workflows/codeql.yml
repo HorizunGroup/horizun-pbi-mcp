@@ -1,0 +1,63 @@
+name: codeql
+
+# RELEASE-003 — analisis estatico de seguridad, que no habia ninguno.
+#
+# CodeQL busca las clases de defecto que una revision humana deja pasar por
+# cansancio: traversal de rutas, inyeccion, uso de datos no confiables. Este
+# repositorio escribe en los archivos de otra persona y ejecuta lo que descarga,
+# asi que esas dos son exactamente las suyas.
+#
+# El cron semanal no es decorativo: una consulta NUEVA de CodeQL puede encontrar
+# un defecto VIEJO que ya estaba ahi cuando el ultimo commit paso en verde. Sin
+# corrida periodica, ese hallazgo no aparece hasta que alguien toque el archivo.
+#
+# Acciones pineadas por SHA completo. `github/codeql-action` usa tags ANOTADOS,
+# asi que el SHA fijado es el commit apuntado (`^{}`), no el objeto tag:
+#   git ls-remote --tags https://github.com/github/codeql-action | grep 'v4'
+# Resuelto el 2026-08-14.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Lunes 05:17 UTC. Minuto no redondo a proposito: las horas en punto son
+    # cuando el planificador de Actions va mas cargado y la corrida se retrasa.
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analizar:
+    name: Analizar (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lo minimo que CodeQL necesita para subir el resultado al panel de
+      # seguridad. No hay `id-token` ni escritura de contenidos.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python"]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          language: ${{ matrix.language }}
+          # `security-and-quality` incluye las consultas de calidad ademas de
+          # las de seguridad. Mas ruido, y a cambio caza cosas que el conjunto
+          # por defecto calla.
+          queries: security-and-quality
+
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          category: "/language:${{ matrix.language }}"

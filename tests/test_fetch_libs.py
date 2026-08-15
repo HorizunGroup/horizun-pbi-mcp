@@ -24,8 +24,16 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def cargar_script():
-    ruta = REPO / "scripts" / "fetch_libs.py"
-    spec = importlib.util.spec_from_file_location("fetch_libs_bajo_prueba", ruta)
+    """El modulo del PAQUETE, no el envoltorio de `scripts/`.
+
+    La logica se movio a `horizun_pbi_mcp.completado.libs` para que viaje en el
+    wheel: una instalacion por `pip` no tiene `scripts/`, y el comando que
+    `pbi_health_check` recomienda tiene que existir en la misma instalacion. Se
+    carga una copia FRESCA en cada prueba porque varias sustituyen `LIBS` y
+    `MANIFIESTO`, y un modulo compartido las mezclaria.
+    """
+    ruta = (REPO / "src" / "horizun_pbi_mcp" / "completado" / "libs.py")
+    spec = importlib.util.spec_from_file_location("libs_bajo_prueba", ruta)
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
@@ -232,49 +240,119 @@ def test_un_fallo_a_medias_no_deja_mezcla(fl, con_paquete, monkeypatch):
 
 def test_fallo_al_promover_restaura_directorio_anterior(
         fl, con_paquete, monkeypatch):
-    """El corte entre los renombres no deja ``libs/`` ausente o mezclado."""
+    """El corte entre los dos renombres no deja ``libs/`` ausente ni mezclado.
+
+    La propiedad es la misma que antes; lo que cambia es quien la sostiene. La
+    promocion propia de este script se retiro en favor de
+    `lifecycle/promotion.py`, que es la que promueve el runtime y publica los
+    esquemas. Por eso el fallo se inyecta en `os.rename` del ciclo de vida y no
+    en un `Path.replace` de aqui: si alguien devolviera una promocion propia,
+    esta prueba dejaria de inyectar nada y hay un assert que lo delata.
+    """
     generar(fl, con_paquete)
     fl.instalar()
     antes = {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")}
 
-    replace_real = fl.Path.replace
-    fallo_inyectado = False
+    rename_real = fl.promotion.os.rename
+    inyectados = []
 
-    def replace_con_fallo(path, target):
-        nonlocal fallo_inyectado
-        if (not fallo_inyectado
-                and path.name.startswith(f".{fl.LIBS.name}.stage_")
-                and fl.Path(target) == fl.LIBS):
-            fallo_inyectado = True
+    def rename_con_fallo(origen, destino):
+        if (fl.Path(origen).name.startswith(fl.promotion.PREFIJO_STAGING)
+                and fl.Path(destino) == fl.LIBS):
+            inyectados.append(str(origen))
             raise OSError("fallo de promocion inyectado")
-        return replace_real(path, target)
+        return rename_real(origen, destino)
 
-    monkeypatch.setattr(fl.Path, "replace", replace_con_fallo)
-    with pytest.raises(fl.LibsError) as exc:
+    monkeypatch.setattr(fl.promotion.os, "rename", rename_con_fallo)
+    with pytest.raises(fl.promotion.PromocionError) as exc:
         fl.instalar()
 
-    assert "se restauro la anterior" in str(exc.value)
+    assert inyectados, (
+        "no se inyecto ningun fallo: este script ya no publica por el ciclo de "
+        "vida compartido, o el prefijo del staging cambio")
+    assert "quedo restaurado" in str(exc.value)
     assert {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")} == antes
-    assert not fl._ruta_anterior().exists()
-    assert not list(fl.LIBS.parent.glob(f".{fl.LIBS.name}.stage_*"))
+    assert not list(fl.LIBS.parent.glob(f"{fl.promotion.PREFIJO_ANTERIOR}*"))
+    assert not list(fl.LIBS.parent.glob(f"{fl.promotion.PREFIJO_STAGING}*"))
+    assert not (fl.LIBS.parent / fl.promotion.JOURNAL).exists()
 
 
 def test_reintento_recupera_corte_tras_apartar_version_anterior(
         fl, con_paquete):
+    """Estado exacto que deja una muerte entre los dos renombres.
+
+    Se construye con el journal del ciclo de vida, no a mano: la recuperacion
+    decide mirando el disco, pero necesita el journal para saber que carpeta era
+    cual. Escribirlo desde `promotion` es lo unico que garantiza que la prueba
+    reproduce el estado real y no uno inventado que nunca ocurre.
+    """
     generar(fl, con_paquete)
     fl.instalar()
     antes = {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")}
 
-    # Estado exacto que deja una terminacion abrupta entre old -> previous y
-    # stage -> libs. La ejecucion siguiente debe reconocerlo antes de descargar.
-    fl.LIBS.replace(fl._ruta_anterior())
+    raiz = fl.LIBS.parent
+    apartado = raiz / f"{fl.promotion.PREFIJO_ANTERIOR}{fl.LIBS.name}-1-abc"
+    fl.promotion._escribir_journal(
+        raiz, esquema=fl.promotion.ESQUEMA_JOURNAL, fase="anterior-apartado",
+        staging=f"{fl.promotion.PREFIJO_STAGING}{fl.LIBS.name}",
+        destino=fl.LIBS.name, anterior=apartado.name, ts=0.0)
+    fl.LIBS.replace(apartado)
     assert not fl.LIBS.exists()
 
     fl.instalar()
 
     assert fl.estado()["ready"] is True
     assert {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")} == antes
-    assert not fl._ruta_anterior().exists()
+    assert not list(raiz.glob(f"{fl.promotion.PREFIJO_ANTERIOR}*"))
+    assert not (raiz / fl.promotion.JOURNAL).exists()
+
+
+def test_dos_instalaciones_a_la_vez_no_se_pisan(fl, con_paquete, monkeypatch):
+    """Lo que faltaba de verdad: el cerrojo de la raiz.
+
+    Este script se ejecuta por su cuenta -asi lo dice el README y asi lo invoca
+    el instalador-, y no tomaba ningun cerrojo. Dos procesos podian promover
+    sobre el mismo destino a la vez.
+    """
+    generar(fl, con_paquete)
+    fl.instalar()
+    antes = {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")}
+
+    class CerrojoOcupado:
+        adquirido = False
+
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(fl.cerrojos, "CerrojoDeCicloDeVida", CerrojoOcupado)
+    with pytest.raises(fl.LibsError) as exc:
+        fl.instalar()
+
+    assert "en curso" in str(exc.value)
+    assert {f.name: f.read_bytes() for f in fl.LIBS.glob("*.dll")} == antes
+
+
+def test_una_promocion_fallida_no_saca_una_traza_por_la_cli(
+        fl, con_paquete, monkeypatch, capsys):
+    """`main()` solo atrapaba `LibsError`, y la promocion lanza la suya.
+
+    Sin esto, un fallo de publicacion salia por pantalla como un traceback de
+    Python en vez de como un `FALLO:` con codigo 1, que es lo que lee quien esta
+    instalando.
+    """
+    generar(fl, con_paquete)
+    monkeypatch.setattr(fl, "instalar", lambda: (_ for _ in ()).throw(
+        fl.promotion.PromocionError("no se pudo publicar el staging")))
+    monkeypatch.setattr(fl.sys, "argv", ["fetch_libs.py"])
+
+    assert fl.main() == 1
+    assert "FALLO: no se pudo publicar" in capsys.readouterr().err
 
 
 def test_el_estado_detecta_una_dll_alterada(fl, con_paquete):
@@ -304,9 +382,14 @@ def test_libs_sigue_fuera_de_git():
 
 
 def test_el_manifiesto_real_existe_y_esta_fijado():
-    """El del repositorio, no el sintetico de las pruebas."""
-    m = json.loads((REPO / "scripts" / "libs_manifest.json").read_text(
-        encoding="utf-8"))
+    """El del PAQUETE, no el sintetico de las pruebas.
+
+    Vive junto al codigo que lo lee y se declara como `package-data`: sin el, un
+    `pip install` no sabria que descargar ni contra que verificarlo, y
+    `horizun-pbi-completar` no podria completar nada.
+    """
+    m = json.loads((REPO / "src" / "horizun_pbi_mcp" / "completado"
+                    / "libs_manifest.json").read_text(encoding="utf-8"))
     assert m["packages"], "el manifiesto real no tiene paquetes"
     versiones = {p["version"] for p in m["packages"]}
     assert len(versiones) == 1, f"versiones inconsistentes: {versiones}"

@@ -248,10 +248,20 @@ def test_no_queda_el_archivo_temporal(con_cli_falso, informe):
 
 
 def test_cada_validacion_tiene_una_salida_temporal_propia(informe):
+    """Y FUERA del proyecto del usuario (CORE-004(d)).
+
+    Esta prueba exigia `primera.parent == informe.parent`, o sea que el
+    temporal cayera junto al proyecto: codificaba el defecto en vez de la
+    propiedad. Lo que hace falta de verdad son dos cosas distintas —que dos
+    validaciones no se pisen, y que ninguna escriba en el arbol del usuario— y
+    la segunda es la que faltaba.
+    """
     primera = rv._ruta_salida_temporal(informe)
     segunda = rv._ruta_salida_temporal(informe)
     assert primera != segunda
-    assert primera.parent == informe.parent == segunda.parent
+    assert primera.parent == segunda.parent, "no comparten directorio temporal"
+    assert informe.parent.resolve() not in primera.resolve().parents, (
+        f"el temporal cae dentro del proyecto: {primera}")
 
 
 def test_ruta_con_espacios(con_cli_falso, tmp_path):

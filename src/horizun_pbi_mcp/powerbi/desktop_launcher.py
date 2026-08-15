@@ -20,7 +20,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
@@ -180,36 +180,90 @@ def _preflight_pbip_model(pbip: Path) -> None:
     )
 
 
-def _pid_por_titulo_de_ventana(stem: str) -> Optional[int]:
-    """PID cuya ventana principal se llama exactamente como el proyecto.
+@dataclass(frozen=True)
+class CoincidenciaPorTitulo:
+    """Resultado de correlacionar procesos de Desktop con un nombre de proyecto.
+
+    Un `Optional[int]` no podia distinguir tres respuestas que exigen
+    decisiones opuestas: "ninguno coincide", "coinciden varios" y "no se pudo
+    mirar". Solo la primera autoriza a afirmar algo.
+    """
+
+    #: Procesos con una ventana titulada exactamente como el proyecto.
+    pids: Tuple[int, ...] = ()
+    #: Procesos de los que no se pudo leer NINGUN titulo. No dicen que no.
+    sin_titulos: Tuple[int, ...] = ()
+    #: Por que la enumeracion quedo incompleta, si quedo incompleta.
+    error: Optional[str] = None
+
+    @property
+    def inequivoca(self) -> Optional[int]:
+        """El unico PID coincidente, o None si hay cero o mas de uno."""
+        return self.pids[0] if len(self.pids) == 1 else None
+
+
+def coincidencias_por_titulo(stem: str,
+                             pids: Sequence[int]) -> CoincidenciaPorTitulo:
+    """Correlaciona procesos con un proyecto por el TITULO de su ventana.
 
     Es la unica correlacion posible para un .pbip: Desktop NO deja ningun
     descriptor abierto sobre la carpeta del proyecto -comprobado con
-    `open_files()`, que devuelve cero archivos de esa carpeta-, asi que la
-    busqueda por descriptores da None y, sin esto, cada apertura del mismo
-    proyecto lanzaba OTRA ventana.
+    `open_files()`, que devuelve cero archivos de esa carpeta- y muchas veces
+    tampoco trae la ruta en la linea de comandos, porque se abrio desde la
+    lista de recientes.
 
-    Se exige coincidencia exacta y una sola ventana: ante dos candidatas no se
-    elige, porque reutilizar la equivocada es peor que no reutilizar.
+    Vive aqui y la usan los DOS llamadores que la necesitan: este modulo, para
+    no lanzar otra ventana del proyecto que ya esta abierto, y
+    `services.project_state`, para no declarar cerrado lo que esta abierto.
+    Tener dos copias seria dejarlas divergir, y divergir aqui significa
+    autorizar una escritura sobre un informe abierto.
+
+    Coincidencia EXACTA de titulo, normalizada en mayusculas/minusculas y
+    espacios. No se acepta coincidencia parcial: un titulo que solo contiene el
+    nombre puede ser otro informe, y aqui una equivocacion cuesta datos.
     """
     if os.name != "nt":
-        return None
+        return CoincidenciaPorTitulo(
+            error="la correlacion por ventana solo existe en Windows")
     try:
         from horizun_pbi_mcp.powerbi.desktop_capture import _enumerate_windows
-    except Exception:                          # noqa: BLE001 - sin captura
-        return None
+    except Exception as exc:                   # noqa: BLE001 - sin captura
+        return CoincidenciaPorTitulo(
+            error=f"no se pudo cargar la enumeracion de ventanas: {exc}")
 
-    objetivo = stem.casefold()
+    objetivo = str(stem).strip().casefold()
     coincidencias: List[int] = []
-    for proc in _procesos_desktop():
+    sin_titulos: List[int] = []
+    fallos: List[str] = []
+    for pid in pids:
         try:
             titulos = [w.title.strip().casefold()
-                       for w in _enumerate_windows(proc.pid) if w.title]
-        except Exception:                      # noqa: BLE001
+                       for w in _enumerate_windows(pid)
+                       if w.title and w.title.strip()]
+        except Exception as exc:               # noqa: BLE001
+            # Se sigue con los demas -un proceso ilegible no invalida al
+            # resto- pero el fallo se DEVUELVE: quien decida si el proyecto
+            # esta cerrado tiene que saber que la vista quedo incompleta.
+            fallos.append(f"pid {pid}: {exc}")
             continue
-        if objetivo in titulos and proc.pid not in coincidencias:
-            coincidencias.append(proc.pid)
-    return coincidencias[0] if len(coincidencias) == 1 else None
+        if not titulos:
+            sin_titulos.append(pid)
+        elif objetivo in titulos and pid not in coincidencias:
+            coincidencias.append(pid)
+    return CoincidenciaPorTitulo(
+        pids=tuple(coincidencias), sin_titulos=tuple(sin_titulos),
+        error="; ".join(fallos) or None)
+
+
+def _pid_por_titulo_de_ventana(stem: str) -> Optional[int]:
+    """PID cuya ventana principal se llama exactamente como el proyecto.
+
+    Se exige coincidencia exacta y una sola ventana: ante dos candidatas no se
+    elige, porque reutilizar la equivocada es peor que no reutilizar. Sin
+    esto, cada apertura del mismo proyecto lanzaba OTRA ventana.
+    """
+    return coincidencias_por_titulo(
+        stem, [p.pid for p in _procesos_desktop()]).inequivoca
 
 
 def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:

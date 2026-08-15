@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from horizun_pbi_mcp.config import get_settings
-from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.powerbi.errors import (PathSecurityError, PowerBIMCPError,
+                                            ValidationError)
 from horizun_pbi_mcp.utils.validation import validate_limit
 
 
@@ -36,20 +37,62 @@ class DesktopCaptureError(PowerBIMCPError):
 
 
 # ------------------------------------------------ vista para la captura ------
-def _definicion_de_report(pbip: Path) -> Path:
-    """Carpeta `definition/` del report que declara el propio .pbip."""
+def _definicion_de_report(pbip: Path, *, raiz: Path) -> Path:
+    """Carpeta `definition/` del report que declara el propio .pbip.
+
+    `artifacts[].report.path` lo escribe el archivo, no nosotros: es entrada no
+    confiable y decide DONDE se escribe. Una ruta absoluta, un `..` o un
+    symlink que salga de la carpeta del proyecto se rechazan aqui, antes de
+    leer o escribir nada y antes de abrir Desktop o crear un journal.
+    """
     import json
+
+    from horizun_pbi_mcp.utils.validation import ensure_within_base
 
     datos = json.loads(pbip.read_text(encoding="utf-8-sig"))
     for artefacto in datos.get("artifacts", []) or []:
         ruta = ((artefacto or {}).get("report") or {}).get("path")
-        if ruta:
-            definicion = (pbip.parent / ruta / "definition").resolve()
-            if definicion.is_dir():
-                return definicion
+        if not ruta:
+            continue
+        candidato = Path(str(ruta))
+        if candidato.is_absolute() or candidato.drive:
+            raise PathSecurityError(
+                "El .pbip declara el report con una ruta ABSOLUTA. El archivo "
+                "no decide en que carpeta se escribe.",
+                details={"path": str(pbip), "report_path": str(ruta)})
+        # `ensure_within_base` resuelve los dos lados, asi que atrapa tanto
+        # `..` como un symlink/junction que apunte fuera.
+        definicion = ensure_within_base(raiz, raiz / candidato / "definition")
+        if definicion.is_dir():
+            return definicion
     raise ValidationError(
         "El .pbip no declara un report con carpeta definition/; no se puede "
         "preparar la vista de captura.", details={"path": str(pbip)})
+
+
+def _leer_json(ruta: Path) -> dict:
+    """JSON del archivo, o error. NUNCA se sobrescribe lo que no parsea.
+
+    Se lee todo ANTES de escribir nada: si el segundo archivo del parche es
+    ilegible, el primero no puede haber quedado ya modificado.
+    """
+    import json
+
+    crudo = ruta.read_bytes()
+    try:
+        return json.loads(crudo.decode("utf-8-sig"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValidationError(
+            f"'{ruta.name}' no es JSON valido y no se sobrescribe: {exc}",
+            details={"path": str(ruta), "rule": "no_overwrite_unreadable_json"}
+        ) from exc
+
+
+def _serializar(datos: dict) -> bytes:
+    """Mismo formato que escribe Desktop: indent 2 y saltos CRLF."""
+    import json
+
+    return json.dumps(datos, indent=2).encode("utf-8").replace(b"\n", b"\r\n")
 
 
 def _resolver_pagina_de_captura(paginas_dir: Path, page: str) -> str:
@@ -75,10 +118,10 @@ def _resolver_pagina_de_captura(paginas_dir: Path, page: str) -> str:
         details={"page": page, "matches": candidatas})
 
 
-def preparar_vista_de_captura(path: str | Path, *,
-                              page: Optional[str] = None,
-                              fit_to_page: bool = True) -> dict[str, Any]:
-    """Deja el .pbip abriendo en la pagina pedida y ajustado al lienzo.
+def planificar_vista_de_captura(path: str | Path, *,
+                                page: Optional[str] = None,
+                                fit_to_page: bool = True) -> dict[str, Any]:
+    """Calcula el parche temporal de la captura SIN escribir nada.
 
     Sin esto la captura salia al zoom guardado y siempre de la pagina activa:
     solo se veia el tercio superior del lienzo, y el 15% inferior no se podia
@@ -86,14 +129,21 @@ def preparar_vista_de_captura(path: str | Path, *,
     y `displayOption: FitToPage` (esquema oficial de pagina 2.1.0) escala el
     lienzo completo al viewport.
 
-    Devuelve `{"restore": callable, ...}`: los archivos tocados se restauran
-    BYTE a BYTE al terminar, porque esto es una vista para la foto, no una
-    edicion del informe. Exige el proyecto cerrado; quien llama ya lo verifico.
-    """
-    import json
+    Devuelve `{"cambios": {ruta: bytes}, ...}`. Que sea un PLAN y no una
+    escritura es la mitad de CORE-002: antes se escribia `pages.json` y solo
+    despues se leia `page.json`, asi que un `page.json` ilegible dejaba el
+    proyecto a medias. Ahora se lee y se decide todo primero, y quien aplica el
+    plan lo hace como una unidad (`services.txn.parche_temporal`).
 
+    TRAMPA, para quien copie esto a mano: `activePageName` vive en
+    `pages/pages.json`. Escribirlo en `report.json` deja el informe abriendo EN
+    BLANCO -sin error, con la validacion en verde y sin nada que lo explique-.
+    Y aunque se escriba donde toca, hay que QUITARLO despues: es una vista para
+    la captura, no una preferencia del informe.
+    """
     pbip = Path(path).expanduser().resolve()
-    definicion = _definicion_de_report(pbip)
+    raiz = pbip.parent
+    definicion = _definicion_de_report(pbip, raiz=raiz)
     paginas_dir = definicion / "pages"
     pages_json = paginas_dir / "pages.json"
     if not pages_json.is_file():
@@ -101,43 +151,30 @@ def preparar_vista_de_captura(path: str | Path, *,
             "El report no tiene pages.json; no se puede preparar la vista.",
             details={"path": str(pages_json)})
 
-    originales: dict[Path, bytes] = {pages_json: pages_json.read_bytes()}
-    metadatos = json.loads(originales[pages_json].decode("utf-8-sig"))
-
+    metadatos = _leer_json(pages_json)
     pagina_id = (_resolver_pagina_de_captura(paginas_dir, page)
                  if page else str(metadatos.get("activePageName") or ""))
-    cambios: list[str] = []
+
+    cambios: dict[Path, bytes] = {}
+    descripcion: list[str] = []
 
     if page and metadatos.get("activePageName") != pagina_id:
-        metadatos["activePageName"] = pagina_id
-        pages_json.write_bytes(
-            json.dumps(metadatos, indent=2).encode("utf-8").replace(b"\n", b"\r\n"))
-        cambios.append(f"activePageName -> {pagina_id}")
+        propuesta = dict(metadatos)
+        propuesta["activePageName"] = pagina_id
+        cambios[pages_json] = _serializar(propuesta)
+        descripcion.append(f"activePageName -> {pagina_id}")
 
     if fit_to_page and pagina_id:
         page_json = paginas_dir / pagina_id / "page.json"
         if page_json.is_file():
-            originales[page_json] = page_json.read_bytes()
-            datos = json.loads(originales[page_json].decode("utf-8-sig"))
+            datos = _leer_json(page_json)
             if datos.get("displayOption") != "FitToPage":
-                datos["displayOption"] = "FitToPage"
-                page_json.write_bytes(
-                    json.dumps(datos, indent=2).encode("utf-8")
-                    .replace(b"\n", b"\r\n"))
-                cambios.append("displayOption -> FitToPage")
+                propuesta = dict(datos)
+                propuesta["displayOption"] = "FitToPage"
+                cambios[page_json] = _serializar(propuesta)
+                descripcion.append("displayOption -> FitToPage")
 
-    def _restore() -> list[str]:
-        """Restaura los originales; devuelve las rutas que NO pudo restaurar."""
-        residuos: list[str] = []
-        for ruta, contenido in originales.items():
-            try:
-                if ruta.read_bytes() != contenido:
-                    ruta.write_bytes(contenido)
-            except OSError:                               # pragma: no cover
-                residuos.append(str(ruta))
-        return residuos
-
-    return {"restore": _restore, "page_id": pagina_id, "changes": cambios}
+    return {"cambios": cambios, "page_id": pagina_id, "changes": descripcion}
 
 
 @dataclass(frozen=True)
@@ -491,9 +528,39 @@ def _write_atomic(path: Path, data: bytes) -> None:
                 pass
 
 
+def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
+                       segundos: float) -> tuple[int, int, bytes, bool]:
+    """Repite la captura hasta que DOS fotogramas salgan identicos.
+
+    Despues de un refresh, Desktop vuelve a lanzar las consultas de la pagina y
+    tarda en repintar. No hay ningun evento que avisar desde fuera, asi que la
+    sincronizacion se hace sobre lo unico observable: los pixeles. Esperar un
+    plazo fijo seria adivinar; esto termina en cuanto la ventana deja de
+    cambiar, y si nunca se estabiliza lo dice en vez de fingir.
+    """
+    fin = time.monotonic() + segundos
+    while time.monotonic() < fin:
+        time.sleep(0.5)
+        try:
+            ancho, alto, pixeles = _capture_window_bgra(hwnd)
+            actual = _encode_png(ancho, alto, pixeles)
+        except (DesktopCaptureError, ValidationError):
+            continue                      # aun repintando: se reintenta
+        if actual == png and (ancho, alto) == (width, height):
+            return width, height, png, True
+        png, width, height = actual, ancho, alto
+    return width, height, png, False
+
+
 def capture_opened(opened: Any, *, timeout: int = 30,
-                   output_dir: Optional[Path] = None) -> dict[str, Any]:
-    """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado."""
+                   output_dir: Optional[Path] = None,
+                   settle_seconds: float = 0.0) -> dict[str, Any]:
+    """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado.
+
+    Con `settle_seconds` se espera a que la ventana deje de cambiar antes de
+    dar la captura por buena; es lo que hace falta justo despues de un refresh,
+    cuando la pagina todavia se esta repintando.
+    """
     timeout = validate_limit(timeout, "capture_timeout", 120)
     assert timeout is not None
     pid = getattr(opened, "desktop_pid", None)
@@ -522,15 +589,23 @@ def capture_opened(opened: Any, *, timeout: int = 30,
                 ) from exc
             time.sleep(0.5)
 
+    estable: Optional[bool] = None
+    if settle_seconds > 0:
+        width, height, png, estable = _fotograma_estable(
+            window.hwnd, png, width, height, float(settle_seconds))
+
     root = Path(output_dir) if output_dir is not None else (
         get_settings().outputs_dir / "desktop_captures")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     target = root / f"{_safe_stem(report_path)}_{stamp}_{uuid.uuid4().hex[:8]}.png"
     _write_atomic(target, png)
-    return {
+    salida = {
         "path": str(target.resolve()), "format": "png",
         "width": width, "height": height, "bytes": len(png),
         "desktop_pid": int(pid), "hwnd": window.hwnd,
         "window_title": window.title, "capture_method": "PrintWindow",
         "focus_required": False,
     }
+    if estable is not None:
+        salida["frame_settled"] = estable
+    return salida

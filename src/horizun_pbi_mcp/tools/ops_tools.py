@@ -57,7 +57,7 @@ def _cap_esquema_interno() -> Dict[str, Any]:
     return {
         "available": estado["ready"],
         "reason": ("disponible" if estado["ready"] else
-                   f"{estado['reason']}. Ejecuta: python scripts/fetch_pbir_schemas.py"),
+                   f"{estado['reason']}. Ejecuta: horizun-pbi-completar"),
         "documents": estado.get("expected", 0),
         "unavailable_upstream": sorted(no_pub),
         "note": ("Valida cada documento contra su JSON Schema oficial, sin red. "
@@ -70,7 +70,14 @@ def _cap_validador_oficial() -> Dict[str, Any]:
     from horizun_pbi_mcp.services import pbir_schema, report_validator as rv
 
     estado = rv.estado()
-    no_pub = sorted(pbir_schema.no_publicados()) if pbir_schema.estado_cache()["ready"] else []
+    listo = pbir_schema.estado_cache()["ready"]
+    no_pub = sorted(pbir_schema.no_publicados()) if listo else []
+    # Un esquema que Microsoft no publica no bloquea si hay una version
+    # anterior de su familia contra la que comprobar (el caso de
+    # visualContainer 2.10/2.11 -> 2.7). Sin ella, se escribe igual y la
+    # respuesta sale marcada `schema_unchecked`.
+    sin_comprobar = [u for u in no_pub
+                     if pbir_schema.version_mas_cercana(u) is None]
     return {
         "available": estado["available"],
         "reason": estado["reason"],
@@ -78,16 +85,103 @@ def _cap_validador_oficial() -> Dict[str, Any]:
         "expected_version": estado["expected_version"],
         "install_hint": estado["install_hint"],
         # Lo que de verdad importa saber antes de intentar escribir.
-        "can_write_recent_schemas": False,
+        "can_write_recent_schemas": listo,
         "blocked_reason": (
-            "Ni el validador interno ni el CLI oficial pueden comprobar "
-            f"{len(no_pub)} esquema(s) que Power BI declara y Microsoft no "
-            "publica (404). Las escrituras sobre archivos que los declaren se "
-            "bloquean con schema_unavailable."),
+            "" if listo else
+            "Faltan los esquemas oficiales en la cache local; sin ellos no se "
+            "puede comprobar lo que se escribiria. Ejecuta: python "
+            "horizun-pbi-completar"),
         "unvalidatable_schemas": no_pub,
+        "written_unchecked_schemas": sin_comprobar,
+        "unchecked_note": (
+            f"{len(sin_comprobar)} esquema(s) que Power BI declara, Microsoft "
+            "no publica (404) y no tienen version anterior en su familia. Los "
+            "archivos que los declaren SE ESCRIBEN, con las reglas de formato "
+            "que si conocemos, y la respuesta lo dice en `schema_unchecked`. "
+            "El resto cae a la version anterior de la misma familia."),
         "note": ("Valida el informe completo: objetos de formato por tipo de "
-                 "visual, roles, temas y referencias cruzadas."),
+                 "visual, roles, temas y referencias cruzadas. Los catalogos "
+                 "de formato se comprueban solo sobre el DELTA de cada "
+                 "escritura: lo que ya estaba en el archivo no bloquea."),
     }
+
+def _completitud(settings) -> Dict[str, Any]:
+    """INSTALL-005 — «instalado» y «operativo» son dos preguntas distintas.
+
+    El wheel lleva el paquete y el manifiesto de esquemas; NO lleva las DLL de
+    Analysis Services ni los esquemas PBIR. La razon es legitima -las DLL son
+    binarios de Microsoft y los esquemas no declaran permiso de
+    redistribucion-, y el defecto no es la restriccion: es que nadie lo decia.
+    Quien instalaba por `pip` obtenia un servidor que superaba el handshake y
+    anunciaba sus 134 tools, con la capa EN VIVO muerta y la escritura PBIR
+    fallando en la primera llamada. `pbi_health_check` miraba las DLL y no
+    miraba los esquemas en absoluto.
+
+    Esto va AL LADO de `healthy` y no lo sustituye. `healthy` responde «¿el
+    servidor esta sano?»; esto responde «¿puede trabajar?». Fundir las dos en
+    una bandera fue el origen del hallazgo.
+
+    Cada pieza que falte dice **el comando exacto** que la completa: un
+    diagnostico que solo dice «falta algo» manda a la documentacion, que es el
+    viaje que se queria ahorrar.
+    """
+    faltan: List[Dict[str, Any]] = []
+
+    libs = settings.libs_dir
+    if not (libs.exists() and len(list(libs.glob("*.dll"))) >= 3):
+        faltan.append({
+            "component": "analysis_services_dlls",
+            "required": True,
+            "impact": "la capa EN VIVO no funciona: nada que hable con el "
+                      "modelo de Power BI Desktop",
+            "fix": "horizun-pbi-completar",
+        })
+
+    try:
+        from horizun_pbi_mcp.services import pbir_schema
+
+        cache = pbir_schema.cache_dir()
+        hay = cache.exists() and len(list(cache.glob("*.json"))) >= 5
+    except Exception:                                        # noqa: BLE001
+        hay = False
+    if not hay:
+        faltan.append({
+            "component": "pbir_schemas",
+            "required": True,
+            "impact": "toda escritura PBIR falla con schema_unavailable",
+            "fix": "horizun-pbi-completar",
+        })
+
+    try:
+        from horizun_pbi_mcp.services import report_validator
+
+        validador = bool(report_validator.estado().get("available"))
+    except Exception:                                        # noqa: BLE001
+        validador = False
+    if not validador:
+        # OPCIONAL a proposito: INSTALL-002 lo declara prescindible, y
+        # presentarlo como obligatorio volveria a convertir su ausencia en una
+        # instalacion rota.
+        faltan.append({
+            "component": "report_validator",
+            "required": False,
+            "impact": "se pierde la validacion con el CLI oficial de Microsoft; "
+                      "el resto del producto funciona",
+            "fix": "horizun-pbi-completar",
+        })
+
+    obligatorias = [f for f in faltan if f["required"]]
+    return {
+        "state": "incomplete" if obligatorias else "operational",
+        # Se enumeran TODAS, incluidas las opcionales: quien diagnostica quiere
+        # la lista entera, y `required` ya dice cual bloquea.
+        "missing": faltan,
+        "note": ("El paquete instalado no puede traer las DLL de Microsoft ni "
+                 "los esquemas PBIR: los primeros son binarios de terceros y "
+                 "los segundos no declaran permiso de redistribucion. Se "
+                 "descargan verificados por hash con los comandos de arriba."),
+    }
+
 
 def register(mcp) -> None:
 
@@ -183,6 +277,7 @@ def register(mcp) -> None:
                 "warnings": avisos,
                 "pending_journals": pendientes,
                 "session_status": sesion_estado,
+                "completeness": _completitud(settings),
             }
         return guard(_impl)
 
@@ -442,7 +537,7 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
-    def pbi_apply_plan(plan_token: str, confirm: bool = True,
+    def pbi_apply_plan(plan_token: str, confirm: bool = False,
                        expected_operation: str = "", request_id: str = "") -> Dict[str, Any]:
         """Aplica un plan calculado con pbi_plan_change o con un dry_run.
 
@@ -451,6 +546,11 @@ def register(mcp) -> None:
 
         `expected_operation` es opcional: si lo indicas, el plan solo se aplica
         si fue generado para esa operacion (`plan_operation_mismatch` si no).
+
+        **Exige `confirm=true`.** Hasta 2.0.0 el default era `True`, o sea que
+        omitir el parametro APLICABA: un gate que viene abierto no es un gate, y
+        ademas rompia la simetria con las otras ocho tools con `confirm`, que es
+        justo la inconsistencia que hace que un agente generalice mal.
         """
         def _impl():
             if not confirm:

@@ -60,10 +60,31 @@ It's always invoked with **`--no-schema`**: by default the CLI downloads schemas
 ## Oracle for managed format paths
 
 `services/format_oracle.py` queries `formatting effective-properties` from the
-pinned CLI and validates the visual's full `(scope, group, property)` paths,
-including those inherited from a template, with their value type and enums. A
-minimal snapshot enables the same offline barrier for the managed paths, and
-a live test checks it doesn't drift from the official catalog.
+pinned CLI and validates the visual's `(scope, group, property)` paths with
+their value type and enums. A minimal snapshot enables the same offline
+barrier for the managed paths, and a live test checks it doesn't drift from
+the official catalog.
+
+### Only the delta of each write
+
+The catalog describes what Microsoft's CLI knows *today*. A real report keeps
+format that neither the catalog nor we know — Desktop writes it and opens it
+without complaint. So the oracle compares **only what the write changes**: the
+transaction hands it the document as it is on disk, and any property whose
+value doesn't change is skipped (reported as `preexisting_skipped`).
+
+Without this, a dropdown slicer created by Desktop blocked *any* write on it
+because of its own `general.orientation` — a property that was already in the
+file and that the operation wasn't touching. Blocking there protected nothing:
+the only way out was editing the `visual.json` by hand, with no transaction,
+no journal and none of the rules below.
+
+The same rule applies to the structural format checks in `pbir_schema`. The
+official JSON Schema is still validated over the **whole** document: a write
+can break a rule that depends on another part of the file.
+
+Numeric enums are compared as numbers: the catalog lists `"0"`/`"1"` and
+Desktop writes the literal `0D`.
 
 The synthetic fixture `format_objects_corpus.json` adds independent evidence
 from visuals exported by Desktop: it keeps only structural keys and type
@@ -126,20 +147,25 @@ Power BI Desktop writes `visualContainer/2.10.0` in recent reports. **That URL r
 
 It's an **upstream** incompatibility, not this server's.
 
-**Practical consequence:** writes on files declaring those schemas are blocked with `schema_unavailable` and `rule=no_publicado_upstream`.
+**What happens now**, in two cases:
 
-Blocking was chosen over guessing. Validating 2.10.0 against 2.7.0 would give false negatives —`additionalProperties: false` would reject legitimate new properties— and false positives on whatever 2.10.0 may have relaxed.
-
-Measured on a real 443-document report:
-
-| | |
+| Situation | Behavior |
 |---|---|
-| Validate | **176** |
-| Blocked for unpublished schema | **240** |
-| Out of scope (`CustomVisuals/`, `StaticResources/`) | 25 |
-| Genuinely non-compliant | 2 |
+| There's an earlier version of the same family in cache (2.10/2.11 → 2.7.0) | Validated against it. Only what a later version could *add* is forgiven: a new property or a new enum value. A wrong type or a missing required field still blocks. Measured on **275 real files**: the only mismatch was the `$schema` string itself. |
+| There isn't one (`bookmarks/2.0.0`) | **It's written**, the format rules we do know are checked, and the result is marked `schema_unchecked: true` with the reason. The transaction summary lists them. |
 
-**G10 remains a documented release exception.**
+The second case used to block. It protected nothing: the only way out was
+editing the file by hand — no transaction, no journal, no rules. What can't be
+done is *pretending* it was validated, so it's said out loud.
+
+**The cache being missing is a different thing** — an install problem, not an
+upstream gap — and still fails closed with `schema_unavailable`.
+
+Re-measured on two real reports that declare `visualContainer/2.10.0`
+(117 and 74 documents): **185 validate**, 6 out of scope
+(`CustomVisuals/`, `StaticResources/`), **0 blocked**. The earlier figure in
+this table — 240 blocked out of 443 — is what it looked like *before*
+falling back to the nearest version of the family.
 
 ---
 

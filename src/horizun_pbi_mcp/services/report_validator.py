@@ -269,7 +269,7 @@ def estado() -> Dict[str, Any]:
                  "node_major": mayor, "cli_path": str(cli) if cli else None,
                  "version": version, "expected_version": VERSION_REQUERIDA,
                  "compatible": compatible, "reason": motivo,
-                 "install_hint": "python scripts/fetch_report_validator.py"}
+                 "install_hint": "horizun-pbi-completar"}
     with _estado_cache_lock:
         # Evita crecimiento si las pruebas o una reparacion cambian muchas
         # rutas. Solo hacen falta las huellas recientes.
@@ -391,8 +391,22 @@ def validar_informe(report_dir: Path, *, timeout: int = TIMEOUT_SEGUNDOS,
 
 
 def _ruta_salida_temporal(report_dir: Path) -> Path:
-    """Reserva un nombre no compartido por hilos ni validaciones anidadas."""
-    return (report_dir.parent /
+    """Reserva un nombre no compartido por hilos ni validaciones anidadas.
+
+    CORE-004(d). Esto devolvia `report_dir.parent / ...`, o sea el directorio
+    del proyecto del USUARIO, y `pbi_validate_pbip_project` va anotada
+    `read_only`: `readOnlyHint` es la señal con la que un cliente decide
+    ejecutar sin preguntar. Que el archivo se borrase despues no lo arreglaba
+    del todo -si el proceso muere entre medias se queda, y el proyecto suele
+    vivir en OneDrive o en Git, donde un temporal de un segundo acaba
+    sincronizado o apareciendo en `git status`-.
+
+    Se escribe en el temporal del sistema. El CLI recibe una ruta ABSOLUTA en
+    `--out`, asi que no le importa donde este; su `cwd` sigue siendo el proyecto.
+    """
+    import tempfile
+
+    return (Path(tempfile.gettempdir()) /
             f".hz_validate_{os.getpid()}_{threading.get_ident()}_"
             f"{uuid.uuid4().hex}.json")
 

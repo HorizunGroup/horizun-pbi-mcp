@@ -437,12 +437,12 @@
     },
     {
       "name": "pbi_apply_plan",
-      "description": "Aplica un plan calculado con pbi_plan_change o con un dry_run.\n\nVerifica que el proyecto siga en el estado sobre el que se planifico; si\ncambio, rechaza el plan en vez de aplicar algo distinto de lo aprobado.\n\n`expected_operation` es opcional: si lo indicas, el plan solo se aplica\nsi fue generado para esa operacion (`plan_operation_mismatch` si no).",
+      "description": "Aplica un plan calculado con pbi_plan_change o con un dry_run.\n\nVerifica que el proyecto siga en el estado sobre el que se planifico; si\ncambio, rechaza el plan en vez de aplicar algo distinto de lo aprobado.\n\n`expected_operation` es opcional: si lo indicas, el plan solo se aplica\nsi fue generado para esa operacion (`plan_operation_mismatch` si no).\n\n**Exige `confirm=true`.** Hasta 2.0.0 el default era `True`, o sea que\nomitir el parametro APLICABA: un gate que viene abierto no es un gate, y\nademas rompia la simetria con las otras ocho tools con `confirm`, que es\njusto la inconsistencia que hace que un agente generalice mal.",
       "params": {
         "confirm": {
           "required": false,
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "expected_operation": {
           "required": false,
@@ -941,7 +941,7 @@
     },
     {
       "name": "pbi_close_desktop",
-      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).",
+      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).\n\n`path` (o `pbip_path`) se puede omitir: se cierra el proyecto activo,\nque es el que el servidor ya conoce.",
       "params": {
         "confirm": {
           "required": false,
@@ -949,8 +949,14 @@
           "default": false
         },
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "request_id": {
           "required": false,
@@ -958,9 +964,7 @@
           "default": ""
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3542,11 +3546,22 @@
     },
     {
       "name": "pbi_open_and_refresh",
-      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.",
+      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\n`path` y `pbip_path` son el mismo parametro -el segundo es como lo\nllama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa\nel proyecto .pbip activo.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.\n\n**Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:\nlos dos efectos son visibles y el segundo descarta lo que hubiera en\nmemoria sin guardar.",
       "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "refresh_timeout_seconds": {
           "required": false,
@@ -3579,9 +3594,7 @@
           "default": "full"
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3600,11 +3613,17 @@
     },
     {
       "name": "pbi_open_in_desktop",
-      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
+      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\n`path` (o `pbip_path`, como lo llama `pbi_session_info`) se puede\nomitir: entonces se abre el proyecto .pbip activo.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
       "params": {
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "reuse_open": {
           "required": false,
@@ -3622,9 +3641,7 @@
           "default": 300
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3663,8 +3680,10 @@
         ]
       },
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": false
       }
     },
     {
@@ -4022,8 +4041,13 @@
     },
     {
       "name": "pbi_refresh_model",
-      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\n`timeout_seconds` (600 por defecto, `0` lo desactiva): un refresh\nlanzado por XMLA **no puede mostrar el dialogo de credenciales** de\nDesktop, asi que un origen sin credenciales guardadas deja al motor\nesperando para siempre y no hay ninguna ventana que cerrar. Al\nagotarse el plazo se pide la cancelacion al motor y se devuelve\n`refresh_timeout` enumerando los origenes que REQUIEREN credenciales\n-no si las tienen: eso Desktop no lo expone- y si la cancelacion se\nconfirmo o el comando pudo quedar corriendo.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).",
+      "description": "Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).\n\n`type`: full | calculate | clear_values (tambien automatic | data_only).\n`tables`: lista opcional de tablas a refrescar; si se omite, todo el modelo.\nLos errores de credenciales/origen se reportan.\n\n`timeout_seconds` (600 por defecto, `0` lo desactiva): un refresh\nlanzado por XMLA **no puede mostrar el dialogo de credenciales** de\nDesktop, asi que un origen sin credenciales guardadas deja al motor\nesperando para siempre y no hay ninguna ventana que cerrar. Al\nagotarse el plazo se pide la cancelacion al motor y se devuelve\n`refresh_timeout` enumerando los origenes que REQUIEREN credenciales\n-no si las tienen: eso Desktop no lo expone- y si la cancelacion se\nconfirmo o el comando pudo quedar corriendo.\n\nDevuelve estado, duracion y **`rows_by_table`**: cuantas filas quedaron\nen cada tabla refrescada. Un refresh puede terminar en 'ok' y haber\ncargado CERO filas -credenciales que devuelven vacio, un filtro de\nfecha que no alcanza nada, un origen que cambio de esquema-, asi que\nlas tablas vacias salen ademas en `warnings`. Si no se pudo contar, se\ndice; no se inventa el numero.\n\nEn un proyecto **.pbip los datos NO se guardan**: viven en la sesion de\nDesktop y al reabrir hay que refrescar otra vez. Lo que persiste al\nguardar es la definicion (TMDL + PBIR).\n\n**Exige `confirm=true` desde 2.0.0.** Hasta entonces era la unica tool\n`destructiveHint` sin confirmacion junto con `pbi_open_and_refresh`: un\nagente que decide por «¿tiene `confirm`?» no veia nada que preguntar.",
       "params": {
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
         "request_id": {
           "required": false,
           "type": "string",
@@ -4405,8 +4429,10 @@
         ]
       },
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
         "openWorldHint": false,
-        "readOnlyHint": true
+        "readOnlyHint": false
       }
     },
     {
@@ -4705,11 +4731,16 @@
     },
     {
       "name": "pbi_set_visual_filter",
-      "description": "Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.\n\n`filters`: lista de specs, cada uno\n`{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |\n'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',\nexclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,\ndisplay_name?: str}`. Con `values` se arma un filtro de lista\n(Categorical); sin `values` ni `raw` el campo queda declarado pero\nSIN acotar, como el panel de filtros vacio. `raw` pasa una consulta\nsemantica ya construida, para lo que este constructor no cubre.\n\n`field` va con el NOMBRE real de la tabla. La mitad interna de la\nconsulta usa un ALIAS (`SourceRef.Source`) que esta tool resuelve\nsola: escribirlo a mano ahi es el error mas comun al construir un\nfiltro de visual, y Power BI lo ignora sin decir por que.\n\nUna lista vacia QUITA todos los filtros del visual (no los deja\ndeclarados sin valor). No comprueba `field` contra el modelo: un\ncampo que no existe se escribe igual y Power BI lo resuelve en\nsilencio a nada, igual que si se escribiera a mano.",
+      "description": "Filtra un visual EXISTENTE sin escribir `filterConfig` a mano.\n\n`filters`: lista de specs. Por COLUMNA,\n`{field: 'Tabla[Columna]', values?: [...], type?: 'Categorical' |\n'Advanced' | 'TopN' | 'Range' | 'RelativeDate' | 'Passthrough',\nexclude?: bool, raw?: {...}, hidden?: bool, locked?: bool,\ndisplay_name?: str}`. Con `values` se arma un filtro de lista\n(Categorical); sin `values` ni `raw` el campo queda declarado pero\nSIN acotar, como el panel de filtros vacio. `raw` pasa una consulta\nsemantica ya construida, para lo que este constructor no cubre.\n\nPor MEDIDA, `{measure: 'Tabla[Medida]', condition: 'GreaterThan',\nvalue: 0}` (`condition`: Equal | NotEqual | GreaterThan |\nGreaterThanOrEqual | LessThan | LessThanOrEqual, o los simbolos\n`> >= < <= = !=`). Es la forma de ENCADENAR slicers de dimension\ncuando varias tablas de hechos cuelgan de las mismas dimensiones y\nuna relacion bidireccional crearia ambiguedad.\n\n`field`/`measure` van con el NOMBRE real de la tabla. La mitad interna\nde la consulta usa un ALIAS (`SourceRef.Source`) que esta tool\nresuelve sola: escribirlo a mano ahi es el error mas comun al\nconstruir un filtro de visual, y Power BI lo ignora sin decir por que.\n\nPor defecto REEMPLAZA los filtros del visual, y una lista vacia los\nquita todos. **Cuidado con los slicers**: suelen traer un filtro\n`Categorical` donde vive la seleccion del usuario, y reemplazarlo la\nborra. Para anadir sin pisar, `merge=true` (ahi una lista vacia no\nquita nada). No comprueba el campo contra el modelo: uno que no existe\nse escribe igual y Power BI lo resuelve en silencio a nada.",
       "params": {
         "filters": {
           "required": true,
           "type": "array[object]"
+        },
+        "merge": {
+          "required": false,
+          "type": "boolean",
+          "default": false
         },
         "page": {
           "required": true,
@@ -5108,7 +5139,7 @@
     },
     {
       "name": "pbi_validate_desktop_render",
-      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla). Si el informe ya estaba abierto, reutiliza esa sesion y\nnunca cierra la ventana del usuario.",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
       "params": {
         "capture_timeout": {
           "required": false,
@@ -5126,8 +5157,24 @@
           "default": null
         },
         "path": {
-          "required": true,
-          "type": "string"
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "refresh": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "refresh_timeout_seconds": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
         },
         "reuse_open": {
           "required": false,
@@ -5140,9 +5187,7 @@
           "default": 300
         }
       },
-      "required": [
-        "path"
-      ],
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [

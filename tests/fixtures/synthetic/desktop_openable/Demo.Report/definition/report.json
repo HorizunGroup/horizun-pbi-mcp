@@ -1,0 +1,28 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/report/3.3.0/schema.json",
+  "themeCollection": {
+    "baseTheme": {
+      "name": "HorizunBase",
+      "type": "SharedResources",
+      "reportVersionAtImport": {
+        "report": "3.3.0",
+        "page": "2.1.0",
+        "visual": "2.7.0"
+      }
+    }
+  },
+  "resourcePackages": [
+    {
+      "name": "SharedResources",
+      "type": "SharedResources",
+      "items": [
+        {
+          "name": "HorizunBase",
+          "path": "BaseThemes/HorizunBase.json",
+          "type": "BaseTheme"
+        }
+      ]
+    }
+  ],
+  "settings": {}
+}

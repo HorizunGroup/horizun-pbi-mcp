@@ -196,7 +196,12 @@ def hide_columns_service(session, columns: Any, hidden: bool,
         for r in res["results"]:
             por_columna[(r["table"], r["column"])]["pbip"] = r
     else:
-        res = model_writer.set_columns_hidden_bulk(session, unicas, hidden)
+        try:
+            res = model_writer.set_columns_hidden_bulk(session, unicas, hidden)
+        except PowerBIMCPError as exc:
+            # Misma pista que en `run_dual`: si el fallo es "Desktop no esta
+            # ahi" y el proyecto .pbip si es escribible, se dice.
+            dual_mode.relanzar_con_pista(exc, session)
         for r in res["results"]:
             por_columna[(r["table"], r["column"])]["live"] = r
 
@@ -416,6 +421,7 @@ def register(mcp) -> None:
                 lambda: model_writer.set_column_hidden(session, table, column, hidden),
                 lambda: model_edit.set_column_hidden_pbip(
                     session.require_active_pbip(), table, column, hidden),
+                session,
             )
         return guard_mutation(_impl)
 
@@ -466,6 +472,7 @@ def register(mcp) -> None:
                     session, from_table, to_table, direction),
                 lambda: model_edit.set_relationship_direction_pbip(
                     session.require_active_pbip(), from_table, to_table, direction),
+                session,
             )
         return guard_mutation(_impl)
 

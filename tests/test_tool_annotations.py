@@ -166,10 +166,17 @@ def test_read_only_estricto_no_emite_ficheros(tools_ast, defs_globales):
 
 
 def test_las_destructivas_exigen_confirm(tools_ast):
-    """Invariante 6 de AGENTS.md, comprobado sobre la firma real."""
+    """Invariante 6 de AGENTS.md, comprobado sobre la firma real.
+
+    Cubria solo `WRITE_DESTRUCTIVE`, y por ese hueco se escapaban las dos de
+    refresh —`WRITE_IRREVERSIBLE`—, que son las que MAS lo necesitan: son las
+    unicas de las 134 que se anunciaban destructivas sin nada que confirmar.
+    Desde CONTRACT-003 se exige a todas las que el cliente ve como
+    destructivas.
+    """
     sin_confirm = []
     for nombre, clase in sorted(risk.RISK_BY_TOOL.items()):
-        if clase != risk.WRITE_DESTRUCTIVE:
+        if clase not in risk.CLASES_DESTRUCTIVAS:
             continue
         cuerpo = tools_ast.get(nombre)
         if cuerpo is None:

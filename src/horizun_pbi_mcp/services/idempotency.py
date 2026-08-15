@@ -187,81 +187,12 @@ class RegistroCorruptoError(PowerBIMCPError):
 # ------------------------------------------------------- exclusion mutua ---
 #: Un cerrojo por `request_id` dentro del proceso. Se guardan indefinidamente
 #: porque un Lock son unas decenas de bytes y el numero de request_id vivos en
-#: una sesion es pequeno; purgarlos abriria una carrera al purgar.
-_CERROJOS: Dict[str, threading.Lock] = {}
-_CERROJOS_LOCK = threading.Lock()
-
-
-def _cerrojo_de_hilo(clave: str) -> threading.Lock:
-    with _CERROJOS_LOCK:
-        return _CERROJOS.setdefault(clave, threading.Lock())
-
-
-if os.name == "nt":                                       # pragma: no cover
-    import msvcrt
-
-    def _intentar_tomar(fd: int) -> bool:
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            return True
-        except OSError:
-            return False
-
-    def _soltar(fd: int) -> None:
-        try:
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        except OSError:
-            pass
-else:                                                     # pragma: no cover
-    import fcntl
-
-    def _intentar_tomar(fd: int) -> bool:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return True
-        except OSError:
-            return False
-
-    def _soltar(fd: int) -> None:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        except OSError:
-            pass
-
-
-@contextlib.contextmanager
-def _cerrojo_de_archivo(ruta: Path, request_id: str) -> Iterator[None]:
-    """Cerrojo del sistema sobre `ruta`, con espera acotada.
-
-    Se reintenta sin bloquear en vez de usar la espera del sistema: en Windows
-    `LK_LOCK` bloquea diez segundos fijos y no hay forma de acotarlo, y colgar
-    un hilo del servidor sin limite no es una opcion.
-    """
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    banderas = os.O_CREAT | os.O_RDWR | getattr(os, "O_BINARY", 0)
-    fd = os.open(ruta, banderas, 0o600)
-    try:
-        limite = time.time() + LOCK_TIMEOUT_SECONDS
-        while True:
-            os.lseek(fd, 0, os.SEEK_SET)
-            if _intentar_tomar(fd):
-                break
-            if time.time() >= limite:
-                raise RequestInProgressError(
-                    f"El request_id '{request_id}' lleva mas de "
-                    f"{LOCK_TIMEOUT_SECONDS:.0f}s tomado por otra llamada y no "
-                    "se ha podido reservar. Espera a que termine antes de "
-                    "reintentar.",
-                    details={"request_id": request_id,
-                             "lock_timeout_seconds": LOCK_TIMEOUT_SECONDS})
-            time.sleep(_LOCK_STEP)
-        try:
-            yield
-        finally:
-            _soltar(fd)
-    finally:
-        os.close(fd)
+#: La primitiva de cerrojo vive en `services/cerrojo.py` desde CORE-006. Estaba
+#: aqui, bien hecha, y el camino que ESCRIBE el proyecto no tenia ninguna; la
+#: respuesta no era escribir una segunda -dos implementaciones del mismo
+#: mecanismo son dos formas distintas de quedarse a medias- sino extraer esta y
+#: usarla en los dos sitios. El comportamiento no cambia.
+from horizun_pbi_mcp.services import cerrojo as _cerrojo  # noqa: E402
 
 
 @contextlib.contextmanager
@@ -272,9 +203,18 @@ def _exclusion(store: "Store", request_id: str) -> Iterator[None]:
     seria un abrazo mortal entre dos procesos multihilo.
     """
     ruta = store._archivo_cerrojo(request_id)
-    with _cerrojo_de_hilo(str(ruta)):
-        with _cerrojo_de_archivo(ruta, request_id):
-            yield
+
+    def _agotado(timeout: float) -> Exception:
+        return RequestInProgressError(
+            f"El request_id '{request_id}' lleva mas de {timeout:.0f}s tomado "
+            "por otra llamada y no se ha podido reservar. Espera a que termine "
+            "antes de reintentar.",
+            details={"request_id": request_id,
+                     "lock_timeout_seconds": timeout})
+
+    with _cerrojo.exclusion(ruta, timeout=LOCK_TIMEOUT_SECONDS,
+                            al_agotarse=_agotado):
+        yield
 
 
 def _proceso_vivo(pid: Optional[int], arranque: Optional[float]) -> Optional[bool]:

@@ -1,10 +1,13 @@
 """Contrato de distribución directa como plugin de Codex y Claude."""
 from __future__ import annotations
 
+import ast
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -15,6 +18,22 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _json(relative: str) -> dict:
     return json.loads((REPO / relative).read_text(encoding="utf-8"))
+
+
+def _bootstrap():
+    """Carga scripts/plugin_bootstrap.py, que no es parte del paquete."""
+    ruta = REPO / "scripts" / "plugin_bootstrap.py"
+    spec = importlib.util.spec_from_file_location("_plugin_bootstrap_bajo_prueba", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def _pid_muerto() -> int:
+    """Un PID que existio y ya no: mas fiable que inventarse un numero."""
+    proceso = subprocess.Popen([sys.executable, "-c", "pass"])
+    proceso.wait()
+    return proceso.pid
 
 
 def test_los_dos_manifiestos_son_coherentes_y_apache():
@@ -170,7 +189,18 @@ def test_el_instalador_de_un_pegado_es_ascii_y_sin_admin():
         "el instalador no puede pedir elevacion")
     assert "CurrentUser" in texto, "la politica de ejecucion se toca solo del usuario"
     docs = (REPO / "docs/INSTALL.md").read_text(encoding="utf-8")
-    assert "instalar.ps1 | iex" in docs, "INSTALL.md debe abrir con el pegado"
+    # Lo que esta linea exige es que INSTALL.md ABRA con el pegado, no la forma
+    # concreta que tenia. Exigia literalmente `instalar.ps1 | iex`, que era el
+    # defecto de INSTALL-003: descargar de una rama y ejecutar sin mirar. Ahora
+    # se comprueba lo mismo contra la fuente canonica del bloque, de modo que
+    # el dia que el bloque vuelva a cambiar esta prueba siga midiendo la
+    # intencion y no una cadena que ya no existe.
+    canonico = (REPO / "scripts/one_paste.ps1").read_text(encoding="ascii")
+    primera = next(l for l in canonico.splitlines()
+                   if l.strip() and not l.startswith("#"))
+    assert primera in docs, "INSTALL.md debe abrir con el pegado"
+    assert "instalar.ps1 | iex" not in docs, (
+        "INSTALL.md volvio al pegado que ejecuta lo que devuelva una rama")
 
 
 def test_el_instalador_no_se_rinde_si_winget_no_ofrece_scope_user():
@@ -196,6 +226,279 @@ def test_el_instalador_no_se_rinde_si_winget_no_ofrece_scope_user():
     assert "1978335189" in texto, "'ya estaba instalado' cuenta como exito"
     # Y sigue sin haber elevacion en ninguna de las dos formas.
     assert "--scope machine" not in texto, "nunca se pide instalacion por maquina"
+
+
+# ------------------------------------ la instalacion no se ve ni se repite ---
+#: Scripts que corren DENTRO de la instalacion automatica, es decir con un
+#: padre sin consola. Cualquier subproceso que lancen tiene que pedir
+#: explicitamente que no se abra ventana.
+SCRIPTS_DEL_BOOTSTRAP = ("plugin_bootstrap.py", "fetch_report_validator.py",
+                         "fetch_libs.py", "fetch_pbir_schemas.py")
+
+
+#: Los dos nombres del MISMO ayudante. `procesos.sin_ventana` es la unica
+#: implementacion, en el paquete; `flags_sin_ventana` es como la reexporta
+#: `plugin_bootstrap`, que la carga por ruta porque corre antes de que el
+#: paquete sea importable. Aceptar los dos NO afloja la guarda: sigue siendo una
+#: lista cerrada, y un `subprocess.run` sin ninguno de los dos falla igual.
+AYUDANTES = {"flags_sin_ventana", "sin_ventana"}
+
+
+def _llamadas_a_subprocess(ruta: Path):
+    """(funcion que la contiene, nodo, ¿declara creationflags?) por llamada."""
+    arbol = ast.parse(ruta.read_text(encoding="utf-8"))
+    for contenedor in ast.walk(arbol):
+        if not isinstance(contenedor, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for nodo in ast.walk(contenedor):
+            if not isinstance(nodo, ast.Call):
+                continue
+            f = nodo.func
+            if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+                    and f.value.id == "subprocess"
+                    and f.attr in {"run", "Popen", "call", "check_call",
+                                   "check_output"}):
+                continue
+            declara = any(
+                k.arg == "creationflags"
+                or (k.arg is None and isinstance(k.value, ast.Call)
+                    and getattr(k.value.func, "id",
+                                getattr(k.value.func, "attr", "")) in AYUDANTES)
+                for k in nodo.keywords)
+            yield contenedor.name, nodo, declara
+
+
+@pytest.mark.parametrize("script", SCRIPTS_DEL_BOOTSTRAP)
+def test_ningun_subproceso_de_la_instalacion_estrena_ventana(script):
+    """El defecto que veia la persona: una consola de `pip` en cada arranque.
+
+    El instalador corre con DETACHED_PROCESS, o sea sin consola. Windows le
+    crea una VISIBLE a cada hijo de consola salvo que ESA llamada pida
+    CREATE_NO_WINDOW; el flag del padre no se hereda y redirigir stdout no
+    cambia nada. Se comprueba en el AST y no en la ejecucion porque el fallo es
+    justo el descuido de olvidar el flag en el siguiente script que se agregue.
+    """
+    ruta = REPO / "scripts" / script
+    sospechosas = [f"{ruta.name}:{n.lineno} en {donde}()"
+                   for donde, n, declara in _llamadas_a_subprocess(ruta) if not declara]
+    assert not sospechosas, (
+        "subprocesos de la instalacion sin CREATE_NO_WINDOW (usa "
+        f"**flags_sin_ventana()): {sospechosas}")
+
+
+def test_el_lanzador_oculta_al_instalador_y_no_al_servidor():
+    """Los dos subprocesos del lanzador quieren cosas OPUESTAS.
+
+    El instalador va en segundo plano con su salida a un log: necesita el flag
+    o estrena ventana. El servidor real NO redirige el stdio, porque son las
+    tuberias del cliente: darle CREATE_NO_WINDOW le regala una consola nueva,
+    de la que lee en vez de escuchar al cliente, y el handshake MCP se cuelga
+    para siempre. Medido en campo antes de escribir esto.
+    """
+    ruta = REPO / "scripts" / "plugin_launcher.py"
+    por_funcion = {donde: declara for donde, _n, declara in _llamadas_a_subprocess(ruta)}
+    assert por_funcion.get("_start_install") is True, (
+        "el instalador en segundo plano debe pedir CREATE_NO_WINDOW")
+    # El arranque del servidor real vive en `_servir`, que es la que usan tanto
+    # el runtime activo como el fallback a N-1. Si esto siguiera mirando solo a
+    # `main`, el camino del fallback podria estrenar consola sin que nadie se
+    # enterara -y es justo el camino que se recorre cuando algo ya fue mal-.
+    assert por_funcion.get("_servir") is False, (
+        "el servidor real hereda el stdio del cliente: sin creationflags")
+
+
+def test_el_venv_se_crea_en_un_subproceso_propio():
+    """La ventana que sobrevivio al primer arreglo, medida en pantalla.
+
+    `venv.EnvBuilder(with_pip=True)` arranca `ensurepip` en un proceso aparte
+    por su cuenta, sin flags que podamos pasarle: con el instalador sin consola,
+    Windows le regalaba una VISIBLE, titulada con la ruta del runtime. Creando
+    el venv nosotros, hereda la consola oculta como el resto de los pasos.
+    """
+    arbol = ast.parse((REPO / "scripts" / "plugin_bootstrap.py").read_text(encoding="utf-8"))
+    usos = [n for n in ast.walk(arbol)
+            if (isinstance(n, ast.Attribute) and n.attr == "EnvBuilder")
+            or (isinstance(n, ast.Name) and n.id == "EnvBuilder")]
+    assert not usos, (
+        "EnvBuilder lanza ensurepip sin flags: crea el venv con `python -m venv`")
+    argumentos = [ast.literal_eval(e) for n in ast.walk(arbol)
+                  if isinstance(n, ast.List)
+                  for e in n.elts if isinstance(e, ast.Constant)]
+    assert "venv" in argumentos, "el venv tiene que crearse por subproceso"
+
+
+def test_la_raiz_de_datos_no_depende_del_nombre_que_elija_el_cliente(monkeypatch):
+    """El bucle de reinstalacion: la carpeta cambiaba de nombre sola.
+
+    Claude entrego primero `...-horizun` y luego `...-inline` para el MISMO
+    plugin. Con la ruta colgada de ese nombre, el runtime se reconstruia entero
+    (venv, pip, DLL, esquemas, validador) y la carpeta anterior quedaba
+    huerfana. Solo el override propio puede mover la raiz.
+    """
+    bootstrap = _bootstrap()
+    monkeypatch.delenv("HORIZUN_PBI_PLUGIN_DATA", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", r"X:\datos\horizun-pbi-mcp-horizun")
+    primera = bootstrap.data_dir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", r"X:\datos\horizun-pbi-mcp-inline")
+    assert bootstrap.data_dir() == primera, (
+        "la raiz del runtime sigue al nombre que da el cliente")
+    assert "HorizunPbiMcp" in str(primera)
+
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", r"X:\mio")
+    assert bootstrap.data_dir() == Path(r"X:\mio").expanduser().resolve()
+
+
+def test_el_runtime_se_aisla_por_version(tmp_path):
+    """Dos instalaciones de versiones distintas no pueden pisarse el venv."""
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    assert p["cache"] == tmp_path / bootstrap.VERSION
+    assert p["runtime"].parent == p["cache"]
+    # Lo del usuario NO se versiona: sobrevive a cada actualizacion.
+    assert p["outputs"] == tmp_path / "outputs"
+    assert p["backups"] == tmp_path / "backups"
+
+
+def test_un_lock_huerfano_no_congela_la_instalacion(tmp_path):
+    """Apagar el PC a mitad dejaba el estado en `installing` para siempre.
+
+    El lock sin dueño bloqueaba al instalador y el estado bloqueaba al
+    lanzador, que solo reintenta con `not_installed` o version distinta.
+    """
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    p["cache"].mkdir(parents=True)
+    bootstrap._write_status(p, state="installing", ready=False)
+    # Se envejece el estado a mano: `_write_status` siempre sella la hora
+    # actual, y con el margen de gracia recien puesto no se veria el defecto.
+    envejecido = json.loads(p["status"].read_text(encoding="utf-8")) | {"updated": 0.0}
+    p["status"].write_text(json.dumps(envejecido), encoding="utf-8")
+
+    p["lock"].write_text(json.dumps({"pid": _pid_muerto()}), encoding="utf-8")
+    assert bootstrap.instalacion_en_curso(tmp_path) is False
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as cerrojo:
+        assert cerrojo.adquirido is True, "el lock huerfano debe poder robarse"
+        assert bootstrap.instalacion_en_curso(tmp_path) is True, (
+            "ahora lo tiene este proceso, que si esta vivo")
+
+
+def test_el_cerrojo_del_ciclo_de_vida_vive_en_la_raiz(tmp_path):
+    """Un cerrojo dentro de la carpeta que la promocion renombra no protege nada.
+
+    Vivia en `<raiz>/<VERSION>/install.lock`, y esa es justo la carpeta que
+    `promover()` aparta con un `rename`. Dos instaladores concurrentes podian
+    estar cada uno en su cache creyendo que tenian el paso libre y colisionar
+    al promover sobre el mismo destino.
+    """
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    assert p["lock"].parent == p["root"], p["lock"]
+    assert p["lock"].parent != p["cache"]
+
+
+def test_un_lock_vacio_del_formato_anterior_tambien_se_recupera(tmp_path):
+    """Las instalaciones ya bloqueadas por la 1.5.4 tienen que destrabarse."""
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    p["root"].mkdir(parents=True, exist_ok=True)
+    p["lock"].write_text("", encoding="utf-8")
+    assert bootstrap._cerrojos.lock_vivo(p["lock"]) is False
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as cerrojo:
+        assert cerrojo.adquirido is True
+
+
+def test_un_instalador_vivo_conserva_su_lock(tmp_path):
+    bootstrap = _bootstrap()
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as primero:
+        assert primero.adquirido is True
+        with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as segundo:
+            assert segundo.adquirido is False, "no puede haber dos instaladores"
+
+
+@pytest.mark.parametrize("donante", ["1.0.0", ""])
+def test_la_actualizacion_copia_el_runtime_y_NO_destruye_el_anterior(tmp_path, donante):
+    """INSTALL-001, en una asercion: la siembra COPIA, no mueve.
+
+    Subir de version no puede costar otra descarga de 1 GB, pero tampoco puede
+    costar el runtime que ya funcionaba. La version anterior de `_semilla`
+    hacia `shutil.move` del donante ANTES de validar nada: si pip o una descarga
+    fallaban despues, el estado quedaba en `failed` y N-1 ya no existia.
+
+    La linea que cambia de signo es la ultima: antes se exigia
+    `not viejo_python.exists()` -o sea, que el donante hubiera quedado
+    destripado- y ahora se exige justo lo contrario.
+    """
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    origen = tmp_path / donante if donante else tmp_path
+    relativa = p["python"].relative_to(p["runtime"])
+    viejo_python = origen / "runtime" / relativa
+    viejo_python.parent.mkdir(parents=True)
+    viejo_python.write_text("#", encoding="utf-8")
+    (origen / "libs").mkdir(parents=True)
+    (origen / "libs" / "Microsoft.AnalysisServices.dll").write_text("x", encoding="utf-8")
+
+    staging = bootstrap._promocion.crear_staging(tmp_path, bootstrap.VERSION)
+    sp = bootstrap.paths(tmp_path, cache=staging)
+
+    assert bootstrap._semilla(staging, tmp_path, relativa) == str(origen)
+    assert sp["python"].is_file(), "el venv no se copio al staging"
+    assert (sp["libs"] / "Microsoft.AnalysisServices.dll").is_file()
+
+    assert viejo_python.is_file(), (
+        "la siembra destruyo el runtime anterior: si el resto de la "
+        "instalacion falla, no queda N-1 al que volver")
+    assert (origen / "libs" / "Microsoft.AnalysisServices.dll").is_file()
+
+
+def test_la_limpieza_borra_lo_huerfano_y_conserva_lo_del_usuario(tmp_path, monkeypatch):
+    """Ni un 'horizun-pbi-mcp-horizun' vacio para siempre, ni un backup perdido."""
+    bootstrap = _bootstrap()
+    raiz = tmp_path / "datos"
+    p = bootstrap.paths(raiz)
+    p["cache"].mkdir(parents=True)
+
+    # Dos versiones viejas con runtime. La MAS RECIENTE se indulta como N-1
+    # -INSTALL-001: la limpieza no puede dejar la instalacion sin nada a lo que
+    # volver- y la otra se va. Antes se borraban las dos, y el ensayo real lo
+    # destapo: se llegaba a `ready` sin un solo interprete anterior utilizable.
+    antigua = raiz / "0.9.0" / "runtime"
+    antigua.mkdir(parents=True)
+    vieja = raiz / "1.0.0" / "runtime"
+    vieja.mkdir(parents=True)
+    os.utime(raiz / "1.0.0", (time.time(), time.time()))
+    resto = raiz / "runtime"                       # diseño viejo, en la raiz
+    resto.mkdir(parents=True)
+    (raiz / "outputs").mkdir()
+    (raiz / "outputs" / "mio.txt").write_text("mio", encoding="utf-8")
+
+    cliente = tmp_path / "plugins" / "horizun-pbi-mcp-inline"
+    (cliente / "runtime").mkdir(parents=True)
+    (cliente / "install-status.json").write_text('{"state": "ready"}', encoding="utf-8")
+    (cliente / "backups").mkdir()
+    (cliente / "backups" / "PB4.zip").write_text("respaldo", encoding="utf-8")
+    abandonada = tmp_path / "plugins" / "horizun-pbi-mcp-horizun"
+    abandonada.mkdir()
+    ajena = tmp_path / "plugins" / "otro-plugin"
+    ajena.mkdir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(cliente))
+
+    borrados = bootstrap._limpiar_huerfanos(p)
+
+    assert (raiz / "1.0.0" / "runtime").is_dir(), (
+        "se borro el unico N-1 utilizable: si la version vigente falla al "
+        "arrancar, no queda a donde volver")
+    assert not (raiz / "0.9.0").exists(), "solo se indulta UNA, la mas reciente"
+    assert not resto.exists()
+    assert not cliente.exists() and not abandonada.exists()
+    assert ajena.exists(), "no se tocan las carpetas de otros plugins"
+    assert p["cache"].is_dir(), "la version vigente se queda"
+    assert (raiz / "outputs" / "mio.txt").read_text(encoding="utf-8") == "mio"
+    assert (p["backups"] / "PB4.zip").read_text(encoding="utf-8") == "respaldo", (
+        "un respaldo del usuario no puede irse con la carpeta que lo alojaba")
+    assert str(cliente) in borrados, "la limpieza se reporta en el status"
 
 
 def test_los_marketplaces_publican_el_mismo_plugin():
@@ -235,3 +538,36 @@ def test_launcher_limpio_expone_el_instalador_por_stdio(tmp_path):
     assert [tool["name"] for tool in replies[1]["result"]["tools"]] == [
         "pbi_install_runtime", "pbi_install_status"]
     assert stderr == ""
+
+
+def test_el_indulto_del_N1_no_depende_del_reloj(tmp_path, monkeypatch):
+    """El empate de fechas decidia cual sobrevivia, y CI lo destapo.
+
+    Se elegia el N−1 a indultar con `max(..., key=st_mtime)`. Dos carpetas
+    creadas en el mismo tick empatan, y el desempate lo decidia el orden que
+    devolviera el sistema de archivos: verde en un runner, rojo en otro, la
+    misma prueba. El sintoma era el peor: indultar `0.9.0` y borrar `1.0.0`,
+    que era el unico runtime al que volver.
+
+    Aqui las dos carpetas tienen la MISMA fecha a proposito. Arreglar esto
+    separando los `utime` habria escondido el defecto sin tocarlo.
+    """
+    bootstrap = _bootstrap()
+    raiz = tmp_path / "datos"
+    p = bootstrap.paths(raiz)
+    p["cache"].mkdir(parents=True)
+
+    for nombre in ("0.9.0", "1.0.0"):
+        (raiz / nombre / "runtime").mkdir(parents=True)
+    misma = 1_700_000_000.0
+    for nombre in ("0.9.0", "1.0.0"):
+        os.utime(raiz / nombre, (misma, misma))
+    assert (raiz / "0.9.0").stat().st_mtime == (raiz / "1.0.0").stat().st_mtime
+
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+    bootstrap._limpiar_huerfanos(p)
+
+    assert (raiz / "1.0.0" / "runtime").is_dir(), (
+        "con las dos fechas iguales se indulto la version menor: el N−1 lo "
+        "decide el numero de version, no el reloj")
+    assert not (raiz / "0.9.0").exists(), "la mas vieja tenia que irse"

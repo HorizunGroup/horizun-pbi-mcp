@@ -33,16 +33,47 @@ _PATRONES = [
     (re.compile(r"(?i)(password|pwd|secret|token|api[_-]?key)\s*[=:]\s*\S+"),
      r"\1=***"),
     (re.compile(r"(?i)(user id|uid)\s*=\s*[^;]+"), r"\1=***"),
+    # CORE-005. `Bearer <token>` y los secretos con prefijo reconocible: los
+    # dos aparecen SUELTOS en el texto de una excepcion, sin una clave delante
+    # que los delate, asi que los dos patrones de arriba no los veian.
+    (re.compile(r"(?i)\b(bearer)\s+\S+"), r"\1 ***"),
+    (re.compile(r"(?i)\b(?:github_pat|ghp|gho|ghu|ghs|ghr|pat|sk|xox[abprs])"
+                r"[-_][A-Za-z0-9_\-]{16,}"), "***"),
 ]
+
+#: Rutas absolutas EMBEBIDAS en un texto libre.
+#:
+#: `_parece_ruta` solo reconoce cadenas que SON una ruta -empiezan por unidad o
+#: por barra-, y el caso que importa es otro: una frase que CONTIENE una. El
+#: texto de una excepcion casi nunca es una ruta y casi siempre lleva una
+#: dentro. Se cubren unidad de Windows, UNC y los dos prefijos de perfil de
+#: usuario en POSIX; se deja fuera cualquier `/algo` suelto a proposito, porque
+#: enmascararlo destrozaria URLs, mensajes y nombres de tools sin proteger nada.
+#: Los espacios importan y son la parte delicada. `Cliente Confidencial` lleva
+#: uno, asi que una clase que corte en el primer espacio deja fuera justo el
+#: segmento que hay que ocultar. Se admite un espacio solo si la ruta CONTINUA
+#: -si mas adelante queda un separador-, para no tragarse media frase detras del
+#: nombre del archivo.
+_RUTAS_EN_TEXTO = re.compile(
+    r"(?:[A-Za-z]:[\\/]|\\\\[^\s\\/]+[\\/]|(?:/home|/Users)/)"
+    r"(?:[^\s\"'<>|,;)]|[ ](?=[^\s\"'<>|,;)]*[\\/]))*")
 
 
 def _redact_path(valor: str) -> str:
-    """De una ruta solo se conservan los dos ultimos segmentos."""
+    """De una ruta solo se conserva el NOMBRE DEL ARCHIVO.
+
+    Conservaba los dos ultimos segmentos, y el penultimo es exactamente donde
+    vive el nombre del cliente: `...\\OneDrive\\Cliente Confidencial\\x.pbip`
+    quedaba en `.../Cliente Confidencial/x.pbip`. La carpeta padre ayuda a
+    diagnosticar y es justo la que no puede viajar, asi que se elige lo que este
+    modulo ya prometia en su cabecera -«nombre del archivo»- y no una version
+    mas generosa que nadie habia declarado.
+    """
     try:
         p = Path(valor)
         partes = p.parts
-        if len(partes) > 2:
-            return f".../{'/'.join(partes[-2:])}"
+        if len(partes) > 1:
+            return f".../{partes[-1]}"
         return str(p)
     except (OSError, ValueError):
         return "<ruta>"
@@ -71,6 +102,10 @@ def redact(valor: Any, clave: str = "", _profundidad: int = 0) -> Any:
         texto = valor
         for patron, reemplazo in _PATRONES:
             texto = patron.sub(reemplazo, texto)
+        # Las rutas embebidas se reducen a sus dos ultimos segmentos: el nombre
+        # del archivo sigue sirviendo para diagnosticar y desaparecen el usuario
+        # de Windows y el nombre del cliente, que es lo que no puede viajar.
+        texto = _RUTAS_EN_TEXTO.sub(lambda m: _redact_path(m.group(0)), texto)
         return texto if len(texto) <= 200 else f"{texto[:200]}...<+{len(texto) - 200}>"
     if isinstance(valor, dict):
         return {k: redact(v, k, _profundidad + 1) for k, v in valor.items()}
@@ -85,11 +120,18 @@ class JsonFormatter(logging.Formatter):
     """Una linea JSON por evento."""
 
     def format(self, record: logging.LogRecord) -> str:
+        # CORE-005. `redact()` sabe reconocer rutas y secretos, y se aplicaba
+        # SOLO a `extra_data`, que es justo el campo que casi nunca los lleva.
+        # El mensaje libre y la ultima linea de la excepcion si los llevan a
+        # menudo -`ValidationError` incluye `path` y `pbip_path`-, y acababan
+        # literales en `outputs/*.log`, que es el archivo que alguien adjunta
+        # cuando pide ayuda: ruta completa con el nombre de usuario de Windows
+        # y, en un `.pbip` de cliente, el nombre del cliente.
         evento: Dict[str, Any] = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
-            "msg": record.getMessage(),
+            "msg": redact(record.getMessage()),
         }
         for campo in ("request_id", "operation", "duration_ms", "result",
                       "error_code", "session", "status"):
@@ -100,7 +142,8 @@ class JsonFormatter(logging.Formatter):
         if extra:
             evento["data"] = redact(extra)
         if record.exc_info:
-            evento["exc"] = self.formatException(record.exc_info).splitlines()[-1]
+            evento["exc"] = redact(
+                self.formatException(record.exc_info).splitlines()[-1])
         return json.dumps(evento, ensure_ascii=False)
 
 

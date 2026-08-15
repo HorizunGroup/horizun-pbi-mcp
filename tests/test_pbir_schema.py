@@ -340,7 +340,7 @@ def test_el_oraculo_completo_bloquea_propiedad_desconocida(monkeypatch):
     }
     monkeypatch.setattr(
         format_oracle, "compare_all_managed_objects",
-        lambda _doc: {"equivalence_checked": True,
+        lambda _doc, **_kw: {"equivalence_checked": True,
                       "errors": [{"path": "$.visual.objects.values[0].properties.propiedadInventada",
                                    "rule": "format_property_unknown"}],
                       "visual_type": "card"})
@@ -534,19 +534,53 @@ def test_el_generador_produce_pbir_valido(proyecto, isolated_settings):
 
 
 # =============== E3.1: lo que Power BI declara y Microsoft no publica ========
-def test_esquema_no_publicado_upstream_se_bloquea():
-    """`visualContainer/2.10.0` sale en 239 archivos del informe de referencia
-    y su URL devuelve 404 en el origen oficial. Sin el documento no se puede
-    comprobar lo que se escribiria, asi que se bloquea."""
-    no_pub = pbir_schema.no_publicados()
-    assert no_pub, "el manifiesto ya no registra esquemas no publicados"
+def _sin_version_anterior():
+    """Un `$schema` no publicado que ademas no tiene familia contra la que caer."""
+    for url in pbir_schema.no_publicados():
+        if pbir_schema.version_mas_cercana(url) is None:
+            return url
+    return None
 
-    url = next(iter(no_pub))
+
+def test_esquema_no_publicado_upstream_se_escribe_pero_marcado():
+    """Sin esquema NI version anterior, se escribe y se dice que no se comprobo.
+
+    Bloquear aqui no protegia el archivo: empujaba a editarlo a mano, sin
+    transaccion ni journal. Lo que no se puede es fingir que se valido.
+    """
+    url = _sin_version_anterior()
+    assert url, "el manifiesto ya no registra esquemas no publicados sin fallback"
+
     doc = visual_valido()
     doc["$schema"] = url
-    with pytest.raises(SchemaUnavailable) as exc:
+    r = pbir_schema.validar(doc)
+    assert r["validated"] is False
+    assert r["schema_unchecked"] is True
+    assert r["rule"] == "no_publicado_upstream"
+    assert r["schema"] == url
+
+
+def test_esquema_no_publicado_no_perdona_un_formato_imposible():
+    """Que no haya esquema no apaga las reglas estructurales de formato."""
+    url = _sin_version_anterior()
+    assert url
+
+    doc = visual_valido()
+    doc["$schema"] = url
+    doc["visual"]["objects"] = {
+        "values": [{"properties": {"backColor": {"solid": {"color": {"expr": {}}}}}}]}
+    with pytest.raises(SchemaValidationFailed) as exc:
         pbir_schema.validar(doc)
-    assert exc.value.details["rule"] == "no_publicado_upstream"
+    assert exc.value.details["rule"] == "format_objects"
+
+
+def test_sin_cache_instalada_se_sigue_fallando_cerrado(monkeypatch):
+    """Que falte la instalacion NO es el hueco de Microsoft: eso si bloquea."""
+    monkeypatch.setattr(pbir_schema, "estado_cache",
+                        lambda: {"ready": False, "reason": "0 de 22 presentes",
+                                 "missing": ["x.json"], "corrupt": []})
+    with pytest.raises(SchemaUnavailable):
+        pbir_schema.validar(visual_valido())
 
 
 def test_el_manifiesto_documenta_los_no_publicados():

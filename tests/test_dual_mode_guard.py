@@ -204,6 +204,58 @@ ARGS_BOTH = {
 }
 
 
+# ============ el defecto es 'live' y Desktop puede no estar abierto ==========
+def test_un_fallo_de_live_dice_que_pbip_era_viable(sesion_realista):
+    """El camino que ofrecia el error no llevaba a ninguna parte.
+
+    Con Desktop cerrado, `pbi_list_desktop_models` + `pbi_select_model` no
+    tienen nada que seleccionar. Lo util era decir que el mismo trabajo se hace
+    con mode='pbip'.
+    """
+    from horizun_pbi_mcp.powerbi.desktop_discovery import StaleSessionError
+
+    session, _project = sesion_realista
+
+    def live_call():
+        raise StaleSessionError("La sesion guardada ya no es valida.",
+                                details={"status": "gone"})
+
+    with pytest.raises(StaleSessionError) as exc:
+        dual_mode.run_dual("live", live_call, lambda: None, session)
+
+    assert exc.value.code == "stale_session", "el codigo no puede cambiar"
+    assert exc.value.details["suggested_mode"] == "pbip"
+    assert "mode='pbip'" in exc.value.message
+
+
+def test_sin_proyecto_pbip_el_error_de_live_sale_intacto(session):
+    """Si `pbip` tampoco es posible, no se sugiere un camino que no existe."""
+    from horizun_pbi_mcp.powerbi.desktop_discovery import StaleSessionError
+
+    def live_call():
+        raise StaleSessionError("La sesion guardada ya no es valida.")
+
+    with pytest.raises(StaleSessionError) as exc:
+        dual_mode.run_dual("live", live_call, lambda: None, session)
+
+    assert "mode='pbip'" not in exc.value.message
+
+
+def test_un_fallo_de_verdad_de_live_no_se_disfraza(sesion_realista):
+    """Solo se comenta el fallo que significa 'Desktop no esta ahi'."""
+    from horizun_pbi_mcp.powerbi.errors import ValidationError as VE
+
+    session, _project = sesion_realista
+
+    def live_call():
+        raise VE("La medida ya existe.")
+
+    with pytest.raises(VE) as exc:
+        dual_mode.run_dual("live", live_call, lambda: None, session)
+
+    assert exc.value.message == "La medida ya existe."
+
+
 @pytest.fixture
 def tools_registradas(sesion_realista, monkeypatch):
     """Servidor real con la sesion de prueba inyectada."""

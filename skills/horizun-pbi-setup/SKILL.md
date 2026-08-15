@@ -17,7 +17,93 @@ este es el runbook completo. Todo es a nivel usuario; nunca pidas
 administrador.
 
 1. **Corre el instalador de un pegado** en PowerShell:
-   `irm https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/scripts/instalar.ps1 | iex`
+   El bloque exacto esta en `scripts/one_paste.ps1` y se reproduce
+   integro en `README.md` y `docs/INSTALL.md`. **No lo escribas de
+   memoria ni lo acortes**: descarga desde una release fija,
+   comprueba el SHA-256 y solo entonces ejecuta.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
+$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$max = 131072
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+# En que punto se quedo, para que el mensaje final diga la verdad y no una
+# formula. Antes, un instalador que se ejecutaba y devolvia error terminaba
+# imprimiendo "No se ejecuto nada que no coincidiera con el hash publicado":
+# cierto en lo literal y enganoso en lo que la persona entiende, que es que no
+# se ejecuto nada.
+$fase = 'descarga'
+$ejecutado = $false
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $peticion = [Net.HttpWebRequest]::Create($url)
+    $peticion.UserAgent = 'horizun-pbi-mcp-one-paste'
+    $peticion.Timeout = 60000
+    $respuesta = $peticion.GetResponse()
+    if ($respuesta.ContentLength -gt $max) {
+        throw ("El servidor anuncia " + $respuesta.ContentLength + " bytes y el maximo aceptado es " + $max + ". No se descarga nada.")
+    }
+    $entrada = $respuesta.GetResponseStream()
+    $salida = [IO.File]::Open($tmp, 'Create', 'Write', 'None')
+    $total = 0
+    try {
+        $bloque = New-Object byte[] 8192
+        while (($leidos = $entrada.Read($bloque, 0, $bloque.Length)) -gt 0) {
+            $total += $leidos
+            if ($total -gt $max) {
+                throw ("La descarga supero " + $max + " bytes mientras bajaba. Se aborta sin ejecutar nada.")
+            }
+            $salida.Write($bloque, 0, $leidos)
+        }
+    } finally {
+        $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
+    }
+    if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $fase = 'verificacion'
+    if ($sha -cnotmatch '^[0-9a-f]{64}$') {
+        throw "El hash publicado en el bloque no es un SHA-256 de 64 hex en minusculas. No se ejecuta nada."
+    }
+    $flujo = [IO.File]::Open($tmp, 'Open', 'Read', 'Read')
+    try {
+        $algoritmo = [Security.Cryptography.SHA256]::Create()
+        try { $digest = $algoritmo.ComputeHash($flujo) } finally { $algoritmo.Dispose() }
+    } finally { $flujo.Dispose() }
+    $real = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+    if ($real.Length -ne 64) {
+        throw "No se pudo calcular el SHA-256 de lo descargado. No se ejecuta nada."
+    }
+    if ($real -ne $sha) {
+        throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
+    }
+    $fase = 'ejecucion'
+    Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
+    $ps = [IO.Path]::Combine($PSHOME, 'powershell.exe')
+    if (-not [IO.File]::Exists($ps)) {
+        $ps = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    }
+    if (-not [IO.File]::Exists($ps)) {
+        throw "No se encontro Windows PowerShell. No se ejecuta nada."
+    }
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
+    $ejecutado = $true
+    if ($LASTEXITCODE -ne 0) {
+        throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
+    }
+} catch {
+    Write-Host ""
+    Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
+    if ($ejecutado) {
+        Write-Host "        El instalador SI llego a ejecutarse: sus bytes coincidian con el hash publicado, y fallo durante la instalacion." -ForegroundColor Red
+    } else {
+        Write-Host ("        No se ejecuto nada: se aborto en la fase '" + $fase + "', antes de lanzar el instalador.") -ForegroundColor Red
+    }
+    throw
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
+```
+
    Instala Python real, Git, Node (opcional), ajusta la política de ejecución
    del usuario y registra el plugin. Es idempotente: repetirlo es seguro.
 2. **Atiende sus `[PENDIENTE]`**: cada uno trae el remedio o el id exacto de

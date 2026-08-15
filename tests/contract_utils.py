@@ -33,6 +33,13 @@ from typing import Any, Dict, List, Tuple
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLDEN_PATH = REPO_ROOT / "tests" / "golden" / "tools_v1.json"
 
+#: El mismo contrato, reducido a lo que el HEALTHCHECK necesita, y dentro del
+#: PAQUETE. El golden vive en `tests/`, y un runtime instalado por `pip` no
+#: tiene `tests/`: un oraculo que dependiera de el no podria comprobar nada en
+#: la maquina de nadie.
+BASELINE_PATH = (REPO_ROOT / "src" / "horizun_pbi_mcp" / "lifecycle"
+                 / "contract_baseline.json")
+
 #: Claves autogeneradas que no forman parte del contrato.
 _VOLATILE_KEYS = {"title"}
 
@@ -170,7 +177,46 @@ def write_golden(snapshot: Dict[str, Any]) -> Path:
     return GOLDEN_PATH
 
 
+def baseline_desde(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """El subconjunto del contrato que el healthcheck necesita, empaquetable.
+
+    Se DERIVA del golden -misma fuente, misma generacion- en vez de copiarse a
+    mano: dos listas de 134 nombres mantenidas por separado divergen, y la que
+    se quede atras sera la que decida si una instalacion se da por buena.
+    """
+    from horizun_pbi_mcp import branding
+
+    return {
+        "contract_version": snapshot["contract_version"],
+        "server": branding.MCP_SERVER_NAME,
+        "tool_count": snapshot["tool_count"],
+        "tools": sorted(t["name"] for t in snapshot["tools"]),
+    }
+
+
+def write_baseline(snapshot: Dict[str, Any]) -> Path:
+    BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BASELINE_PATH.write_text(
+        json.dumps(baseline_desde(snapshot), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8")
+    return BASELINE_PATH
+
+
 # ------------------------------------------------------------------- diffing ---
+def _es_ampliacion(antes: str, ahora: str) -> bool:
+    """Si el tipo nuevo ACEPTA todo lo que aceptaba el viejo.
+
+    `string` -> `null|string` no rompe a nadie: toda llamada que pasaba una
+    cadena sigue valiendo, y lo unico que cambia es que ahora tambien se puede
+    omitir. Tratarlo como ruptura obligaba a regenerar el golden a ciegas, que
+    es justo como se pierde la senal que esta red de seguridad existe para dar.
+    Al reves -`null|string` -> `string`- si rompe, y sigue marcado.
+    """
+    viejos = set(antes.split("|"))
+    nuevos = set(ahora.split("|"))
+    return viejos < nuevos
+
+
 def diff_snapshots(golden: Dict[str, Any],
                    current: Dict[str, Any]) -> Tuple[List[str], List[str]]:
     """Compara dos snapshots.
@@ -217,8 +263,13 @@ def diff_snapshots(golden: Dict[str, Any],
         for pname in sorted(set(g_params) & set(c_params)):
             gp, cp = g_params[pname], c_params[pname]
             if gp["type"] != cp["type"]:
-                breaking.append(
-                    f"{name}.{pname}: tipo {gp['type']} -> {cp['type']}")
+                if _es_ampliacion(gp["type"], cp["type"]):
+                    compatible.append(
+                        f"{name}.{pname}: tipo ampliado {gp['type']} -> "
+                        f"{cp['type']} (lo que valia antes sigue valiendo)")
+                else:
+                    breaking.append(
+                        f"{name}.{pname}: tipo {gp['type']} -> {cp['type']}")
             if gp["required"] != cp["required"]:
                 if cp["required"]:
                     breaking.append(
@@ -328,8 +379,10 @@ def main(argv: List[str] | None = None) -> int:
 
     if "--write" in argv:
         path = write_golden(current)
+        baseline = write_baseline(current)
         print(f"Golden regenerado: {path}")
         print(f"  {current['tool_count']} tools congeladas")
+        print(f"Baseline empaquetado regenerado: {baseline}")
         return 0
 
     if not GOLDEN_PATH.exists():

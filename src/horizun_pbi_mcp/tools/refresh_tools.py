@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import refresh
-from horizun_pbi_mcp.tools._common import guard, guard_mutation
+from horizun_pbi_mcp.powerbi.errors import ValidationError
+from horizun_pbi_mcp.tools._common import guard, guard_mutation, ruta_de_proyecto
 
 
 def register(mcp) -> None:
@@ -13,6 +14,7 @@ def register(mcp) -> None:
     def pbi_refresh_model(type: str = "full",
                           tables: Optional[List[str]] = None,
                           timeout_seconds: Optional[int] = None,
+                          confirm: bool = False,
                           request_id: str = "") -> Dict[str, Any]:
         """Refresca el modelo LOCAL abierto en Power BI Desktop (no el Service).
 
@@ -39,15 +41,27 @@ def register(mcp) -> None:
         En un proyecto **.pbip los datos NO se guardan**: viven en la sesion de
         Desktop y al reabrir hay que refrescar otra vez. Lo que persiste al
         guardar es la definicion (TMDL + PBIR).
+
+        **Exige `confirm=true` desde 2.0.0.** Hasta entonces era la unica tool
+        `destructiveHint` sin confirmacion junto con `pbi_open_and_refresh`: un
+        agente que decide por «¿tiene `confirm`?» no veia nada que preguntar.
         """
-        return guard_mutation(lambda: refresh.refresh_model(
-            get_session(), type, tables, timeout_seconds))
+        def _impl():
+            if not confirm:
+                raise ValidationError(
+                    "Refrescar bloquea el modelo durante minutos y descarta lo "
+                    "que hubiera en memoria sin guardar. Pasa confirm=true.")
+            return refresh.refresh_model(get_session(), type, tables,
+                                         timeout_seconds)
+        return guard_mutation(_impl)
 
     @mcp.tool()
-    def pbi_open_and_refresh(path: str, timeout: int = 300,
+    def pbi_open_and_refresh(path: Optional[str] = None, timeout: int = 300,
                              reuse_open: bool = True, type: str = "full",
                              tables: Optional[List[str]] = None,
                              refresh_timeout_seconds: Optional[int] = None,
+                             pbip_path: Optional[str] = None,
+                             confirm: bool = False,
                              request_id: str = "") -> Dict[str, Any]:
         """Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.
 
@@ -55,18 +69,31 @@ def register(mcp) -> None:
         catorce segundos cada una, porque un `.pbip` recien abierto trae el
         modelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.
 
+        `path` y `pbip_path` son el mismo parametro -el segundo es como lo
+        llama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa
+        el proyecto .pbip activo.
+
         Devuelve lo mismo que las dos por separado, incluido `rows_by_table`.
         Si el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).
 
         Si el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y
         cerrarla borraria justo el contexto que hace falta para ver por que
         fallo. Sale en `desktop_left_open`.
+
+        **Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:
+        los dos efectos son visibles y el segundo descarta lo que hubiera en
+        memoria sin guardar.
         """
         def _impl():
+            if not confirm:
+                raise ValidationError(
+                    "Abrir Desktop y refrescar descarta lo que hubiera en "
+                    "memoria sin guardar. Pasa confirm=true.")
             from horizun_pbi_mcp.powerbi import desktop_discovery, desktop_launcher
 
             abierto = desktop_launcher.open_pbix(
-                path, timeout=timeout, reuse_open=reuse_open)
+                str(ruta_de_proyecto(path, pbip_path)),
+                timeout=timeout, reuse_open=reuse_open)
             salida: Dict[str, Any] = {
                 "path": abierto.pbix_path,
                 "instance": abierto.instance,
