@@ -59,6 +59,14 @@ lifecycle.lock
 .staging-*
 .promotion-rechazada-*
 
+# --- Artefactos de release: se CONSTRUYEN, no se versionan ---
+# `release_build.py --outdir artefactos` deja aqui el wheel, el sdist, el
+# instalador, SHA256SUMS y el SBOM. Versionarlos duplicaria lo que la release
+# publica y, peor, invitaria a comparar contra una copia vieja del repositorio
+# en vez de contra lo que se construyo.
+artefactos/
+dist/
+
 # --- Salidas de ejecucion, backups y logs ---
 outputs/
 backups/
