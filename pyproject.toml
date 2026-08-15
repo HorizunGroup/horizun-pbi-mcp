@@ -70,6 +70,11 @@ package-dir = { "" = "src" }
 # El manifiesto (URLs + SHA-256) SI va en el paquete; los esquemas NO,
 # porque no declaran permiso de redistribucion.
 "horizun_pbi_mcp.services" = ["schemas/*.json"]
+# El contrato MCP que el healthcheck exige antes de dar una instalacion por
+# buena. Tiene que viajar en el wheel: el golden equivalente vive en `tests/`,
+# y una instalacion por `pip` no tiene `tests/`. Sin este archivo el oraculo
+# falla cerrado -no da nada por bueno- en vez de comprobar de menos.
+"horizun_pbi_mcp.lifecycle" = ["contract_baseline.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

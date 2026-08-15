@@ -255,6 +255,27 @@ def test_el_wheel_declara_los_dos_entry_points(artefactos):
             f"falta el entry point {ep}:\n{texto}")
 
 
+def test_el_wheel_lleva_el_contrato_que_valida_una_instalacion(artefactos):
+    """INSTALL-010: el oraculo tiene que viajar con el producto.
+
+    El healthcheck decide si una instalacion se da por buena comparando lo que
+    el servidor sirve con el contrato. Su copia de referencia -el golden- vive
+    en `tests/`, y una instalacion por `pip` no tiene `tests/`: si el contrato
+    no va en el wheel, el oraculo no puede comprobar nada en la maquina de
+    nadie. No es un dato accesorio; es la mitad de la comprobacion.
+    """
+    zf = zipfile.ZipFile(artefactos["wheel"])
+    ruta = "horizun_pbi_mcp/lifecycle/contract_baseline.json"
+    assert ruta in set(zf.namelist()), (
+        "el wheel no lleva el contrato MCP: el healthcheck fallaria cerrado en "
+        "toda instalacion hecha por pip")
+
+    contrato = json.loads(zf.read(ruta))
+    assert contrato["server"] == "horizun-pbi-mcp"
+    assert len(contrato["tools"]) == contrato["tool_count"] >= 134
+    assert all(n.startswith("pbi_") for n in contrato["tools"])
+
+
 def test_el_wheel_lleva_el_manifiesto_de_esquemas(artefactos):
     """El MANIFIESTO va en el paquete; los esquemas NO.
 

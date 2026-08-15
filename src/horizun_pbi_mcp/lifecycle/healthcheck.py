@@ -34,11 +34,22 @@ from typing import Any
 #: tope, un servidor que se cuelga dejaria la instalacion colgada con el.
 TIMEOUT = 180
 
-#: Por debajo de esto el servidor arranco pero no registro sus modulos, que es
-#: un fallo distinto de "no arranca" y merece decirse aparte.
-MINIMO_TOOLS = 100
+#: El contrato EMPAQUETADO: los nombres de tool que un runtime tiene que servir
+#: y el nombre exacto del servidor. Vive junto a este modulo, o sea dentro del
+#: wheel, para que el oraculo funcione tambien donde no existe `tests/`. Se
+#: genera desde el golden con `python -m tests.contract_utils --write`, y
+#: `tests/test_contrato_empaquetado.py` vigila que los dos digan lo mismo.
+BASELINE = Path(__file__).with_name("contract_baseline.json")
 
 _ARRANQUE = "from horizun_pbi_mcp import server; server.main()"
+
+
+def contrato() -> dict[str, Any]:
+    """El contrato empaquetado. Si falta, no se puede comprobar nada."""
+    datos = json.loads(BASELINE.read_text(encoding="utf-8"))
+    if not isinstance(datos.get("tools"), list) or not datos["tools"]:
+        raise ValueError(f"{BASELINE} no lleva la lista de tools")
+    return datos
 
 
 def _flags_sin_ventana() -> dict[str, Any]:
@@ -55,14 +66,34 @@ def entry_points(runtime: Path) -> list[Path]:
 
 def verificar(python: Path, *, env: dict[str, str] | None = None,
               cwd: Path | None = None, timeout: int = TIMEOUT,
-              minimo_tools: int = MINIMO_TOOLS) -> dict[str, Any]:
+              version_esperada: str | None = None,
+              baseline: dict[str, Any] | None = None) -> dict[str, Any]:
     """Lanza el servidor y habla MCP con el. Nunca lanza: devuelve el veredicto.
 
     Devolver en vez de lanzar es deliberado: quien llama tiene que poder
     distinguir "no arranco" de "arranco y sirve poco" y guardarlo en el estado,
     y una excepcion generica perderia esa diferencia.
+
+    Lo que se exige, y por que cada cosa. El criterio anterior era *cien tools
+    cualesquiera cuyo nombre empiece por `pbi_`*, con el contrato en 134. Eso
+    aceptaba tres runtimes rotos distintos: uno al que le faltan 34 tools, uno
+    que sirve 134 nombres que no son los del producto, y cualquiera de otra
+    version. Ahora se comprueba el contrato: el nombre EXACTO del servidor, la
+    version que se esperaba, y que no falte NINGUNA de las tools del baseline.
+    Las de mas se admiten -son compatibles hacia atras y no rompen a ningun
+    cliente-; las que faltan, no.
     """
     resultado: dict[str, Any] = {"ok": False, "fase": "arranque", "tools": 0}
+
+    try:
+        contrato_esperado = baseline if baseline is not None else contrato()
+    except (OSError, ValueError) as exc:
+        # Fail-closed: sin contrato no se puede comprobar, y "no se pudo
+        # comprobar" no puede valer lo mismo que "esta bien".
+        resultado.update(fase="contrato",
+                         error=f"no se pudo leer el contrato empaquetado: {exc}")
+        return resultado
+    esperadas = set(contrato_esperado["tools"])
 
     if not python.is_file():
         resultado["error"] = f"no hay interprete en {python}"
@@ -150,14 +181,36 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
         proc.stdin.close()
     except OSError:
         pass
+
+    # Cerrar stdin es la señal de apagado del transporte stdio. Un servidor que
+    # no la atiende deja un proceso por cada arranque del cliente, y esos
+    # procesos siguen ahi con el runtime abierto. Se le da un plazo, se le mata
+    # si no lo cumple, y **siempre** se le hace `wait`: sin recoger al hijo
+    # queda un zombie, que es exactamente el huerfano que se queria evitar.
+    ignoro_el_cierre = False
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
+        ignoro_el_cierre = True
         proc.kill()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:          # pragma: no cover
+            resultado.update(fase="proceso-inmatable",
+                             error=f"el runtime (pid {proc.pid}) no murio ni "
+                                   "con kill; queda un proceso suelto")
+            return resultado
+    lector.join(timeout=5)
     try:
         errores = proc.stderr.read() or ""
     except (OSError, ValueError):                  # pragma: no cover
         errores = ""
+    finally:
+        for flujo in (proc.stdout, proc.stderr):
+            try:
+                flujo.close()
+            except (OSError, ValueError):          # pragma: no cover
+                pass
 
     if not respondio and not lineas:
         resultado.update(fase="timeout",
@@ -193,26 +246,64 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
         return resultado
 
     info = inicial["result"].get("serverInfo") or {}
+    resultado.update(servidor=info.get("name"), version=info.get("version"))
+
+    # El servidor tiene que ser EL nuestro. Aceptar cualquier `serverInfo` daba
+    # por bueno un venv en el que hubiera quedado instalado otro servidor MCP.
+    if info.get("name") != contrato_esperado["server"]:
+        resultado.update(
+            fase="server-info",
+            error=(f"serverInfo.name es {info.get('name')!r} y el contrato dice "
+                   f"{contrato_esperado['server']!r}"))
+        return resultado
+    if version_esperada is not None and info.get("version") != version_esperada:
+        resultado.update(
+            fase="version",
+            error=(f"el runtime dice ser {info.get('version')!r} y se acaba de "
+                   f"preparar {version_esperada!r}"))
+        return resultado
+
     lista = next((m for m in mensajes if m.get("id") == 2), None)
     if not lista or "result" not in lista:
-        resultado.update(fase="tools-list", servidor=info.get("name"),
+        resultado.update(fase="tools-list",
                          error="tools/list no devolvio result")
         return resultado
 
-    tools = lista["result"].get("tools") or []
-    nombres = [t.get("name", "") for t in tools]
-    resultado.update(fase="completo", tools=len(tools),
-                     servidor=info.get("name"), version=info.get("version"))
+    tools = lista["result"].get("tools")
+    if not isinstance(tools, list) or not all(
+            isinstance(t, dict) and isinstance(t.get("name"), str) and t["name"]
+            for t in tools):
+        resultado.update(fase="tools-list-malformado",
+                         error="tools/list no devolvio una lista de tools con "
+                               "nombre: el cliente no podria usarlas")
+        return resultado
 
-    if len(tools) < minimo_tools:
+    nombres = {t["name"] for t in tools}
+    resultado["tools"] = len(tools)
+    resultado["fase"] = "completo"
+
+    faltan = sorted(esperadas - nombres)
+    if faltan:
+        resultado["faltan"] = faltan[:10]
         resultado["error"] = (
-            f"el servidor arranco pero solo registro {len(tools)} tools "
-            f"(minimo {minimo_tools}): faltan modulos")
+            f"faltan {len(faltan)} de las {len(esperadas)} tools del contrato "
+            f"(sirve {len(tools)}): {', '.join(faltan[:5])}"
+            + (" ..." if len(faltan) > 5 else ""))
         return resultado
-    if not all(n.startswith("pbi_") for n in nombres):
-        resultado["error"] = "hay tools que no son del producto"
+
+    # Las de mas se admiten a proposito: añadir una tool no rompe a ningun
+    # cliente ya configurado, y prohibirlas convertiria cada ampliacion del
+    # producto en una instalacion fallida.
+    resultado["extra"] = sorted(nombres - esperadas)
+
+    if ignoro_el_cierre:
+        resultado.update(
+            fase="no-termina",
+            error="el runtime contesto pero no termino al cerrarse stdin; hubo "
+                  "que matarlo. Asi dejaria un proceso vivo por cada arranque "
+                  "del cliente.")
         return resultado
-    if proc.returncode not in (0, None):
+    if proc.returncode != 0:
         resultado["error"] = f"el runtime salio con codigo {proc.returncode}"
         return resultado
 

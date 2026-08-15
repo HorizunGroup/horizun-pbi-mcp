@@ -700,7 +700,8 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             # runtime que no arranca no llegue a sustituir al que si funciona.
             _write_status(p, state="installing", ready=False, step="healthcheck",
                           message="Comprobando que el runtime preparado arranca.")
-            salud = _salud.verificar(sp["python"], env=env, cwd=root)
+            salud = _salud.verificar(sp["python"], env=env, cwd=root,
+                                     version_esperada=VERSION)
             if not salud["ok"]:
                 raise RuntimeError(
                     f"el runtime preparado no supero el handshake MCP "
