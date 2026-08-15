@@ -319,40 +319,45 @@ def gates_externos() -> set[str]:
     return salida
 
 
-def test_el_computo_deriva_la_columna_externa_de_external_gates():
+def test_el_computo_deriva_la_columna_externa_de_la_particion():
     """La tabla de bloques no puede opinar sobre lo que otra lista decide.
 
-    Antes decia «G4: 3 ejecutables hoy» meses despues de que G4.4, G4.5, G4.6,
-    G4.8, G4.9 y G4.10 se cerraran aqui mismo, y nadie lo notaba porque el
-    numero estaba escrito a mano. Ahora sale de contar: si un gate entra o sale
-    de EXTERNAL_GATES y esta tabla no se entera, esto falla.
+    Antes decia «G4: 3 ejecutables hoy» meses despues de que seis gates de G4 se
+    cerraran aqui mismo, y nadie lo notaba porque el numero estaba escrito a
+    mano. Ahora sale de contar la particion: «requiere entorno real» son los
+    `parcial` mas los `pendiente-externo`, y un `pendiente-local` **cuenta como
+    ejecutable aqui** por bloqueado que parezca.
     """
-    externos = gates_externos()
-    definidos = set(gates_declarados())
-    assert externos <= definidos, (
-        f"EXTERNAL_GATES cita gates que no existen: {sorted(externos - definidos)}")
+    from tests.test_clasificacion_gates import clasificacion, gates_externos
+
+    clas = clasificacion()
+    fuera = {g for g, (c, _) in clas.items()
+             if c in ("parcial", "pendiente-externo")}
+    assert fuera == gates_externos(), (
+        "las fichas de EXTERNAL_GATES y la particion no describen el mismo "
+        f"conjunto. Solo en la particion: {sorted(fuera - gates_externos())}; "
+        f"solo en las fichas: {sorted(gates_externos() - fuera)}")
 
     texto = ACEPTACION.read_text(encoding="utf-8")
-    por_bloque = Counter(g.split(".")[0] for g in externos)
+    por_bloque = Counter(g.split(".")[0] for g in fuera)
     filas = 0
     for linea in texto.splitlines():
         m = re.match(r"^\| (G\d) [^|]*\| (\d+) \| (\d+) \| (\d+)", linea)
         if not m:
             continue
         filas += 1
-        bloque, total, aqui, fuera = m.group(1), *map(int, m.groups()[1:])
-        assert fuera == por_bloque[bloque], (
-            f"{bloque}: la tabla dice {fuera} gates externos y EXTERNAL_GATES "
-            f"lista {por_bloque[bloque]}")
-        assert aqui + fuera == total, (
-            f"{bloque}: {aqui}+{fuera} no suma los {total} gates del bloque")
+        bloque, total, aqui, requiere = m.group(1), *map(int, m.groups()[1:])
+        assert requiere == por_bloque[bloque], (
+            f"{bloque}: la tabla dice {requiere} con entorno real y la "
+            f"particion cuenta {por_bloque[bloque]}")
+        assert aqui + requiere == total, (
+            f"{bloque}: {aqui}+{requiere} no suma los {total} gates del bloque")
     assert filas == 8, f"la tabla de computo tiene {filas} bloques, no 8"
 
     m = re.search(r"\| \*\*Total\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \|",
                   texto)
-    assert int(m.group(3)) == len(externos), (
-        f"el total declara {m.group(3)} externos y EXTERNAL_GATES lista {len(externos)}")
-    assert int(m.group(2)) + int(m.group(3)) == int(m.group(1)) == len(definidos)
+    assert int(m.group(3)) == len(fuera)
+    assert int(m.group(2)) + int(m.group(3)) == int(m.group(1)) == len(clas)
 
 
 def test_ningun_gate_esta_a_la_vez_cumplido_y_declarado_externo():

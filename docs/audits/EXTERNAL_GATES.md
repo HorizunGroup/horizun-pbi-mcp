@@ -15,6 +15,14 @@ resultado se espera y qué evidencia hay que guardar.
 
 Última revisión: **2026-08-15**.
 
+> **Esta lista no es el conteo.** Quién está aquí y en qué categoría cae lo
+> decide [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md), que es la única
+> partición de los 54. Durante un tiempo esta tabla se leyó como «22 gates
+> externos» y se comparó con los conteos de aceptación, que cuentan otra cosa:
+> aquí conviven gates **parciales** —con el mecanismo ya demostrado— con gates
+> que no tienen nada hecho, y faltan los que esperan una ratificación o los que
+> tienen trabajo local. Una prueba exige que las dos cuentas no se contradigan.
+
 > **G3.6 salió de esta lista el 2026-08-15.** Estaba anotado como «candidato a
 > trabajo local» y resultó serlo: el gate no pedía una VM, pedía una
 > *instalación pip pura*, y eso se monta aquí —artefacto construido, venv
@@ -35,18 +43,22 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
 | G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
-| G4.7 | INSTALL-009 | VM sin salida directa | VM + proxy o red cortada |
 | G5.1–G5.6 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G6.1 | RELEASE-001 | Release publicada | Permiso de publicación |
 | G6.2 | RELEASE-002 | Release publicada | Permiso de publicación |
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**13 filas, 22 gates externos** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+**12 filas, 21 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
 `G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «13 externos» dejaría fuera nueve gates que nadie estaría vigilando; el
-cómputo de [`ACCEPTANCE_10_OF_10.md`](ACCEPTANCE_10_OF_10.md) se deriva de esta
-tabla con los rangos expandidos, y una prueba exige que las dos cuenten igual.
+y decir «12 externos» dejaría fuera nueve gates que nadie estaría vigilando.
+
+> **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
+> G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
+> y queda pendiente» **dentro** del documento cuyo encabezado promete lo
+> contrario. Mientras el bundle no exista, G4.7 es `pendiente-local` en la
+> partición y su procedimiento se conserva abajo para cuando vuelva: lo que
+> quedará entonces —ejecutarlo en una VM realmente desconectada— sí es externo.
 
 Los cuatro de release y los cinco del remoto comparten
 una sola dependencia: que exista una release real de v1.5.5, que **no existe**, y
@@ -143,11 +155,19 @@ journal huérfano; la siguiente instalación termina limpia.
 
 ---
 
-## G4.7 — bundle offline y runbook de proxy
+## G4.7 — bundle offline y runbook de proxy *(hoy fuera de esta lista)*
 
-**Bloqueo exacto.** No existe ni el bundle ni el runbook, y comprobarlos exige
-una VM sin salida directa a internet. La parte *construir el bundle* sí es
-trabajo local y queda pendiente bajo INSTALL-009.
+**No cuenta como externo mientras el bundle no exista.** Está aquí porque el
+procedimiento sirve, no porque el gate esté bloqueado: hoy es `pendiente-local`
+en [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md).
+
+**Lo que es local** —y por tanto exigible ahora—: construir el bundle, fijar sus
+contenidos por versión y hash, verificarlo antes de extraer, promoverlo con el
+mismo ciclo de vida, y **probar la instalación con PyPI, GitHub y npm
+bloqueados**, que se puede hacer en esta máquina sin ninguna VM.
+
+**Lo que sí será externo cuando eso exista**: ejecutarlo en una VM realmente
+desconectada, o detrás de un proxy corporativo de verdad.
 
 **Ojo con el hermano.** G4.6 —el lock con hashes— compartía hallazgo con este y
 **no** era externo: se cerró el 2026-08-15 instalando el lock en dos venv limpios y

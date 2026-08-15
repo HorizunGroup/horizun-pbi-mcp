@@ -152,6 +152,19 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | DOC-004 | Sin runbook de update, rollback, uninstall, purge, proxy ni offline | Media | G8.8 | **Cerrada** — 2026-08-15, quinta pasada. `docs/RUNBOOK_INSTALACION.md` cubre los seis procedimientos, cada paso un comando ejecutable y comprobado contra la instalación real en solo lectura. **Dice explícitamente lo que NO existe** —`uninstall`, `purge` y el bundle offline— y da el procedimiento manual, en vez de ofrecer comandos que fallarían. Una prueba exige que los scripts citados existan |
 | CLI-001 | El one-paste instala y verifica solo Claude | Media | G3.2 | **Parcialmente cerrada** |
 
+## Los gates, en una sola partición
+
+Los conteos de gates viven en
+[`docs/audits/CLASIFICACION_GATES.md`](audits/CLASIFICACION_GATES.md): cada uno
+de los 54 en **una sola** de cinco categorías —cumplido, parcial,
+pendiente-local, pendiente-ratificación, pendiente-externo— con su motivo, y una
+prueba que exige que sumen 54 y que ningún otro documento los contradiga.
+
+Existe porque durante un tiempo hubo dos cuentas incomparables —«30 cumplidos, 5
+parciales, 19 pendientes» y «22 externos»— y entre las dos se podía afirmar «no
+queda trabajo local» sin que nada lo desmintiera. **Hoy quedan tres gates con
+trabajo local: G2.2, G4.6 y G4.7.**
+
 ## Cuentas
 
 33 entradas: **18 cerradas**

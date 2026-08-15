@@ -5,7 +5,10 @@ Qué tiene que ser cierto para declarar el producto en 10 de 10. Cada gate es un
 comando que lo decida no es un gate: es una opinión con formato de tabla.
 
 Compañeros de este documento: [`AUDIT_2026-08-14.md`](AUDIT_2026-08-14.md) (la
-evidencia) y [`../MATRIZ_REMEDIACION.md`](../MATRIZ_REMEDIACION.md) (el estado).
+evidencia), [`../MATRIZ_REMEDIACION.md`](../MATRIZ_REMEDIACION.md) (el estado) y
+**[`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md)**, que es la partición de
+donde salen los números de abajo: cada gate en una sola categoría, y una prueba
+que exige que sumen 54.
 
 ---
 
@@ -182,21 +185,23 @@ Cierra TEST-001, DOC-001 … DOC-004.
 ## Cómputo
 
 La columna de la derecha **no se opina: se deriva** de
-[`EXTERNAL_GATES.md`](EXTERNAL_GATES.md), que es donde vive la lista de gates que
-ninguna cantidad de trabajo local cierra. Una prueba compara las dos cosas: si un
-gate sale de la lista externa y esta tabla no se entera, falla.
+[`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md) —«requiere entorno real» son
+los `parcial` más los `pendiente-externo`— y una prueba exige que coincida con
+las fichas de [`EXTERNAL_GATES.md`](EXTERNAL_GATES.md). Un gate con trabajo local
+pendiente **no cuenta como externo**, por muy bloqueado que parezca: esa
+confusión es la que permitió afirmar «no queda trabajo local».
 
 | Bloque | Gates | Ejecutables aquí | Requieren entorno real |
 |---|---|---|---|
 | G1 Seguridad funcional | 8 | 8 | 0 |
 | G2 Contrato y payloads | 5 | 5 | 0 |
 | G3 Instalación limpia | 6 | 1 | 5 (VM limpia) |
-| G4 Update y uninstall | 10 | 7 | 3 (VM limpia, npm real, VM sin red) |
+| G4 Update y uninstall | 10 | 8 | 2 (VM limpia, npm real) |
 | G5 Desktop real | 6 | 0 | 6 (Desktop) |
 | G6 Supply chain | 5 | 2 | 3 (publicación real) |
 | G7 Controles GitHub | 6 | 1 | 5 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **54** | **32** | **22** |
+| **Total** | **54** | **33** | **21** |
 
 **10 de 10 = los 54 gates cumplidos, con evidencia fechada.**
 
@@ -298,9 +303,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **30** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.6, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
-| Parciales | **5** (G2.2, G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **19** |
+| Cumplidos con evidencia | **29** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
+| Pendientes | **21** — de los cuales **3 son trabajo local** (G2.2, G4.6, G4.7), 1 espera ratificación (G1.5) y 17 son externos |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -311,9 +316,9 @@ hasta la VM.
 | G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
 | G1.1 · G1.2 · G1.3 | Evidencia **live** fechada el 2026-08-14 en [`AUDIT_2026-08-14.md`](AUDIT_2026-08-14.md): `test_live_la_ventana_real_delata_un_pbip_sin_handles` para G1.1, y las 13 de `tests/test_capture_atomicity.py` para G1.2 y G1.3 | ✅ — **no eran gates nuevos: el cómputo estaba incompleto.** Se detectó cruzando la matriz con esta tabla y se resolvió leyendo la evidencia, no dándola por buena |
 | G2.5 | CONTRACT-001 ratificada y registrada; **CONTRACT-003** repite el mecanismo en vivo: tres cambios incompatibles que CORE-004 pedía se registraron en vez de aplicarse. `python -m tests.contract_utils` falla ante una diferencia incompatible | ✅ **2026-08-15** |
-| G2.2 | `tests/test_contrato_de_payload.py`: seis mutaciones —clave quitada, renombrada, anidada, de otro tipo, tool desaparecida— y tres que **no** deben romper | 🟡 **2026-08-15** — la red existe y muerde; cubre lo obtenible sin Desktop, y el resto de payloads es TEST-003 |
+| G2.2 | `tests/test_contrato_de_payload.py`: seis mutaciones —clave quitada, renombrada, anidada, de otro tipo, tool desaparecida— y tres que **no** deben romper | ⛔ **pendiente-local** — la red existe y muerde, pero congela **2 tools públicas de 134**. «El resto necesita Desktop» era una hipótesis sin comprobar |
 | G2.3 · G2.4 | `docs/INVENTARIO_TOOLS.md`, generado por `python -m tests.inventario_tools`, y `tests/test_inventario_tools.py`: las 134 ejecutadas por `call_tool` contra su caso negativo, con el recuento sacado de las llamadas **observadas** | ✅ **2026-08-15** — 134/134 ejecutadas, **cero declaradas**: 114 rechazadas en validación, 11 con sobre `ok: false` y código, 1 con el adaptador roto, 8 sin modo de fallo verificadas |
-| G4.6 | `tests/test_lock_de_dependencias.py`: **dos venv limpios, el lock instalado en cada uno y `pip freeze` comparado**. Y 18 pruebas más sobre el lock, el generador y el fallback | ✅ **2026-08-15** — idénticos entre sí y iguales a lo fijado; cuando el lock no cubre el intérprete, el estado lo dice en vez de fingir |
+| G4.6 | `tests/test_lock_de_dependencias.py`: **dos venv limpios, el lock instalado en cada uno y `pip freeze` comparado** | ⛔ **pendiente-local** — reproducible en 3.14/win32 y **solo ahí**; `pyproject` admite ≥3.10 y CI corre 3.10 y 3.13, donde se cae al resolutor sin hashes |
 | G4.4 · G4.5 | `tests/test_desinstalacion.py`: 12 pruebas, incluida la CLI real sobre un data root de prueba | ✅ **2026-08-15** — el seco es el DEFECTO, no una opción; `residual_bytes` tras desinstalar es exactamente el peso de los datos del usuario |
 | G4.8 | `tests/test_instalador_dryrun.py`: el reintento sin `--scope` se anuncia ANTES —se comprueba el orden en el código—, se verifica dónde aterrizó, y `-SoloUserScope` lo prohíbe | ✅ **2026-08-15** — el reintento se conserva a propósito: quitarlo rompe el PC vacío |
 | G8.8 | `docs/RUNBOOK_INSTALACION.md`, seis procedimientos con comandos ejecutables, comprobados contra la instalación real en solo lectura | ✅ **2026-08-15** — declara lo que NO existe en vez de ofrecer comandos que fallarían |
