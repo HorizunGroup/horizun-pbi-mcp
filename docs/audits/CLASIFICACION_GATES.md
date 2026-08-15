@@ -46,7 +46,7 @@ solo gate, **no se puede decir «100% local»**.
 | G1.7 | cumplido | redacción verificada sobre el formateador real |
 | G1.8 | cumplido | cerrojo de proyecto, dos procesos de verdad |
 | G2.1 | cumplido | `python -m tests.contract_utils` sale 0 |
-| G2.2 | pendiente-local | el golden cubre **2 tools públicas de 134**; «el resto necesita Desktop» es una hipótesis sin comprobar tool por tool |
+| G2.2 | pendiente-local | de **2 tools de 134** a **53**, y medido: solo **14** dependen de un modelo vivo. Las **77** restantes solo necesitan argumentos válidos, que es trabajo (ver `docs/COBERTURA_PAYLOADS.md`) |
 | G2.3 | cumplido | `docs/INVENTARIO_TOOLS.md` generado; 134/134 ejecutadas por `call_tool` |
 | G2.4 | cumplido | 134 casos negativos, cero excepciones declaradas |
 | G2.5 | cumplido | CONTRACT-001 ratificada; CONTRACT-003 repite el mecanismo |

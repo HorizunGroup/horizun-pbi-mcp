@@ -260,9 +260,9 @@ dar por hecho al ver 134 filas en verde:
   con la sintaxis rota» o «un tema con un color imposible» no salen de un
   esquema: hay que escribirlos a mano, tool por tool, y varios ya viven en los
   archivos de su dominio.
-* **La columna de payload congelado la llena CONTRACT-002**, no esto, y hoy
-  son dos tools de 134. Que el resto «necesita Desktop» es una hipotesis que
-  esta sin comprobar tool por tool.
+* **La columna de payload congelado la llena CONTRACT-002**, no esto. El
+  reparto tool por tool, con la dependencia MEDIDA de cada exclusion, esta en
+  `docs/COBERTURA_PAYLOADS.md`.
 
 """
 

@@ -1,7 +1,8 @@
 {
-  "payload_contract_version": 1,
-  "tool_count": 3,
-  "note": "Forma de los payloads: claves y tipos, nunca valores. Cubre lo obtenible sin Power BI Desktop; lo live es TEST-003.",
+  "payload_contract_version": 2,
+  "muestras": 91,
+  "tools_cubiertas": 53,
+  "note": "Forma de los payloads: claves y tipos, nunca valores ni longitudes. Una clave por `<tool>.<escenario>`. La cobertura tool por tool, con la dependencia medida de cada exclusion, esta en docs/COBERTURA_PAYLOADS.md.",
   "payloads": {
     "guide.situacion": {
       "common_tasks": [
@@ -24,7 +25,242 @@
       "project": "null",
       "situation": "str"
     },
-    "pbi_capabilities": {
+    "pbi_add_custom_visual.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_analyze_model_quality.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_analyze_model_quality.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_apply_theme.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_audit_model.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_audit_model.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_audit_project.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_audit_report_only.con-proyecto": {
+      "by_severity": {
+        "warning": "int"
+      },
+      "duration_ms": "float",
+      "finding_count": "int",
+      "findings": [
+        {
+          "auto_fix_available": "bool",
+          "domain": "str",
+          "evidence": {
+            "visual_count": "int"
+          },
+          "object": {
+            "kind": "str",
+            "name": "str",
+            "page": "str"
+          },
+          "recommendation": "str",
+          "rule": "str",
+          "severity": "str"
+        }
+      ],
+      "ok": "bool",
+      "operation": "str",
+      "page_count": "int",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_audit_report_only.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_backup_pbip_project.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_capabilities.con-proyecto": {
+      "capabilities": {
+        "cloud_fabric": {
+          "available": "bool",
+          "reason": "str",
+          "unsupported": "bool"
+        },
+        "dax_query": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "dual_mode_both": {
+          "available": "bool",
+          "reason": "str",
+          "unsupported": "bool"
+        },
+        "internal_schema_validator": {
+          "available": "bool",
+          "documents": "int",
+          "note": "str",
+          "reason": "str",
+          "unavailable_upstream": []
+        },
+        "microsoft_report_validator": {
+          "available": "bool",
+          "blocked_reason": "str",
+          "can_write_recent_schemas": "bool",
+          "expected_version": "str",
+          "install_hint": "str",
+          "note": "str",
+          "reason": "str",
+          "unchecked_note": "str",
+          "unvalidatable_schemas": [],
+          "version": "str",
+          "written_unchecked_schemas": []
+        },
+        "model_read_live": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_read_tmdl": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_write_live": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_write_tmdl": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "report_read_pbir": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "report_write_pbir": {
+          "available": "bool",
+          "reason": "str"
+        }
+      },
+      "duration_ms": "float",
+      "modes": {
+        "both": "bool",
+        "live": "bool",
+        "pbip": "bool"
+      },
+      "ok": "bool",
+      "operation": "str",
+      "planned_operations": [
+        {
+          "description": "str",
+          "operation": "str",
+          "target": "str"
+        }
+      ],
+      "project_state": {
+        "confidence": "str",
+        "reason": "str",
+        "signals": [
+          {
+            "pid": "int",
+            "result": "str",
+            "signal": "str"
+          }
+        ],
+        "state": "str"
+      },
+      "request_id": "str",
+      "server": {
+        "legacy_aliases": {
+          "env_prefix": "str",
+          "note": "str",
+          "server_name": "str"
+        },
+        "package": "str",
+        "product": "str",
+        "server_name": "str",
+        "tool_prefix": "str",
+        "version": "str"
+      },
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_capabilities.sin-proyecto": {
       "capabilities": {
         "cloud_fabric": {
           "available": "bool",
@@ -118,7 +354,230 @@
       "status": "str",
       "warnings": []
     },
-    "pbi_health_check": {
+    "pbi_check_contract.con-proyecto": {
+      "define_with": "str",
+      "defined": "bool",
+      "duration_ms": "float",
+      "hint": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_check_contract.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_compare_live_to_pbip.con-proyecto": {
+      "applied": "bool",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "stages": [
+        {
+          "note": "str",
+          "result": {
+            "error": "str"
+          },
+          "stage": "str"
+        }
+      ],
+      "status": "str",
+      "summary": "str",
+      "warnings": [
+        "str"
+      ],
+      "workflow": "str"
+    },
+    "pbi_compare_live_to_pbip.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_detect_layout_issues.con-proyecto": {
+      "clean": "bool",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "pages": [
+        {
+          "by_severity": {
+            "warning": "int"
+          },
+          "canvas": {
+            "height": "float",
+            "width": "float"
+          },
+          "clean": "bool",
+          "display_name": "str",
+          "issue_count": "int",
+          "issues": [
+            {
+              "auto_fix_available": "bool",
+              "domain": "str",
+              "evidence": {
+                "visual_count": "int"
+              },
+              "object": {
+                "kind": "str"
+              },
+              "recommendation": "str",
+              "rule": "str",
+              "severity": "str"
+            }
+          ],
+          "page": "str",
+          "visual_count": "int"
+        }
+      ],
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "total_issues": "int",
+      "warnings": []
+    },
+    "pbi_detect_layout_issues.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_diagnose_data.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_diagnose_data.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_disable_auto_date_time.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_document_model.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_document_report_layout.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_export_excel.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_generate_pdf_report.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_generate_technical_documentation.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_get_brief.con-proyecto": {
+      "define_with": "str",
+      "defined": "bool",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "questions_for_the_user": [
+        "str"
+      ],
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_get_brief.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_health_check.con-proyecto": {
       "checks": [
         {
           "check": "str",
@@ -166,6 +625,1170 @@
       "warnings": [
         "str"
       ]
+    },
+    "pbi_health_check.sin-proyecto": {
+      "checks": [
+        {
+          "check": "str",
+          "detail": "str",
+          "ok": "bool",
+          "required": "bool"
+        }
+      ],
+      "completeness": {
+        "missing": [
+          {
+            "component": "str",
+            "fix": "str",
+            "impact": "str",
+            "required": "bool"
+          }
+        ],
+        "note": "str",
+        "state": "str"
+      },
+      "duration_ms": "float",
+      "failing_required": [
+        "str"
+      ],
+      "healthy": "bool",
+      "ok": "bool",
+      "operation": "str",
+      "pending_journals": [],
+      "request_id": "str",
+      "server": {
+        "legacy_aliases": {
+          "env_prefix": "str",
+          "note": "str",
+          "server_name": "str"
+        },
+        "package": "str",
+        "product": "str",
+        "server_name": "str",
+        "tool_prefix": "str",
+        "version": "str"
+      },
+      "session_status": "null",
+      "side_effects": [],
+      "status": "str",
+      "warnings": [
+        "str"
+      ]
+    },
+    "pbi_list_audit_rules.con-proyecto": {
+      "count": "int",
+      "domains": [
+        "str"
+      ],
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "rules": [
+        {
+          "auto_fix_available": "bool",
+          "description": "str",
+          "domain": "str",
+          "rule": "str",
+          "severity": "str"
+        }
+      ],
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_audit_rules.sin-proyecto": {
+      "count": "int",
+      "domains": [
+        "str"
+      ],
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "rules": [
+        {
+          "auto_fix_available": "bool",
+          "description": "str",
+          "domain": "str",
+          "rule": "str",
+          "severity": "str"
+        }
+      ],
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_autofix_rules.con-proyecto": {
+      "autofixes": [
+        {
+          "description": "str",
+          "rule": "str",
+          "target": "str"
+        }
+      ],
+      "count": "int",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_autofix_rules.sin-proyecto": {
+      "autofixes": [
+        {
+          "description": "str",
+          "rule": "str",
+          "target": "str"
+        }
+      ],
+      "count": "int",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_bookmarks.con-proyecto": {
+      "duration_ms": "float",
+      "indexed": [],
+      "missing_files": [],
+      "not_indexed": [],
+      "ok": "bool",
+      "on_disk": [],
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "unreadable": [],
+      "warnings": []
+    },
+    "pbi_list_bookmarks.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_design_systems.con-proyecto": {
+      "default": "str",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "systems": [
+        {
+          "background": "str",
+          "canvas": {
+            "height": "int",
+            "width": "int"
+          },
+          "data_colors": [
+            "str"
+          ],
+          "for": "str",
+          "foreground": "str",
+          "grid": {
+            "columns": "int",
+            "gutter": "int",
+            "margin": "int"
+          },
+          "status_colors": {
+            "bad": "str",
+            "good": "str",
+            "neutral": "str"
+          },
+          "system": "str",
+          "theme": "str",
+          "title": "str",
+          "typography": {
+            "kpi": "int",
+            "seccion": "int",
+            "subtitulo": "int",
+            "titulo": "int"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    "pbi_list_design_systems.sin-proyecto": {
+      "default": "str",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "systems": [
+        {
+          "background": "str",
+          "canvas": {
+            "height": "int",
+            "width": "int"
+          },
+          "data_colors": [
+            "str"
+          ],
+          "for": "str",
+          "foreground": "str",
+          "grid": {
+            "columns": "int",
+            "gutter": "int",
+            "margin": "int"
+          },
+          "status_colors": {
+            "bad": "str",
+            "good": "str",
+            "neutral": "str"
+          },
+          "system": "str",
+          "theme": "str",
+          "title": "str",
+          "typography": {
+            "kpi": "int",
+            "seccion": "int",
+            "subtitulo": "int",
+            "titulo": "int"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    "pbi_list_desktop_models.con-proyecto": {
+      "count": "int",
+      "diagnostics": {
+        "adomd_dll_present": "bool",
+        "libs_dir": "str",
+        "libs_dir_exists": "bool",
+        "runtime_loaded": "bool",
+        "runtime_preference": "str",
+        "tom_dll_present": "bool"
+      },
+      "duration_ms": "float",
+      "instances": [],
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_desktop_models.sin-proyecto": {
+      "count": "int",
+      "diagnostics": {
+        "adomd_dll_present": "bool",
+        "libs_dir": "str",
+        "libs_dir_exists": "bool",
+        "runtime_loaded": "bool",
+        "runtime_preference": "str",
+        "tom_dll_present": "bool"
+      },
+      "duration_ms": "float",
+      "instances": [],
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_hierarchies.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_hierarchies.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_measures.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_measures.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_page_presets.con-proyecto": {
+      "count": "int",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "presets": [
+        {
+          "blocks": [
+            {
+              "count": "int",
+              "role": "str",
+              "type": "str"
+            }
+          ],
+          "description": "str",
+          "layout": "str",
+          "preset": "str"
+        }
+      ],
+      "request_id": "str",
+      "schema_version": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_page_presets.sin-proyecto": {
+      "count": "int",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "presets": [
+        {
+          "blocks": [
+            {
+              "count": "int",
+              "role": "str",
+              "type": "str"
+            }
+          ],
+          "description": "str",
+          "layout": "str",
+          "preset": "str"
+        }
+      ],
+      "request_id": "str",
+      "schema_version": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_partitions.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_partitions.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_pending_journals.con-proyecto": {
+      "backup_root": "str",
+      "count": "int",
+      "duration_ms": "float",
+      "journals": [],
+      "needs_attention": "int",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_pending_journals.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_perspectives.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_perspectives.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_relationships.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_relationships.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_report_pages.con-proyecto": {
+      "count": "int",
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "pages": [
+        {
+          "display_name": "str",
+          "height": "int",
+          "is_active": "bool",
+          "name": "str",
+          "visual_count": "int",
+          "width": "int"
+        }
+      ],
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_report_pages.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_report_resources.con-proyecto": {
+      "declared": [],
+      "duration_ms": "float",
+      "missing_files": [],
+      "ok": "bool",
+      "on_disk": [],
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "undeclared_files": [],
+      "warnings": []
+    },
+    "pbi_list_report_resources.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_roles.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_roles.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_tables.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_tables.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_list_themes.con-proyecto": {
+      "count": "int",
+      "duration_ms": "float",
+      "note": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "themes": [
+        {
+          "background": "str",
+          "data_colors": [
+            "str"
+          ],
+          "for": "str",
+          "preset": "str",
+          "status_colors": {
+            "bad": "str",
+            "good": "str",
+            "neutral": "str"
+          },
+          "title": "str"
+        }
+      ],
+      "warnings": []
+    },
+    "pbi_list_themes.sin-proyecto": {
+      "count": "int",
+      "duration_ms": "float",
+      "note": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "themes": [
+        {
+          "background": "str",
+          "data_colors": [
+            "str"
+          ],
+          "for": "str",
+          "preset": "str",
+          "status_colors": {
+            "bad": "str",
+            "good": "str",
+            "neutral": "str"
+          },
+          "title": "str"
+        }
+      ],
+      "warnings": []
+    },
+    "pbi_model_summary.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_model_summary.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_normalize_report.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_open_in_desktop.sin-proyecto": {
+      "details": {
+        "parameter": "str"
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_page_building_blocks.con-proyecto": {
+      "canvas": {
+        "height": "int",
+        "width": "int"
+      },
+      "duration_ms": "float",
+      "example_spec": {
+        "layout": {
+          "gap": "int",
+          "preset": "str"
+        },
+        "page": {
+          "height": "int",
+          "name": "str",
+          "width": "int"
+        },
+        "schema_version": "str",
+        "visuals": [
+          {
+            "fields": {
+              "values": [
+                "str"
+              ]
+            },
+            "title": "str",
+            "type": "str"
+          }
+        ]
+      },
+      "existing_pages": [
+        {
+          "id": "str",
+          "name": "str",
+          "visuals": "int"
+        }
+      ],
+      "hint": "str",
+      "model": {
+        "measures": [],
+        "tables": []
+      },
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "supported_visual_types": [
+        "str"
+      ],
+      "visual_catalog": {},
+      "warnings": []
+    },
+    "pbi_page_building_blocks.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_prepare_delivery.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_profile_data.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_propose_dashboard.con-proyecto": {
+      "blockers": [
+        "str"
+      ],
+      "brief": "null",
+      "detected": {
+        "categories": "int",
+        "dates": "int",
+        "measures": "int",
+        "numeric": "int",
+        "status": "int"
+      },
+      "duration_ms": "float",
+      "families": {},
+      "hint": "str",
+      "how_to_apply": "str",
+      "ok": "bool",
+      "operation": "str",
+      "proposals": [],
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "themes": [
+        {
+          "background": "str",
+          "data_colors": [
+            "str"
+          ],
+          "for": "str",
+          "preset": "str",
+          "status_colors": {
+            "bad": "str",
+            "good": "str",
+            "neutral": "str"
+          },
+          "title": "str"
+        }
+      ],
+      "warnings": []
+    },
+    "pbi_propose_dashboard.sin-proyecto": {
+      "duration_ms": "float",
+      "ok": "bool",
+      "operation": "str",
+      "proposals": [],
+      "reason": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_repair_broken_references.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_report_capabilities.con-proyecto": {
+      "clonable_types": [],
+      "custom_visuals_installed": {},
+      "duration_ms": "float",
+      "fallback_when_not_clonable": "str",
+      "note": "str",
+      "ok": "bool",
+      "operation": "str",
+      "pbir_version": "str",
+      "public_custom_visuals": [],
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "supported_version": "bool",
+      "supported_versions": [
+        "str"
+      ],
+      "theme": "null",
+      "visual_types_present": {},
+      "warnings": [],
+      "writable": "bool"
+    },
+    "pbi_report_capabilities.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_select_model.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_select_model.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_session_info.con-proyecto": {
+      "active_model": "null",
+      "active_pbip": {
+        "desktop_state": {
+          "confidence": "str",
+          "reason": "str",
+          "signals": [
+            {
+              "pid": "int",
+              "result": "str",
+              "signal": "str"
+            }
+          ],
+          "state": "str"
+        },
+        "has_pbir": "bool",
+        "has_tmdl": "bool",
+        "pbip_path": "str",
+        "project_dir": "str",
+        "report_dir": "str",
+        "report_name": "str",
+        "semantic_model_dir": "str",
+        "writable": "bool"
+      },
+      "coherence": {
+        "has_live_model": "bool",
+        "has_project": "bool",
+        "reason": "str",
+        "state": "str"
+      },
+      "duration_ms": "float",
+      "live_plans": [],
+      "ok": "bool",
+      "operation": "str",
+      "outputs_dir": "str",
+      "persisted_session": {
+        "path": "str",
+        "state": "str"
+      },
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_session_info.sin-proyecto": {
+      "active_model": "null",
+      "active_pbip": "null",
+      "coherence": {
+        "has_live_model": "bool",
+        "has_project": "bool",
+        "reason": "str",
+        "state": "str"
+      },
+      "duration_ms": "float",
+      "live_plans": [],
+      "ok": "bool",
+      "operation": "str",
+      "outputs_dir": "str",
+      "persisted_session": {
+        "path": "str",
+        "state": "str"
+      },
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_start_here.con-proyecto": {
+      "common_tasks": [
+        {
+          "steps": [
+            "str"
+          ],
+          "task": "str"
+        }
+      ],
+      "duration_ms": "float",
+      "next_steps": [
+        {
+          "tool": "str",
+          "why": "str"
+        }
+      ],
+      "ok": "bool",
+      "operation": "str",
+      "project": {
+        "brief": "null",
+        "coherence": {
+          "reason": "str",
+          "state": "str"
+        },
+        "desktop": {
+          "confidence": "str",
+          "reason": "str",
+          "signals": [
+            {
+              "pid": "int",
+              "result": "str",
+              "signal": "str"
+            }
+          ],
+          "state": "str"
+        },
+        "has_model": "bool",
+        "has_report": "bool",
+        "measures": "int",
+        "name": "str",
+        "pages": "int",
+        "path": "str",
+        "tables": "int",
+        "visuals": "int"
+      },
+      "request_id": "str",
+      "side_effects": [],
+      "situation": "str",
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_start_here.sin-proyecto": {
+      "common_tasks": [
+        {
+          "steps": [
+            "str"
+          ],
+          "task": "str"
+        }
+      ],
+      "duration_ms": "float",
+      "next_steps": [
+        {
+          "example_args": {
+            "path": "str"
+          },
+          "tool": "str",
+          "why": "str"
+        }
+      ],
+      "ok": "bool",
+      "operation": "str",
+      "project": "null",
+      "request_id": "str",
+      "side_effects": [],
+      "situation": "str",
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_test_connection.con-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_test_connection.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_validate_desktop_render.sin-proyecto": {
+      "details": {
+        "parameter": "str"
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_validate_pbip_project.con-proyecto": {
+      "checks": {
+        "enhanced_report_format": "bool",
+        "has_pbir": "bool",
+        "has_tmdl": "bool",
+        "page_count": "int",
+        "pbip_exists": "bool",
+        "pbir_valid": "bool",
+        "pbir_version": "str",
+        "references_valid": "bool",
+        "report_dir_exists": "bool",
+        "semantic_model_exists": "bool",
+        "tmdl_valid": "bool"
+      },
+      "duration_ms": "float",
+      "fully_validated": "bool",
+      "ok": "bool",
+      "operation": "str",
+      "project": {
+        "has_pbir": "bool",
+        "has_tmdl": "bool",
+        "pbip_path": "str",
+        "project_dir": "str",
+        "report_dir": "str",
+        "report_name": "str",
+        "semantic_model_dir": "str"
+      },
+      "references": {
+        "broken_references": [],
+        "checked": "bool",
+        "unreadable_files": [],
+        "valid": "bool",
+        "visuals_checked": "int"
+      },
+      "report": {
+        "checked": "bool",
+        "errors": [
+          {
+            "code": "str",
+            "file": "str",
+            "message": "str",
+            "path": "str",
+            "severity": "str"
+          }
+        ],
+        "parse_errors": [],
+        "status": "str",
+        "valid": "bool",
+        "warnings": "int"
+      },
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "tmdl": {
+        "checked": "bool",
+        "error_count": "int",
+        "findings": [],
+        "parse_checked": "bool",
+        "parsed": "null",
+        "valid": "bool",
+        "warning_count": "int"
+      },
+      "valid": "bool",
+      "warnings": [
+        "str"
+      ]
+    },
+    "pbi_validate_pbip_project.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_validate_tmdl.con-proyecto": {
+      "counts": {
+        "measures": "int",
+        "relationships": "int",
+        "table_files": "int",
+        "tables_read": "int",
+        "unreadable_files": []
+      },
+      "definition_dir": "str",
+      "duration_ms": "float",
+      "error_count": "int",
+      "findings": [],
+      "format": "str",
+      "limitations": [
+        "str"
+      ],
+      "ok": "bool",
+      "operation": "str",
+      "parse_checked": "bool",
+      "parse_error": "null",
+      "parse_skipped_reason": "str",
+      "parsed": "null",
+      "request_id": "str",
+      "side_effects": [],
+      "source_query_culture": "null",
+      "status": "str",
+      "tom_counts": "null",
+      "valid": "bool",
+      "warning_count": "int",
+      "warnings": []
+    },
+    "pbi_validate_tmdl.sin-proyecto": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
     }
   }
 }

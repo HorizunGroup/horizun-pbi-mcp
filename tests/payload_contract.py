@@ -116,9 +116,14 @@ def cargar() -> Dict[str, Any]:
 def escribir(payloads: Dict[str, Any]) -> Path:
     GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     GOLDEN_PATH.write_text(json.dumps(
-        {"payload_contract_version": 1, "tool_count": len(payloads),
-         "note": ("Forma de los payloads: claves y tipos, nunca valores. Cubre "
-                  "lo obtenible sin Power BI Desktop; lo live es TEST-003."),
+        {"payload_contract_version": 2,
+         "muestras": len(payloads),
+         "tools_cubiertas": len({k.split(".", 1)[0] for k in payloads
+                                 if k.startswith("pbi_")}),
+         "note": ("Forma de los payloads: claves y tipos, nunca valores ni "
+                  "longitudes. Una clave por `<tool>.<escenario>`. La cobertura "
+                  "tool por tool, con la dependencia medida de cada exclusion, "
+                  "esta en docs/COBERTURA_PAYLOADS.md."),
          "payloads": dict(sorted(payloads.items()))},
         indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return GOLDEN_PATH
