@@ -538,3 +538,36 @@ def test_launcher_limpio_expone_el_instalador_por_stdio(tmp_path):
     assert [tool["name"] for tool in replies[1]["result"]["tools"]] == [
         "pbi_install_runtime", "pbi_install_status"]
     assert stderr == ""
+
+
+def test_el_indulto_del_N1_no_depende_del_reloj(tmp_path, monkeypatch):
+    """El empate de fechas decidia cual sobrevivia, y CI lo destapo.
+
+    Se elegia el N−1 a indultar con `max(..., key=st_mtime)`. Dos carpetas
+    creadas en el mismo tick empatan, y el desempate lo decidia el orden que
+    devolviera el sistema de archivos: verde en un runner, rojo en otro, la
+    misma prueba. El sintoma era el peor: indultar `0.9.0` y borrar `1.0.0`,
+    que era el unico runtime al que volver.
+
+    Aqui las dos carpetas tienen la MISMA fecha a proposito. Arreglar esto
+    separando los `utime` habria escondido el defecto sin tocarlo.
+    """
+    bootstrap = _bootstrap()
+    raiz = tmp_path / "datos"
+    p = bootstrap.paths(raiz)
+    p["cache"].mkdir(parents=True)
+
+    for nombre in ("0.9.0", "1.0.0"):
+        (raiz / nombre / "runtime").mkdir(parents=True)
+    misma = 1_700_000_000.0
+    for nombre in ("0.9.0", "1.0.0"):
+        os.utime(raiz / nombre, (misma, misma))
+    assert (raiz / "0.9.0").stat().st_mtime == (raiz / "1.0.0").stat().st_mtime
+
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+    bootstrap._limpiar_huerfanos(p)
+
+    assert (raiz / "1.0.0" / "runtime").is_dir(), (
+        "con las dos fechas iguales se indulto la version menor: el N−1 lo "
+        "decide el numero de version, no el reloj")
+    assert not (raiz / "0.9.0").exists(), "la mas vieja tenia que irse"

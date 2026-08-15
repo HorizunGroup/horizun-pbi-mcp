@@ -640,6 +640,35 @@ def _rescatar_datos(origen: Path, p: dict[str, Path]) -> None:
                 pass
 
 
+def _orden_de_version(carpeta: Path) -> tuple[tuple[int, ...], float]:
+    """Ordena versiones por NUMERO, y solo desempata por fecha.
+
+    Antes se elegia el N−1 a indultar con `max(..., key=st_mtime)`, y dos
+    carpetas creadas en el mismo tick del reloj **empatan**: el desempate lo
+    decidia el orden de `iterdir`, o sea el sistema de archivos. CI lo destapo
+    -verde en 3.13, rojo en 3.10, la misma prueba- y el sintoma era el peor
+    posible: se indultaba `0.9.0` en vez de `1.0.0` y se borraba el unico N−1
+    utilizable.
+
+    Ampliar el margen -tocar las fechas con mas separacion en la prueba- habria
+    escondido el problema sin arreglarlo. N−1 significa **la version anterior**,
+    no «la carpeta que se toco mas tarde», asi que se ordena por lo que de
+    verdad define el orden y la fecha queda de desempate para nombres que no
+    son versiones.
+    """
+    partes = []
+    for trozo in carpeta.name.split("."):
+        try:
+            partes.append(int(trozo))
+        except ValueError:
+            partes.append(-1)             # no es una version: al fondo
+    try:
+        fecha = carpeta.stat().st_mtime
+    except OSError:                       # pragma: no cover
+        fecha = 0.0
+    return tuple(partes), fecha
+
+
 def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
     """Borra lo que ya no puede servirle a nadie.
 
@@ -680,7 +709,7 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
         # volver mientras el estado se reconstruye.
         con_runtime = [d for d in viejas if (d / "runtime").is_dir()]
         if con_runtime:
-            protegidas.add(max(con_runtime, key=lambda d: d.stat().st_mtime).resolve())
+            protegidas.add(max(con_runtime, key=_orden_de_version).resolve())
     viejas = [d for d in viejas if d.resolve() not in protegidas]
 
     for viejo in viejas:
