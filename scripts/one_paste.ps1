@@ -15,17 +15,23 @@
 # entonces ejecuta -con `&`, nunca con Invoke-Expression-. Si algo no cuadra,
 # no se ejecuta nada y el temporal se borra igual.
 #
-# El SHA-256 se calcula con .NET y NO con `Get-FileHash`. `Get-FileHash` es un
-# CMDLET: usarlo obliga a RESOLVERLO, y esa resolucion depende del estado del
-# interprete -que modulos estan cargados, que dice PSModulePath, si la cache de
-# analisis de modulos sirve, que hay en el perfil-. Nada de eso lo controla
-# quien pega el bloque, y aqui se paga caro: si el comando no resuelve, `$real`
-# se queda vacio y la unica comprobacion de integridad del bloque se apaga sola
-# por el ambiente. Una verificacion que el entorno puede desactivar no es una
-# verificacion. `[Security.Cryptography.SHA256]` es un TIPO de la BCL: lo
-# resuelve el runtime, no el descubrimiento de comandos, y no hay ambiente que
-# lo haga desaparecer. Se usa `::Create()` y no `SHA256Managed` porque en una
-# maquina con FIPS activado la implementacion "managed" lanza.
+# El SHA-256 se calcula con .NET y NO con `Get-FileHash`, y conviene decir con
+# precision QUE arregla eso, porque una version anterior de este comentario lo
+# exageraba. `Get-FileHash` es un CMDLET: usarlo obliga a RESOLVERLO, y esa
+# resolucion depende del estado del interprete -que modulos hay cargados, que
+# dice PSModulePath, que hay en el perfil-, que no controla quien pega el
+# bloque. Con `$ErrorActionPreference = 'Stop'`, un comando que no resuelve
+# LANZA, asi que el bloque se abortaba: **nunca hubo un camino por el que se
+# ejecutara un instalador sin verificar**. Lo que se elimina no es un agujero de
+# integridad, es una dependencia ambiental que podia convertir una instalacion
+# buena en una fallida. `[Security.Cryptography.SHA256]` es un TIPO de la BCL:
+# lo resuelve el runtime, no el descubrimiento de comandos. Se usa `::Create()`
+# y no `SHA256Managed` porque en una maquina con FIPS activado la
+# implementacion "managed" lanza.
+#
+# Por lo mismo, el instalador se lanza con la ruta ABSOLUTA de
+# `powershell.exe` y no con el nombre `powershell`: un nombre lo resuelven
+# primero los alias y las funciones de la sesion, y solo despues el PATH.
 #
 # El SHA-256 y el tamano de abajo son los de scripts/instalar.ps1 y viven
 # tambien en scripts/downloads_manifest.json; una prueba comprueba los tres
@@ -35,6 +41,13 @@ $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5
 $sha = '33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
+# En que punto se quedo, para que el mensaje final diga la verdad y no una
+# formula. Antes, un instalador que se ejecutaba y devolvia error terminaba
+# imprimiendo "No se ejecuto nada que no coincidiera con el hash publicado":
+# cierto en lo literal y enganoso en lo que la persona entiende, que es que no
+# se ejecuto nada.
+$fase = 'descarga'
+$ejecutado = $false
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $peticion = [Net.HttpWebRequest]::Create($url)
@@ -60,6 +73,7 @@ try {
         $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
     }
     if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
+    $fase = 'verificacion'
     if ($sha -cnotmatch '^[0-9a-f]{64}$') {
         throw "El hash publicado en el bloque no es un SHA-256 de 64 hex en minusculas. No se ejecuta nada."
     }
@@ -75,15 +89,28 @@ try {
     if ($real -ne $sha) {
         throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
     }
+    $fase = 'ejecucion'
     Write-Host ("SHA-256 verificado sobre " + $total + " bytes. Ejecutando el instalador...") -ForegroundColor Green
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp
+    $ps = [IO.Path]::Combine($PSHOME, 'powershell.exe')
+    if (-not [IO.File]::Exists($ps)) {
+        $ps = [IO.Path]::Combine([Environment]::SystemDirectory, 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    }
+    if (-not [IO.File]::Exists($ps)) {
+        throw "No se encontro Windows PowerShell. No se ejecuta nada."
+    }
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $tmp
+    $ejecutado = $true
     if ($LASTEXITCODE -ne 0) {
         throw ("El instalador termino con codigo " + $LASTEXITCODE + ".")
     }
 } catch {
     Write-Host ""
     Write-Host ("[ERROR] Instalacion abortada: " + $_.Exception.Message) -ForegroundColor Red
-    Write-Host "        No se ejecuto nada que no coincidiera con el hash publicado." -ForegroundColor Red
+    if ($ejecutado) {
+        Write-Host "        El instalador SI llego a ejecutarse: sus bytes coincidian con el hash publicado, y fallo durante la instalacion." -ForegroundColor Red
+    } else {
+        Write-Host ("        No se ejecuto nada: se aborto en la fase '" + $fase + "', antes de lanzar el instalador.") -ForegroundColor Red
+    }
     throw
 } finally {
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }

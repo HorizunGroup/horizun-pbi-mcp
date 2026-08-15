@@ -190,8 +190,8 @@ def perfil_frio(tmp_path):
     en un perfil nuevo tampoco existe.
 
     Esto no es decorado: es el estado en el que la resolucion de comandos es
-    mas fragil, y por tanto donde una verificacion de integridad que dependiera
-    de resolver un cmdlet se apagaria sola.
+    mas fragil, y por tanto donde un bloque que dependiera de resolver un cmdlet
+    tendria mas papeletas para abortar sin motivo.
     """
     import os
 
@@ -276,18 +276,26 @@ def test_una_salida_no_cero_del_instalador_se_reporta(escenario):
 
 # ------------------------------- el hash no puede depender del ambiente ------
 #
-# Lo que estas cuatro pruebas cierran: el bloque calculaba el SHA-256 con
+# Lo que estas pruebas cierran, dicho con precision porque una version anterior
+# de este comentario lo exageraba: el bloque calculaba el SHA-256 con
 # `Get-FileHash`, que es un CMDLET. Usar un cmdlet obliga a resolverlo, y la
 # resolucion depende de cosas que quien pega el bloque no controla -modulos
-# cargados, PSModulePath, la cache de analisis de modulos-. Cuando la
-# resolucion no ocurre, `$real` se queda vacio y la unica comprobacion de
-# integridad del bloque se apaga SOLA. Una verificacion que el entorno puede
-# desactivar no es una verificacion, y el sintoma es el peor posible: el bloque
-# no explota, simplemente deja de comprobar.
+# cargados, PSModulePath, la cache de analisis de modulos-.
 #
-# El oraculo no persigue el fallo intermitente: lo fija. Se ejecuta el bloque
-# en una sesion donde `Get-FileHash` es IMPOSIBLE de usar y se exige que
-# verifique igual.
+# Lo que eso NO era: un agujero de integridad. Con
+# `$ErrorActionPreference = 'Stop'`, un comando que no resuelve LANZA, y el
+# bloque abortaba en el catch. Se comprobo: sustituyendo el nombre por uno
+# inexistente y dejando el hash correcto, el resultado es «abortado», nunca
+# «ejecutado». Nunca hubo un camino por el que se ejecutara un instalador sin
+# verificar.
+#
+# Lo que si era: una dependencia ambiental en el unico paso que no se puede
+# saltar, capaz de convertir una instalacion buena en una fallida por como este
+# la sesion de quien pega. Quitarla es hardening, y como tal se documenta.
+#
+# El oraculo no persigue un fallo intermitente: fija la propiedad. Se ejecuta el
+# bloque con un detector que se dispara si alguien invoca `Get-FileHash`, y se
+# exige que verifique igual sin haberlo llamado.
 
 def _detector_de_get_filehash(marca: Path) -> str:
     """Preludio que deja constancia en disco si alguien invoca `Get-FileHash`.
@@ -380,13 +388,95 @@ def test_el_bloque_no_calcula_el_hash_con_un_cmdlet():
         "SHA256Managed lanza en una maquina con FIPS activado; ::Create() no")
 
 
+# ------------------- el mensaje final tiene que decir la verdad --------------
+#
+# El bloque terminaba SIEMPRE con la misma frase: «No se ejecuto nada que no
+# coincidiera con el hash publicado». Literalmente cierta y engañosa en lo que
+# la persona entiende. Si el instalador se descargaba, verificaba, ejecutaba y
+# fallaba a mitad —dejando medio sistema tocado— el mensaje seguia sonando a
+# «tranquilo, aqui no se ha ejecutado nada».
+
+@requiere_windows
+def test_si_el_instalador_se_ejecuta_y_falla_el_mensaje_lo_dice(escenario):
+    res = escenario("ok", salida=3)
+    salida = res.stdout + res.stderr
+
+    assert escenario.centinela.exists(), "el escenario no llego a ejecutar nada"
+    assert res.returncode != 0
+    assert "SI llego a ejecutarse" in salida, (
+        f"el mensaje no reconoce que el instalador se ejecuto:\n{salida}")
+    assert "No se ejecuto nada" not in salida, (
+        f"el mensaje sigue afirmando que no se ejecuto nada:\n{salida}")
+    assert "3" in salida, "no dice con que codigo termino"
+
+
+@requiere_windows
+@pytest.mark.parametrize("modo,fase", [
+    ("http_500", "descarga"),
+    ("content_length_excesivo", "descarga"),
+    ("stream_excesivo", "descarga"),
+    # La descarga cortada a la mitad TERMINA de leer sin error -el servidor
+    # cierra la conexion y el stream devuelve 0-, asi que no la caza la fase de
+    # descarga sino el hash. Que la fase reportada sea 'verificacion' no es un
+    # detalle: dice donde estuvo de verdad la red de seguridad.
+    ("truncada", "verificacion"),
+    ("hash_incorrecto", "verificacion"),
+])
+def test_cuando_no_se_ejecuta_nada_el_mensaje_dice_en_que_fase_se_corto(
+        escenario, modo, fase):
+    res = escenario(modo)
+    salida = res.stdout + res.stderr
+
+    assert not escenario.centinela.exists()
+    assert "No se ejecuto nada" in salida, salida
+    assert f"fase '{fase}'" in salida, (
+        f"con '{modo}' se esperaba la fase '{fase}':\n{salida}")
+    assert "SI llego a ejecutarse" not in salida
+
+
+# --------------- el ejecutable no se resuelve por nombre ---------------------
+#: `powershell` como funcion Y como alias. Las dos tienen prioridad sobre el
+#: PATH, asi que cualquiera de ellas secuestraria un `& powershell`.
+POWERSHELL_HOSTIL = (
+    "function powershell { throw 'secuestrado por una funcion' }\n"
+    "Set-Alias -Name powershell -Value cmd.exe -Scope Script -Force\n")
+
+
+@requiere_windows
+def test_el_instalador_se_lanza_por_ruta_y_no_por_nombre(escenario):
+    """Con `powershell` secuestrado en la sesion, el bloque tiene que funcionar.
+
+    Es el mismo razonamiento que llevo a quitar `Get-FileHash`: lo que decide
+    QUE se ejecuta no puede salir del descubrimiento de comandos de la sesion.
+    Aqui la diferencia es que aqui si habria consecuencia real -se ejecutaria
+    otro programa con el script verificado como argumento-.
+    """
+    res = escenario("ok", preludio=POWERSHELL_HOSTIL)
+
+    assert res.returncode == 0, f"{res.stdout}\n{res.stderr}"
+    assert escenario.centinela.exists(), (
+        "el bloque resolvio `powershell` por nombre y lo secuestro la sesion")
+    assert "secuestrado" not in (res.stdout + res.stderr)
+
+
+def test_el_bloque_usa_el_powershell_de_PSHOME():
+    texto = _snippet_canonico()
+    assert "$PSHOME" in texto, (
+        "el bloque no toma el ejecutable de $PSHOME")
+    assert "[IO.File]::Exists($ps)" in texto, (
+        "no comprueba que la ruta sea un archivo antes de invocarla")
+
+
 # ------------------------------------------------- forma del bloque ----------
 def test_el_bloque_no_usa_invoke_expression():
     texto = _snippet_canonico()
     for prohibido in ("iex", "Invoke-Expression", "IEX"):
         assert not re.search(rf"\b{prohibido}\b", texto), (
             f"el bloque canonico usa {prohibido}")
-    assert "& powershell" in texto, "el bloque no ejecuta con &"
+    assert "& $ps" in texto, "el bloque no ejecuta con &"
+    assert not re.search(r"&\s+powershell\b", texto), (
+        "el bloque volvio a invocar `powershell` POR NOMBRE: un nombre lo "
+        "resuelven antes los alias y las funciones de la sesion que el PATH")
     assert "$LASTEXITCODE" in texto, "el bloque no mira el codigo de salida"
     assert "finally" in texto and "Remove-Item" in texto, (
         "el temporal no se borra en un finally")

@@ -677,6 +677,29 @@ de comando, que se dispara mire quien mire y sobrevive a la reimportación.
 Un oráculo que puede desactivarse solo es peor que no tenerlo: no deja hueco
 visible, deja un verde.
 
+**Corrección a lo escrito en `01c2495` (añadida en la cuarta pasada).** Aquel
+commit describió el `Get-FileHash` como si la comprobación de integridad
+«pudiera apagarse sola» y ejecutar bytes sin verificar. **No es cierto**, y la
+revisión independiente hizo bien en señalarlo. Con
+`$ErrorActionPreference = 'Stop'`, un comando que no resuelve **lanza**, así que
+el bloque abortaba en el `catch`. Se comprobó a posteriori: con el nombre del
+comando sustituido por uno inexistente y el hash correcto, el resultado es
+«abortado», nunca «ejecutado». Nunca hubo un camino por el que se ejecutara un
+instalador sin verificar.
+
+Lo que sí había es una **dependencia ambiental** en el único paso que no se
+puede saltar, capaz de convertir una instalación buena en una fallida según cómo
+esté la sesión de quien pega. Eso es hardening, y como hardening queda
+documentado. La corrección del código se mantiene; lo que se corrige es la
+afirmación, en `scripts/one_paste.ps1`, `CHANGELOG.md` y
+`tests/test_one_paste.py`.
+
+El defecto de resolución por nombre **sí** tenía consecuencia real, y estaba en
+la otra mitad de la misma línea: `& powershell` resuelve alias y funciones
+*antes* que el PATH, así que un nombre secuestrado habría ejecutado otro
+programa con el script ya verificado como argumento. Eso se cierra en la cuarta
+pasada usando la ruta absoluta de `$PSHOME`.
+
 ### Lo que NO se tocó, a propósito
 
 **INSTALL-004, -005, -007, -008, -009 y CLI-001** siguen sin empezar. El encargo

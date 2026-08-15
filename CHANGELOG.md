@@ -77,12 +77,26 @@ nothing published yet.**
   `npm install --prefix <destino>`. Either one, interrupted, left old and new
   mixed. Both now stage in a sibling directory, verify, and publish with a
   rename through the same lifecycle used for the runtime.
-- **The SHA-256 check in the one-paste block depended on the environment
-  resolving a command.** It used `Get-FileHash`; if that had not resolved, the
-  computed hash would have been empty and the only integrity check in the block
-  would have switched itself off. It now uses `[Security.Cryptography.SHA256]`,
-  a type the runtime resolves, and refuses outright if the published hash is not
-  64 lowercase hex or the computed one is not 64 characters.
+- **The one-paste block resolved two things through the session's command
+  discovery: the hash and the interpreter.** The hash used `Get-FileHash`. To be
+  precise about what that was and was not — it was *not* an integrity hole: with
+  `$ErrorActionPreference = 'Stop'` an unresolvable command throws, so the block
+  aborted; there was never a path that executed an unverified installer. It was
+  an environmental dependency in the one step you cannot skip, able to turn a
+  working install into a failed one depending on the pasting session. It now
+  uses `[Security.Cryptography.SHA256]`, a type the runtime resolves, and
+  refuses outright if the published hash is not 64 lowercase hex. The
+  interpreter did have a real consequence: `& powershell` resolves aliases and
+  functions *before* the PATH, so a hijacked name would have run another program
+  with the verified script as its argument. It now launches the absolute path
+  from `$PSHOME`, checked to be a file first.
+- **The one-paste block ended with the same sentence whether or not the
+  installer ran.** «No se ejecutó nada que no coincidiera con el hash
+  publicado» is literally true and misleading in what a person reads: if the
+  installer downloaded, verified, ran and then failed halfway, the message still
+  sounded like nothing had happened. It now tracks the phase — download,
+  verification, execution — and says which one it stopped in, or states plainly
+  that the installer did run and failed.
 - **`py -3` was downloading and installing a Python runtime during a
   *diagnostic* probe.** On modern Windows `py` is the Python Install Manager:
   asking it for an interpreter it does not have makes it fetch one. With a clean
