@@ -44,6 +44,7 @@ def _cargar_modulo_del_paquete(nombre: str):
 
 _promocion = _cargar_modulo_del_paquete("promotion")
 _cerrojos = _cargar_modulo_del_paquete("locking")
+_salud = _cargar_modulo_del_paquete("healthcheck")
 
 #: Lo reconstruible: vive bajo `<raiz>/<VERSION>` y se descarga verificado por
 #: hash. Borrarlo cuesta una reinstalacion, nunca un dato del usuario.
@@ -512,6 +513,19 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             validator = _instalar_validador(sp, env, include_validator,
                                             lambda **kw: _write_status(p, **kw))
 
+            # INSTALL-010. Que ningun paso haya lanzado no demuestra que el
+            # servidor ARRANQUE: un venv al que le falte una dependencia
+            # transitiva da exactamente el mismo silencio. El oraculo tiene que
+            # ser el protocolo, y se ejecuta contra el STAGING para que un
+            # runtime que no arranca no llegue a sustituir al que si funciona.
+            _write_status(p, state="installing", ready=False, step="healthcheck",
+                          message="Comprobando que el runtime preparado arranca.")
+            salud = _salud.verificar(sp["python"], env=env, cwd=root)
+            if not salud["ok"]:
+                raise RuntimeError(
+                    f"el runtime preparado no supero el handshake MCP "
+                    f"(fase={salud['fase']}): {salud.get('error')}")
+
             _write_status(p, state="installing", ready=False, step="promotion",
                           message="Publicando el runtime preparado.")
             resultado = _promocion.promover(root, staging, p["cache"])
@@ -521,6 +535,9 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                 p[key].mkdir(parents=True, exist_ok=True)
             _write_status(p, state="ready", ready=True, step="complete",
                           python=str(p["python"]), validator=validator,
+                          handshake={"tools": salud["tools"],
+                                     "servidor": salud.get("servidor"),
+                                     "version": salud.get("version")},
                           anterior_conservado=resultado["anterior"],
                           recuperacion_previa=recuperado.get("accion"),
                           limpiado=_limpiar_huerfanos(p),

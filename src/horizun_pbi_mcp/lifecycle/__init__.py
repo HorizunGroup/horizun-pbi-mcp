@@ -22,6 +22,7 @@ arranque en frio, que es justo el caso que el bootstrap existe para cubrir.
 """
 from __future__ import annotations
 
+from . import healthcheck
 from .locking import CerrojoDeCicloDeVida, lock_vivo, proceso_vivo
 from .promotion import (
     CONSERVAR_ANTERIORES,
@@ -40,6 +41,7 @@ from .promotion import (
 
 __all__ = [
     "CONSERVAR_ANTERIORES",
+    "healthcheck",
     "CerrojoDeCicloDeVida",
     "JOURNAL",
     "PREFIJO_ANTERIOR",

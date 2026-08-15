@@ -58,6 +58,21 @@ def _sembrar_runtime(carpeta: Path, bs, marca: str = "#viejo") -> Path:
     return py
 
 
+
+def _salud_ok(bs, monkeypatch):
+    """Da por bueno el handshake en las pruebas que no van de eso.
+
+    El runtime de estas pruebas es un archivo de texto haciendose pasar por
+    interprete: el handshake lo rechaza, y con razon. Lo que se mide aqui es la
+    promocion y la limpieza, asi que el oraculo de INSTALL-010 se sustituye a
+    proposito y tiene sus propias pruebas mas abajo.
+    """
+    monkeypatch.setattr(bs._salud, "verificar",
+                        lambda *a, **k: {"ok": True, "fase": "completo",
+                                         "tools": 134, "servidor": "horizun-pbi-mcp",
+                                         "version": bs.VERSION})
+
+
 # ==================== INSTALL-001: fallo en cada paso ========================
 #: Los pasos que `install()` ejecuta con `_run`, en orden. La siembra deja un
 #: interprete, asi que la creacion del venv no llega a pedirse.
@@ -326,6 +341,7 @@ def test_con_node_viejo_la_instalacion_llega_a_ready(bootstrap, tmp_path, monkey
     _sembrar_runtime(raiz / bootstrap.VERSION, bootstrap)
     monkeypatch.setattr(bootstrap, "version_de_node", lambda: (18, "v18.20.4"))
     monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    _salud_ok(bootstrap, monkeypatch)
     monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
 
     assert bootstrap.install(raiz, include_validator=True) == 0
@@ -353,6 +369,7 @@ def test_tras_una_actualizacion_CON_EXITO_queda_un_N1_arrancable(
     py_donante = _sembrar_runtime(donante, bootstrap, marca="#N-1")
 
     monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    _salud_ok(bootstrap, monkeypatch)
     monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
 
     assert bootstrap.install(raiz, include_validator=False) == 0
@@ -365,3 +382,86 @@ def test_tras_una_actualizacion_CON_EXITO_queda_un_N1_arrancable(
         "tras actualizar con exito no queda NINGUN runtime anterior: si la "
         "version nueva falla al arrancar, no hay a donde volver")
     assert py_donante.is_file(), "se borro el unico N-1 completo que habia"
+
+
+# ==================== INSTALL-010: `ready` exige handshake ===================
+def test_un_runtime_que_no_arranca_no_llega_a_ready_ni_promueve(
+        bootstrap, tmp_path, monkeypatch):
+    """El corazon de INSTALL-010, y el motivo de comprobarlo ANTES de promover.
+
+    Que ningun paso haya lanzado no demuestra que el servidor arranque: un venv
+    al que le falte una dependencia transitiva da exactamente el mismo silencio.
+    Y como el handshake corre contra el STAGING, un runtime que no arranca ni
+    siquiera llega a sustituir al que si funcionaba: no hace falta rollback
+    porque no hubo cambio que deshacer.
+    """
+    raiz = tmp_path / "datos"
+    anterior = raiz / bootstrap.VERSION
+    py_anterior = _sembrar_runtime(anterior, bootstrap, marca="#N-1")
+
+    monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    monkeypatch.setattr(bootstrap._salud, "verificar",
+                        lambda *a, **k: {"ok": False, "fase": "initialize",
+                                         "tools": 0, "error": "no respondio"})
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+
+    assert bootstrap.install(raiz, include_validator=False) == 1
+
+    estado = bootstrap.read_status(raiz)
+    assert estado["state"] == "failed" and estado["ready"] is False
+    assert "handshake MCP" in estado["message"]
+    assert "fase=initialize" in estado["message"], (
+        "el estado no dice EN QUE fase murio: sin eso no se puede diagnosticar")
+    assert py_anterior.read_text(encoding="utf-8") == "#N-1", (
+        "se promovio un runtime que no arranca")
+    assert bootstrap._promocion.anteriores(raiz) == [], (
+        "no hubo promocion, asi que no puede haber nada apartado")
+
+
+def test_ready_declara_con_que_evidencia_se_dijo(bootstrap, tmp_path, monkeypatch):
+    raiz = tmp_path / "datos"
+    _sembrar_runtime(raiz / bootstrap.VERSION, bootstrap)
+    monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    _salud_ok(bootstrap, monkeypatch)
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+
+    assert bootstrap.install(raiz, include_validator=False) == 0
+    estado = bootstrap.read_status(raiz)
+    assert estado["handshake"]["tools"] == 134
+    assert estado["handshake"]["servidor"] == "horizun-pbi-mcp"
+
+
+@pytest.mark.parametrize("veredicto,esperado", [
+    ({"ok": False, "fase": "timeout", "tools": 0}, "timeout"),
+    ({"ok": False, "fase": "stdout-sucio", "tools": 0}, "stdout-sucio"),
+    ({"ok": False, "fase": "tools-list", "tools": 3}, "tools-list"),
+    ({"ok": False, "fase": "entry-points", "tools": 0}, "entry-points"),
+])
+def test_cada_forma_de_fallar_el_handshake_se_reporta_por_su_nombre(
+        bootstrap, tmp_path, monkeypatch, veredicto, esperado):
+    """"No arranca" y "arranca y sirve poco" son fallos distintos."""
+    raiz = tmp_path / "datos"
+    _sembrar_runtime(raiz / bootstrap.VERSION, bootstrap)
+    monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    monkeypatch.setattr(bootstrap._salud, "verificar", lambda *a, **k: veredicto)
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+
+    assert bootstrap.install(raiz, include_validator=False) == 1
+    assert f"fase={esperado}" in bootstrap.read_status(raiz)["message"]
+
+
+def test_el_handshake_rechaza_un_interprete_que_no_existe(bootstrap, tmp_path):
+    r = bootstrap._salud.verificar(tmp_path / "no-existe" / "python.exe")
+    assert r["ok"] is False and "no hay interprete" in r["error"]
+
+
+def test_el_handshake_exige_los_entry_points(bootstrap, tmp_path):
+    """pip puede instalar el paquete y no dejar los ejecutables de consola."""
+    runtime = tmp_path / "runtime"
+    scripts = runtime / ("Scripts" if os.name == "nt" else "bin")
+    scripts.mkdir(parents=True)
+    py = scripts / ("python.exe" if os.name == "nt" else "python")
+    py.write_text("#", encoding="utf-8")
+
+    r = bootstrap._salud.verificar(py)
+    assert r["ok"] is False and r["fase"] == "entry-points"
