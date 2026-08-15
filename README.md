@@ -11,6 +11,14 @@
 Open **PowerShell** — a normal window, *not* "as administrator" — and paste
 this. It works whether the machine is fully set up or completely empty.
 
+> **What "completely empty" does and does not cover.** The installer brings
+> Python, Node and Claude Code. It does **not install Power BI Desktop**, and
+> Microsoft does not allow redistributing it. Without Desktop you still get the
+> whole `.pbip` side — read, author, validate and back up projects on disk — and
+> you do **not** get the LIVE layer: no DAX against a running model, no refresh,
+> no visual capture and no render validation. Install it separately from the
+> Microsoft Store when you need those.
+
 It is longer than a one-liner on purpose. The short version everyone writes —
 `irm <url> | iex` — runs whatever bytes that URL happens to return today, and
 HTTPS only tells you *who* served them, not *what* they are. This block pins a
@@ -213,7 +221,7 @@ repository, not a promise:
 
 - **Live DAX:** runs queries against the open model and returns columns/rows with timings.
 - **Documentation:** tables, columns, measures, relationships, hierarchies, roles (RLS) and quality analysis → Markdown.
-- **Measures:** create/edit/delete DAX measures in the open model (`live`), in the TMDL file (`pbip`) or in both (`both`).
+- **Measures:** create/edit/delete DAX measures in the open model (`live`) or in the TMDL file (`pbip`). Writing to **both in one call is blocked** — the two require opposite states of Desktop; see [`mode="both"` blocked](#modeboth-blocked).
 - **Local refresh:** refreshes the open model in Desktop (not the Service).
 - **PBIP:** open/validate projects, automatic backups.
 - **`.pbix` → `.pbip` conversion:** report to PBIR (copied if the `.pbix` already carries it, translated if it keeps the legacy format) and model to TMDL, single file or batch folder.
@@ -572,7 +580,7 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 - `pbi_sharepoint_download_folder` — staged all-or-nothing download to `outputs/sharepoint/`, verified by size and SHA-256.
 - `pbi_export_report_content` — exports the report **content**: the data behind each visual, or a query the client declares. Needs the live model; refuses to export an unprocessed one instead of writing a blank file.
 
-**Measures (Phase 4)** — `mode: live|pbip|both`, `overwrite`
+**Measures (Phase 4)** — `mode: live|pbip` (`both` is blocked, R15), `overwrite`
 - `pbi_create_measure`, `pbi_update_measure`, `pbi_delete_measure` (destructive: `confirm=true`).
 
 **Refresh (Phase 5)**
@@ -591,8 +599,8 @@ Exits with code **0** if everything mandatory is fine. It distinguishes missing 
 > Power BI Desktop **does not open a `.pbip` with paths of 260 characters or more**: pick a short `out_dir` (`C:\pbip`). The tool checks this before writing and aborts with the detail instead of leaving a project that won't open.
 
 **Model editing**
-- `pbi_set_column_visibility` / `pbi_hide_columns` — hide/show columns (e.g. IDs). `mode: live|pbip|both`.
-- `pbi_set_relationship_direction` — cross filter `single|both` of a relationship. `mode: live|pbip|both`.
+- `pbi_set_column_visibility` / `pbi_hide_columns` — hide/show columns (e.g. IDs). `mode: live|pbip` (`both` blocked).
+- `pbi_set_relationship_direction` — cross filter `single|both` of a relationship (that `both` is the *filter direction*, unrelated to the write mode). `mode: live|pbip` (`both` blocked).
 - `pbi_disable_auto_date_time` — enables/disables "Auto date/time" (`pbip` only).
 
 **PBIR Report (Phases 7–10)**
@@ -622,7 +630,7 @@ Every tool returns `{"ok": true/false, ...}`; on error it includes `error` (code
 
 - **Run DAX:** *"List the open models, select the only one, and run `EVALUATE TOPN(10, Sales)`."*
 - **Document:** *"Document the active model and analyze its quality."* → generates `outputs/model_documentation_*.md`.
-- **Create measure:** *"Create the measure `Margin % = DIVIDE([Profit],[Sales])` in the Sales table, format `0.0%`, mode both."*
+- **Create measure:** *"Create the measure `Margin % = DIVIDE([Profit],[Sales])` in the Sales table, format `0.0%`, mode live."* (or `pbip` with Desktop closed — `both` is blocked, see below.)
 - **List visuals:** *"Open the `.pbip` at C:/…/Report.pbip and list the visuals on the 'Summary' page."*
 - **Create visual:** see [`examples/sample_visual_specs.json`](examples/sample_visual_specs.json).
 - **Arrange page:** *"Arrange the 'Summary' page with executive_summary layout."*

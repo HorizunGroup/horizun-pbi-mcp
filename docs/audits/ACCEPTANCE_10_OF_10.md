@@ -293,9 +293,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **16** (G1.4, G1.6, G1.7, G1.8, G2.1, G3.6, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Cumplidos con evidencia | **19** (G1.4, G1.6, G1.7, G1.8, G2.1, G3.6, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7) |
 | Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **34** |
+| Pendientes | **31** |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -304,6 +304,7 @@ hasta la VM.
 |---|---|---|
 | G1.4 | `tests/test_core_seguridad_operativa.py`: la combinación `cancel_confirmed: false` + `safe_to_retry: true` pasa a ser inexpresable, y un `refresh_timeout` sin `details` tampoco se da por seguro | ✅ **2026-08-15** |
 | G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
+| G8.5 · G8.6 · G8.7 | `tests/test_documentacion_veraz.py`: seis comprobaciones que contrastan lo que el documento promete con lo que el código hace | ✅ **2026-08-15** — 5 de 6 rojas antes |
 | G1.6 | `tests/test_validador_no_escribe_en_el_proyecto.py`: el ciclo completo con el CLI simulado, exigiendo cero archivos nuevos bajo el proyecto | ✅ **2026-08-15** — el temporal vivía en el directorio del usuario y una prueba existente lo EXIGÍA así |
 | G1.8 | `tests/test_concurrencia_entre_clientes.py`: dos procesos reales sobre el mismo `.pbip`; el segundo espera su turno y los dos aplican, en vez de que uno falle | ✅ **2026-08-15** — «nunca ambos en verde» ya se cumplía por la huella; lo que faltaba era no perder el trabajo del segundo |
 | G3.6 | `tests/test_packaging.py::test_una_instalacion_pip_pura_no_se_declara_operativa`: artefacto construido, venv limpio, fuera del checkout y con la caché de esquemas del usuario aislada | ✅ **2026-08-15** — el gate no exigía VM: exigía una instalación pip pura, y eso sí se puede montar aquí |

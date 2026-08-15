@@ -123,7 +123,7 @@ This is the **public** repository. Contributions go through **branches and pull 
 - **The MCP contract is frozen.** See section 2: adding is free, changing or removing is not.
 - **Real data is never versioned**: no one's `.pbix`, no one's `.pbip`, no DLLs, no `outputs/`, no `backups/`, no `.env`, no `.mcp.json`. See section 4.
 - One commit per logical change. The message explains **what was wrong**, not just what was touched.
-- Nothing is published to PyPI from this repository.
+- **Publishing is gated, not forbidden.** `.github/workflows/release.yml` publishes to PyPI **on a tag**, and only after the build-and-test job it depends on is green over the same commit. Nothing is published from a branch, from a manual run by default, or from a local clone. This line used to say that nothing was published from this repository, which stopped being true when `release.yml` landed.
 
 Extended contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
