@@ -95,6 +95,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 |---|---|---|---|---|
 | CONTRACT-001 | Cambios compatibles de contrato MCP (4 path opcionales, 7 parámetros nuevos, 5 descripciones, golden, guarda de ampliaciones) | Pablo — ratificación explícita | 2026-08-14 | **Cerrada — ratificada y verificada** |
 | CONTRACT-002 | El golden congela solo el envelope `{result}`: una extensión del payload es invisible para la red de seguridad del contrato | Hallazgo derivado de CONTRACT-001 | 2026-08-14 | **Abierta** |
+| CONTRACT-003 | Tres cambios de riesgo que CORE-004 pide y que rompen el contrato: `confirm` exigido en `pbi_refresh_model` y `pbi_open_and_refresh`; `pbi_apply_plan` de `confirm=True` a `False`; y `readOnlyHint` retirado de `pbi_open_pbip_project` / `pbi_select_model` | Pendiente de ratificación — derivado de CORE-004(a)(b)(c) | 2026-08-15 | **Abierta** |
 
 ## Seguridad funcional
 
@@ -103,7 +104,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Cerrada** — 2026-08-14, con evidencia live |
 | CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Cerrada** — 2026-08-14, con captura live e igualdad byte a byte |
 | CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Cerrada** — 2026-08-15, quinta pasada. `safe_to_retry` es `False` cuando `cancel_confirmed` es `false`, y la regla se aplica al HECHO y no a un código concreto: cualquier salida que declare `cancel_confirmed: false` afirma que algo sigue corriendo. Un `refresh_timeout` sin `details` tampoco acredita: hace falta un `true` explícito |
-| CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
+| CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Parcialmente cerrada** — 2026-08-15, quinta pasada. **(d) cerrado y G1.6 cumplido**: el temporal del validador sale del árbol del usuario. **(a), (b) y (c) NO se tocan**: los tres cambian el contrato congelado de forma incompatible —añadir un `confirm` exigido, pasar `pbi_apply_plan` a `confirm=False`, o reclasificar `readOnlyHint`— y este ciclo tiene prohibido hacerlo sin ratificación. Ver CONTRACT-003 |
 | CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Cerrada** — 2026-08-15, quinta pasada. Los dos campos pasan por `redact()`. Hizo falta además ampliar la redacción: reconocía cadenas que SON una ruta y no frases que CONTIENEN una, que es el caso del texto de una excepción; y `_redact_path` conservaba dos segmentos, justo donde vive el nombre del cliente |
 | CORE-006 | Sin cerrojo interproceso en `txn`/`planning` (el mecanismo existe en `idempotency`) | Alta | G1.8 | **Cerrada** — 2026-08-15, quinta pasada. Cerrojo por proyecto en `txn` —y con él `planning`, que escribe a través de `txn`—, con la primitiva EXTRAÍDA a `services/cerrojo.py` en vez de duplicada. Dos procesos reales sobre el mismo `.pbip`: el segundo espera su turno y los dos aplican. **El *lost update* del hallazgo no se reproducía**: la huella de `Transaction` ya impedía sobrescribir en silencio, y el segundo fallaba con `transaction_failed`; lo que se pierde sin cerrojo es el trabajo del segundo, no el del primero |
 
@@ -153,12 +154,12 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-32 entradas: **10 cerradas**
+33 entradas: **10 cerradas**
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, INSTALL-011,
 INSTALL-012, TEST-001, TEST-004),
-**11 parcialmente cerradas**
-(INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005, INSTALL-006,
-INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
+**12 parcialmente cerradas**
+(CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005,
+INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
 **11 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
