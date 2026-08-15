@@ -47,6 +47,18 @@ claude_desktop_config.json
 libs/
 *.dll
 
+# --- Rastro del ciclo de vida cuando se publica EN el checkout ---
+# `fetch_libs.py` instala en `<repo>/libs`, asi que la raiz de la promocion es
+# la raiz del repositorio: el cerrojo y el journal caen aqui. En una instalacion
+# de verdad caen en el directorio de datos del plugin, no en un checkout. El
+# journal y los apartados se borran solos al terminar bien; el cerrojo se queda,
+# y no se versiona.
+lifecycle.lock
+.promotion.json
+.previous-*
+.staging-*
+.promotion-rechazada-*
+
 # --- Salidas de ejecucion, backups y logs ---
 outputs/
 backups/

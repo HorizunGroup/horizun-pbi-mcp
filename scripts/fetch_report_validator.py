@@ -219,7 +219,7 @@ def main() -> int:
     destino = Path(args.dest) if args.dest else rv.cli_dir()
     try:
         r = instalar(destino)
-    except InstalacionFallida as exc:
+    except (InstalacionFallida, promotion.PromocionError) as exc:
         print(f"FALLO: {exc}", file=sys.stderr)
         return 1
     print(f"Validador oficial {r['version']} instalado en {r['dir']}")

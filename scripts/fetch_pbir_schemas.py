@@ -340,7 +340,7 @@ def main() -> int:
     destino = Path(args.dest) if args.dest else cache_dir()
     try:
         r = instalar(m, destino)
-    except SchemaFetchError as exc:
+    except (SchemaFetchError, promotion.PromocionError) as exc:
         print(f"FALLO: {exc}", file=sys.stderr)
         return 1
     print(f"{r['installed']} esquema(s) verificados e instalados en {r['dir']}")

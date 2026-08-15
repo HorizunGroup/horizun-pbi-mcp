@@ -74,6 +74,19 @@ nothing published yet.**
   because they probe the real environment. What it does not prove is written
   into the document itself.
 
+- **The DLL downloader stopped carrying its own promotion.**
+  `scripts/fetch_libs.py` had `_promover_directorio` and
+  `_recuperar_interrupcion` — a fixed-name `.previous`, its own recovery, its
+  own compensation. It worked; the problem was that it was the **third** one.
+  Three ways to promote are three different ways to end up half-done, and only
+  one of them has containment tests, a versioned journal and quarantine. It now
+  publishes through `lifecycle/promotion.py` **under the lifecycle lock of its
+  root** — which is what was really missing: the script runs on its own, as the
+  README says and as the installer invokes it, and two processes could promote
+  onto the same destination at once. A promotion failure also stops surfacing as
+  a Python traceback in all three downloaders: it exits 1 with `FALLO:`, which
+  is what the person installing actually reads.
+
 - **Build once**: `scripts/release_build.py` produces the wheel and sdist in a
   single build, runs `twine check --strict`, emits `SHA256SUMS` and a
   reproducible CycloneDX SBOM, and freezes the installer asset;

@@ -32,7 +32,6 @@ import hashlib
 import json
 import shutil
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -40,6 +39,17 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+# El ciclo de vida COMPARTIDO, el mismo que promueve el runtime y publica los
+# esquemas. Este script llevaba su propia promocion -`_promover_directorio`,
+# `_recuperar_interrupcion`, un `.previous` de nombre fijo- y funcionaba; el
+# problema no era que estuviera mal, sino que era la TERCERA. Tres formas de
+# promover son tres formas distintas de quedarse a medias, y solo una de ellas
+# tiene pruebas de contencion, journal versionado y cuarentena.
+from horizun_pbi_mcp.lifecycle import locking as cerrojos  # noqa: E402
+from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
+
 LIBS = PROJECT_ROOT / "libs"
 MANIFIESTO = PROJECT_ROOT / "scripts" / "libs_manifest.json"
 
@@ -172,119 +182,6 @@ def estado() -> Dict[str, Any]:
         return {"ready": False, "reason": str(exc), "missing": [], "mismatch": []}
 
 
-def _existe(path: Path) -> bool:
-    """Incluye enlaces simbolicos rotos, que ``Path.exists`` oculta."""
-    return path.exists() or path.is_symlink()
-
-
-def _eliminar_directorio(path: Path) -> None:
-    """Elimina solo el artefacto indicado, sin seguir enlaces simbolicos."""
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.exists():
-        shutil.rmtree(path)
-
-
-def _ruta_anterior() -> Path:
-    return LIBS.with_name(f".{LIBS.name}.previous")
-
-
-def _recuperar_interrupcion(m: Dict[str, Any]) -> None:
-    """Resuelve el estado dejado por un corte entre los dos renombres.
-
-    El respaldo tiene nombre fijo para que una ejecucion nueva pueda encontrarlo.
-    Solo se restaura si coincide por completo con el manifiesto.
-    """
-    anterior = _ruta_anterior()
-    if not _existe(anterior):
-        return
-    if anterior.is_symlink() or not anterior.is_dir():
-        raise LibsError(f"Respaldo de instalacion inseguro: {anterior}")
-
-    if not _existe(LIBS):
-        if not _estado_directorio(anterior, m)["ready"]:
-            raise LibsError(
-                f"Hay un respaldo incompleto en {anterior}; no se restaura.")
-        try:
-            anterior.replace(LIBS)
-        except OSError as exc:
-            raise LibsError(
-                f"No se pudo restaurar la instalacion anterior: {exc}") from exc
-        return
-
-    if LIBS.is_symlink() or not LIBS.is_dir():
-        raise LibsError(f"Destino de instalacion inseguro: {LIBS}")
-    if _estado_directorio(LIBS, m)["ready"]:
-        _eliminar_directorio(anterior)
-        return
-
-    if not _estado_directorio(anterior, m)["ready"]:
-        raise LibsError(
-            "La instalacion y su respaldo estan incompletos; no se sobrescribe "
-            "ninguno automaticamente.")
-
-    fallida = LIBS.with_name(f".{LIBS.name}.interrupted")
-    if _existe(fallida):
-        raise LibsError(f"Ya existe un artefacto de recuperacion: {fallida}")
-    try:
-        LIBS.replace(fallida)
-        anterior.replace(LIBS)
-    except OSError as exc:
-        if not _existe(LIBS) and _existe(fallida):
-            try:
-                fallida.replace(LIBS)
-            except OSError:
-                pass
-        raise LibsError(f"No se pudo recuperar la instalacion: {exc}") from exc
-    _eliminar_directorio(fallida)
-
-
-def _promover_directorio(staging: Path, m: Dict[str, Any]) -> None:
-    """Sustituye ``libs/`` por un staging completo y compensa cualquier fallo."""
-    anterior = _ruta_anterior()
-    if _existe(anterior):
-        raise LibsError(f"Respaldo pendiente sin recuperar: {anterior}")
-    if _existe(LIBS) and (LIBS.is_symlink() or not LIBS.is_dir()):
-        raise LibsError(f"Destino de instalacion inseguro: {LIBS}")
-
-    habia_anterior = _existe(LIBS)
-    promovido = False
-    fallida = staging.with_name(staging.name + ".failed")
-    try:
-        if habia_anterior:
-            LIBS.replace(anterior)
-        staging.replace(LIBS)
-        promovido = True
-        final = _estado_directorio(LIBS, m)
-        if not final["ready"]:
-            raise LibsError(
-                f"Tras instalar, la verificacion falla: {final['reason']}")
-    except Exception as exc:  # noqa: BLE001 - frontera de compensacion
-        rollback_error = None
-        try:
-            if promovido and _existe(LIBS):
-                LIBS.replace(fallida)
-            if habia_anterior and _existe(anterior) and not _existe(LIBS):
-                anterior.replace(LIBS)
-            if _existe(fallida):
-                _eliminar_directorio(fallida)
-        except Exception as rollback_exc:  # noqa: BLE001
-            rollback_error = rollback_exc
-
-        if rollback_error is not None:
-            raise LibsError(
-                "Fallo al instalar y al restaurar. El respaldo se conserva en "
-                f"{anterior}: {rollback_error}") from exc
-        if isinstance(exc, LibsError):
-            raise
-        raise LibsError(
-            f"No se pudo promover la instalacion; se restauro la anterior: {exc}"
-        ) from exc
-
-    if _existe(anterior):
-        _eliminar_directorio(anterior)
-
-
 def construir_manifiesto() -> Dict[str, Any]:
     """Descarga las versiones fijadas y anota sus hashes."""
     from datetime import date
@@ -322,71 +219,106 @@ def construir_manifiesto() -> Dict[str, Any]:
 
 
 def instalar() -> Dict[str, Any]:
-    """Descarga, verifica y solo entonces toca `libs/`."""
+    """Descarga, verifica y solo entonces toca `libs/`.
+
+    La publicacion la hace `lifecycle.promotion`, el mismo ciclo de vida que
+    promueve el runtime: journal, `.previous-` con UUID, contencion de nombres y
+    recuperacion de un corte entre los dos renombres. Antes habia aqui una
+    segunda implementacion de todo eso.
+
+    Y bajo el cerrojo de la raiz, que es lo que faltaba de verdad: este script
+    se ejecuta tambien por su cuenta -asi lo dice el README y asi lo invoca el
+    instalador-, y dos procesos podian promover a la vez sobre el mismo destino.
+    """
     m = leer_manifiesto()
-    LIBS.parent.mkdir(parents=True, exist_ok=True)
-    _recuperar_interrupcion(m)
+    destino = LIBS
+    raiz = destino.parent
+    raiz.mkdir(parents=True, exist_ok=True)
     esperado_paquete = {p["id"]: p for p in m["packages"]}
 
-    # Mismo volumen que el destino: el renombre final es una operacion atomica
-    # del sistema de archivos y no puede degradarse a una copia parcial.
-    tmp = Path(tempfile.mkdtemp(
-        prefix=f".{LIBS.name}.stage_", dir=str(LIBS.parent)))
-    try:
-        extraidas: Dict[str, bytes] = {}
-        for paquete in PAQUETES:
-            ref = esperado_paquete.get(paquete["id"])
-            if ref is None:
-                raise LibsError(
-                    f"{paquete['id']} no esta en el manifiesto. Ejecuta --update.")
-            if ref["version"] != paquete["version"]:
-                raise LibsError(
-                    f"{paquete['id']}: el manifiesto fija {ref['version']} y el "
-                    f"script pide {paquete['version']}.")
-
-            datos = descargar(url_de(paquete))
-            real = hashlib.sha256(datos).hexdigest()
-            if real != ref["sha256"]:
-                raise LibsError(
-                    f"HASH DISTINTO en {paquete['id']} {paquete['version']}\n"
-                    f"  esperado: {ref['sha256']}\n"
-                    f"  obtenido: {real}\n"
-                    "No se instala nada. Si el cambio es legitimo, revisa el "
-                    "contenido y regenera el manifiesto con --update.")
-            extraidas.update(dlls_del_paquete(datos, paquete["id"]))
-
-        # Cada DLL, contra su hash, antes de que ninguna llegue a libs/.
-        for nombre, ref in m["files"].items():
-            if nombre not in extraidas:
-                raise LibsError(
-                    f"El paquete ya no trae {nombre}, que el manifiesto espera.")
-            real = hashlib.sha256(extraidas[nombre]).hexdigest()
-            if real != ref["sha256"]:
-                raise LibsError(
-                    f"HASH DISTINTO en {nombre}\n  esperado: {ref['sha256']}\n"
-                    f"  obtenido: {real}\nNo se instala nada.")
-
-        faltan = [d for d in DLLS_OBLIGATORIAS if d not in extraidas]
-        if faltan:
-            raise LibsError(f"Faltan DLL obligatorias: {faltan}. No se instala.")
-
-        for nombre, contenido in extraidas.items():
-            (tmp / nombre).write_bytes(contenido)
-
-        staged = _estado_directorio(tmp, m)
-        if not staged["ready"]:
+    with cerrojos.CerrojoDeCicloDeVida(raiz, etiqueta="libs") as cerrojo:
+        if not cerrojo.adquirido:
             raise LibsError(
-                f"El staging no supera la verificacion: {staged['reason']}")
-        _promover_directorio(tmp, m)
-    finally:
-        if _existe(tmp):
-            _eliminar_directorio(tmp)
+                f"Hay otra instalacion de DLL en curso sobre {raiz}. No se toca "
+                "nada: lo que hubiera instalado sigue intacto.")
+
+        # Si la vez anterior se corto entre los dos renombres, se resuelve ANTES
+        # de descargar nada: preparar sobre un estado que no se sabe describir es
+        # como se acaba con una mezcla de dos versiones.
+        recuperado = promotion.recuperar(raiz)
+
+        # Hermano del destino: mismo volumen, para que publicar sea un `rename`
+        # atomico y no pueda degradarse a una copia parcial.
+        staging = promotion.crear_staging(raiz, destino.name)
+        try:
+            extraidas: Dict[str, bytes] = {}
+            for paquete in PAQUETES:
+                ref = esperado_paquete.get(paquete["id"])
+                if ref is None:
+                    raise LibsError(
+                        f"{paquete['id']} no esta en el manifiesto. Ejecuta --update.")
+                if ref["version"] != paquete["version"]:
+                    raise LibsError(
+                        f"{paquete['id']}: el manifiesto fija {ref['version']} y el "
+                        f"script pide {paquete['version']}.")
+
+                datos = descargar(url_de(paquete))
+                real = hashlib.sha256(datos).hexdigest()
+                if real != ref["sha256"]:
+                    raise LibsError(
+                        f"HASH DISTINTO en {paquete['id']} {paquete['version']}\n"
+                        f"  esperado: {ref['sha256']}\n"
+                        f"  obtenido: {real}\n"
+                        "No se instala nada. Si el cambio es legitimo, revisa el "
+                        "contenido y regenera el manifiesto con --update.")
+                extraidas.update(dlls_del_paquete(datos, paquete["id"]))
+
+            # Cada DLL, contra su hash, antes de que ninguna llegue a libs/.
+            for nombre, ref in m["files"].items():
+                if nombre not in extraidas:
+                    raise LibsError(
+                        f"El paquete ya no trae {nombre}, que el manifiesto espera.")
+                real = hashlib.sha256(extraidas[nombre]).hexdigest()
+                if real != ref["sha256"]:
+                    raise LibsError(
+                        f"HASH DISTINTO en {nombre}\n  esperado: {ref['sha256']}\n"
+                        f"  obtenido: {real}\nNo se instala nada.")
+
+            faltan = [d for d in DLLS_OBLIGATORIAS if d not in extraidas]
+            if faltan:
+                raise LibsError(f"Faltan DLL obligatorias: {faltan}. No se instala.")
+
+            for nombre, contenido in extraidas.items():
+                (staging / nombre).write_bytes(contenido)
+
+            # Relee del DISCO lo escrito. Que la descarga cuadre de hash
+            # demuestra que llego entera, no que se haya ESCRITO entera: un
+            # disco lleno o un antivirus que se lleva un archivo dejan un
+            # fichero corto sin que `write_bytes` se queje.
+            staged = _estado_directorio(staging, m)
+            if not staged["ready"]:
+                raise LibsError(
+                    f"El staging no supera la verificacion: {staged['reason']}")
+
+            promotion.promover(raiz, staging, destino)
+        except BaseException:
+            # Tambien en KeyboardInterrupt: el staging lleva un prefijo que la
+            # limpieza del ciclo de vida reconoce, pero no hay motivo para
+            # dejarlo ahi esperando a que alguien pase.
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+        # Publicado y verificado: el apartado ya no sirve. Solo los de ESTE
+        # destino, no todos los de la raiz, que puede alojar el N−1 del runtime.
+        recogidos = promotion.limpiar_apartados_de(raiz, destino.name)
 
     final = estado()
     if not final["ready"]:
         raise LibsError(f"Tras instalar, la verificacion falla: {final['reason']}")
-    return {"installed": len(m["files"]), "dir": str(LIBS),
-            "version": VERSION_FIJADA}
+    return {"installed": len(m["files"]), "dir": str(destino),
+            "version": VERSION_FIJADA,
+            "recuperacion_previa": recuperado.get("accion"),
+            "respaldos_recogidos": len(recogidos)}
 
 
 def main() -> int:
@@ -427,7 +359,7 @@ def main() -> int:
 
     try:
         r = instalar()
-    except LibsError as exc:
+    except (LibsError, promotion.PromocionError) as exc:
         print(f"FALLO: {exc}", file=sys.stderr)
         return 1
     print(f"{r['installed']} DLL verificadas e instaladas en {r['dir']} "
