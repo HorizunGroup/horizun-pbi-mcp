@@ -362,6 +362,16 @@ def test_live_captura_real_deja_el_proyecto_byte_a_byte_igual(
             f"Ya hay procesos de Power BI vivos {sorted(antes_procesos)}. "
             "Esta prueba no toca ninguna ventana que no haya abierto ella.")
 
+    # Y si Power BI no esta INSTALADO, tampoco hay nada que medir. En CI no lo
+    # hay, y esta prueba fallaba con `desktop_not_found` en vez de omitirse:
+    # un rojo que no dice nada de la calidad del producto y que tapa los que si.
+    from horizun_pbi_mcp.powerbi import desktop_launcher
+
+    try:
+        desktop_launcher.find_executable()
+    except Exception as exc:                                 # noqa: BLE001
+        pytest.skip(f"Power BI Desktop no esta instalado: {exc}")
+
     antes = inventario(raiz)
     print("")
     print(f"[live] proyecto      : {pbip}")

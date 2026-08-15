@@ -67,7 +67,7 @@ solo gate, **no se puede decir «100% local»**.
 | G4.3 | cumplido | **`npm` real**: instalación de verdad, corte a mitad con el proceso matado, destino anterior byte a byte intacto, cero huérfanos y reintento limpio. Solo en un data root temporal |
 | G4.4 | cumplido | `uninstall` con CLI real sobre un data root de prueba |
 | G4.5 | cumplido | `purge` enumera y pesa antes de borrar |
-| G4.6 | cumplido | matriz `win_amd64 × {3.10, 3.11, 3.12, 3.13, 3.14}`: **las cinco versiones que los classifiers prometen** y la única plataforma que declaran. Exigir un runner no-Windows era pedir evidencia de un entorno no soportado |
+| G4.6 | parcial | **cerrado antes de tiempo y reabierto por CI**: la matriz se generaba con `pip --python-version`, que evalúa los marcadores contra el intérprete que corre, así que los locks de 3.10–3.13 omitían dependencias condicionales y **no instalaban**. Hoy hay un lock fiel, el de 3.14, generado en su propio intérprete. Faltan cuatro, y cada uno exige ejecutar el generador con esa versión |
 | G4.7 | parcial | el bundle **existe**: `scripts/bundle.py` lo construye, verifica e instala; probado con pip real y `--no-index` -134 tools- y con `socket` prohibido. Falta la VM realmente desconectada o un proxy corporativo |
 | G4.8 | cumplido | no se cae fuera de user-scope en silencio |
 | G4.9 | cumplido | contención de la recuperación, 35 pruebas |
@@ -102,8 +102,8 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **34** |
-| parcial | **5** |
+| cumplido | **33** |
+| parcial | **6** |
 | pendiente-local | **0** |
 | pendiente-ratificacion | **0** |
 | pendiente-externo | **15** |

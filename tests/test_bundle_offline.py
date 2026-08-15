@@ -35,12 +35,16 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 
 
-def _cargar():
+def _cargar_modulo(nombre: str, archivo: str):
     spec = importlib.util.spec_from_file_location(
-        "bundle_bajo_prueba", RAIZ / "scripts" / "bundle.py")
+        nombre, RAIZ / "scripts" / archivo)
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
+
+
+def _cargar():
+    return _cargar_modulo("bundle_bajo_prueba", "bundle.py")
 
 
 @pytest.fixture
@@ -364,6 +368,16 @@ def test_el_bundle_real_instala_las_134_tools_sin_indice(tmp_path_factory):
 
     base = tmp_path_factory.mktemp("bundle_real")
     bd = _cargar()
+
+    # El wheelhouse se construye desde el lock de ESTE interprete, y solo hay
+    # lock donde se ha podido generar fielmente (ver `generar_lock.MATRIZ`).
+    # Sin el, esto no mide el bundle: mide que falta un lock, y eso ya lo dice
+    # su propia prueba.
+    generar = _cargar_modulo("generar_lock_bundle", "generar_lock.py")
+    mio = generar.version_en_curso()
+    if not generar.ruta_de(mio, "win_amd64").is_file():
+        pytest.skip(f"no hay lock para py{mio}: generalo con este interprete "
+                    "(`python scripts/generar_lock.py`) y repite")
 
     assert bd.main(["construir", "--salida", str(base / "entrega"),
                     "--componentes", "wheelhouse"]) == 0

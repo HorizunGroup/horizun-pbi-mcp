@@ -74,24 +74,43 @@ RAIZ = Path(__file__).resolve().parent.parent
 LOCKS = RAIZ / "scripts" / "locks"
 PYPROJECT = RAIZ / "pyproject.toml"
 
-#: Las combinaciones que el producto declara soportar, **todas**.
+#: Las combinaciones para las que HAY un lock fiel. Una sola, y el motivo es el
+#: nucleo de este archivo.
 #:
-#: La plataforma es una sola y no por comodidad: `pyproject` declara
-#: `Operating System :: Microsoft :: Windows` y nada mas. Exigir un runner
-#: Linux para cerrar G4.6 era pedir evidencia de un entorno que el producto no
-#: promete; lo que si promete son cinco versiones de Python, y hasta ahora la
-#: matriz cubria tres. Ese era el hueco de verdad.
+#: La version anterior generaba los cinco desde un solo interprete con
+#: `pip --python-version`, y **eso no produce un lock fiel**: pip evalua los
+#: marcadores de entorno contra el interprete que CORRE, no contra el de
+#: destino. Resolver `anyio>=4` para 3.10 desde 3.14 devuelve `anyio` e `idna`
+#: y se deja `exceptiongroup`, que anyio solo pide en `python_version < "3.11"`.
+#: Los cinco locks salian con las mismas 43 entradas; lo unico que cambiaba
+#: eran hashes de ruedas.
 #:
-#: `test_la_matriz_cubre_lo_que_pyproject_declara_soportar` lo ata a los
-#: classifiers: anadir un `Programming Language :: Python :: 3.x` sin su lock
-#: pone la suite en rojo.
+#: El resultado no era «un lock incompleto»: era uno que **no instala**.
+#: `pip install --require-hashes` se niega en cuanto aparece una dependencia
+#: sin fijar, y lo dijo CI: *«In --require-hashes mode, all requirements must
+#: have their versions pinned with ==. These do not: exceptiongroup>=1.0.2»*.
+#:
+#: Asi que un lock se genera **en su propio interprete** o no se genera. Para
+#: anadir 3.10, 3.11, 3.12 o 3.13 hay que ejecutar este script con esa version;
+#: `PENDIENTES` dice cuales faltan y ninguna prueba finge que estan.
 MATRIZ: Tuple[Tuple[str, str], ...] = (
+    ("3.14", "win_amd64"),
+)
+
+#: Declaradas en los classifiers y **sin lock todavia**, porque generarlas exige
+#: ese interprete. Mientras esto no este vacio, G4.6 no esta cumplido: en esas
+#: versiones el instalador cae al resolutor y lo dice en el estado.
+PENDIENTES: Tuple[Tuple[str, str], ...] = (
     ("3.10", "win_amd64"),
     ("3.11", "win_amd64"),
     ("3.12", "win_amd64"),
     ("3.13", "win_amd64"),
-    ("3.14", "win_amd64"),
 )
+
+
+def version_en_curso() -> str:
+    return f"{sys.version_info.major}.{sys.version_info.minor}"
+
 
 LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*"
                    r"==[A-Za-z0-9][A-Za-z0-9.\-+!]*"
@@ -123,19 +142,27 @@ def normalizar(nombre: str) -> str:
 
 
 def resolver(version: str, plataforma: str) -> Dict[str, Any]:
-    """Le pregunta a pip que instalaria PARA ESA combinacion, sin instalar.
+    """Le pregunta a pip que instalaria, **con este mismo interprete**.
 
-    `--only-binary=:all:` es obligatorio con `--python-version`: pip no puede
-    construir un sdist para un interprete que no esta corriendo. Tambien es lo
-    correcto para un lock —una rueda tiene hash estable; una construccion
-    local, no—.
+    Se niega a resolver para otra version a proposito. `pip --python-version`
+    cambia las etiquetas de rueda compatibles pero **evalua los marcadores de
+    entorno contra el interprete que corre**, asi que un lock hecho asi omite
+    las dependencias condicionales del destino y despues `--require-hashes` se
+    niega a instalarlo. Un lock que no instala es peor que no tenerlo: parece
+    una garantia.
     """
+    if version != version_en_curso():
+        raise SystemExit(
+            f"Este script genera el lock de SU PROPIO interprete ({version_en_curso()}), "
+            f"y se le pidio {version}. Resolver para otra version con "
+            "`--python-version` produce un lock que no instala: pip evalua los "
+            "marcadores contra el interprete que corre. Ejecutalo con Python "
+            f"{version}.")
     with tempfile.TemporaryDirectory(prefix="hz_lock_") as tmp:
         destino = Path(tmp) / "report.json"
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "--dry-run", "--quiet",
              "--ignore-installed", "--report", str(destino),
-             "--python-version", version, "--platform", plataforma,
              "--only-binary=:all:", *dependencias_declaradas()],
             check=True, capture_output=True, timeout=1800)
         return json.loads(destino.read_text(encoding="utf-8"))
@@ -291,10 +318,14 @@ def main(argv: List[str] | None = None) -> int:
                   "suite entera.", file=sys.stderr)
         return 0
 
-    for version, plataforma in MATRIZ:
-        entradas = lineas_del_lock(resolver(version, plataforma))
-        ruta = escribir(version, plataforma, entradas)
-        print(f"{ruta.name}: {len(entradas)} dependencia(s) fijadas")
+    mio = version_en_curso()
+    entradas = lineas_del_lock(resolver(mio, "win_amd64"))
+    ruta = escribir(mio, "win_amd64", entradas)
+    print(f"{ruta.name}: {len(entradas)} dependencia(s) fijadas")
+    faltan = [f"py{v}" for v, _ in PENDIENTES if v != mio]
+    if faltan:
+        print(f"  siguen sin lock: {', '.join(faltan)} — ejecuta este script "
+              "con cada uno de esos interpretes")
     return 0
 
 

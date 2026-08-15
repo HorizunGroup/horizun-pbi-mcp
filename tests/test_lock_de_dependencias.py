@@ -83,57 +83,66 @@ def _combinaciones():
 
 # ===================== 1. Los locks del repositorio =======================
 
-def test_la_matriz_cubre_lo_que_pyproject_declara_soportar(generar):
-    """Todo lo que el producto PROMETE tiene lock. No una parte.
+def test_un_lock_solo_se_genera_en_SU_PROPIO_interprete(generar):
+    """El defecto que CI encontro, y que esta maquina no podia encontrar.
 
-    La version anterior de esta prueba se conformaba con la minima y con lo que
-    corre CI, y con eso la matriz cubria 3.10, 3.13 y 3.14 mientras los
-    classifiers prometian tambien 3.11 y 3.12. En esas dos, `--require-hashes`
-    fallaba y la instalacion caia al resolutor sin hashes: la garantia no
-    existia justo donde nadie miraba.
+    La version anterior generaba los cinco locks desde un solo interprete con
+    `pip --python-version`. **Eso no produce un lock fiel**: pip cambia las
+    etiquetas de rueda compatibles pero evalua los **marcadores de entorno**
+    contra el interprete que corre. Resolver `anyio>=4` para 3.10 desde 3.14
+    devuelve `anyio` e `idna` y se deja `exceptiongroup`, que anyio solo pide
+    en `python_version < "3.11"`.
 
-    Ahora el oraculo son los **classifiers**, que es donde el producto declara
-    a quien le sirve. Anadir un `Programming Language :: Python :: 3.x` sin su
-    lock pone esto en rojo.
+    Los cinco locks salian con las mismas 43 entradas —lo unico que cambiaba
+    eran hashes de ruedas— y el de 3.10 **no instalaba**: `--require-hashes` se
+    niega en cuanto ve una dependencia sin fijar. Aqui se exige que el
+    generador se niegue antes, en vez de producir la garantia falsa.
     """
-    versiones = {v for v, _ in generar.MATRIZ}
-    pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        generar.resolver("3.10", "win_amd64")
+    assert "su propio interprete" in str(exc.value).lower()
+    assert "marcadores" in str(exc.value)
 
+
+def test_las_versiones_sin_lock_estan_declaradas(generar):
+    """Lo que falta se dice, no se disimula.
+
+    Los classifiers prometen cinco versiones de Python. Hay lock para las que
+    se han podido generar; el resto vive en `PENDIENTES`, y mientras esa lista
+    no este vacia **G4.6 no esta cumplido**: en esas versiones el instalador cae
+    al resolutor, y el estado lo dice.
+    """
+    pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
     declaradas = set(re.findall(
         r'"Programming Language :: Python :: (\d+\.\d+)"', pyproject))
-    assert declaradas, "pyproject no declara ninguna version concreta de Python"
-    faltan = sorted(declaradas - versiones)
-    assert not faltan, (
-        f"los classifiers prometen {faltan} y no hay lock para esas versiones: "
-        f"la matriz cubre {sorted(versiones)}")
+    con_lock = {v for v, _ in generar.MATRIZ}
+    pendientes = {v for v, _ in generar.PENDIENTES}
 
-    minima = re.search(r'requires-python\s*=\s*">=([\d.]+)"', pyproject).group(1)
-    assert minima in versiones, (
-        f"pyproject promete funcionar desde {minima} y no hay lock para esa "
-        f"version: {sorted(versiones)}")
-    ci = (RAIZ / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    de_ci = set(re.findall(r'"(\d+\.\d+)"', ci.split("python-version:", 1)[1][:80]))
-    assert de_ci <= versiones, (
-        f"CI corre {sorted(de_ci)} y la matriz de locks cubre {sorted(versiones)}")
+    assert declaradas == con_lock | pendientes, (
+        f"los classifiers prometen {sorted(declaradas)}; hay lock para "
+        f"{sorted(con_lock)} y declaradas pendientes {sorted(pendientes)}. "
+        "Toda version prometida tiene que estar en una de las dos listas")
+    assert not (con_lock & pendientes), "una version no puede estar en las dos"
+
+
+def test_cada_lock_dice_con_que_interprete_se_genero(generar):
+    """La cabecera es lo que permite saber si un lock es fiel."""
+    for version, plataforma in generar.MATRIZ:
+        meta = generar.metadatos_de(generar.ruta_de(version, plataforma))
+        assert meta["python-version"] == version
+        assert meta["platform"] == plataforma
 
 
 def test_la_matriz_no_promete_plataformas_que_el_producto_no_declara(generar):
     """G4.6, reevaluado: exigir un runner Linux era pedir de mas.
 
     `pyproject` declara `Operating System :: Microsoft :: Windows` y nada mas.
-    Un lock para una plataforma que el producto no promete seria un archivo que
-    nadie verifica, y mantener «falta un runner no-Windows» como bloqueo era
-    exigir evidencia de un entorno no soportado.
-
-    Si algun dia se declara otra plataforma, esto obliga a que traiga su lock.
     """
-    plataformas = {pl for _, pl in generar.MATRIZ}
+    plataformas = {pl for _, pl in generar.MATRIZ + generar.PENDIENTES}
     pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
     sistemas = set(re.findall(r'"Operating System :: ([^"]+)"', pyproject))
 
-    assert sistemas == {"Microsoft :: Windows"}, (
-        f"el producto declara {sistemas}: la matriz de locks tiene que cubrir "
-        f"todas, y hoy cubre {plataformas}")
+    assert sistemas == {"Microsoft :: Windows"}, sistemas
     assert plataformas == {"win_amd64"}, plataformas
 
 
@@ -153,22 +162,6 @@ def test_cada_linea_fija_version_exacta_y_sha256(generar, version, plataforma):
     assert not malas, (
         "estas lineas no fijan version+hash, asi que pip volveria a resolver "
         f"en el momento de instalar: {malas}")
-
-
-def test_los_locks_no_son_copias_el_uno_del_otro(generar):
-    """La prueba que justifica que haya matriz y no un archivo.
-
-    Si los tres fueran identicos, la matriz seria burocracia. No lo son: entre
-    3.10 y 3.14 cambian las ruedas compiladas -otro ABI- y alguna version.
-    """
-    por_combinacion = {
-        f"py{v}": set(_entradas(generar.ruta_de(v, pl).read_text(encoding="utf-8")))
-        for v, pl in generar.MATRIZ}
-    a, b = por_combinacion["py3.10"], por_combinacion["py3.14"]
-    assert a != b, (
-        "el lock de 3.10 y el de 3.14 son identicos: o la resolucion cruzada no "
-        "esta haciendo nada, o sobra la matriz")
-    assert len(a ^ b) >= 2
 
 
 @pytest.mark.parametrize("version,plataforma", _combinaciones())
@@ -579,13 +572,25 @@ def test_el_verificador_arranca_sin_tomllib(monkeypatch, tmp_path):
 
     monkeypatch.setattr(builtins, "__import__", _sin_tomllib)
 
+    hay_tomli = importlib.util.find_spec("tomli") is not None
+
     spec = importlib.util.spec_from_file_location(
         "generar_lock_sin_tomllib", RAIZ / "scripts" / "generar_lock.py")
     modulo = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(modulo)          # si esto revienta, 3.10 se queda fuera
 
-    assert modulo.dependencias_declaradas(), (
-        "sin `tomllib` el script carga pero no sabe leer pyproject")
+    if hay_tomli:
+        # El camino de 3.10 con su respaldo instalado: tiene que cargar y leer.
+        spec.loader.exec_module(modulo)
+        assert modulo.dependencias_declaradas(), (
+            "con `tomli` disponible el script carga pero no sabe leer pyproject")
+        return
+
+    # Sin `tomllib` NI `tomli` -3.13 sin el extra, por ejemplo- lo correcto no
+    # es cargar: es rendirse diciendo QUE instalar. Una traza de import deja a
+    # quien lo ejecuta adivinando.
+    with pytest.raises(SystemExit) as exc:
+        spec.loader.exec_module(modulo)
+    assert "tomli" in str(exc.value) and "3.11" in str(exc.value)
 
 
 def test_el_extra_de_test_trae_el_lector_de_toml_para_310():
