@@ -15,6 +15,13 @@ resultado se espera y qué evidencia hay que guardar.
 
 Última revisión: **2026-08-15**.
 
+> **G3.6 salió de esta lista el 2026-08-15.** Estaba anotado como «candidato a
+> trabajo local» y resultó serlo: el gate no pedía una VM, pedía una
+> *instalación pip pura*, y eso se monta aquí —artefacto construido, venv
+> limpio, fuera del checkout y con la caché de esquemas del usuario aislada—.
+> Conviene recordarlo antes de aparcar cualquier otro: la etiqueta «externo» se
+> pega con facilidad.
+
 ---
 
 ## Resumen
@@ -26,7 +33,6 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.3 | INSTALL-010 | VM limpia (**el comportamiento local ya cumple el gate**) | La misma VM |
 | G3.4 | INSTALL-002 | VM con Node 18 | Windows + Node 18 en el PATH |
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
-| G3.6 | INSTALL-005 | venv limpio + medición | Ninguna: **candidato a trabajo local**, ver nota |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
 | G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
 | G4.7 | INSTALL-009 | VM sin salida directa | VM + proxy o red cortada |
@@ -36,7 +42,7 @@ resultado se espera y qué evidencia hay que guardar.
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**14 gates externos.** Los cuatro de release y los cinco del remoto comparten
+**13 gates externos.** Los cuatro de release y los cinco del remoto comparten
 una sola dependencia: que exista una release real de v1.5.5, que **no existe**, y
 que este ciclo tiene prohibido crear.
 
@@ -95,19 +101,6 @@ nombre del plugin cuando está deshabilitado.
 
 **Evidencia.** Salida de `claude plugin list` en los dos estados y el código de
 salida del instalador en cada uno.
-
----
-
-## G3.6 — `pip install` solo declara operativo lo que lo está
-
-**Bloqueo exacto: ninguno claro.** Este gate está en la lista para dejar dicho
-que **es candidato a trabajo local** y no se ha hecho por prioridad, no por
-imposibilidad. Se puede montar con un venv limpio y sin red: instalar el wheel,
-no instalar DLL ni esquemas, y exigir que `pbi_health_check` enumere qué falta en
-vez de aparentar normalidad.
-
-**Resultado esperado.** `pbi_health_check` distingue *el servidor arranca* de *el
-servidor puede trabajar*, y nombra cada pieza que falta.
 
 ---
 

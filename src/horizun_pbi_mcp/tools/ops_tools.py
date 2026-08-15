@@ -105,6 +105,84 @@ def _cap_validador_oficial() -> Dict[str, Any]:
                  "escritura: lo que ya estaba en el archivo no bloquea."),
     }
 
+def _completitud(settings) -> Dict[str, Any]:
+    """INSTALL-005 — «instalado» y «operativo» son dos preguntas distintas.
+
+    El wheel lleva el paquete y el manifiesto de esquemas; NO lleva las DLL de
+    Analysis Services ni los esquemas PBIR. La razon es legitima -las DLL son
+    binarios de Microsoft y los esquemas no declaran permiso de
+    redistribucion-, y el defecto no es la restriccion: es que nadie lo decia.
+    Quien instalaba por `pip` obtenia un servidor que superaba el handshake y
+    anunciaba sus 134 tools, con la capa EN VIVO muerta y la escritura PBIR
+    fallando en la primera llamada. `pbi_health_check` miraba las DLL y no
+    miraba los esquemas en absoluto.
+
+    Esto va AL LADO de `healthy` y no lo sustituye. `healthy` responde «¿el
+    servidor esta sano?»; esto responde «¿puede trabajar?». Fundir las dos en
+    una bandera fue el origen del hallazgo.
+
+    Cada pieza que falte dice **el comando exacto** que la completa: un
+    diagnostico que solo dice «falta algo» manda a la documentacion, que es el
+    viaje que se queria ahorrar.
+    """
+    faltan: List[Dict[str, Any]] = []
+
+    libs = settings.libs_dir
+    if not (libs.exists() and len(list(libs.glob("*.dll"))) >= 3):
+        faltan.append({
+            "component": "analysis_services_dlls",
+            "required": True,
+            "impact": "la capa EN VIVO no funciona: nada que hable con el "
+                      "modelo de Power BI Desktop",
+            "fix": "python scripts/fetch_libs.py",
+        })
+
+    try:
+        from horizun_pbi_mcp.services import pbir_schema
+
+        cache = pbir_schema.cache_dir()
+        hay = cache.exists() and len(list(cache.glob("*.json"))) >= 5
+    except Exception:                                        # noqa: BLE001
+        hay = False
+    if not hay:
+        faltan.append({
+            "component": "pbir_schemas",
+            "required": True,
+            "impact": "toda escritura PBIR falla con schema_unavailable",
+            "fix": "python scripts/fetch_pbir_schemas.py",
+        })
+
+    try:
+        from horizun_pbi_mcp.services import report_validator
+
+        validador = bool(report_validator.estado().get("available"))
+    except Exception:                                        # noqa: BLE001
+        validador = False
+    if not validador:
+        # OPCIONAL a proposito: INSTALL-002 lo declara prescindible, y
+        # presentarlo como obligatorio volveria a convertir su ausencia en una
+        # instalacion rota.
+        faltan.append({
+            "component": "report_validator",
+            "required": False,
+            "impact": "se pierde la validacion con el CLI oficial de Microsoft; "
+                      "el resto del producto funciona",
+            "fix": "python scripts/fetch_report_validator.py",
+        })
+
+    obligatorias = [f for f in faltan if f["required"]]
+    return {
+        "state": "incomplete" if obligatorias else "operational",
+        # Se enumeran TODAS, incluidas las opcionales: quien diagnostica quiere
+        # la lista entera, y `required` ya dice cual bloquea.
+        "missing": faltan,
+        "note": ("El paquete instalado no puede traer las DLL de Microsoft ni "
+                 "los esquemas PBIR: los primeros son binarios de terceros y "
+                 "los segundos no declaran permiso de redistribucion. Se "
+                 "descargan verificados por hash con los comandos de arriba."),
+    }
+
+
 def register(mcp) -> None:
 
     @mcp.tool()
@@ -199,6 +277,7 @@ def register(mcp) -> None:
                 "warnings": avisos,
                 "pending_journals": pendientes,
                 "session_status": sesion_estado,
+                "completeness": _completitud(settings),
             }
         return guard(_impl)
 

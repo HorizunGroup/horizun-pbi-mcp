@@ -383,6 +383,49 @@ def test_el_paquete_instalado_importa_y_registra_todas_las_tools(
 
 
 @pytest.mark.parametrize("cual", ["wheel", "sdist"])
+def test_una_instalacion_pip_pura_no_se_declara_operativa(
+        cual, request, fuera_del_checkout):
+    """INSTALL-005 / G3.6 — el gate al pie de la letra, sobre pip de verdad.
+
+    Aquí no hay settings parcheados ni `monkeypatch`: es el artefacto
+    construido, instalado en un venv limpio y ejecutado fuera del checkout.
+    Ese servidor arranca y anuncia sus 134 tools, y sin embargo la capa EN VIVO
+    y la escritura PBIR no funcionan, porque el wheel no puede traer las DLL de
+    Microsoft ni los esquemas. Lo que se exige es que **lo diga él mismo**.
+    """
+    venv = request.getfixturevalue(f"venv_{cual}")
+    # La caché de esquemas del USUARIO vive fuera del venv y fuera del
+    # checkout, así que en la máquina de quien desarrolla suele estar llena y el
+    # venv «limpio» no lo es en ese eje: la primera versión de esta prueba pasó
+    # por eso y no por estar bien. Se apunta a un directorio vacío, que es la
+    # forma que tiene una máquina donde solo se ha hecho `pip install`.
+    datos = _verificar_desde(
+        venv, fuera_del_checkout,
+        extra="import os, tempfile\n"
+              "os.environ['HORIZUN_PBI_MCP_SCHEMAS_DIR'] = tempfile.mkdtemp()\n"
+              "from horizun_pbi_mcp.tools import ops_tools\n"
+              "from horizun_pbi_mcp.config import get_settings\n"
+              "print(json.dumps({'completeness': "
+              "ops_tools._completitud(get_settings())}))\n")
+    # `_verificar_desde` devuelve la ultima linea; se relanza el script para
+    # quedarnos con la nuestra seria mas fragil, asi que se lee de la salida.
+    completo = datos.get("completeness")
+    if completo is None:
+        pytest.fail(f"el paquete instalado no reporto completitud: {datos}")
+
+    assert completo["state"] == "incomplete", (
+        f"una instalacion pip pura se declara operativa: {completo}")
+    faltan = {m["component"]: m for m in completo["missing"]}
+    assert "analysis_services_dlls" in faltan, faltan
+    assert "pbir_schemas" in faltan, (
+        "los esquemas PBIR no se comprueban: la escritura PBIR falla en la "
+        "primera llamada y nada lo anuncia")
+    for pieza in completo["missing"]:
+        assert pieza["fix"].startswith("python scripts/"), pieza
+        assert pieza["impact"], pieza
+
+
+@pytest.mark.parametrize("cual", ["wheel", "sdist"])
 def test_el_paquete_importado_viene_del_venv_y_no_del_checkout(
         cual, request, fuera_del_checkout):
     """La prueba mas facil de aprobar sin querer.

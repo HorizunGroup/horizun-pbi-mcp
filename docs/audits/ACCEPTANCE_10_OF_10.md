@@ -293,9 +293,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **13** (G1.4, G1.7, G2.1, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Cumplidos con evidencia | **14** (G1.4, G1.7, G2.1, G3.6, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
 | Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **37** |
+| Pendientes | **36** |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -304,6 +304,7 @@ hasta la VM.
 |---|---|---|
 | G1.4 | `tests/test_core_seguridad_operativa.py`: la combinación `cancel_confirmed: false` + `safe_to_retry: true` pasa a ser inexpresable, y un `refresh_timeout` sin `details` tampoco se da por seguro | ✅ **2026-08-15** |
 | G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
+| G3.6 | `tests/test_packaging.py::test_una_instalacion_pip_pura_no_se_declara_operativa`: artefacto construido, venv limpio, fuera del checkout y con la caché de esquemas del usuario aislada | ✅ **2026-08-15** — el gate no exigía VM: exigía una instalación pip pura, y eso sí se puede montar aquí |
 
 Los dos son ejecutables sin máquina limpia, sin Desktop y sin remoto, que es por
 lo que se eligieron primero: cerraban entero, no a medias.
