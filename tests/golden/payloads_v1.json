@@ -1,0 +1,171 @@
+{
+  "payload_contract_version": 1,
+  "tool_count": 3,
+  "note": "Forma de los payloads: claves y tipos, nunca valores. Cubre lo obtenible sin Power BI Desktop; lo live es TEST-003.",
+  "payloads": {
+    "guide.situacion": {
+      "common_tasks": [
+        {
+          "steps": [
+            "str"
+          ],
+          "task": "str"
+        }
+      ],
+      "next_steps": [
+        {
+          "example_args": {
+            "path": "str"
+          },
+          "tool": "str",
+          "why": "str"
+        }
+      ],
+      "project": "null",
+      "situation": "str"
+    },
+    "pbi_capabilities": {
+      "capabilities": {
+        "cloud_fabric": {
+          "available": "bool",
+          "reason": "str",
+          "unsupported": "bool"
+        },
+        "dax_query": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "dual_mode_both": {
+          "available": "bool",
+          "reason": "str",
+          "unsupported": "bool"
+        },
+        "internal_schema_validator": {
+          "available": "bool",
+          "documents": "int",
+          "note": "str",
+          "reason": "str",
+          "unavailable_upstream": []
+        },
+        "microsoft_report_validator": {
+          "available": "bool",
+          "blocked_reason": "str",
+          "can_write_recent_schemas": "bool",
+          "expected_version": "str",
+          "install_hint": "str",
+          "note": "str",
+          "reason": "str",
+          "unchecked_note": "str",
+          "unvalidatable_schemas": [],
+          "version": "str",
+          "written_unchecked_schemas": []
+        },
+        "model_read_live": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_read_tmdl": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_write_live": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "model_write_tmdl": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "report_read_pbir": {
+          "available": "bool",
+          "reason": "str"
+        },
+        "report_write_pbir": {
+          "available": "bool",
+          "reason": "str"
+        }
+      },
+      "duration_ms": "float",
+      "modes": {
+        "both": "bool",
+        "live": "bool",
+        "pbip": "bool"
+      },
+      "ok": "bool",
+      "operation": "str",
+      "planned_operations": [
+        {
+          "description": "str",
+          "operation": "str",
+          "target": "str"
+        }
+      ],
+      "project_state": "null",
+      "request_id": "str",
+      "server": {
+        "legacy_aliases": {
+          "env_prefix": "str",
+          "note": "str",
+          "server_name": "str"
+        },
+        "package": "str",
+        "product": "str",
+        "server_name": "str",
+        "tool_prefix": "str",
+        "version": "str"
+      },
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_health_check": {
+      "checks": [
+        {
+          "check": "str",
+          "detail": "str",
+          "ok": "bool",
+          "required": "bool"
+        }
+      ],
+      "completeness": {
+        "missing": [
+          {
+            "component": "str",
+            "fix": "str",
+            "impact": "str",
+            "required": "bool"
+          }
+        ],
+        "note": "str",
+        "state": "str"
+      },
+      "duration_ms": "float",
+      "failing_required": [
+        "str"
+      ],
+      "healthy": "bool",
+      "ok": "bool",
+      "operation": "str",
+      "pending_journals": [],
+      "request_id": "str",
+      "server": {
+        "legacy_aliases": {
+          "env_prefix": "str",
+          "note": "str",
+          "server_name": "str"
+        },
+        "package": "str",
+        "product": "str",
+        "server_name": "str",
+        "tool_prefix": "str",
+        "version": "str"
+      },
+      "session_status": "null",
+      "side_effects": [],
+      "status": "str",
+      "warnings": [
+        "str"
+      ]
+    }
+  }
+}

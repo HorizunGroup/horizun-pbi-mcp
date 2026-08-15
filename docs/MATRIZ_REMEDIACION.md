@@ -94,7 +94,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Autorizado por | Fecha | Estado |
 |---|---|---|---|---|
 | CONTRACT-001 | Cambios compatibles de contrato MCP (4 path opcionales, 7 parámetros nuevos, 5 descripciones, golden, guarda de ampliaciones) | Pablo — ratificación explícita | 2026-08-14 | **Cerrada — ratificada y verificada** |
-| CONTRACT-002 | El golden congela solo el envelope `{result}`: una extensión del payload es invisible para la red de seguridad del contrato | Hallazgo derivado de CONTRACT-001 | 2026-08-14 | **Abierta** |
+| CONTRACT-002 | El golden congela solo el envelope `{result}`: una extensión del payload es invisible para la red de seguridad del contrato | Hallazgo derivado de CONTRACT-001 | 2026-08-15 | **Parcialmente cerrada** — quinta pasada. `tests/golden/payloads_v1.json` congela la **forma** del payload —claves y tipos, nunca valores— y `tests/payload_contract.py` distingue lo que rompe (retirar, renombrar, cambiar de tipo) de lo que no (añadir). Seis mutaciones lo demuestran, incluida una clave **anidada**, que es justo lo que el `output_shape` declarado no podía ver. **Parcial**: cubre lo obtenible sin Power BI Desktop; el resto de payloads es TEST-003 |
 | CONTRACT-003 | Tres cambios de riesgo que CORE-004 pide y que rompen el contrato: `confirm` exigido en `pbi_refresh_model` y `pbi_open_and_refresh`; `pbi_apply_plan` de `confirm=True` a `False`; y `readOnlyHint` retirado de `pbi_open_pbip_project` / `pbi_select_model` | Pendiente de ratificación — derivado de CORE-004(a)(b)(c) | 2026-08-15 | **Abierta** |
 
 ## Seguridad funcional
@@ -158,10 +158,11 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
 DOC-002, DOC-003, DOC-004, INSTALL-007, INSTALL-008, INSTALL-011,
 INSTALL-012, TEST-001, TEST-004),
-**12 parcialmente cerradas**
-(CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005,
-INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
-**5 abiertas**.
+**13 parcialmente cerradas**
+(CONTRACT-002, CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004,
+INSTALL-005, INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003,
+CLI-001),
+**4 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
