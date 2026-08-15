@@ -217,27 +217,63 @@ y está en [`audits/EXTERNAL_GATES.md`](audits/EXTERNAL_GATES.md).
 
 ## 7. Offline
 
-> **No existe un bundle offline.** Es INSTALL-009 y sigue abierto.
+Una instalación normal descarga de **cuatro** sitios: PyPI, nuget.org,
+developer.microsoft.com y registry.npmjs.org. En una máquina sin salida directa
+no hay nada que hacer con el instalador de siempre. El bundle es la alternativa:
+un archivo que ya lleva las cuatro cosas, verificado por SHA-256.
 
-Lo que sí se puede hacer hoy, si la máquina destino no tiene salida:
+### 7.1 Construirlo (en una máquina CON red)
 
-1. En una máquina **con** red, instala normalmente y comprueba que llega a
-   `ready`.
-2. Copia el directorio de versión entero:
-   ```
-   %LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5\
-   ```
-   Lleva el venv, las DLL, los esquemas y el validador.
-3. En la máquina destino, pégalo en la misma ruta y ejecuta:
-   ```bash
-   python scripts/plugin_bootstrap.py --status
-   ```
+```bash
+python scripts/bundle.py construir --salida C:\entrega
+```
 
-**Limitación honesta:** un venv de Python **no es relocalizable** entre rutas
-distintas, y esto solo funciona si el data root es el mismo en las dos máquinas
-—mismo nombre de usuario, o `HORIZUN_PBI_PLUGIN_DATA` apuntando al mismo sitio
-en las dos—. No es un bundle: es una copia que funciona bajo esa condición. El
-bundle de verdad, con su verificación, es trabajo pendiente.
+Deja `horizun-pbi-mcp-<version>-bundle.zip` con las ruedas del lock de **este**
+intérprete, el paquete propio, las DLL de Analysis Services, los esquemas PBIR y
+el tarball del validador. Cada archivo con su SHA-256 en `bundle.json`, y el
+hash del manifiesto aparte en `bundle.json.sha256` —un manifiesto que se
+verifica a sí mismo no verifica nada—.
+
+Para armar solo una parte:
+
+```bash
+python scripts/bundle.py construir --salida C:\entrega --componentes wheelhouse libs
+```
+
+### 7.2 Verificarlo antes de moverlo
+
+```bash
+python scripts/bundle.py verificar C:\entrega\horizun-pbi-mcp-1.5.5-bundle.zip
+```
+
+Comprueba tamaño, manifiesto contra su hash, que no haya archivos sin declarar
+ni declarados que falten, y el SHA-256 de cada miembro. **No extrae nada.**
+
+### 7.3 Instalarlo (en la máquina SIN red)
+
+```bash
+python scripts/bundle.py instalar C:\entrega\horizun-pbi-mcp-1.5.5-bundle.zip --destino %LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5
+```
+
+Verifica **entero antes de escribir un solo byte**, extrae a un staging, relee
+del disco lo escrito y solo entonces promueve, con el mismo ciclo de vida que el
+resto: journal, `.previous-` y recuperación. Si algo falla, lo que hubiera
+instalado sigue exactamente donde estaba.
+
+### 7.4 Lo que este procedimiento **no** demuestra
+
+Las pruebas prohíben abrir un socket y lanzar un proceso durante la instalación,
+así que está medido que el código no sale a la red. Lo que no está medido es qué
+hace **Windows** con un proxy corporativo mal configurado, o una VM realmente
+desconectada: eso es lo único que queda de G4.7 y sigue en
+[`audits/EXTERNAL_GATES.md`](audits/EXTERNAL_GATES.md).
+
+### 7.5 La alternativa de antes, por si acaso
+
+Copiar el directorio de versión entero
+(`%LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5\`) sigue funcionando, **pero solo si
+el data root es idéntico en las dos máquinas**: un venv de Python no es
+relocalizable. El bundle no tiene esa limitación.
 
 ---
 

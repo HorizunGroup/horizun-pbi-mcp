@@ -162,15 +162,22 @@ def test_los_scripts_que_ofrece_el_runbook_existen():
     assert not faltan, f"el runbook ofrece scripts que no existen: {faltan}"
 
 
-#: Lo que el runbook TIENE que declarar ausente, hoy. La lista se encoge
-#: cuando algo deja de faltar, y esa es la senal de que la prueba mide la
-#: realidad y no una foto vieja: `uninstall` y `purge` salieron de aqui cuando
-#: INSTALL-008 los implemento.
-AUSENTES_HOY = ("No existe un bundle offline",)
+#: Lo que el runbook TIENE que declarar ausente, hoy. **Hoy: nada.** La lista se
+#: encoge cuando algo deja de faltar, y esa es la senal de que la prueba mide la
+#: realidad y no una foto vieja: `uninstall` y `purge` salieron cuando INSTALL-008
+#: los implemento, y el bundle offline cuando lo hizo G4.7. Si vuelve a faltar
+#: algo, se anade aqui y el runbook tiene que decirlo.
+AUSENTES_HOY: tuple[str, ...] = ()
 
-#: Y lo que YA NO puede declarar ausente, porque existe. Sin esto, la lista de
-#: arriba podria encogerse y el runbook quedarse diciendo lo contrario.
+#: Y lo que YA NO puede declarar ausente, porque existe. Cuando la lista de
+#: arriba se vacia, esta es la que sostiene la prueba: un runbook que sigue
+#: mandando al procedimiento manual de algo que ya tiene comando hace perder el
+#: tiempo igual que uno que ofrece un comando inexistente.
 YA_NO_FALTAN = ("uninstall", "purge")
+
+#: Lo mismo para lo que no es una opcion de linea de comandos.
+COMANDOS_QUE_YA_EXISTEN = ("scripts/bundle.py construir",
+                           "scripts/bundle.py instalar")
 
 
 def test_el_runbook_no_promete_comandos_que_no_existen():
@@ -190,6 +197,10 @@ def test_el_runbook_no_promete_comandos_que_no_existen():
             "INSTALL-008")
         assert f"--{existe}" in texto, (
             f"`--{existe}` existe y el runbook no lo documenta")
+    assert "No existe un bundle offline" not in texto, (
+        "el runbook declara ausente el bundle offline, que existe desde G4.7")
+    for comando in COMANDOS_QUE_YA_EXISTEN:
+        assert comando in texto, f"el runbook no documenta `{comando}`"
 
 
 def test_el_runbook_enumera_antes_de_retirar_nada():

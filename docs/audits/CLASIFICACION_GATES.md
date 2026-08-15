@@ -62,7 +62,7 @@ solo gate, **no se puede decir «100% local»**.
 | G4.4 | cumplido | `uninstall` con CLI real sobre un data root de prueba |
 | G4.5 | cumplido | `purge` enumera y pesa antes de borrar |
 | G4.6 | parcial | matriz `win_amd64 × {3.10, 3.13, 3.14}` fijada; CI instala de verdad desde el lock en 3.10 y 3.13. Fuera de esa matriz el instalador cae al resolutor **y lo dice**; falta un runner que no sea Windows |
-| G4.7 | pendiente-local | el bundle offline **no existe**, y construirlo es trabajo local; solo la VM sin red es externa |
+| G4.7 | parcial | el bundle **existe**: `scripts/bundle.py` lo construye, verifica e instala; probado con pip real y `--no-index` -134 tools- y con `socket` prohibido. Falta la VM realmente desconectada o un proxy corporativo |
 | G4.8 | cumplido | no se cae fuera de user-scope en silencio |
 | G4.9 | cumplido | contención de la recuperación, 35 pruebas |
 | G4.10 | cumplido | preflight; nunca dos servidores en el mismo stdout |
@@ -97,11 +97,16 @@ solo gate, **no se puede decir «100% local»**.
 | Categoría | Gates |
 |---|---|
 | cumplido | **30** |
-| parcial | **6** |
-| pendiente-local | **2** |
+| parcial | **7** |
+| pendiente-local | **1** |
 | pendiente-ratificacion | **1** |
 | pendiente-externo | **15** |
 | **Total** | **54** |
 
-**Trabajo local pendiente: G2.2 y G4.7.** Mientras esos dos sigan aquí, la
-frase honesta no es «100% local»: es el porcentaje y la lista.
+**Trabajo local pendiente: G2.2.** Mientras siga aquí, la frase honesta no es
+«100% local»: es el porcentaje y la lista.
+
+Lo que le falta a G2.2 está medido y es acotado: **77 tools** cuyo payload no se
+puede capturar sin escribirles una llamada válida, una por una. No es un
+impedimento externo —solo 14 dependen de un modelo vivo— sino trabajo de
+volumen.

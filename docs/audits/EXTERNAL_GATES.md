@@ -44,6 +44,7 @@ resultado se espera y qué evidencia hay que guardar.
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
 | G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
 | G4.6 | INSTALL-009 | runner no-Windows (**la matriz de Windows ya está cerrada**) | Linux o macOS con Python ≥3.10 |
+| G4.7 | INSTALL-009 | VM sin salida real (**el bundle ya existe y se prueba aquí**) | VM desconectada o proxy corporativo |
 | G5.1–G5.4 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G5.6 | TEST-003 | Desktop (**la prueba ya existe y es local**) | Desktop con un `.pbip` de prueba |
 | G6.1 | RELEASE-001 | Release publicada | Permiso de publicación |
@@ -51,9 +52,9 @@ resultado se espera y qué evidencia hay que guardar.
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**14 filas, 21 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+**15 filas, 22 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
 `G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «14 externos» dejaría fuera cinco gates que nadie estaría vigilando.
+y decir «15 externos» dejaría fuera cinco gates que nadie estaría vigilando.
 
 > **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
 > G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
@@ -175,19 +176,23 @@ fijado, y `dependencias.source == "lock"` en el estado de instalación.
 
 ---
 
-## G4.7 — bundle offline y runbook de proxy *(hoy fuera de esta lista)*
+## G4.7 — bundle offline y runbook de proxy
 
-**No cuenta como externo mientras el bundle no exista.** Está aquí porque el
-procedimiento sirve, no porque el gate esté bloqueado: hoy es `pendiente-local`
-en [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md).
+**Ya no está aquí por lo que faltaba antes.** El bundle **existe**:
+`scripts/bundle.py` lo construye, lo verifica sin extraer y lo instala con la
+promoción del ciclo de vida compartido. Se prueba con pip real y `--no-index`
+—134 tools desde el wheelhouse— y con `socket` y `subprocess` prohibidos durante
+toda la instalación. El runbook documenta los tres comandos.
 
-**Lo que es local** —y por tanto exigible ahora—: construir el bundle, fijar sus
-contenidos por versión y hash, verificarlo antes de extraer, promoverlo con el
-mismo ciclo de vida, y **probar la instalación con PyPI, GitHub y npm
-bloqueados**, que se puede hacer en esta máquina sin ninguna VM.
+**Bloqueo exacto, hoy.** Prohibir `socket` demuestra que el código no sale a la
+red; no demuestra qué hace **Windows** con un proxy corporativo mal configurado
+ni qué pasa en una VM realmente desconectada.
 
-**Lo que sí será externo cuando eso exista**: ejecutarlo en una VM realmente
-desconectada, o detrás de un proxy corporativo de verdad.
+**Procedimiento.** Construir el bundle en una máquina con red, llevarlo a la VM
+sin salida, `verificar` y `instalar`, y hablar MCP por stdio con lo instalado.
+
+**Resultado esperado.** `ready`, 134 tools, y ni un intento de conexión saliente
+en el registro del proxy.
 
 **Ojo con el hermano.** G4.6 —el lock con hashes— compartía hallazgo con este y
 **no** era externo: se cerró el 2026-08-15 instalando el lock en dos venv limpios y
