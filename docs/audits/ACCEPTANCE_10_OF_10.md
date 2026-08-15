@@ -298,9 +298,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **28** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.5, G3.6, G4.2, G4.4, G4.5, G4.6, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Cumplidos con evidencia | **30** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.6, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
 | Parciales | **5** (G2.2, G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **21** |
+| Pendientes | **19** |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -312,6 +312,7 @@ hasta la VM.
 | G1.1 · G1.2 · G1.3 | Evidencia **live** fechada el 2026-08-14 en [`AUDIT_2026-08-14.md`](AUDIT_2026-08-14.md): `test_live_la_ventana_real_delata_un_pbip_sin_handles` para G1.1, y las 13 de `tests/test_capture_atomicity.py` para G1.2 y G1.3 | ✅ — **no eran gates nuevos: el cómputo estaba incompleto.** Se detectó cruzando la matriz con esta tabla y se resolvió leyendo la evidencia, no dándola por buena |
 | G2.5 | CONTRACT-001 ratificada y registrada; **CONTRACT-003** repite el mecanismo en vivo: tres cambios incompatibles que CORE-004 pedía se registraron en vez de aplicarse. `python -m tests.contract_utils` falla ante una diferencia incompatible | ✅ **2026-08-15** |
 | G2.2 | `tests/test_contrato_de_payload.py`: seis mutaciones —clave quitada, renombrada, anidada, de otro tipo, tool desaparecida— y tres que **no** deben romper | 🟡 **2026-08-15** — la red existe y muerde; cubre lo obtenible sin Desktop, y el resto de payloads es TEST-003 |
+| G2.3 · G2.4 | `docs/INVENTARIO_TOOLS.md`, generado por `python -m tests.inventario_tools`, y `tests/test_inventario_tools.py`: las 134 ejecutadas por `call_tool` contra su caso negativo | ✅ **2026-08-15** — 114 rechazadas en validación, 10 con sobre `ok: false` y código, 8 sin modo de fallo verificadas, 2 declaradas con motivo |
 | G4.6 | `tests/test_lock_de_dependencias.py`: **dos venv limpios, el lock instalado en cada uno y `pip freeze` comparado**. Y 18 pruebas más sobre el lock, el generador y el fallback | ✅ **2026-08-15** — idénticos entre sí y iguales a lo fijado; cuando el lock no cubre el intérprete, el estado lo dice en vez de fingir |
 | G4.4 · G4.5 | `tests/test_desinstalacion.py`: 12 pruebas, incluida la CLI real sobre un data root de prueba | ✅ **2026-08-15** — el seco es el DEFECTO, no una opción; `residual_bytes` tras desinstalar es exactamente el peso de los datos del usuario |
 | G4.8 | `tests/test_instalador_dryrun.py`: el reintento sin `--scope` se anuncia ANTES —se comprueba el orden en el código—, se verifica dónde aterrizó, y `-SoloUserScope` lo prohíbe | ✅ **2026-08-15** — el reintento se conserva a propósito: quitarlo rompe el PC vacío |

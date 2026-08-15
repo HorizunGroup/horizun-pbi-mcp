@@ -60,6 +60,20 @@ nothing published yet.**
   identical and matching what was pinned. The offline bundle and the proxy
   runbook are the half that remains, and they need a VM with no route out.
 
+- **Every tool now gets exercised over MCP, with a negative case
+  built from its own schema.** 134 tools declared an `output_shape` and a risk
+  class, but only 12 of 107 test files actually executed anything through
+  `call_tool`, and nobody had counted negative cases. `docs/INVENTARIO_TOOLS.md`
+  publishes the tool-by-tool inventory — MCP execution, negative case,
+  annotation, `confirm`, frozen payload — and it is **generated, not written**:
+  `python -m tests.inventario_tools` derives it from the running server and a
+  test fails when the published file drifts. 114 tools are rejected at schema
+  validation before their body runs, 10 answer a structured `ok: false` with an
+  error code when there is no project, 8 have no failure mode at all and are
+  executed anyway to keep that claim honest, and 2 are declared with a reason
+  because they probe the real environment. What it does not prove is written
+  into the document itself.
+
 - **Build once**: `scripts/release_build.py` produces the wheel and sdist in a
   single build, runs `twine check --strict`, emits `SHA256SUMS` and a
   reproducible CycloneDX SBOM, and freezes the installer asset;

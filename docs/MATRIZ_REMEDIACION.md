@@ -138,7 +138,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
 | TEST-001 | `test_packaging` convierte fallos en skips y prueba en venv no limpio | Alta | G8.2, G8.3 | **Cerrada** — 2026-08-14, con dos mutaciones medidas: un paquete irresoluble y otro que no compila salían verde y ámbar, ahora salen rojo |
-| TEST-002 | Inventario de las 134 tools: ejecución MCP, casos negativos, payload congelado | Alta | G2.3, G2.4 | **Abierta** |
+| TEST-002 | Inventario de las 134 tools: ejecución MCP, casos negativos, payload congelado | Alta | G2.3, G2.4 | **Cerrada** — 2026-08-15, quinta pasada. `docs/INVENTARIO_TOOLS.md` publica el inventario tool por tool y **se genera** con `python -m tests.inventario_tools`, no se escribe. Las 134 se ejecutan por `call_tool` en cada corrida contra un caso negativo calculado de su propio esquema: 114 rechazadas en la validación antes del cuerpo, 10 con sobre `ok: false` y código sin proyecto activo, 8 sin modo de fallo —ejecutadas igual, se les exige `ok: true`, para que la exención caduque sola— y 2 declaradas con motivo por sondear el entorno real. La columna de payload congelado la llena CONTRACT-002, que sigue parcial |
 | TEST-003 | Sin cobertura live verificada de los seis escenarios de Desktop | Alta | G5.1–G5.6 | **Abierta** |
 | TEST-004 | `isolated_settings` deja sin DLL de Analysis Services a las pruebas live | Media | G5.2, G5.4, G5.6 | **Cerrada** — 2026-08-14 |
 
@@ -154,15 +154,15 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-33 entradas: **16 cerradas**
+33 entradas: **17 cerradas**
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
 DOC-002, DOC-003, DOC-004, INSTALL-007, INSTALL-008, INSTALL-011,
-INSTALL-012, TEST-001, TEST-004),
+INSTALL-012, TEST-001, TEST-002, TEST-004),
 **14 parcialmente cerradas**
 (CONTRACT-002, CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004,
 INSTALL-005, INSTALL-006, INSTALL-009, INSTALL-010, RELEASE-001, RELEASE-002,
 RELEASE-003, CLI-001),
-**3 abiertas**.
+**2 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
