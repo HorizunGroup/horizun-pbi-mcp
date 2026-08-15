@@ -298,7 +298,7 @@ def instalar(manifiesto: Dict, destino: Path) -> Dict:
             # Tambien en KeyboardInterrupt: dejar el staging seria dejar basura
             # con un prefijo que la limpieza del ciclo de vida reconoce, pero no
             # hay motivo para esperar a que alguien pase por ahi.
-            shutil.rmtree(staging, ignore_errors=True)
+            promotion.descartar_staging(staging)
             raise
 
         # Publicado y verificado: el apartado ya no sirve. Solo los de ESTE

@@ -195,6 +195,38 @@ def _borrar_arbol(ruta: Path) -> bool:
     return True
 
 
+#: Intentos de borrado del staging tras un fallo, con espera creciente.
+#: En Windows, matar un proceso NO cierra sus handles al instante: el sistema
+#: los libera un momento despues, y durante ese hueco `rmtree` falla con
+#: "acceso denegado". Tres intentos cubren de sobra ese hueco sin convertirse
+#: en una espera que tape un handle de verdad abierto.
+INTENTOS_DE_BORRADO = 3
+
+
+def descartar_staging(staging: Path) -> bool:
+    """Borra un staging fallido, reintentando lo justo. Dice si lo consiguio.
+
+    Los cuatro publicadores hacian `shutil.rmtree(staging, ignore_errors=True)`
+    y eso **se rinde en silencio**: si el sistema todavia tenia un handle, el
+    staging sobrevivia y nadie se enteraba. Lo destapo CI, en la prueba que
+    mata `npm` a mitad y comprueba que no queda basura -verde aqui, roja en el
+    runner-.
+
+    Que devuelva un booleano no es adorno: quien llama puede decirlo en su
+    salida en vez de dejar un directorio huerfano sin mencionarlo. La limpieza
+    del ciclo de vida reconoce el prefijo y lo recogera mas tarde, pero «mas
+    tarde» no es «no queda nada».
+    """
+    import time as _t
+
+    for intento in range(1, INTENTOS_DE_BORRADO + 1):
+        if _borrar_arbol(staging):
+            return True
+        if intento < INTENTOS_DE_BORRADO:
+            _t.sleep(0.2 * intento)
+    return not staging.exists()
+
+
 def crear_staging(root: Path, version: str) -> Path:
     """Un directorio hermano del destino, en el MISMO volumen.
 

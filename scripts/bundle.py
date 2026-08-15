@@ -266,7 +266,7 @@ def instalar(bundle: Path, destino: Path) -> Dict[str, Any]:
                         f"{rel} no cuadra tras escribirlo: no se publica nada")
             promotion.promover(raiz, staging, destino)
         except BaseException:
-            shutil.rmtree(staging, ignore_errors=True)
+            promotion.descartar_staging(staging)
             raise
         recogidos = promotion.limpiar_apartados_de(raiz, destino.name)
 

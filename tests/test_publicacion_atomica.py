@@ -437,3 +437,59 @@ def test_los_dos_instaladores_usan_el_ciclo_de_vida_compartido(esquemas,
         assert modulo.promotion.ESQUEMA_JOURNAL == 2
         assert callable(modulo.promotion.promover)
         assert callable(modulo.promotion.recuperar)
+
+
+def test_el_staging_se_descarta_aunque_el_sistema_lo_tenga_ocupado(tmp_path,
+                                                                   monkeypatch):
+    """Lo destapo CI: `rmtree(..., ignore_errors=True)` se rinde en silencio.
+
+    En Windows, matar un proceso NO cierra sus handles al instante. Durante ese
+    hueco el borrado falla, y con `ignore_errors=True` el staging sobrevivia sin
+    que nadie se enterara: la prueba de G4.3 que mata `npm` a mitad quedaba con
+    un `.staging-` huerfano en el runner y verde en esta maquina.
+
+    Aqui el primer intento falla a proposito y se exige que el segundo lo
+    consiga. Reintentar es lo correcto -el handle se libera solo-; lo que no
+    valia era rendirse a la primera y callarlo.
+    """
+    from horizun_pbi_mcp.lifecycle import promotion
+
+    staging = tmp_path / f"{promotion.PREFIJO_STAGING}prueba"
+    (staging / "dentro").mkdir(parents=True)
+    (staging / "dentro" / "a.txt").write_text("x", encoding="utf-8")
+
+    real = promotion.shutil.rmtree
+    fallos = {"n": 0}
+
+    def _ocupado_una_vez(ruta, *a, **k):
+        if fallos["n"] == 0 and Path(ruta) == staging:
+            fallos["n"] += 1
+            raise PermissionError("el sistema tiene el archivo abierto")
+        return real(ruta, *a, **k)
+
+    monkeypatch.setattr(promotion.shutil, "rmtree", _ocupado_una_vez)
+
+    assert promotion.descartar_staging(staging) is True
+    assert not staging.exists()
+    assert fallos["n"] == 1, "no se llego a simular el handle ocupado"
+
+
+def test_si_el_staging_NO_se_puede_borrar_se_dice(tmp_path, monkeypatch):
+    """Y si de verdad no se puede, se devuelve `False` en vez de fingir.
+
+    Quien llama puede decirlo en su salida. La limpieza del ciclo de vida
+    reconoce el prefijo y lo recogera mas tarde, pero «mas tarde» no es «no
+    queda nada», y esa diferencia es la que el informe tiene que poder contar.
+    """
+    from horizun_pbi_mcp.lifecycle import promotion
+
+    staging = tmp_path / f"{promotion.PREFIJO_STAGING}atascado"
+    staging.mkdir()
+
+    monkeypatch.setattr(promotion.shutil, "rmtree",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            PermissionError("ocupado para siempre")))
+    monkeypatch.setattr(promotion, "INTENTOS_DE_BORRADO", 2)
+
+    assert promotion.descartar_staging(staging) is False
+    assert staging.exists()

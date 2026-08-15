@@ -185,7 +185,7 @@ def instalar(destino: Path) -> dict:
             relativa = cli.relative_to(staging.resolve())
             promotion.promover(raiz, staging, destino)
         except BaseException:
-            shutil.rmtree(staging, ignore_errors=True)
+            promotion.descartar_staging(staging)
             raise
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
