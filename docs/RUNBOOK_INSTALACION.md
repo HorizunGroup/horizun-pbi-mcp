@@ -125,38 +125,37 @@ sale en el status. Ese archivo es evidencia — mándalo si abres una incidencia
 
 ## 4. Desinstalar
 
-> **No existe un comando de desinstalación.** Es INSTALL-008, y sigue abierto.
-> Lo que sigue es el procedimiento manual, que es exacto pero manual.
+**Enumera primero. Siempre.** Sin `--confirm`, el comando no borra nada: dice
+qué borraría y cuánto liberaría. Ese es el comportamiento por defecto a
+propósito — un error de dedo debe ser un susto, no una pérdida.
 
-**Primero, lo que hay que conservar.** Estas dos carpetas son **tuyas** y no se
-versionan con el runtime:
-
-```
-%LOCALAPPDATA%\HorizunPbiMcp\plugin\outputs\     exportaciones, informes, logs
-%LOCALAPPDATA%\HorizunPbiMcp\plugin\backups\     respaldos de tus proyectos
+```bash
+python scripts/plugin_bootstrap.py --uninstall
 ```
 
-Cópialas fuera antes de nada si te importan.
+Cuando la lista te cuadre:
 
-**Después, en orden:**
+```bash
+python scripts/plugin_bootstrap.py --uninstall --confirm
+```
 
-1. Cierra Claude y Codex. Un runtime en uso no se puede borrar del todo.
-2. Retira el plugin de su cliente:
-   ```bash
-   claude plugin remove horizun-pbi-mcp
-   ```
-3. Borra el data root **menos** lo que salvaste:
-   ```bash
-   rmdir /s %LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5
-   del %LOCALAPPDATA%\HorizunPbiMcp\plugin\runtime-state.json
-   ```
-4. Comprueba que no queda nada en uso:
-   ```bash
-   python scripts/plugin_bootstrap.py --status
-   ```
-   Debe decir `not_installed`.
+**Qué conserva.** `outputs/` y `backups/` son **tuyos** —tus exportaciones y
+los respaldos de tus proyectos— y sobreviven. Lo que se va es lo reconstruible:
+runtimes, versiones anteriores, estado y registros. La respuesta trae
+`residual_bytes`, que después de desinstalar tiene que ser exactamente el peso
+de tus datos.
 
-Lo que **no** desinstala esto: Python, Node y Claude Code, que el instalador
+**Antes de ejecutarlo:** cierra Claude y Codex. Un runtime en uso no se puede
+retirar del todo, y el comando se niega si hay una instalación en curso — borrar
+mientras alguien publica dejaría al instalador escribiendo en el aire.
+
+Y retira el plugin de su cliente, que vive fuera del data root:
+
+```bash
+claude plugin remove horizun-pbi-mcp
+```
+
+Lo que **no** retira nada de esto: Python, Node y Claude Code, que el instalador
 puso por `winget` y que probablemente uses para otras cosas. Se quitan con
 `winget uninstall`, uno a uno y a conciencia.
 
@@ -164,16 +163,24 @@ puso por `winget` y que probablemente uses para otras cosas. Se quitan con
 
 ## 5. Purga completa
 
-> **Tampoco existe `purge`.** Es la otra mitad de INSTALL-008.
-
-Para enumerar antes de borrar —que es el orden correcto—:
+`--purge` es `--uninstall` **más tus datos**. Misma regla: sin `--confirm` solo
+enumera.
 
 ```bash
-python -c "import sys,pathlib; sys.path.insert(0,'scripts'); import plugin_bootstrap as b; r=b.paths()['root']; print(r); [print(f'{sum(f.stat().st_size for f in p.rglob(chr(42)) if f.is_file())/1e6:10.1f} MB  {p.name}') for p in sorted(r.iterdir()) if p.is_dir()]"
+python scripts/plugin_bootstrap.py --purge
+python scripts/plugin_bootstrap.py --purge --confirm
 ```
 
-Eso lista cada directorio del data root con su tamaño. Decide con la lista
-delante; después borra lo que hayas decidido.
+Después de un purge confirmado, `residual_bytes` es `0`.
+
+Si solo quieres mirar, sin intención de retirar nada:
+
+```bash
+python scripts/plugin_bootstrap.py --inventory
+```
+
+Da cada entrada del data root con su tipo —`runtime`, `runtime-anterior`,
+`datos-del-usuario`, `preparacion-a-medias`— y su tamaño.
 
 ---
 

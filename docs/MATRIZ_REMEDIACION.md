@@ -119,7 +119,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Parcialmente cerrada** — 2026-08-15, quinta pasada. `pbi_health_check` distingue *instalado* de *operativo*: `completeness` enumera cada pieza que falta, qué deja de funcionar sin ella y **el comando exacto** que la completa, y separa lo obligatorio de lo opcional. G3.6 cumplido y comprobado sobre una instalación **pip pura** —artefacto construido, venv limpio, fuera del checkout—. Queda el comando de completado guiado como *entry point*, que es la otra mitad del criterio |
 | INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Esquemas y validador preparan en un hermano, se releen enteros y se publican con el ciclo de vida compartido; el destino se observa **en el instante de publicar** y sigue byte a byte como estaba. G4.2 cumplido. **Cuarta pasada**: cada publicador toma el cerrojo de la raíz de su componente antes de recuperar, preparar, promover o limpiar —dos procesos de verdad lo demuestran— y el respaldo de cada publicación se recoge al terminar, así que deja de crecer con cada actualización. G4.3 sigue amarillo por una sola razón: `npm` está simulado |
 | INSTALL-007 | Reintento sin `--scope user` y `ExecutionPolicy` persistente | Media | G4.8 | **Cerrada** — 2026-08-15, quinta pasada. El reintento **se conserva** —sin él se rompe el camino del PC vacío, que winget bloquea con `0x8A150044` cuando un manifiesto ajeno no está etiquetado como *user*— pero deja de ser silencioso: se anuncia **antes**, se comprueba **después** si aterrizó en el perfil, y `-SoloUserScope` permite prohibirlo a quien exija user-scope estricto. El cambio de `ExecutionPolicy` se declara permanente en el código y `RUNBOOK_INSTALACION.md` dice cómo revertirlo |
-| INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Abierta** |
+| INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Cerrada** — 2026-08-15, quinta pasada. `--uninstall`, `--purge` e `--inventory`. **La ejecución en seco es el comportamiento por defecto**: sin `--confirm` enumeran y no tocan nada, así que un error de dedo es un susto y no una pérdida. `outputs/` y `backups/` sobreviven salvo que se pidan; tras desinstalar, `residual_bytes` es exactamente el peso de los datos del usuario. Bajo el cerrojo del ciclo de vida y sin salir nunca del data root |
 | INSTALL-009 | Sin lock ni hashes, sin bundle offline ni runbook de proxy | Media | G4.6, G4.7 | **Abierta** |
 | INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. El oráculo pasa de «100 tools cualesquiera con prefijo `pbi_`» a exigir el contrato: `serverInfo.name` exacto, versión igual a la preparada, `tools/list` bien formado y ninguna de las 134 ausente, contra un baseline **empaquetado en el wheel**. **Cuarta pasada**: G3.3 pasa a cumplirse **literalmente** —tras corromper el activo, `state` vale `degraded` y no `ready`, que es lo que el gate pide y lo que la tercera pasada no hacía—. Sigue amarillo porque los runtimes que se corrompen son de prueba; G3.1 exige VM limpia |
 | INSTALL-011 | La recuperación confía rutas del journal y se ejecuta fuera del lock, permitiendo operaciones fuera del data root y carreras con una promoción | Alta | G4.9 | **Cerrada** — 2026-08-14, tercera pasada. Reproducido: un journal preparado a mano movió `root/.staging-demo` a una carpeta hermana de la raíz. El journal deja de ser autoridad sobre rutas —esquema 2, solo nombres de hijos directos, validados léxica y resueltamente— y el ciclo de vida entero pasa a ocurrir dentro del cerrojo |
@@ -154,14 +154,14 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-33 entradas: **15 cerradas**
+33 entradas: **16 cerradas**
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
-DOC-002, DOC-003, DOC-004, INSTALL-007, INSTALL-011, INSTALL-012, TEST-001,
-TEST-004),
+DOC-002, DOC-003, DOC-004, INSTALL-007, INSTALL-008, INSTALL-011,
+INSTALL-012, TEST-001, TEST-004),
 **12 parcialmente cerradas**
 (CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005,
 INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
-**6 abiertas**.
+**5 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la

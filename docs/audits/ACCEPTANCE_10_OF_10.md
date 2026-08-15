@@ -293,9 +293,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **25** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.5, G3.6, G4.2, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Cumplidos con evidencia | **27** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
 | Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **25** |
+| Pendientes | **23** |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -306,6 +306,7 @@ hasta la VM.
 | G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
 | G1.1 · G1.2 · G1.3 | Evidencia **live** fechada el 2026-08-14 en [`AUDIT_2026-08-14.md`](AUDIT_2026-08-14.md): `test_live_la_ventana_real_delata_un_pbip_sin_handles` para G1.1, y las 13 de `tests/test_capture_atomicity.py` para G1.2 y G1.3 | ✅ — **no eran gates nuevos: el cómputo estaba incompleto.** Se detectó cruzando la matriz con esta tabla y se resolvió leyendo la evidencia, no dándola por buena |
 | G2.5 | CONTRACT-001 ratificada y registrada; **CONTRACT-003** repite el mecanismo en vivo: tres cambios incompatibles que CORE-004 pedía se registraron en vez de aplicarse. `python -m tests.contract_utils` falla ante una diferencia incompatible | ✅ **2026-08-15** |
+| G4.4 · G4.5 | `tests/test_desinstalacion.py`: 12 pruebas, incluida la CLI real sobre un data root de prueba | ✅ **2026-08-15** — el seco es el DEFECTO, no una opción; `residual_bytes` tras desinstalar es exactamente el peso de los datos del usuario |
 | G4.8 | `tests/test_instalador_dryrun.py`: el reintento sin `--scope` se anuncia ANTES —se comprueba el orden en el código—, se verifica dónde aterrizó, y `-SoloUserScope` lo prohíbe | ✅ **2026-08-15** — el reintento se conserva a propósito: quitarlo rompe el PC vacío |
 | G8.8 | `docs/RUNBOOK_INSTALACION.md`, seis procedimientos con comandos ejecutables, comprobados contra la instalación real en solo lectura | ✅ **2026-08-15** — declara lo que NO existe en vez de ofrecer comandos que fallarían |
 | G8.5 · G8.6 · G8.7 | `tests/test_documentacion_veraz.py`: seis comprobaciones que contrastan lo que el documento promete con lo que el código hace | ✅ **2026-08-15** — 5 de 6 rojas antes |

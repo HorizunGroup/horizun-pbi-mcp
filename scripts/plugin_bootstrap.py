@@ -889,6 +889,107 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             return 1
 
 
+#: Lo que es del USUARIO y sobrevive a cualquier desinstalacion salvo que lo
+#: pida explicitamente. `outputs` son sus exportaciones e informes; `backups`,
+#: los respaldos de SUS proyectos. Borrarlos por defecto al desinstalar seria
+#: convertir "quitar el plugin" en "perder tu trabajo".
+DATOS_DEL_USUARIO = ("outputs", "backups")
+
+
+def _pesar(ruta: Path) -> int:
+    if ruta.is_file():
+        try:
+            return ruta.stat().st_size
+        except OSError:                                      # pragma: no cover
+            return 0
+    total = 0
+    for hijo in ruta.rglob("*"):
+        try:
+            if hijo.is_file():
+                total += hijo.stat().st_size
+        except OSError:                                      # pragma: no cover
+            pass
+    return total
+
+
+def inventario(base: Path | None = None) -> dict[str, Any]:
+    """Que hay bajo el data root, que es cada cosa y cuanto ocupa.
+
+    **Enumerar antes de borrar** (G4.5). Un `purge` que empieza borrando y
+    despues informa no le da a nadie la oportunidad de decir que no, y el data
+    root guarda cosas de dos dueños distintos: lo reconstruible, que se puede
+    tirar sin coste, y lo del usuario, que no.
+    """
+    root = paths(base)["root"]
+    if not root.is_dir():
+        return {"data_dir": str(root), "exists": False, "entries": [],
+                "total_bytes": 0, "user_bytes": 0}
+
+    entradas = []
+    for hijo in sorted(root.iterdir()):
+        if hijo.name in DATOS_DEL_USUARIO:
+            clase, tuyo = "datos-del-usuario", True
+        elif hijo.name.startswith(_promocion.PREFIJO_ANTERIOR):
+            clase, tuyo = "runtime-anterior", False
+        elif hijo.name.startswith(_promocion.PREFIJO_STAGING):
+            clase, tuyo = "preparacion-a-medias", False
+        elif hijo.is_dir() and (hijo / "runtime").is_dir():
+            clase, tuyo = "runtime", False
+        else:
+            clase, tuyo = "estado-o-registro", False
+        entradas.append({"name": hijo.name, "kind": clase,
+                         "user_data": tuyo, "bytes": _pesar(hijo)})
+    return {
+        "data_dir": str(root), "exists": True, "entries": entradas,
+        "total_bytes": sum(e["bytes"] for e in entradas),
+        "user_bytes": sum(e["bytes"] for e in entradas if e["user_data"]),
+    }
+
+
+def desinstalar(base: Path | None = None, *, incluir_datos: bool = False,
+                confirmado: bool = False) -> dict[str, Any]:
+    """Retira la instalacion. Sin `confirmado`, solo dice lo que haria.
+
+    Nunca sale del data root: se recorren SUS hijos y se borra por nombre, que
+    es la misma regla que impide a la promocion escribir fuera (INSTALL-011).
+
+    Se toma el cerrojo del ciclo de vida: borrar mientras otro proceso instala
+    dejaria al instalador publicando sobre un directorio que desaparece.
+    """
+    root = paths(base)["root"]
+    plan = inventario(base)
+    if not plan["exists"]:
+        return {**plan, "removed": [], "kept": [], "confirmed": confirmado,
+                "note": "No hay nada instalado en esa ruta."}
+
+    a_borrar = [e for e in plan["entries"]
+                if incluir_datos or not e["user_data"]]
+    conservar = [e["name"] for e in plan["entries"] if e not in a_borrar]
+
+    if not confirmado:
+        return {**plan, "would_remove": [e["name"] for e in a_borrar],
+                "kept": conservar, "confirmed": False,
+                "freed_bytes": sum(e["bytes"] for e in a_borrar),
+                "note": ("Ejecucion en seco: no se ha borrado nada. Repite con "
+                         "--confirm para aplicarlo.")}
+
+    with _cerrojos.CerrojoDeCicloDeVida(root, etiqueta="uninstall") as cerrojo:
+        if not cerrojo.adquirido:
+            return {**plan, "removed": [], "kept": conservar, "confirmed": True,
+                    "error": "Hay una instalacion en curso; no se desinstala "
+                             "nada mientras otro proceso tiene el cerrojo."}
+        borrados = []
+        for entrada in a_borrar:
+            if _borrar(root / entrada["name"]):
+                borrados.append(entrada["name"])
+
+    resto = inventario(base)
+    return {**resto, "removed": borrados, "kept": conservar, "confirmed": True,
+            "residual_bytes": resto["total_bytes"],
+            "note": ("Quedan solo tus datos." if not incluir_datos
+                     else "Se retiro todo, incluidos tus datos.")}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path)
@@ -897,10 +998,31 @@ def main() -> int:
                         help="convierte en fatal un fallo del validador "
                              "opcional; por defecto solo avisa")
     parser.add_argument("--status", action="store_true")
+    parser.add_argument("--inventory", action="store_true",
+                        help="enumera el directorio de datos con tamaños")
+    parser.add_argument("--uninstall", action="store_true",
+                        help="retira el runtime y conserva outputs/ y backups/")
+    parser.add_argument("--purge", action="store_true",
+                        help="como --uninstall pero TAMBIEN tus datos")
+    parser.add_argument("--confirm", action="store_true",
+                        help="sin esto, --uninstall y --purge solo enumeran")
     args = parser.parse_args()
+
     if args.status:
         print(json.dumps(read_status(args.data_dir), indent=2, ensure_ascii=False))
         return 0
+    if args.inventory:
+        print(json.dumps(inventario(args.data_dir), indent=2, ensure_ascii=False))
+        return 0
+    if args.uninstall or args.purge:
+        # El seco es el DEFECTO a proposito: quien escribe `--purge` y ve la
+        # lista todavia puede arrepentirse. Pedir la confirmacion aparte
+        # convierte un error de dedo en un susto en vez de en una perdida.
+        resultado = desinstalar(args.data_dir, incluir_datos=args.purge,
+                                confirmado=args.confirm)
+        print(json.dumps(resultado, indent=2, ensure_ascii=False))
+        return 1 if resultado.get("error") else 0
+
     if args.require_validator:
         os.environ["HORIZUN_PBI_REQUIRE_VALIDATOR"] = "1"
     return install(args.data_dir, include_validator=not args.no_validator)

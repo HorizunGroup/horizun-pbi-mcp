@@ -169,18 +169,28 @@ def test_el_runbook_no_promete_comandos_que_no_existen():
     falla. Tiene que decir que no existen y dar el procedimiento manual.
     """
     texto = RUNBOOK.read_text(encoding="utf-8")
-    for ausente in ("No existe un comando de desinstalación",
-                    "Tampoco existe `purge`",
-                    "No existe un bundle offline"):
+    # `uninstall` y `purge` YA existen desde INSTALL-008; el bundle offline
+    # no. La lista se encoge cuando algo deja de faltar, que es la señal de
+    # que esta prueba mide la realidad y no una foto vieja.
+    for ausente in ("No existe un bundle offline",):
         assert ausente in texto, (
             f"el runbook no declara que falta: {ausente!r}")
 
 
-def test_el_runbook_conserva_lo_del_usuario_antes_de_borrar():
-    """`outputs/` y `backups/` son del usuario y sobreviven a cada version."""
+def test_el_runbook_enumera_antes_de_retirar_nada():
+    """El orden importa mas que la prosa: primero se mira, despues se decide.
+
+    Esta prueba buscaba anclas del procedimiento MANUAL de cuatro pasos. Ese
+    procedimiento ya no existe -INSTALL-008 lo convirtio en dos comandos- asi
+    que ahora se comprueba la propiedad que sobrevive al cambio: que la version
+    que NO retira nada aparezca antes que la que si.
+    """
     texto = RUNBOOK.read_text(encoding="utf-8")
-    assert "outputs" in texto and "backups" in texto
-    idx_conservar = texto.find("lo que hay que conservar")
-    idx_borrar = texto.find("Borra el data root")
-    assert 0 < idx_conservar < idx_borrar, (
-        "el runbook manda borrar antes de decir que hay que salvar")
+    assert "outputs" in texto and "backups" in texto, (
+        "el runbook no dice cuales son los datos del usuario")
+
+    seco = texto.find("--uninstall\n```")
+    confirmado = texto.find("--uninstall --confirm")
+    assert 0 < seco < confirmado, (
+        "el runbook ofrece la version que borra antes que la que enumera")
+    assert "Enumera primero" in texto
