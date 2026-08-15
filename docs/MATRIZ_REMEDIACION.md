@@ -105,7 +105,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Cerrada** — 2026-08-15, quinta pasada. `safe_to_retry` es `False` cuando `cancel_confirmed` es `false`, y la regla se aplica al HECHO y no a un código concreto: cualquier salida que declare `cancel_confirmed: false` afirma que algo sigue corriendo. Un `refresh_timeout` sin `details` tampoco acredita: hace falta un `true` explícito |
 | CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
 | CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Cerrada** — 2026-08-15, quinta pasada. Los dos campos pasan por `redact()`. Hizo falta además ampliar la redacción: reconocía cadenas que SON una ruta y no frases que CONTIENEN una, que es el caso del texto de una excepción; y `_redact_path` conservaba dos segmentos, justo donde vive el nombre del cliente |
-| CORE-006 | Sin cerrojo interproceso en `txn`/`planning` (el mecanismo existe en `idempotency`) | Alta | G1.8 | **Abierta** |
+| CORE-006 | Sin cerrojo interproceso en `txn`/`planning` (el mecanismo existe en `idempotency`) | Alta | G1.8 | **Cerrada** — 2026-08-15, quinta pasada. Cerrojo por proyecto en `txn` —y con él `planning`, que escribe a través de `txn`—, con la primitiva EXTRAÍDA a `services/cerrojo.py` en vez de duplicada. Dos procesos reales sobre el mismo `.pbip`: el segundo espera su turno y los dos aplican. **El *lost update* del hallazgo no se reproducía**: la huella de `Transaction` ya impedía sobrescribir en silencio, y el segundo fallaba con `transaction_failed`; lo que se pierde sin cerrojo es el trabajo del segundo, no el del primero |
 
 ## Instalación y ciclo de vida
 
@@ -153,13 +153,13 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-32 entradas: **9 cerradas**
-(CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, INSTALL-011,
+32 entradas: **10 cerradas**
+(CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, INSTALL-011,
 INSTALL-012, TEST-001, TEST-004),
 **11 parcialmente cerradas**
 (INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005, INSTALL-006,
 INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
-**12 abiertas**.
+**11 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
@@ -169,9 +169,9 @@ el otro, o si el estado que declara esta matriz contradice el que declara
 primera edición y nadie se entera.
 
 Al 2026-08-15, tras la **quinta** pasada. La cuenta anterior era 7 / 11 / 14:
-cierran **CORE-003** (venía de parcial) y **CORE-005** (venía de abierta), las
-dos con regresión roja contra el commit anterior y sin depender de ninguna
-máquina limpia.
+cierran **CORE-003**, **CORE-005** y **CORE-006**, e **INSTALL-005** pasa de
+abierta a parcial con su gate cumplido. Las cuatro con regresión roja contra el
+commit anterior y sin depender de ninguna máquina limpia.
 
 Dos pasadas seguidas han cerrado un hallazgo que **introdujo la pasada
 anterior** (INSTALL-011 lo trajo la remediación de INSTALL-001; INSTALL-012, la

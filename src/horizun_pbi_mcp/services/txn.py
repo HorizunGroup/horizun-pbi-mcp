@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,7 +40,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.services import cerrojo as _cerrojo
 from horizun_pbi_mcp.services import paths as safe_paths
+
+#: Cuanto espera un cliente a que otro suelte el proyecto. Generoso: una
+#: transaccion con validacion del informe tarda segundos, y rendirse antes
+#: convertiria en fallo lo que solo era un turno.
+LOCK_PROYECTO_SEGUNDOS = 120.0
 
 log = get_logger("txn")
 
@@ -247,6 +254,9 @@ class Transaction:
     def __init__(self, project_dir: Path, backup_root: Path, *,
                  tool: str, request_id: Optional[str] = None):
         self.project_dir = Path(project_dir).resolve()
+        # Se guarda porque el cerrojo por proyecto (CORE-006) vive aqui:
+        # fuera del `.pbip` y con un subdirectorio por proyecto.
+        self.backup_root = Path(backup_root)
         self.tool = tool
         self.request_id = request_id or uuid.uuid4().hex[:12]
         self.started = datetime.now().isoformat(timespec="seconds")
@@ -764,12 +774,44 @@ class transaction:
         #: Diagnosticos del validador oficial ANTES de escribir (baseline).
         self.validation: Optional[Dict[str, Any]] = None
         self._baseline: Optional[list] = None
+        self._cerrojo = None
 
     def __enter__(self) -> Transaction:
-        # El baseline se toma ANTES de tocar nada: sin el, los defectos que ya
-        # traia el informe se atribuirian a esta operacion.
-        self._baseline = self._diagnosticar()
-        self.txn.plan(self._targets)
+        # CORE-006 — cerrojo interproceso POR PROYECTO, tomado antes de
+        # planificar y soltado al confirmar o revertir.
+        #
+        # Que ya existiera una defensa conviene decirlo, porque cambia lo que
+        # esto arregla: `Transaction` compara la huella de cada archivo entre
+        # planificar y escribir, asi que dos clientes sobre el mismo `.pbip`
+        # NUNCA se pisaban en silencio -el segundo se encontraba la huella
+        # cambiada y se negaba a sobrescribir-. El *lost update* con las dos
+        # respuestas en verde no llega a ocurrir; se comprobo con dos procesos
+        # reales antes de escribir esta linea.
+        #
+        # Lo que cambia es el desenlace. Sin cerrojo, el segundo cliente FALLA y
+        # el trabajo se pierde aunque el conflicto fuera evitable; con el,
+        # ESPERA su turno, vuelve a leer y aplica. La huella sigue ahi como red
+        # de seguridad: protege tambien de lo que el cerrojo no ve -alguien
+        # editando el informe en Power BI Desktop mientras tanto-, y las dos
+        # juntas cubren mas que cualquiera sola.
+        self._cerrojo = _cerrojo.exclusion(
+            self.txn.backup_root / ".project.lock",
+            timeout=LOCK_PROYECTO_SEGUNDOS,
+            al_agotarse=lambda t: TransactionError(
+                f"Otro cliente lleva mas de {t:.0f}s escribiendo en este "
+                "proyecto y no se ha podido tomar el turno. No se toco nada.",
+                details={"project_dir": str(self.txn.project_dir),
+                         "lock_timeout_seconds": t}))
+        self._cerrojo.__enter__()
+        try:
+            # El baseline se toma ANTES de tocar nada: sin el, los defectos que
+            # ya traia el informe se atribuirian a esta operacion.
+            self._baseline = self._diagnosticar()
+            self.txn.plan(self._targets)
+        except BaseException:
+            self._cerrojo.__exit__(*sys.exc_info())
+            self._cerrojo = None
+            raise
         return self.txn
 
     def _diagnosticar(self) -> Optional[list]:
@@ -832,6 +874,17 @@ class transaction:
                 details=self.validation)
 
     def __exit__(self, exc_type, exc, tb) -> bool:
+        try:
+            return self._salir(exc_type, exc, tb)
+        finally:
+            # Pase lo que pase -commit, rollback, rollback sucio- el turno
+            # se suelta. Un cerrojo que sobrevive a su transaccion deja el
+            # proyecto bloqueado hasta que muera el proceso.
+            if self._cerrojo is not None:
+                self._cerrojo.__exit__(None, None, None)
+                self._cerrojo = None
+
+    def _salir(self, exc_type, exc, tb) -> bool:
         if exc_type is None:
             try:
                 self._validar_informe()
