@@ -365,35 +365,57 @@ def test_un_lock_huerfano_no_congela_la_instalacion(tmp_path):
 
     p["lock"].write_text(json.dumps({"pid": _pid_muerto()}), encoding="utf-8")
     assert bootstrap.instalacion_en_curso(tmp_path) is False
-    assert bootstrap._tomar_lock(p) is True, "el lock huerfano debe poder robarse"
-    assert bootstrap.instalacion_en_curso(tmp_path) is True, (
-        "ahora lo tiene este proceso, que si esta vivo")
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as cerrojo:
+        assert cerrojo.adquirido is True, "el lock huerfano debe poder robarse"
+        assert bootstrap.instalacion_en_curso(tmp_path) is True, (
+            "ahora lo tiene este proceso, que si esta vivo")
+
+
+def test_el_cerrojo_del_ciclo_de_vida_vive_en_la_raiz(tmp_path):
+    """Un cerrojo dentro de la carpeta que la promocion renombra no protege nada.
+
+    Vivia en `<raiz>/<VERSION>/install.lock`, y esa es justo la carpeta que
+    `promover()` aparta con un `rename`. Dos instaladores concurrentes podian
+    estar cada uno en su cache creyendo que tenian el paso libre y colisionar
+    al promover sobre el mismo destino.
+    """
+    bootstrap = _bootstrap()
+    p = bootstrap.paths(tmp_path)
+    assert p["lock"].parent == p["root"], p["lock"]
+    assert p["lock"].parent != p["cache"]
 
 
 def test_un_lock_vacio_del_formato_anterior_tambien_se_recupera(tmp_path):
     """Las instalaciones ya bloqueadas por la 1.5.4 tienen que destrabarse."""
     bootstrap = _bootstrap()
     p = bootstrap.paths(tmp_path)
-    p["cache"].mkdir(parents=True)
+    p["root"].mkdir(parents=True, exist_ok=True)
     p["lock"].write_text("", encoding="utf-8")
-    assert bootstrap._lock_vivo(p["lock"]) is False
-    assert bootstrap._tomar_lock(p) is True
+    assert bootstrap._cerrojos.lock_vivo(p["lock"]) is False
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as cerrojo:
+        assert cerrojo.adquirido is True
 
 
 def test_un_instalador_vivo_conserva_su_lock(tmp_path):
     bootstrap = _bootstrap()
-    p = bootstrap.paths(tmp_path)
-    p["cache"].mkdir(parents=True)
-    assert bootstrap._tomar_lock(p) is True
-    assert bootstrap._tomar_lock(p) is False, "no puede haber dos instaladores"
+    with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as primero:
+        assert primero.adquirido is True
+        with bootstrap._cerrojos.CerrojoDeCicloDeVida(tmp_path) as segundo:
+            assert segundo.adquirido is False, "no puede haber dos instaladores"
 
 
 @pytest.mark.parametrize("donante", ["1.0.0", ""])
-def test_la_actualizacion_reutiliza_el_runtime_que_ya_esta_en_disco(tmp_path, donante):
-    """Subir de version no puede costar otra descarga de 1 GB.
+def test_la_actualizacion_copia_el_runtime_y_NO_destruye_el_anterior(tmp_path, donante):
+    """INSTALL-001, en una asercion: la siembra COPIA, no mueve.
 
-    Se prueban los dos donantes posibles: la cache de la version anterior y el
-    diseño viejo, que dejaba el runtime suelto en la raiz.
+    Subir de version no puede costar otra descarga de 1 GB, pero tampoco puede
+    costar el runtime que ya funcionaba. La version anterior de `_semilla`
+    hacia `shutil.move` del donante ANTES de validar nada: si pip o una descarga
+    fallaban despues, el estado quedaba en `failed` y N-1 ya no existia.
+
+    La linea que cambia de signo es la ultima: antes se exigia
+    `not viejo_python.exists()` -o sea, que el donante hubiera quedado
+    destripado- y ahora se exige justo lo contrario.
     """
     bootstrap = _bootstrap()
     p = bootstrap.paths(tmp_path)
@@ -405,10 +427,17 @@ def test_la_actualizacion_reutiliza_el_runtime_que_ya_esta_en_disco(tmp_path, do
     (origen / "libs").mkdir(parents=True)
     (origen / "libs" / "Microsoft.AnalysisServices.dll").write_text("x", encoding="utf-8")
 
-    assert bootstrap._semilla(p) == str(origen)
-    assert p["python"].is_file(), "el venv no se movio a la carpeta de la version"
-    assert (p["libs"] / "Microsoft.AnalysisServices.dll").is_file()
-    assert not viejo_python.exists()
+    staging = bootstrap._promocion.crear_staging(tmp_path, bootstrap.VERSION)
+    sp = bootstrap.paths(tmp_path, cache=staging)
+
+    assert bootstrap._semilla(staging, tmp_path, relativa) == str(origen)
+    assert sp["python"].is_file(), "el venv no se copio al staging"
+    assert (sp["libs"] / "Microsoft.AnalysisServices.dll").is_file()
+
+    assert viejo_python.is_file(), (
+        "la siembra destruyo el runtime anterior: si el resto de la "
+        "instalacion falla, no queda N-1 al que volver")
+    assert (origen / "libs" / "Microsoft.AnalysisServices.dll").is_file()
 
 
 def test_la_limpieza_borra_lo_huerfano_y_conserva_lo_del_usuario(tmp_path, monkeypatch):

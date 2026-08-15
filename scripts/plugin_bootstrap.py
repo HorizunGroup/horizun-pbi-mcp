@@ -19,6 +19,32 @@ from typing import Any
 VERSION = "1.5.5"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _cargar_modulo_del_paquete(nombre: str):
+    """Carga un modulo de `src/horizun_pbi_mcp/lifecycle/` POR RUTA.
+
+    No se hace `import horizun_pbi_mcp.lifecycle` a proposito. Este archivo
+    corre con el Python ANFITRION, antes de que exista el entorno aislado:
+    importar el paquete ejecutaria su `__init__` y con el sus dependencias, que
+    todavia no estan instaladas. Cargar el modulo suelto evita esa cadena.
+
+    El nucleo vive en el paquete y no aqui para que exista UNA implementacion:
+    la misma que usara la CLI empaquetada cuando alguien instale por `pip`.
+    """
+    import importlib.util
+
+    ruta = PLUGIN_ROOT / "src" / "horizun_pbi_mcp" / "lifecycle" / f"{nombre}.py"
+    spec = importlib.util.spec_from_file_location(f"_horizun_lifecycle_{nombre}", ruta)
+    if spec is None or spec.loader is None:            # pragma: no cover
+        raise ImportError(f"no se pudo cargar el nucleo de ciclo de vida: {ruta}")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+_promocion = _cargar_modulo_del_paquete("promotion")
+_cerrojos = _cargar_modulo_del_paquete("locking")
+
 #: Lo reconstruible: vive bajo `<raiz>/<VERSION>` y se descarga verificado por
 #: hash. Borrarlo cuesta una reinstalacion, nunca un dato del usuario.
 CACHE = ("runtime", "libs", "schemas", "validator")
@@ -47,9 +73,16 @@ def data_dir() -> Path:
     return (Path(base) / "HorizunPbiMcp" / "plugin").resolve()
 
 
-def paths(base: Path | None = None) -> dict[str, Path]:
+def paths(base: Path | None = None, cache: Path | None = None) -> dict[str, Path]:
+    """Rutas del ciclo de vida.
+
+    `cache` permite apuntar los componentes al STAGING mientras se construye,
+    sin mover el estado ni los datos del usuario: el status sigue escribiendose
+    en la ubicacion viva para que el lanzador vea el avance, y `outputs` y
+    `backups` cuelgan de la raiz y no se versionan nunca.
+    """
     root = base or data_dir()
-    cache = root / VERSION
+    cache = Path(cache) if cache is not None else root / VERSION
     runtime = cache / "runtime"
     py = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     return {
@@ -58,7 +91,9 @@ def paths(base: Path | None = None) -> dict[str, Path]:
         "runtime": runtime,
         "python": py,
         "status": cache / "install-status.json",
-        "lock": cache / "install.lock",
+        # En la RAIZ, no en la cache: un cerrojo dentro de la carpeta que la
+        # promocion renombra no protege la promocion.
+        "lock": root / _cerrojos.NOMBRE,
         "log": cache / "install.log",
         "libs": cache / "libs",
         "schemas": cache / "schemas" / "pbir",
@@ -122,82 +157,14 @@ def flags_sin_ventana() -> dict[str, Any]:
     return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
 
 
-def _proceso_vivo(pid: int) -> bool:
-    """¿Ese PID sigue existiendo? Solo biblioteca estandar.
 
-    En Windows `os.kill(pid, 0)` no pregunta nada: TERMINA el proceso. Aqui se
-    abre un handle de solo sincronizacion y se consulta si ya acabo.
-    """
-    if pid <= 0:
-        return False
-    if os.name != "nt":
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True                      # existe; es de otro usuario
-        return True
-
-    import ctypes
-
-    SYNCHRONIZE = 0x00100000
-    WAIT_TIMEOUT = 0x00000102
-    kernel32 = ctypes.windll.kernel32
-    handle = kernel32.OpenProcess(SYNCHRONIZE, False, int(pid))
-    if not handle:
-        return False
-    try:
-        return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
-    finally:
-        kernel32.CloseHandle(handle)
-
-
-def _lock_vivo(lock: Path) -> bool:
-    """¿Hay un instalador de verdad detras de este lock?
-
-    Un lock ilegible o sin PID no acredita a nadie: es el formato anterior, o
-    un archivo a medio escribir.
-    """
-    try:
-        pid = int(json.loads(lock.read_text(encoding="utf-8"))["pid"])
-    except (OSError, ValueError, TypeError, KeyError):
-        return False
-    return _proceso_vivo(pid)
-
-
-def _tomar_lock(p: dict[str, Path]) -> bool:
-    """Toma el lock de instalacion, robandolo si quedo huerfano.
-
-    Apagar el PC a mitad de la instalacion dejaba un `install.lock` sin dueño:
-    el instalador siguiente se rendia al verlo y el estado quedaba congelado en
-    `installing` PARA SIEMPRE, porque el lanzador solo reintenta cuando ve
-    `not_installed` o una version distinta. Ahora el lock dice quien lo tiene y
-    se comprueba que ese proceso siga vivo.
-    """
-    for ultimo_intento in (False, True):
-        try:
-            fd = os.open(p["lock"], os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            if ultimo_intento or _lock_vivo(p["lock"]):
-                return False
-            try:
-                p["lock"].unlink()
-            except OSError:
-                return False
-            continue
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump({"pid": os.getpid(), "started": time.time(),
-                       "version": VERSION}, fh)
-        return True
-    return False
 
 
 def instalacion_en_curso(base: Path | None = None,
                          status: dict[str, Any] | None = None) -> bool:
     """`installing` solo cuenta si hay alguien instalando de verdad."""
     p = paths(base)
-    if _lock_vivo(p["lock"]):
+    if _cerrojos.lock_vivo(p["lock"]):
         return True
     status = read_status(base) if status is None else status
     if status.get("state") != "installing":
@@ -218,38 +185,33 @@ def _versiones_en_disco(root: Path) -> list[Path]:
         hijos = list(root.iterdir())
     except OSError:
         return []
+    reservados = (_promocion.PREFIJO_STAGING, _promocion.PREFIJO_ANTERIOR)
     return [d for d in hijos
             if d.is_dir() and d.name not in fuera
+            and not d.name.startswith(reservados)
             and ((d / "install-status.json").is_file() or (d / "runtime").is_dir())]
 
 
-def _semilla(p: dict[str, Path]) -> str | None:
+def _semilla(destino_cache: Path, root: Path, nombre_py: Path) -> str | None:
     """Reaprovecha un runtime ya presente en disco antes de bajar 1 GB otra vez.
 
-    Cubre la version anterior (`<raiz>/1.5.4`) y el diseño viejo, que dejaba el
-    runtime suelto en la raiz. Todo lo que se mueve esta verificado por hash:
-    pip actualiza el paquete dentro del venv y los descargadores saltan lo que
-    ya coincide, asi que una actualizacion no vuelve a bajar las DLL de
-    Microsoft, los esquemas PBIR ni el validador npm.
+    **Copia. No mueve.** Ahi estaba INSTALL-001: la version anterior de esta
+    funcion hacia `shutil.move` de `runtime`, `libs`, `schemas` y `validator`
+    desde el donante ANTES de validar nada. Si un paso posterior fallaba -pip,
+    una descarga, la red-, el estado quedaba en `failed` y el runtime N-1 ya no
+    existia: se lo habia llevado la siembra. La persona se quedaba sin
+    instalacion anterior a la que volver.
+
+    Copiar cuesta espacio en disco mientras dura la actualizacion, y a cambio el
+    runtime anterior sigue entero y arrancable todo el tiempo. Si algo falla no
+    hay nada que restaurar, porque no se toco nada.
     """
-    nombre_py = p["python"].relative_to(p["runtime"])
-    candidatos = sorted(_versiones_en_disco(p["root"]),
+    candidatos = sorted(_versiones_en_disco(root),
                         key=lambda d: d.stat().st_mtime, reverse=True)
-    for donante in [*candidatos, p["root"]]:
-        if donante == p["cache"] or not (donante / "runtime" / nombre_py).is_file():
+    for donante in [*candidatos, root]:
+        if donante == destino_cache or not (donante / "runtime" / nombre_py).is_file():
             continue
-        p["cache"].mkdir(parents=True, exist_ok=True)
-        movidos = 0
-        for nombre in CACHE:
-            origen, destino = donante / nombre, p["cache"] / nombre
-            if not origen.exists() or destino.exists():
-                continue
-            try:
-                shutil.move(str(origen), str(destino))
-                movidos += 1
-            except OSError:
-                pass
-        if movidos:
+        if _promocion.semillar(destino_cache, donante, CACHE):
             return str(donante)
     return None
 
@@ -343,6 +305,7 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
         resto = p["root"] / nombre
         if resto.exists() and _borrar(resto):
             borrados.append(str(resto))
+    borrados += _promocion.limpiar(p["root"])
     for ajena in _carpetas_de_cliente():
         # Nunca una carpeta que contenga a la nuestra, ni al reves.
         if (ajena == p["root"] or p["root"].is_relative_to(ajena)
@@ -352,6 +315,86 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
         if _borrar(ajena):
             borrados.append(str(ajena))
     return borrados
+
+
+#: Version minima de Node que el validador PBIR oficial de Microsoft acepta.
+NODE_MINIMO = 20
+
+
+def version_de_node() -> tuple[int | None, str]:
+    """(mayor, crudo). `None` si no hay Node o no se le entiende la respuesta.
+
+    Preguntar la version es barato y no instala nada: `node --version` imprime
+    `v20.11.1` y termina. Lo que NO se hace es deducirla de que el ejecutable
+    exista, que era el defecto: `shutil.which("node")` dice que hay un Node,
+    no que sirva.
+    """
+    node = shutil.which("node")
+    if not node:
+        return None, ""
+    try:
+        salida = subprocess.run([node, "--version"], capture_output=True,
+                                text=True, timeout=30,
+                                **flags_sin_ventana()).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None, ""
+    crudo = salida.lstrip("vV")
+    try:
+        return int(crudo.split(".")[0]), salida
+    except (ValueError, IndexError):
+        return None, salida
+
+
+def preflight_validador(include_validator: bool) -> tuple[bool, str, str]:
+    """(se_puede, motivo, version). Decide ANTES de ejecutar nada.
+
+    INSTALL-002: el validador PBIR es OPCIONAL y su ausencia no puede tumbar la
+    instalacion. Antes se comprobaba solo que `node` y `npm` existieran, se
+    lanzaba la instalacion y, si Node era viejo, `_run` acababa lanzando y el
+    `except` general dejaba TODO en `failed` -sin runtime, sin DLL y sin
+    esquemas- por un componente que el producto declara prescindible.
+
+    Ahora se decide antes: si el preflight sabe que es incompatible, no se
+    ejecuta. Y el motivo se registra, que es lo que permite a `doctor` decir por
+    que falta en vez de dejar un hueco mudo.
+    """
+    if not include_validator:
+        return False, "not_requested", ""
+    mayor, crudo = version_de_node()
+    if mayor is None:
+        return False, "skipped_node_unavailable", crudo
+    if mayor < NODE_MINIMO:
+        return False, "skipped_node_too_old", crudo
+    if not shutil.which("npm"):
+        return False, "skipped_npm_unavailable", crudo
+    return True, "eligible", crudo
+
+
+def _instalar_validador(sp: dict[str, Path], env: dict[str, str],
+                        include_validator: bool, avisar) -> dict[str, Any]:
+    """Instala el validador opcional SIN poder tumbar la instalacion.
+
+    Solo `--require-validator` convierte un fallo aqui en fatal, y en ese caso
+    la excepcion sube como cualquier otra.
+    """
+    se_puede, motivo, version = preflight_validador(include_validator)
+    if not se_puede:
+        return {"state": motivo, "node": version}
+
+    avisar(state="installing", ready=False, step="report-validator",
+           message="Instalando el validador PBIR opcional.")
+    try:
+        _run([str(sp["python"]),
+              str(PLUGIN_ROOT / "scripts/fetch_report_validator.py"),
+              "--dest", str(sp["validator"])], env=env)
+    except Exception as exc:
+        if os.environ.get("HORIZUN_PBI_REQUIRE_VALIDATOR") == "1":
+            raise
+        # Un opcional que falla es un aviso, no una instalacion perdida. El
+        # motivo se guarda entero para que `doctor` no tenga que adivinarlo.
+        return {"state": "failed_optional", "node": version,
+                "error": f"{type(exc).__name__}: {exc}"}
+    return {"state": "installed", "node": version}
 
 
 def _run(command: list[str], *, env: dict[str, str], intentos: int = 3) -> None:
@@ -376,88 +419,121 @@ def _run(command: list[str], *, env: dict[str, str], intentos: int = 3) -> None:
 
 
 def install(base: Path | None = None, *, include_validator: bool = True) -> int:
+    """Prepara en un staging aparte, verifica, y solo entonces promueve.
+
+    El runtime vigente NO se toca en ningun momento de la preparacion. Si algo
+    falla -y falla a menudo: son descargas- el staging se descarta y lo que
+    habia sigue exactamente donde estaba, arrancable. Ese es INSTALL-001.
+    """
     p = paths(base)
-    p["cache"].mkdir(parents=True, exist_ok=True)
-    if not _tomar_lock(p):
-        _write_status(p, state="installing", ready=False,
-                      message="Ya hay una instalación en curso.")
-        return 0
+    root = p["root"]
+    root.mkdir(parents=True, exist_ok=True)
 
+    # Antes de nada: si una promocion quedo a medias (corte de luz entre los
+    # dos renombrados), se completa o se deshace mirando el disco.
     try:
-        if sys.version_info < (3, 10):
-            raise RuntimeError("Se requiere Python 3.10 o posterior.")
-        _write_status(p, state="installing", ready=False, step="python-runtime",
-                      message="Creando el entorno aislado.")
-        env = runtime_env(p)
-        if not p["python"].is_file():
-            heredado = _semilla(p)
-            if heredado:
-                _write_status(p, state="installing", ready=False,
-                              step="python-runtime", heredado_de=heredado,
-                              message=f"Reutilizando el runtime de {heredado}.")
-        if not p["python"].is_file():
-            # `venv.EnvBuilder(with_pip=True)` lanza ensurepip en un proceso
-            # aparte POR SU CUENTA y sin flags: esa era la ultima ventana que
-            # quedaba, y la unica que la persona veia titulada con la ruta del
-            # runtime. Creandolo nosotros, hereda la consola oculta.
-            _run([sys.executable, "-m", "venv", str(p["runtime"])],
-                 env=env, intentos=1)
-
-        _write_status(p, state="installing", ready=False, step="python-packages",
-                      message="Instalando el paquete abierto y sus dependencias.")
-        _run([str(p["python"]), "-m", "pip", "install", "--upgrade", "pip", "setuptools"], env=env)
-        _run([str(p["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
-
-        _write_status(p, state="installing", ready=False, step="analysis-services",
-                      message="Descargando y verificando las DLL de Microsoft.")
-        _run([str(p["python"]), str(PLUGIN_ROOT / "scripts/fetch_libs.py"),
-              "--dest", str(p["libs"])], env=env)
-
-        _write_status(p, state="installing", ready=False, step="pbir-schemas",
-                      message="Descargando y verificando los esquemas PBIR.")
-        _run([str(p["python"]), str(PLUGIN_ROOT / "scripts/fetch_pbir_schemas.py"),
-              "--dest", str(p["schemas"])], env=env)
-
-        validator = "not_requested"
-        if include_validator and shutil.which("node") and shutil.which("npm"):
-            _write_status(p, state="installing", ready=False, step="report-validator",
-                          message="Instalando el validador PBIR opcional.")
-            _run([str(p["python"]), str(PLUGIN_ROOT / "scripts/fetch_report_validator.py"),
-                  "--dest", str(p["validator"])], env=env)
-            validator = "installed"
-        elif include_validator:
-            validator = "skipped_node_unavailable"
-
-        for key in ("outputs", "backups"):
-            p[key].mkdir(parents=True, exist_ok=True)
-        _write_status(p, state="ready", ready=True, step="complete",
-                      python=str(p["python"]), validator=validator,
-                      limpiado=_limpiar_huerfanos(p),
-                      message="Runtime listo. Reinicia Codex o Claude.")
-        return 0
-    except Exception as exc:
-        _write_status(
-            p, state="failed", ready=False,
-            message=(f"{type(exc).__name__}: {exc}. Relanzar la instalacion "
-                     "REANUDA desde este paso: lo ya descargado esta "
-                     "verificado por hash y no se repite."))
+        recuperado = _promocion.recuperar(root)
+    except _promocion.PromocionError as exc:
+        _write_status(p, state="failed", ready=False,
+                      message=f"Promocion interrumpida sin recuperar: {exc}")
         return 1
-    finally:
+
+    with _cerrojos.CerrojoDeCicloDeVida(root, etiqueta="install") as cerrojo:
+        if not cerrojo.adquirido:
+            _write_status(p, state="installing", ready=False,
+                          message="Ya hay una instalación en curso.")
+            return 0
+
+        staging = None
         try:
-            p["lock"].unlink()
-        except FileNotFoundError:
-            pass
+            if sys.version_info < (3, 10):
+                raise RuntimeError("Se requiere Python 3.10 o posterior.")
+
+            staging = _promocion.crear_staging(root, VERSION)
+            sp = paths(root, cache=staging)
+            env = runtime_env(sp)
+            _write_status(p, state="installing", ready=False, step="python-runtime",
+                          staging=str(staging),
+                          message="Creando el entorno aislado (en preparación).")
+
+            nombre_py = p["python"].relative_to(p["runtime"])
+            if not sp["python"].is_file():
+                heredado = _semilla(staging, root, nombre_py)
+                if heredado:
+                    _write_status(p, state="installing", ready=False,
+                                  step="python-runtime", heredado_de=heredado,
+                                  message=f"Reutilizando el runtime de {heredado}.")
+            if not sp["python"].is_file():
+                # `venv.EnvBuilder(with_pip=True)` lanza ensurepip en un proceso
+                # aparte POR SU CUENTA y sin flags: esa era la ultima ventana que
+                # quedaba, y la unica que la persona veia titulada con la ruta del
+                # runtime. Creandolo nosotros, hereda la consola oculta.
+                _run([sys.executable, "-m", "venv", str(sp["runtime"])],
+                     env=env, intentos=1)
+
+            _write_status(p, state="installing", ready=False, step="python-packages",
+                          message="Instalando el paquete abierto y sus dependencias.")
+            _run([str(sp["python"]), "-m", "pip", "install", "--upgrade", "pip",
+                  "setuptools"], env=env)
+            _run([str(sp["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
+
+            _write_status(p, state="installing", ready=False, step="analysis-services",
+                          message="Descargando y verificando las DLL de Microsoft.")
+            _run([str(sp["python"]), str(PLUGIN_ROOT / "scripts/fetch_libs.py"),
+                  "--dest", str(sp["libs"])], env=env)
+
+            _write_status(p, state="installing", ready=False, step="pbir-schemas",
+                          message="Descargando y verificando los esquemas PBIR.")
+            _run([str(sp["python"]), str(PLUGIN_ROOT / "scripts/fetch_pbir_schemas.py"),
+                  "--dest", str(sp["schemas"])], env=env)
+
+            validator = _instalar_validador(sp, env, include_validator,
+                                            lambda **kw: _write_status(p, **kw))
+
+            _write_status(p, state="installing", ready=False, step="promotion",
+                          message="Publicando el runtime preparado.")
+            resultado = _promocion.promover(root, staging, p["cache"])
+            staging = None                      # ya no existe: se convirtio en destino
+
+            for key in ("outputs", "backups"):
+                p[key].mkdir(parents=True, exist_ok=True)
+            _write_status(p, state="ready", ready=True, step="complete",
+                          python=str(p["python"]), validator=validator,
+                          anterior_conservado=resultado["anterior"],
+                          recuperacion_previa=recuperado.get("accion"),
+                          limpiado=_limpiar_huerfanos(p),
+                          message="Runtime listo. Reinicia Codex o Claude.")
+            return 0
+
+        except Exception as exc:
+            # El vigente no se toco, asi que "rollback" es tirar el staging.
+            descartado = False
+            if staging is not None:
+                descartado = _borrar(staging)
+            anterior_utilizable = p["python"].is_file()
+            _write_status(
+                p, state="failed", ready=False, staging_descartado=descartado,
+                runtime_anterior_utilizable=anterior_utilizable,
+                message=(f"{type(exc).__name__}: {exc}. La instalación anterior "
+                         "NO se tocó: sigue utilizable. Relanzar REANUDA desde "
+                         "este paso; lo ya descargado está verificado por hash."))
+            return 1
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--no-validator", action="store_true")
+    parser.add_argument("--require-validator", action="store_true",
+                        help="convierte en fatal un fallo del validador "
+                             "opcional; por defecto solo avisa")
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args()
     if args.status:
         print(json.dumps(read_status(args.data_dir), indent=2, ensure_ascii=False))
         return 0
+    if args.require_validator:
+        os.environ["HORIZUN_PBI_REQUIRE_VALIDATOR"] = "1"
     return install(args.data_dir, include_validator=not args.no_validator)
 
 

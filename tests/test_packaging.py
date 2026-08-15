@@ -280,7 +280,10 @@ def test_el_wheel_lleva_el_manifiesto_de_esquemas(artefactos):
 
 def test_el_wheel_contiene_los_paquetes_existentes(artefactos):
     nombres = zipfile.ZipFile(artefactos["wheel"]).namelist()
-    for pkg in ("powerbi", "pbip", "tools", "utils"):
+    # `lifecycle` es el nucleo compartido del ciclo de vida. Si no viaja en el
+    # wheel, la CLI empaquetada no puede prepararse a si misma (INSTALL-005) y
+    # volveriamos a tener una implementacion en `scripts/` y otra en el paquete.
+    for pkg in ("powerbi", "pbip", "tools", "utils", "lifecycle"):
         assert any(n.startswith(f"horizun_pbi_mcp/{pkg}/") for n in nombres), (
             f"falta horizun_pbi_mcp/{pkg}/")
 
