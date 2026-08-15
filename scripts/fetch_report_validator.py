@@ -18,6 +18,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,9 @@ sys.path.insert(0, str(RAIZ_REPO / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from plugin_bootstrap import flags_sin_ventana  # noqa: E402
+
+# El ciclo de vida COMPARTIDO: la misma promocion que publica el runtime.
+from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
 
 PAQUETE = "@microsoft/powerbi-report-authoring-cli"
 VERSION = "0.1.4"
@@ -89,13 +93,72 @@ def verificar_tarball(ruta: Path) -> None:
             "No se instala nada.")
 
 
+def _cli_bajo(carpeta: Path) -> Path | None:
+    """El `cli.js` dentro de `carpeta`, con la MISMA forma que busca el servidor.
+
+    Se apunta `cli_dir()` a la carpeta y se pregunta a `report_validator`, en
+    vez de rehacer la ruta aqui: el dia que el paquete npm mueva su `dist/`,
+    una ruta duplicada en el instalador diria que todo fue bien mientras el
+    servidor no encuentra nada.
+    """
+    from horizun_pbi_mcp.services import report_validator as rv
+
+    previo_dir = os.environ.get("HORIZUN_PBI_MCP_REPORT_VALIDATOR_DIR")
+    previo_cli = os.environ.pop("HORIZUN_PBI_MCP_REPORT_VALIDATOR", None)
+    os.environ["HORIZUN_PBI_MCP_REPORT_VALIDATOR_DIR"] = str(carpeta)
+    try:
+        return rv.localizar()
+    finally:
+        if previo_dir is None:
+            os.environ.pop("HORIZUN_PBI_MCP_REPORT_VALIDATOR_DIR", None)
+        else:
+            os.environ["HORIZUN_PBI_MCP_REPORT_VALIDATOR_DIR"] = previo_dir
+        if previo_cli is not None:
+            os.environ["HORIZUN_PBI_MCP_REPORT_VALIDATOR"] = previo_cli
+
+
+def _verificar_preparado(staging: Path) -> tuple[Path, str]:
+    """Comprueba el CLI DENTRO del staging, antes de publicarlo."""
+    from horizun_pbi_mcp.services import report_validator as rv
+
+    cli = _cli_bajo(staging)
+    if cli is None:
+        raise InstalacionFallida(
+            f"npm termino sin error pero no aparece el CLI bajo {staging}. "
+            "No se publica nada.")
+    version = rv._version_cli(cli)             # noqa: SLF001
+    if version != VERSION:
+        raise InstalacionFallida(
+            f"El CLI preparado reporta {version!r} y se esperaba {VERSION!r}. "
+            "No se publica nada.")
+    return cli, version
+
+
 def instalar(destino: Path) -> dict:
+    """Prepara aparte, verifica y publica con un `rename` (INSTALL-006).
+
+    Antes esto ejecutaba `npm install --prefix <destino>` sobre el directorio
+    VIVO. `npm install` no es atomico: escribe cientos de archivos y, si algo
+    lo interrumpe -red, disco, un Ctrl-C-, deja el validador anterior mezclado
+    con medio validador nuevo. Un CLI a medias es peor que ninguno, porque
+    existe y arranca.
+
+    Ahora npm escribe en un directorio hermano, se comprueba que el CLI
+    preparado esta y dice la version que toca, y solo entonces se publica con
+    el ciclo de vida compartido -journal, `.previous-`, recuperacion-.
+    """
     comprobar_node()
     npm = shutil.which("npm")
     if not npm:
         raise InstalacionFallida("npm no esta en el PATH.")
 
+    destino = Path(destino)
+    raiz = destino.parent
+    raiz.mkdir(parents=True, exist_ok=True)
+    promotion.recuperar(raiz)
+
     tmp = Path(tempfile.mkdtemp(prefix="hz_validator_"))
+    staging = promotion.crear_staging(raiz, destino.name)
     try:
         r = _correr([npm, "pack", f"{PAQUETE}@{VERSION}"], cwd=str(tmp))
         if r.returncode != 0:
@@ -106,26 +169,23 @@ def instalar(destino: Path) -> dict:
 
         verificar_tarball(tarballs[0])          # ANTES de instalar nada
 
-        destino.mkdir(parents=True, exist_ok=True)
-        r = _correr([npm, "install", "--prefix", str(destino), "--no-audit",
+        r = _correr([npm, "install", "--prefix", str(staging), "--no-audit",
                      "--no-fund", "--ignore-scripts", str(tarballs[0])],
                     cwd=str(tmp))
         if r.returncode != 0:
             raise InstalacionFallida(f"`npm install` fallo: {r.stderr[-400:]}")
+
+        cli, version = _verificar_preparado(staging)
+        relativa = cli.relative_to(staging.resolve())
+        promotion.promover(raiz, staging, destino)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    from horizun_pbi_mcp.services import report_validator as rv
-
-    cli = rv.localizar()
-    if cli is None:
-        raise InstalacionFallida(
-            f"El paquete se instalo pero no aparece el CLI bajo {destino}.")
-    version = rv._version_cli(cli)             # noqa: SLF001
-    if version != VERSION:
-        raise InstalacionFallida(
-            f"El CLI instalado reporta {version!r} y se esperaba {VERSION!r}.")
-    return {"cli": str(cli), "version": version, "dir": str(destino)}
+    return {"cli": str(destino / relativa), "version": version,
+            "dir": str(destino)}
 
 
 def main() -> int:

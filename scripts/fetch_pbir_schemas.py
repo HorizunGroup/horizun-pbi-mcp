@@ -37,6 +37,13 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 RAIZ_REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ_REPO / "src"))
+
+# El ciclo de vida COMPARTIDO. Publicar esquemas es el mismo problema que
+# promover un runtime -preparar aparte, verificar, renombrar, poder
+# recuperarse- y resolverlo por segunda vez habria significado tener tambien
+# dos formas distintas de quedarse a medias.
+from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
 # Ruta bajo el paquete unico. La antigua (src/services/...) sobrevivio al
 # reempaquetado porque ningun test ejecuta este script: fallaba en el bootstrap
 # del plugin, en el paso de esquemas del CI y en la instruccion del README —
@@ -188,18 +195,73 @@ def construir_manifiesto() -> Dict:
 def cache_dir() -> Path:
     """La MISMA resolucion que services.pbir_schema, para no instalar donde el
     servidor no va a buscar."""
-    sys.path.insert(0, str(RAIZ_REPO / "src"))
     from horizun_pbi_mcp.services.pbir_schema import cache_dir as resolver
 
     return resolver()
 
 
-def instalar(manifiesto: Dict, destino: Path) -> Dict:
-    """Descarga, VERIFICA y luego instala. Si un hash no cuadra, no toca nada."""
-    esperado = {e["url"]: e for e in manifiesto["documents"]}
-    tmp = Path(tempfile.mkdtemp(prefix="pbir_schemas_"))
+def _verificar_preparado(staging: Path, manifiesto: Dict) -> None:
+    """Relee del DISCO todo lo preparado, antes de publicarlo.
+
+    Comprobar el hash de lo que se acaba de descargar demuestra que la descarga
+    llego entera; no demuestra que se haya ESCRITO entera. Un disco lleno, un
+    antivirus que se lleva un archivo a mitad o un corte de corriente dejan un
+    fichero corto sin que `write_bytes` se queje de nada. Releer cuesta unos
+    milisegundos y es la diferencia entre publicar un esquema truncado -que
+    despues hara fallar validaciones con un mensaje que no menciona la
+    instalacion- y no publicarlo.
+    """
+    for entrada in manifiesto["documents"]:
+        ruta = staging / entrada["file"]
+        if not ruta.is_file():
+            raise SchemaFetchError(
+                f"falta {entrada['file']} en lo preparado: no se publica nada")
+        crudo = ruta.read_bytes()
+        if len(crudo) != entrada["bytes"]:
+            raise SchemaFetchError(
+                f"{entrada['file']} se escribio con {len(crudo)} bytes y el "
+                f"manifiesto dice {entrada['bytes']}: no se publica nada")
+        if hashlib.sha256(crudo).hexdigest() != entrada["sha256"]:
+            raise SchemaFetchError(
+                f"{entrada['file']} no cuadra de hash tras escribirlo: no se "
+                "publica nada")
     try:
-        descargados = {}
+        json.loads((staging / "_manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SchemaFetchError(
+            f"el manifiesto preparado no se puede releer: {exc}") from exc
+
+
+def instalar(manifiesto: Dict, destino: Path) -> Dict:
+    """Prepara aparte, verifica entero y publica con un `rename` (INSTALL-006).
+
+    Antes esto descargaba a un temporal y luego copiaba archivo por archivo
+    ENCIMA del destino vivo. Dos defectos en esa forma. El primero: si la copia
+    se cortaba a la mitad -por lo que sea- quedaba una mezcla de esquemas
+    viejos y nuevos, que es un estado que nadie ha probado nunca y que no se
+    distingue a simple vista de uno bueno. El segundo: los archivos que dejaban
+    de estar en el manifiesto se quedaban ahi para siempre, porque copiar no
+    borra.
+
+    Ahora se prepara en un directorio HERMANO del destino -mismo volumen, para
+    que publicar sea un `rename` y no una copia-, se relee entero, y solo
+    entonces se publica. La publicacion usa el MISMO ciclo de vida que la
+    promocion del runtime: journal, `.previous-` y recuperacion. No hacia falta
+    una segunda forma de promover, y tener dos habria significado dos formas de
+    recuperarse a medias.
+    """
+    destino = Path(destino)
+    raiz = destino.parent
+    raiz.mkdir(parents=True, exist_ok=True)
+
+    # Si una publicacion anterior se corto entre los dos renombrados, se
+    # resuelve ANTES de preparar otra. Sin esto, la siguiente instalacion
+    # trabajaria sobre un estado que no sabe describir.
+    recuperado = promotion.recuperar(raiz)
+
+    esperado = {e["url"]: e for e in manifiesto["documents"]}
+    staging = promotion.crear_staging(raiz, destino.name)
+    try:
         for url, entrada in esperado.items():
             datos = descargar(url)
             real = hashlib.sha256(datos).hexdigest()
@@ -210,17 +272,21 @@ def instalar(manifiesto: Dict, destino: Path) -> Dict:
                     f"  obtenido: {real}\n"
                     "No se instala nada. Si el cambio es legitimo, revisa el "
                     "contenido y regenera el manifiesto con --update.")
-            (tmp / entrada["file"]).write_bytes(datos)
-            descargados[url] = entrada["file"]
+            (staging / entrada["file"]).write_bytes(datos)
 
-        destino.mkdir(parents=True, exist_ok=True)
-        for archivo in tmp.iterdir():
-            shutil.copy2(archivo, destino / archivo.name)
-        (destino / "_manifest.json").write_text(
+        (staging / "_manifest.json").write_text(
             json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
-        return {"installed": len(descargados), "dir": str(destino)}
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        _verificar_preparado(staging, manifiesto)
+        promotion.promover(raiz, staging, destino)
+    except BaseException:
+        # Tambien en KeyboardInterrupt: dejar el staging seria dejar basura con
+        # un prefijo que la limpieza del ciclo de vida reconoce, pero no hay
+        # motivo para esperar a que alguien pase por ahi.
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+    return {"installed": len(esperado), "dir": str(destino),
+            "recuperacion_previa": recuperado.get("accion")}
 
 
 def main() -> int:
