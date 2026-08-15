@@ -21,6 +21,16 @@ tag, sin publicación.**
 > [Tercera pasada](#tercera-pasada--2026-08-14). Sigue sin haber push, PR, tag
 > ni publicación.
 
+> **Cuarta pasada — 2026-08-14, misma rama.** Cinco commits sobre `85e3098`. La
+> tercera pasada quedó **sin ratificar**: la revisión independiente confirmó los
+> siete commits, el árbol limpio y las 137 pruebas focalizadas, y aun así
+> encontró huecos de corrección. Registra **INSTALL-012** (hallazgo nuevo, Alta,
+> cerrado) y su gate **G4.10**; hace que G3.3 se cumpla al pie de la letra;
+> serializa la publicación de componentes y acota su respaldo; y **corrige una
+> afirmación equivocada** de `01c2495` sobre el `Get-FileHash`. El detalle está
+> en [Cuarta pasada](#cuarta-pasada--2026-08-14). Sigue sin haber push, PR, tag
+> ni publicación.
+
 ## Los siete commits de código
 
 Historial lógico y bisectable: cada commit deja la suite en verde y, cuando
@@ -106,12 +116,13 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Parcialmente cerrada** — 2026-08-14. Los cinco caminos resuelven a referencia fija y el one-paste verifica el SHA-256 antes de ejecutar; falta descargar el asset de v1.5.5 y comprobar sus bytes, y esa release no existe |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** |
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Abierta** |
-| INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Esquemas y validador preparan en un hermano, se releen enteros y se publican con el ciclo de vida compartido; el destino se observa **en el instante de publicar** y sigue byte a byte como estaba. G4.2 cumplido; G4.3 amarillo porque `npm` está simulado |
+| INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Esquemas y validador preparan en un hermano, se releen enteros y se publican con el ciclo de vida compartido; el destino se observa **en el instante de publicar** y sigue byte a byte como estaba. G4.2 cumplido. **Cuarta pasada**: cada publicador toma el cerrojo de la raíz de su componente antes de recuperar, preparar, promover o limpiar —dos procesos de verdad lo demuestran— y el respaldo de cada publicación se recoge al terminar, así que deja de crecer con cada actualización. G4.3 sigue amarillo por una sola razón: `npm` está simulado |
 | INSTALL-007 | Reintento sin `--scope user` y `ExecutionPolicy` persistente | Media | G4.8 | **Abierta** |
 | INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Abierta** |
 | INSTALL-009 | Sin lock ni hashes, sin bundle offline ni runbook de proxy | Media | G4.6, G4.7 | **Abierta** |
-| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. El oráculo pasa de «100 tools cualesquiera con prefijo `pbi_`» a exigir el contrato: `serverInfo.name` exacto, versión igual a la preparada, `tools/list` bien formado y ninguna de las 134 ausente, contra un baseline **empaquetado en el wheel**. G3.3 amarillo (demostrado sobre runtimes de prueba); G3.1 exige VM limpia |
+| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. El oráculo pasa de «100 tools cualesquiera con prefijo `pbi_`» a exigir el contrato: `serverInfo.name` exacto, versión igual a la preparada, `tools/list` bien formado y ninguna de las 134 ausente, contra un baseline **empaquetado en el wheel**. **Cuarta pasada**: G3.3 pasa a cumplirse **literalmente** —tras corromper el activo, `state` vale `degraded` y no `ready`, que es lo que el gate pide y lo que la tercera pasada no hacía—. Sigue amarillo porque los runtimes que se corrompen son de prueba; G3.1 exige VM limpia |
 | INSTALL-011 | La recuperación confía rutas del journal y se ejecuta fuera del lock, permitiendo operaciones fuera del data root y carreras con una promoción | Alta | G4.9 | **Cerrada** — 2026-08-14, tercera pasada. Reproducido: un journal preparado a mano movió `root/.staging-demo` a una carpeta hermana de la raíz. El journal deja de ser autoridad sobre rutas —esquema 2, solo nombres de hijos directos, validados léxica y resueltamente— y el ciclo de vida entero pasa a ocurrir dentro del cerrojo |
+| INSTALL-012 | El launcher puede mezclar dos servidores MCP en el mismo stdout porque infiere ausencia de salida a partir de la duración del proceso | Alta | G4.10 | **Cerrada** — 2026-08-14, cuarta pasada. El umbral temporal desaparece: el handshake se hace en un proceso aparte con tuberías propias y solo se le entrega el stdio del cliente a un runtime ya verificado. Entregado el canal, no se arranca nada más sobre él |
 
 ## Release y supply chain
 
@@ -142,10 +153,10 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-31 entradas: **6 cerradas** (CONTRACT-001, CORE-001, CORE-002, INSTALL-011,
-TEST-001, TEST-004), **11 parcialmente cerradas** (CORE-003, INSTALL-001,
-INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010, RELEASE-001,
-RELEASE-002, RELEASE-003, CLI-001), **14 abiertas**.
+32 entradas: **7 cerradas** (CONTRACT-001, CORE-001, CORE-002, INSTALL-011,
+INSTALL-012, TEST-001, TEST-004), **11 parcialmente cerradas** (CORE-003,
+INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010,
+RELEASE-001, RELEASE-002, RELEASE-003, CLI-001), **14 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
@@ -154,10 +165,15 @@ el otro, o si el estado que declara esta matriz contradice el que declara
 `audits/AUDIT_2026-08-14.md`. Un conteo escrito de memoria envejece en la
 primera edición y nadie se entera.
 
-Al 2026-08-14, tras la tercera pasada. La cuenta anterior era 5 / 11 / 14 sobre
-30 entradas: entra **INSTALL-011** —hallazgo nuevo, cerrado en la misma pasada
-que lo encontró— y ninguna otra cambia de casilla, aunque tres mejoran su
-evidencia (INSTALL-001, INSTALL-006, INSTALL-010).
+Al 2026-08-14, tras la **cuarta** pasada. La cuenta anterior era 6 / 11 / 14
+sobre 31 entradas: entra **INSTALL-012** —hallazgo nuevo, cerrado en la misma
+pasada que lo encontró— y ninguna otra cambia de casilla.
+
+Dos pasadas seguidas han cerrado un hallazgo que **introdujo la pasada
+anterior** (INSTALL-011 lo trajo la remediación de INSTALL-001; INSTALL-012, la
+de INSTALL-011). No es casualidad ni mala suerte: es lo que pasa cuando se
+sustituye un mecanismo por otro más complejo, y es el argumento más fuerte a
+favor de que cada pasada la revise alguien que no la escribió.
 
 CORE-002 se cerró el 2026-08-14 tras destrabar TEST-004: captura live real con
 página explícita y fit-to-page, PNG producido, **14 archivos antes y 14 después
@@ -722,3 +738,78 @@ sí sola, reproduzca o no en esta máquina. Lo que cambia es lo que se puede
 afirmar — no «se arregló el fallo reportado», sino «se eliminó una dependencia
 ambiental de la única verificación del bloque, y ahora hay una prueba que lo
 fija».
+
+---
+
+## Cuarta pasada — 2026-08-14
+
+Misma rama, cuatro commits de código sobre `85e3098` más este de documentación.
+La tercera pasada **no quedó ratificada**: la revisión independiente confirmó
+los siete commits, el árbol limpio, las 137 pruebas focalizadas, `doctor` en 0 y
+el contrato en 0 — y aun así encontró cinco huecos de corrección. Ninguno de los
+hallazgos abiertos (INSTALL-004, -005, -007, -008, -009, CLI-001) se ha tocado.
+
+| Hash | Commit | Cierra |
+|---|---|---|
+| `ff86b10` | `fix(healthcheck): validate the complete stdout stream` | INSTALL-010 (evidencia) |
+| `b8daac2` | `fix(launcher): prevent mixed MCP fallback and invalidate broken runtimes` | INSTALL-012, G3.3 |
+| `bf92f14` | `fix(installer): serialize component publication and bound rollback data` | INSTALL-006 (concurrencia) |
+| `cbb6965` | `fix(bootstrap): make verified execution and failure reporting unambiguous` | INSTALL-003 (evidencia) |
+
+### El rojo de cada uno
+
+| Corrección | Rojo contra | Resultado |
+|---|---|---|
+| stdout hasta EOF | `85e3098` | 2 de 2 fallando |
+| Sin mezcla de servidores + G3.3 | `ff86b10` | **19 de 21** fallando |
+| Cerrojo y respaldo acotado | `b8daac2` | 5 de 8 fallando |
+| Mensajes veraces y ruta absoluta | `bf92f14` | 3 de 3 fallando |
+
+### INSTALL-012 — el hallazgo nuevo
+
+El lanzador ejecutaba el runtime activo heredándole el stdio del cliente y, si
+moría con código distinto de cero antes de `SEGUNDOS_DE_ARRANQUE = 20`,
+arrancaba N−1 **sobre esa misma conexión**. El comentario que lo justificaba
+decía «como no llegó a escribir nada por stdout, las tuberías del cliente siguen
+limpias».
+
+Eso no se medía en ninguna parte, y no se podía medir: el hijo escribe
+directamente en el stdout del cliente, así que el lanzador no ve un solo byte de
+lo que emite. **La duración de un proceso no dice nada sobre lo que alcanzó a
+emitir.** Un runtime que contesta `initialize` y se cae a los dos segundos
+dejaba al cliente con dos `serverInfo` y dos respuestas para el mismo `id` en el
+mismo canal. Un cliente MCP no tiene forma de detectar eso: se queda con la
+primera y sigue hablando con la segunda.
+
+La corrección es **preflight**: el handshake se hace en un proceso aparte, con
+tuberías propias, y solo se le entrega el stdio del cliente a un runtime que ya
+demostró que habla MCP. Entregado el canal, no se arranca nada más sobre él. De
+las dos arquitecturas admisibles se eligió esta sobre el proxy porque el proxy
+añade un salto de tuberías a cada mensaje durante toda la sesión, y aquí el
+coste es un arranque de servidor una vez.
+
+Es el mismo error de forma que INSTALL-010 y TEST-001: **deducir una propiedad a
+partir de una señal más estrecha de lo que aparenta.** Allí era «no lanzó
+excepción, luego arranca»; aquí, «duró poco, luego no escribió».
+
+### G3.3, que la tercera pasada no cumplía
+
+El gate dice: *corromper el runtime tras instalar y exigir `state != ready`*. La
+tercera pasada cambiaba `sirviendo` a last-known-good y dejaba `state` en
+`ready`, y una prueba propia lo afirmaba —`assert status["state"] == "ready"`—.
+El campo que un cliente mira para saber si esto funciona seguía diciendo que sí
+sobre un runtime que ya no arranca.
+
+Ahora `state` es el estado **operativo** y vale `degraded`; el resultado del
+último intento no se pierde, se muda a `estado_instalacion`. La degradación se
+descubre por dos caminos que se complementan: el estructural —falta el
+intérprete o los *entry points*— se deduce al leer, y el profundo —falta el
+paquete, el servidor muere a medias— lo descubre el preflight y se anota bajo el
+cerrojo del ciclo de vida.
+
+### Dos pasadas, dos hallazgos introducidos por la anterior
+
+INSTALL-011 lo trajo la remediación de INSTALL-001; INSTALL-012, la de
+INSTALL-011. No es mala suerte: es lo que pasa cuando se sustituye un mecanismo
+por otro más complejo, y es el argumento más fuerte a favor de que cada pasada
+la revise alguien que no la escribió.

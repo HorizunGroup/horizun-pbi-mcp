@@ -56,6 +56,34 @@ nothing published yet.**
   `ultimo_intento`), because *the upgrade failed* and *N−1 is still serving* are
   true at the same time and used to overwrite each other. The acceptance test
   drives the real launcher over stdio and counts what a client actually receives.
+- **The fallback could hand you two MCP servers on one connection.** The
+  launcher ran the active runtime with the client's stdio inherited and, if it
+  exited non-zero within 20 seconds, started N−1 on that same channel — on the
+  grounds that it "had not written anything yet". That was never measured and
+  could not be: the child writes straight to the client's stdout, so the
+  launcher sees none of it. A runtime that answers `initialize` and dies two
+  seconds later left the client with two `serverInfo` values and two answers for
+  the same `id`, which no MCP client can detect. The timing threshold is gone:
+  the handshake now happens in a separate process with its own pipes, and only a
+  runtime that has already proven it speaks MCP is given the client's stdio.
+  Once handed over, nothing else is started on that connection.
+- **`state` stayed `ready` after the runtime was corrupted.** Serving N−1 was
+  reflected in a different field, so the one a client reads to know whether this
+  works kept saying yes about a runtime that no longer starts. `state` is now the
+  *operational* state and reads `degraded`; the installer's own last result moved
+  to `estado_instalacion` rather than being overwritten. Structural damage
+  (missing interpreter or entry points) is derived on read; deeper damage
+  (missing package, a server that dies mid-handshake) is found by the preflight
+  and recorded under the lifecycle lock.
+- **Two processes could publish schemas or the validator at the same time.**
+  Both publishers called the recovery routine whose own docstring requires
+  holding the lifecycle lock, and neither held it — inside `install()` the data
+  root's lock covered them, but both are scripts meant to be run on their own.
+  Each now takes the lock of its own component root before recovering,
+  preparing, promoting or cleaning. The per-publication backup is also collected
+  once published, instead of accumulating one more copy on every update — which
+  for schemas meant they travelled from version to version, since seeding copies
+  the whole folder.
 - **The upgrade recovery trusted absolute paths written in a file.**
   `promotion.recuperar()` read `staging`, `destino` and `anterior` straight out
   of `.promotion.json`. That file lives in the data directory, so whoever can

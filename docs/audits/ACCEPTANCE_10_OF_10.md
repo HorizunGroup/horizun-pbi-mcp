@@ -87,7 +87,7 @@ código: este bloque es *pendiente de evidencia* mientras no haya corrida fechad
 
 ## G4 — Update con rollback y uninstall
 
-Cierra INSTALL-001, -006, -007, -008, -009, -011.
+Cierra INSTALL-001, -006, -007, -008, -009, -011, -012.
 
 | # | Gate | Cómo se decide | Cierra |
 |---|---|---|---|
@@ -100,8 +100,9 @@ Cierra INSTALL-001, -006, -007, -008, -009, -011.
 | G4.7 | Hay bundle offline y runbook de proxy, y funcionan | Instalación en VM sin salida directa a internet | INSTALL-009 |
 | G4.8 | No se cae fuera de user-scope en silencio | Si winget no puede user-scope, se anuncia y se pide consentimiento; `ExecutionPolicy` se declara y se documenta cómo revertir | INSTALL-007 |
 | G4.9 | La recuperación de una promoción nunca opera fuera del data root ni fuera del cerrojo | Journal preparado a mano con rutas hostiles —`..`, absolutas ajenas, UNC, flujos alternos, junction— y con otro proceso reteniendo el cerrojo: ninguna ruta de fuera se crea, mueve ni borra, y no se recupera mientras el cerrojo es de otro | INSTALL-011 |
+| G4.10 | **Cero mezcla de respuestas**: nunca dos servidores MCP en el mismo canal | Runtime activo que emite bytes y muere pronto —`initialize` y adiós, línea JSON a medias, stdout no-JSON, `tools/list` y adiós—. En la sesión del cliente: ni un `id` repetido, ni dos `serverInfo`, ni una línea que no sea JSON-RPC. **Decidido mirando el canal, nunca la duración del proceso** | INSTALL-012 |
 
-**Umbral: 9 de 9.**
+**Umbral: 10 de 10.**
 
 ---
 
@@ -185,21 +186,23 @@ Cierra TEST-001, DOC-001 … DOC-004.
 | G1 Seguridad funcional | 8 | 6 | 2 (live, multiproceso) |
 | G2 Contrato y payloads | 5 | 5 | 0 |
 | G3 Instalación limpia | 6 | 0 | 6 (VM limpia) |
-| G4 Update y uninstall | 9 | 2 | 7 (VM limpia) |
+| G4 Update y uninstall | 10 | 3 | 7 (VM limpia) |
 | G5 Desktop real | 6 | 0 | 6 (Desktop) |
 | G6 Supply chain | 5 | 3 | 2 (publicación real) |
 | G7 Controles GitHub | 6 | 1 | 5 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **53** | **25** | **28** |
+| **Total** | **54** | **26** | **28** |
 
-**10 de 10 = los 53 gates cumplidos, con evidencia fechada.**
+**10 de 10 = los 54 gates cumplidos, con evidencia fechada.**
 
-El total subió de 52 a 53 el 2026-08-14 con **G4.9**, que no existía porque
-tampoco existía el hallazgo que cubre (INSTALL-011). Los dos «ejecutables hoy»
-de G4 son G4.2 y G4.9: uno mueve archivos reales en un directorio temporal y el
-otro es lógica pura, así que ninguno necesita una máquina limpia.
+El total subió de 52 a 54 el 2026-08-14: **G4.9** (INSTALL-011) y **G4.10**
+(INSTALL-012), dos gates que no existían porque tampoco existían los hallazgos
+que cubren — los introdujo la propia remediación y los encontró la revisión
+independiente. Los tres «ejecutables hoy» de G4 son G4.2, G4.9 y G4.10: mueven
+archivos reales o hablan con procesos reales en directorios temporales, y
+ninguno necesita una máquina limpia.
 
-Veintiocho de los cincuenta y tres exigen una máquina limpia, un Desktop real,
+Veintiocho de los cincuenta y cuatro exigen una máquina limpia, un Desktop real,
 una publicación real o el remoto de GitHub. Esa proporción es el hallazgo de
 fondo de la auditoría: **el producto se ha estado midiendo casi entero por
 lectura de código**, y las tres formas de "verde sin oráculo" —INSTALL-010,
@@ -265,14 +268,35 @@ condición necesaria y no suficiente: la regla 4 pide el entorno real, y aquí n
 lo hay. Llamarlos verdes sería exactamente el defecto que esta auditoría
 persigue.
 
+### Cuarta pasada — lo que la revisión independiente encontró, el 2026-08-14
+
+Rama `codex/installer-lifecycle-hardening`, cinco commits sobre `85e3098`. La
+tercera pasada quedó **sin ratificar**: la revisión confirmó los siete commits y
+las 137 pruebas focalizadas, y aun así encontró huecos de corrección. Dos de
+ellos son hallazgos nuevos con gate propio.
+
+| Gate | Cómo se comprobó | Resultado |
+|---|---|---|
+| G4.10 | `tests/test_stdout_sin_mezclar.py`: cuatro formas de ensuciar el canal y morir, con el **lanzador real** y el canal auditado por `id` repetido, `serverInfo` distinto y líneas no-JSON | ✅ **2026-08-14** |
+| G4.3 | `tests/test_publicacion_concurrente.py`: dos procesos de verdad sobre el mismo destino, el primero parado en el hueco no atómico | 🟡 la concurrencia y el *rename* quedan cerrados; sigue faltando una corrida con `npm` real |
+| G3.3 | Cuatro corrupciones —sin intérprete, sin *entry point*, sin paquete, y un servidor que responde a medias— con `state` exigido distinto de `ready` | 🟡 el comportamiento local **sí cumple el gate literal**; lo que falta es la corrida sobre una instalación real, y eso es la VM |
+
+**G3.3 pasa a cumplirse localmente y sigue amarillo, y la diferencia importa.**
+La entrega anterior cambiaba `sirviendo` a last-known-good y dejaba `state` en
+`ready`; una prueba propia lo afirmaba, contradiciendo el gate palabra por
+palabra. Ahora `state` vale `degraded` tras cualquiera de las cuatro
+corrupciones. Amarillo, no verde, porque los runtimes que se corrompen son de
+prueba: el gate vive en el bloque G3, que es *pendiente de evidencia* completo
+hasta la VM.
+
 ### Cómputo actualizado
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **10** (G2.1, G4.2, G4.9, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Cumplidos con evidencia | **11** (G2.1, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
 | Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
 | Pendientes | **39** |
-| **Total** | **53** |
+| **Total** | **54** |
 
 Los treinta y nueve pendientes siguen siendo, en su mayoría, los que exigen una
 máquina limpia, un Desktop real, una publicación real o el remoto de GitHub —
