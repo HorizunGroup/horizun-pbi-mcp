@@ -38,7 +38,23 @@ from typing import Any
 #: no reconocemos no se toca ni para limpiar.
 PREFIJO_STAGING = ".staging-"
 PREFIJO_ANTERIOR = ".previous-"
+PREFIJO_CUARENTENA = ".promotion-rechazada-"
 JOURNAL = ".promotion.json"
+
+#: Version del formato del journal. Se comprueba al leer y se rechaza lo que no
+#: cuadre -viejo o del futuro-. Un journal que no sabemos interpretar no es una
+#: pista: es una razon para no tocar nada.
+#:
+#: 1 -> rutas ABSOLUTAS de staging/destino/anterior. Retirado por INSTALL-011:
+#:      un archivo en disco decidia a que ruta le hacia `os.rename` el
+#:      instalador, y se demostro moviendo una carpeta fuera de la raiz.
+#: 2 -> solo NOMBRES de hijos directos de la raiz, validados al leer.
+ESQUEMA_JOURNAL = 2
+
+#: Las unicas fases que pueden sobrevivir en disco. `completa` no esta: se
+#: escribe y se borra en el mismo suspiro, asi que encontrarla significa que
+#: alguien la puso a mano.
+FASES_RECUPERABLES = ("preparada", "anterior-apartado")
 
 #: Cuantas versiones anteriores se conservan. Una es el minimo que exige
 #: INSTALL-001: siempre tiene que quedar un N−1 al que volver.
@@ -49,12 +65,109 @@ class PromocionError(RuntimeError):
     """Algo impidio publicar el staging. El destino vigente sigue intacto."""
 
 
+class JournalInvalido(PromocionError):
+    """El journal no se puede interpretar. No se toca nada de lo que menciona."""
+
+
+def _es_nombre_simple(valor: Any) -> bool:
+    """¿Es UN componente de ruta, sin trucos?
+
+    Se comprueban los separadores de los DOS sistemas a proposito: en Windows
+    `/` tambien separa, y en POSIX `\\` es un caracter valido dentro de un
+    nombre, asi que mirar solo `os.sep` dejaria pasar precisamente el que no
+    corresponde a la maquina donde se escribio el journal. Los dos puntos van
+    aparte porque en Windows abren dos puertas distintas: la unidad (`C:`) y
+    los flujos de datos alternos (`archivo:oculto`).
+    """
+    if not isinstance(valor, str) or not valor or len(valor) > 255:
+        return False
+    if valor in (".", ".."):
+        return False
+    if "/" in valor or "\\" in valor or ":" in valor:
+        return False
+    if valor != valor.strip():
+        # NTFS recorta los espacios de los extremos al crear: el nombre que se
+        # valida y el que acaba en disco dejarian de ser el mismo.
+        return False
+    if os.path.isabs(valor) or os.path.splitdrive(valor)[0]:
+        return False
+    return True
+
+
+def _bajo_root(root: Path, nombre: Any, *, que: str) -> Path:
+    """`root/nombre`, comprobado LEXICA y RESUELTAMENTE como hijo directo.
+
+    Las dos comprobaciones hacen falta y ninguna sustituye a la otra. La lexica
+    rechaza `..`, separadores y rutas absolutas sin tocar el disco. La resuelta
+    rechaza lo que el disco puede estar escondiendo: `.staging-x` es un nombre
+    de hijo directo impecable y, si ademas es una junction, seguirlo saca la
+    operacion de la raiz sin que ningun `..` llegue a aparecer en el journal.
+    """
+    if not _es_nombre_simple(nombre):
+        raise JournalInvalido(f"{que}={nombre!r} no es el nombre de un hijo directo")
+    ruta = root / nombre
+    if ruta.is_symlink():
+        raise JournalInvalido(f"{que}={nombre!r} es un enlace: no se sigue")
+    try:
+        real, raiz_real = ruta.resolve(), root.resolve()
+    except OSError as exc:                                  # pragma: no cover
+        raise JournalInvalido(f"no se pudo resolver {que}={nombre!r}: {exc}") from exc
+    if real.parent != raiz_real:
+        raise JournalInvalido(
+            f"{que}={nombre!r} se resuelve fuera de {raiz_real}: {real}")
+    return ruta
+
+
+def _interpretar_journal(root: Path, datos: dict[str, Any]) -> dict[str, Any]:
+    """Traduce el journal a rutas CONTENIDAS, o lanza sin haber tocado nada."""
+    if datos.get("esquema") != ESQUEMA_JOURNAL:
+        raise JournalInvalido(
+            f"esquema {datos.get('esquema')!r}; este binario entiende "
+            f"{ESQUEMA_JOURNAL}")
+    fase = datos.get("fase")
+    if fase not in FASES_RECUPERABLES:
+        raise JournalInvalido(f"fase {fase!r} no recuperable")
+
+    destino = _bajo_root(root, datos.get("destino"), que="destino")
+    if destino.name.startswith((PREFIJO_STAGING, PREFIJO_ANTERIOR)):
+        raise JournalInvalido(
+            f"destino={destino.name!r} lleva un prefijo reservado")
+
+    staging = _bajo_root(root, datos.get("staging"), que="staging")
+    if not staging.name.startswith(PREFIJO_STAGING):
+        raise JournalInvalido(f"staging={staging.name!r} sin el prefijo {PREFIJO_STAGING!r}")
+
+    anterior = None
+    if datos.get("anterior") is not None:
+        anterior = _bajo_root(root, datos["anterior"], que="anterior")
+        if not anterior.name.startswith(PREFIJO_ANTERIOR):
+            raise JournalInvalido(
+                f"anterior={anterior.name!r} sin el prefijo {PREFIJO_ANTERIOR!r}")
+
+    return {"fase": fase, "destino": destino, "staging": staging,
+            "anterior": anterior}
+
+
 def _leer_journal(root: Path) -> dict[str, Any] | None:
     try:
         datos = json.loads((root / JOURNAL).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return datos if isinstance(datos, dict) else None
+
+
+def _poner_en_cuarentena(root: Path) -> str | None:
+    """Aparta el journal ilegible SIN salir de la raiz.
+
+    Borrarlo destruiria la unica pista de lo que paso; dejarlo donde esta hace
+    que el siguiente arranque lo vuelva a leer y a rechazar. Se aparta.
+    """
+    apartado = root / f"{PREFIJO_CUARENTENA}{uuid.uuid4().hex[:12]}.json"
+    try:
+        os.replace(root / JOURNAL, apartado)
+    except OSError:                                          # pragma: no cover
+        return None
+    return str(apartado)
 
 
 def _escribir_journal(root: Path, **valores: Any) -> None:
@@ -138,10 +251,25 @@ def promover(root: Path, staging: Path, destino: Path) -> dict[str, Any]:
     """
     if not staging.is_dir():
         raise PromocionError(f"el staging {staging} no existe")
+    # El journal solo guarda NOMBRES, asi que las dos rutas tienen que ser
+    # hijas directas de la raiz o no habria nada que anotar. Comprobarlo aqui
+    # convierte un error de programacion en un fallo inmediato y legible, en
+    # vez de en un journal que la recuperacion rechazara mucho despues.
+    for etiqueta, ruta in (("staging", staging), ("destino", destino)):
+        if ruta.parent != root:
+            raise PromocionError(
+                f"el {etiqueta} {ruta} no cuelga de {root}: la promocion solo "
+                "publica dentro del directorio de datos")
 
-    anterior = root / f"{PREFIJO_ANTERIOR}{destino.name}-{int(time.time())}"
-    _escribir_journal(root, fase="preparada", staging=str(staging),
-                      destino=str(destino), anterior=str(anterior), ts=time.time())
+    # UUID ademas del segundo: dos promociones dentro del mismo segundo
+    # producian el MISMO nombre. En Windows el segundo `os.rename` fallaba y
+    # tumbaba la actualizacion; en POSIX habria sobrescrito el N−1 anterior,
+    # que es peor porque no se nota.
+    anterior = (root / f"{PREFIJO_ANTERIOR}{destino.name}-{int(time.time())}"
+                f"-{uuid.uuid4().hex[:12]}")
+    _escribir_journal(root, esquema=ESQUEMA_JOURNAL, fase="preparada",
+                      staging=staging.name, destino=destino.name,
+                      anterior=anterior.name, ts=time.time())
 
     apartado = None
     if destino.exists():
@@ -153,9 +281,9 @@ def promover(root: Path, staging: Path, destino: Path) -> dict[str, Any]:
                 f"no se pudo apartar el runtime vigente ({exc}). No se toco "
                 "nada: la instalacion anterior sigue en su sitio.") from exc
         apartado = anterior
-        _escribir_journal(root, fase="anterior-apartado", staging=str(staging),
-                          destino=str(destino), anterior=str(anterior),
-                          ts=time.time())
+        _escribir_journal(root, esquema=ESQUEMA_JOURNAL, fase="anterior-apartado",
+                          staging=staging.name, destino=destino.name,
+                          anterior=anterior.name, ts=time.time())
 
     try:
         os.rename(staging, destino)
@@ -176,8 +304,9 @@ def promover(root: Path, staging: Path, destino: Path) -> dict[str, Any]:
             f"no se pudo publicar el staging ({exc}). El runtime anterior "
             "quedo restaurado y sigue siendo utilizable.") from exc
 
-    _escribir_journal(root, fase="completa", destino=str(destino),
-                      anterior=str(anterior) if apartado else None, ts=time.time())
+    _escribir_journal(root, esquema=ESQUEMA_JOURNAL, fase="completa",
+                      destino=destino.name,
+                      anterior=anterior.name if apartado else None, ts=time.time())
     _borrar_journal(root)
     return {"destino": str(destino),
             "anterior": str(apartado) if apartado else None}
@@ -188,19 +317,42 @@ def recuperar(root: Path) -> dict[str, Any]:
 
     La fase del journal es una pista: el propio journal se escribe con una
     operacion que tambien puede cortarse. Lo que decide es que existe.
+
+    INSTALL-011 — el journal dejo de ser autoridad sobre RUTAS. Antes se sacaban
+    `staging`, `destino` y `anterior` como rutas absolutas y se usaban tal cual,
+    de modo que un archivo del directorio de datos decidia a que carpeta le
+    hacia `os.rename` un proceso que normalmente arranca solo, sin nadie
+    delante. Se demostro moviendo una carpeta a una hermana de la raiz. Ahora el
+    journal guarda solo NOMBRES y aqui se reconstruyen bajo la raiz y se validan.
+
+    **Quien llama tiene que tener el cerrojo del ciclo de vida.** Esto renombra
+    el runtime vigente; hacerlo fuera del cerrojo era la otra mitad del defecto.
     """
-    diario = _leer_journal(root)
-    if diario is None:
+    root = Path(root)
+    crudo = _leer_journal(root)
+    if crudo is None:
+        if (root / JOURNAL).exists():
+            # Existe pero no es un objeto JSON legible: tampoco se adivina.
+            return {"accion": "journal-invalido",
+                    "motivo": "el journal no es un objeto JSON legible",
+                    "cuarentena": _poner_en_cuarentena(root)}
         return {"accion": "ninguna"}
 
-    destino = Path(diario.get("destino", ""))
-    anterior = Path(diario.get("anterior") or "")
-    staging = Path(diario.get("staging") or "")
+    try:
+        plan = _interpretar_journal(root, crudo)
+    except JournalInvalido as exc:
+        # No se toca NADA de lo que menciona: si no se puede interpretar, no se
+        # sabe que significan sus rutas. La evidencia se aparta dentro de la
+        # raiz para que se pueda diagnosticar y no se relea en cada arranque.
+        return {"accion": "journal-invalido", "motivo": str(exc),
+                "cuarentena": _poner_en_cuarentena(root)}
+
+    destino, staging, anterior = plan["destino"], plan["staging"], plan["anterior"]
 
     if destino.exists():
         # El renombrado final llego a ocurrir (o nunca se aparto nada). No hay
         # nada roto; solo sobra el rastro y, quiza, un staging a medias.
-        if staging.name.startswith(PREFIJO_STAGING) and staging.is_dir():
+        if staging.is_dir():
             _borrar_arbol(staging)
         _borrar_journal(root)
         return {"accion": "completada", "destino": str(destino)}
@@ -214,7 +366,7 @@ def recuperar(root: Path) -> dict[str, Any]:
             _borrar_journal(root)
             return {"accion": "reintentada", "destino": str(destino)}
 
-    if anterior.name.startswith(PREFIJO_ANTERIOR) and anterior.is_dir():
+    if anterior is not None and anterior.is_dir():
         try:
             os.rename(anterior, destino)
         except OSError as exc:
@@ -246,7 +398,8 @@ def restaurar_anterior(root: Path, destino: Path) -> Path | None:
         return None
     elegido = candidatos[0]
     if destino.exists():
-        caido = root / f"{PREFIJO_ANTERIOR}fallido-{destino.name}-{int(time.time())}"
+        caido = (root / f"{PREFIJO_ANTERIOR}fallido-{destino.name}-"
+                 f"{int(time.time())}-{uuid.uuid4().hex[:12]}")
         try:
             os.rename(destino, caido)
         except OSError:

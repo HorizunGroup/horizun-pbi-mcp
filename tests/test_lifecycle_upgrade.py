@@ -209,9 +209,12 @@ def test_una_promocion_interrumpida_entre_los_dos_renombrados_se_recupera(
     # Se reproduce el corte: el vigente ya se aparto, el nuevo aun no se puso.
     apartado = raiz / f"{prom.PREFIJO_ANTERIOR}{destino.name}-1"
     os.rename(destino, apartado)
+    # Journal en el formato vigente: NOMBRES de hijos de la raiz, no rutas
+    # absolutas. Ver INSTALL-011 en tests/test_lifecycle_containment.py.
     (raiz / prom.JOURNAL).write_text(json.dumps(
-        {"fase": "anterior-apartado", "staging": str(staging),
-         "destino": str(destino), "anterior": str(apartado)}), encoding="utf-8")
+        {"esquema": prom.ESQUEMA_JOURNAL, "fase": "anterior-apartado",
+         "staging": staging.name, "destino": destino.name,
+         "anterior": apartado.name}), encoding="utf-8")
     assert not destino.exists()
 
     accion = prom.recuperar(raiz)
@@ -231,8 +234,9 @@ def test_si_el_staging_se_perdio_la_recuperacion_devuelve_el_anterior(
     apartado = raiz / f"{prom.PREFIJO_ANTERIOR}{destino.name}-1"
     os.rename(destino, apartado)
     (raiz / prom.JOURNAL).write_text(json.dumps(
-        {"fase": "anterior-apartado", "staging": str(raiz / ".staging-perdido"),
-         "destino": str(destino), "anterior": str(apartado)}), encoding="utf-8")
+        {"esquema": prom.ESQUEMA_JOURNAL, "fase": "anterior-apartado",
+         "staging": ".staging-perdido", "destino": destino.name,
+         "anterior": apartado.name}), encoding="utf-8")
 
     accion = prom.recuperar(raiz)
 

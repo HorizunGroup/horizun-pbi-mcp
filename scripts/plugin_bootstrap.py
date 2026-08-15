@@ -452,20 +452,29 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
     root = p["root"]
     root.mkdir(parents=True, exist_ok=True)
 
-    # Antes de nada: si una promocion quedo a medias (corte de luz entre los
-    # dos renombrados), se completa o se deshace mirando el disco.
-    try:
-        recuperado = _promocion.recuperar(root)
-    except _promocion.PromocionError as exc:
-        _write_status(p, state="failed", ready=False,
-                      message=f"Promocion interrumpida sin recuperar: {exc}")
-        return 1
-
     with _cerrojos.CerrojoDeCicloDeVida(root, etiqueta="install") as cerrojo:
         if not cerrojo.adquirido:
-            _write_status(p, state="installing", ready=False,
-                          message="Ya hay una instalación en curso.")
+            # INSTALL-011, punto 6. Antes se escribia aqui un status
+            # `installing` con el mensaje "Ya hay una instalación en curso", y
+            # ese mensaje PISABA el del instalador que si tiene el cerrojo:
+            # borraba su `step`, su avance y su `staging`. El que no pudo
+            # entrar no sabe nada que el dueño no sepa mejor, asi que no
+            # escribe. `read_status()` devuelve el estado real del dueño, que es
+            # justo lo que quiere ver quien pregunte.
             return 0
+
+        # INSTALL-011. Esto va DENTRO del cerrojo, y el orden no es un detalle:
+        # `recuperar()` renombra el runtime vigente. Hacerlo antes de adquirir
+        # el cerrojo -que es lo que se hacia- ponia precisamente la operacion
+        # mas destructiva del ciclo de vida fuera de la exclusion mutua, donde
+        # podia solaparse con la promocion de otro instalador sobre las mismas
+        # carpetas.
+        try:
+            recuperado = _promocion.recuperar(root)
+        except _promocion.PromocionError as exc:
+            _write_status(p, state="failed", ready=False,
+                          message=f"Promocion interrumpida sin recuperar: {exc}")
+            return 1
 
         staging = None
         try:
@@ -540,6 +549,12 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                                      "version": salud.get("version")},
                           anterior_conservado=resultado["anterior"],
                           recuperacion_previa=recuperado.get("accion"),
+                          # Un journal rechazado no impide instalar -no se toco
+                          # nada de lo que decia-, pero tiene que verse: es la
+                          # unica senal de que algo escribio ahi un journal que
+                          # este binario no reconoce.
+                          recuperacion_motivo=recuperado.get("motivo"),
+                          recuperacion_cuarentena=recuperado.get("cuarentena"),
                           limpiado=_limpiar_huerfanos(p),
                           message="Runtime listo. Reinicia Codex o Claude.")
             return 0
