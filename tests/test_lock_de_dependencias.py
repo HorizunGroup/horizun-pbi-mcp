@@ -98,10 +98,18 @@ def test_un_lock_solo_se_genera_en_SU_PROPIO_interprete(generar):
     niega en cuanto ve una dependencia sin fijar. Aqui se exige que el
     generador se niegue antes, en vez de producir la garantia falsa.
     """
+    # Una version que NO sea la que corre, sea cual sea. Fijar "3.10" aqui
+    # hacia que la prueba se probara a si misma en el runner de 3.10: pedirle
+    # su propio lock, que es justo lo que SI debe hacer.
+    mio = generar.version_en_curso()
+    otra = "3.11" if mio != "3.11" else "3.12"
+
     with pytest.raises(SystemExit) as exc:
-        generar.resolver("3.10", "win_amd64")
+        generar.resolver(otra, "win_amd64")
     assert "su propio interprete" in str(exc.value).lower()
     assert "marcadores" in str(exc.value)
+    assert mio in str(exc.value) and otra in str(exc.value), (
+        "el mensaje tiene que decir cual es el suyo y cual se le pidio")
 
 
 def test_las_versiones_sin_lock_estan_declaradas(generar):
