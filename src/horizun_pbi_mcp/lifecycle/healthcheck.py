@@ -97,21 +97,67 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
     )
-    entrada = "".join(json.dumps(p) + "\n" for p in peticiones)
+    # NO se usa `communicate()`, y el motivo lo encontro un ensayo real: cierra
+    # stdin en cuanto termina de escribir, y el bucle stdio del servidor puede
+    # ver el EOF y apagarse ANTES de procesar la ultima peticion. El sintoma es
+    # un `initialize` correcto seguido de un `tools/list` sin respuesta, sobre un
+    # runtime que momentos antes servia 134 tools.
+    #
+    # Eso no es un fallo cosmetico: seria un FALSO NEGATIVO, y un falso negativo
+    # aqui rechaza un runtime bueno y tumba una instalacion que iba bien. Peor
+    # que el defecto original, que al menos fallaba hacia el lado optimista.
+    #
+    # Se arregla sincronizando por EVENTO -leer hasta ver la respuesta que se
+    # espera- y no ampliando el plazo. El plazo sigue existiendo, pero ahora
+    # acusa a lo que tiene que acusar: un servidor que de verdad no contesta.
+    import threading
 
+    lineas: list[str] = []
+    visto_el_final = threading.Event()
+
+    def _leer() -> None:
+        for linea in proc.stdout:
+            if linea.strip():
+                lineas.append(linea)
+                try:
+                    if json.loads(linea).get("id") == 2:
+                        visto_el_final.set()
+                        return
+                except ValueError:
+                    visto_el_final.set()          # stdout sucio: no hay mas que ver
+                    return
+
+    lector = threading.Thread(target=_leer, daemon=True)
+    lector.start()
     try:
-        salida, errores = proc.communicate(entrada, timeout=timeout)
+        for peticion in peticiones:
+            proc.stdin.write(json.dumps(peticion) + "\n")
+            proc.stdin.flush()
+    except OSError:
+        pass                                       # murio al arrancar; se ve abajo
+
+    respondio = visto_el_final.wait(timeout)
+    errores = ""
+    try:
+        proc.stdin.close()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
         proc.kill()
-        proc.communicate()
-        resultado.update(fase="timeout",
-                         error=f"el runtime no respondio en {timeout}s")
-        return resultado
-    finally:
-        if proc.poll() is None:                                # pragma: no cover
-            proc.kill()
+    try:
+        errores = proc.stderr.read() or ""
+    except (OSError, ValueError):                  # pragma: no cover
+        errores = ""
 
-    lineas = [l for l in (salida or "").splitlines() if l.strip()]
+    if not respondio and not lineas:
+        resultado.update(fase="timeout",
+                         error=f"el runtime no respondio en {timeout}s",
+                         stderr=errores[-1500:])
+        return resultado
+
+    lineas = [l for l in lineas if l.strip()]
     if not lineas:
         resultado.update(
             fase="sin-respuesta",
