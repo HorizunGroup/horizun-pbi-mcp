@@ -303,9 +303,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **30** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Cumplidos con evidencia | **31** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.2, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
 | Parciales | **7** (G3.3, G4.1, G4.3, G4.6, G4.7, G5.6, G6.4) |
-| Pendientes | **17** — de los cuales **1 es trabajo local** (G2.2), 1 espera ratificación (G1.5) y 15 son externos |
+| Pendientes | **16** — **ninguno es trabajo local**: 1 espera ratificación (G1.5) y 15 son externos |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
@@ -316,7 +316,7 @@ hasta la VM.
 | G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
 | G1.1 · G1.2 · G1.3 | Evidencia **live** fechada el 2026-08-14 en [`AUDIT_2026-08-14.md`](AUDIT_2026-08-14.md): `test_live_la_ventana_real_delata_un_pbip_sin_handles` para G1.1, y las 13 de `tests/test_capture_atomicity.py` para G1.2 y G1.3 | ✅ — **no eran gates nuevos: el cómputo estaba incompleto.** Se detectó cruzando la matriz con esta tabla y se resolvió leyendo la evidencia, no dándola por buena |
 | G2.5 | CONTRACT-001 ratificada y registrada; **CONTRACT-003** repite el mecanismo en vivo: tres cambios incompatibles que CORE-004 pedía se registraron en vez de aplicarse. `python -m tests.contract_utils` falla ante una diferencia incompatible | ✅ **2026-08-15** |
-| G2.2 | `tests/test_contrato_de_payload.py` —seis mutaciones y tres compatibles— sobre un golden de **91 muestras / 53 tools**, capturadas por `call_tool` en dos escenarios; y `docs/COBERTURA_PAYLOADS.md`, que da la dependencia medida de cada exclusión | ⛔ **pendiente-local** — de 2 a 53 tools, y la excusa cae: solo **14** dependen de un modelo vivo; **77** solo necesitan argumentos válidos |
+| G2.2 | `tests/test_contrato_de_payload.py` —seis mutaciones y tres compatibles— sobre un golden de **174 muestras / 134 tools**, capturadas por `call_tool` en tres escenarios, con red y procesos **prohibidos** en el tercero | ✅ **2026-08-15** — de 2 tools a **134**: 44 con payload de éxito y 90 de error de dominio. Cero exclusiones sin dependencia medida |
 | G2.3 · G2.4 | `docs/INVENTARIO_TOOLS.md`, generado por `python -m tests.inventario_tools`, y `tests/test_inventario_tools.py`: las 134 ejecutadas por `call_tool` contra su caso negativo, con el recuento sacado de las llamadas **observadas** | ✅ **2026-08-15** — 134/134 ejecutadas, **cero declaradas**: 114 rechazadas en validación, 11 con sobre `ok: false` y código, 1 con el adaptador roto, 8 sin modo de fallo verificadas |
 | G4.6 | `tests/test_lock_de_dependencias.py`: 34 pruebas sobre la **matriz** de locks, la selección exacta y el fallback; más dos venv limpios instalados desde el lock y `pip freeze` comparado | 🟡 **2026-08-15** — matriz `win_amd64 × {3.10, 3.13, 3.14}`, verificada de verdad en las tres (CI corre 3.10 y 3.13). Fuera de la matriz cae al resolutor y **declara que no es reproducible**; falta un runner no-Windows |
 | G4.7 | `tests/test_bundle_offline.py`: 23 pruebas sobre formato, manifiesto hasheado aparte, manipulación de un byte, límites de tamaño, promoción atómica y **instalación con `socket` prohibido**; más un bundle real instalado con `pip --no-index` | 🟡 **2026-08-15** — el bundle existe y sirve: 134 tools desde el wheelhouse sin índice. Falta la VM realmente desconectada |

@@ -16,6 +16,7 @@ dispara con cada añadido es una red que alguien acabará desactivando.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -154,12 +155,9 @@ def test_el_alcance_esta_declarado():
                        .read_text(encoding="utf-8"))
     assert "COBERTURA_PAYLOADS.md" in crudo["note"], (
         "el golden no dice donde esta la cobertura tool por tool")
-    assert crudo["tools_cubiertas"] >= 50, (
-        f"el golden cubre {crudo['tools_cubiertas']} tools publicas: si vuelve "
-        "a bajar de ahi, el muestreo dejo de recorrer las 134")
-    assert crudo["tools_cubiertas"] < 134, (
-        "si estuvieran las 134 congeladas, el documento de cobertura tendria "
-        "que decirlo y G2.2 podria cerrarse")
+    assert crudo["tools_cubiertas"] == 134, (
+        f"el golden cubre {crudo['tools_cubiertas']} tools de 134. G2.2 se "
+        "cerro con las 134 congeladas: si baja, vuelve a estar abierto")
 
 
 def test_la_cobertura_publicada_coincide_con_el_recorrido():
@@ -192,21 +190,96 @@ def test_toda_exclusion_tiene_una_dependencia_medida():
     assert not mudas, f"pendientes sin dependencia declarada: {mudas}"
 
 
-def test_lo_que_bloquea_a_la_mayoria_no_es_desktop():
-    """El hallazgo, fijado para que nadie lo vuelva a suponer.
+def test_ninguna_tool_se_queda_sin_llamada_valida_escrita():
+    """El cierre de G2.2, y la puerta para que no se vuelva a abrir.
 
-    De las 81 sin payload de exito, la inmensa mayoria solo necesita
-    argumentos: eso es trabajo, no un impedimento externo. Solo un punado
-    depende de un modelo vivo, y esas si son TEST-003.
+    El hallazgo era que **77 tools** no tenian payload congelado solo porque
+    nadie les habia escrito una llamada valida, y eso se estaba contando como
+    si lo impidiera Power BI Desktop. Ya no queda ninguna: cada una tiene su
+    entrada en `tests/payload_argumentos.py`.
+
+    Una tool nueva sin llamada valida vuelve a encender esto, que es justo
+    cuando hay que escribirsela y no seis meses despues.
     """
     from tests.payload_muestras import recorrer
 
     resumen = recorrer()[1]
-    argumentos = sum(1 for d in resumen.values()
-                     if (d["bloqueo"] or "").startswith("requiere-argumentos"))
-    modelo = sum(1 for d in resumen.values()
-                 if (d["bloqueo"] or "").startswith("modelo-vivo"))
-    assert argumentos > modelo, (
-        f"{argumentos} bloqueadas por argumentos y {modelo} por modelo vivo: si "
-        "esto se invierte, la excusa «necesita Desktop» pasa a ser cierta y hay "
-        "que revisar el reparto")
+    sin_llamada = sorted(
+        n for n, d in resumen.items()
+        if (d["bloqueo"] or "").startswith("requiere-argumentos"))
+    assert not sin_llamada, (
+        f"sin llamada valida escrita: {sin_llamada}. Anadela a "
+        "tests/payload_argumentos.py; «requiere argumentos» no es un "
+        "impedimento externo, es trabajo")
+
+
+def test_las_134_tienen_payload_congelado():
+    """G2.2 literal: 134 de 134, y ninguna exclusion."""
+    from tests.payload_muestras import recorrer
+
+    resumen = recorrer()[1]
+    pendientes = sorted(n for n, d in resumen.items()
+                        if d["estado"] == "pendiente")
+    assert not pendientes, f"sin payload congelado: {pendientes}"
+    assert len(resumen) == 134
+
+
+def test_las_dependencias_que_quedan_son_del_ENTORNO_y_estan_medidas():
+    """Lo que sigue sin poder congelarse es el payload de EXITO de algunas.
+
+    Y esa exclusion ya no se supone: durante la pasada con argumentos la red y
+    los procesos estan PROHIBIDOS, asi que una tool que necesite el entorno
+    tropieza con la prohibicion y queda registrada con su motivo. Lo que no
+    puede haber es una dependencia declarada sin medir.
+    """
+    from tests.payload_muestras import recorrer
+
+    resumen = recorrer()[1]
+    modelo = [n for n, d in resumen.items()
+              if (d["bloqueo"] or "").startswith("modelo-vivo")]
+    assert modelo, (
+        "ninguna tool declara depender de un modelo vivo: o el muestreo dejo de "
+        "ejecutarlas, o alguien las tiene abiertas en Desktop")
+    for n, d in resumen.items():
+        if d["estado"] != "exito-congelado":
+            assert d["bloqueo"], f"{n} no dice por que no tiene payload de exito"
+
+
+#: Tres de las que entraron con la ampliación a 134: una de informe, una de
+#: modelo y una de error de dominio. Si la red solo mordiera sobre las dos
+#: originales, congelar 174 muestras no habría servido de nada.
+NUEVAS = ("pbi_list_visuals.con-argumentos",
+          "pbi_get_object.con-argumentos",
+          "pbi_run_dax.con-argumentos")
+
+
+@pytest.mark.parametrize("clave", NUEVAS)
+def test_quitar_una_clave_de_una_tool_NUEVA_tambien_rompe(clave):
+    """La red tiene que morder igual en las 134, no solo en las dos de siempre.
+
+    Se muta la respuesta de HOY —no el golden—: quitarle una clave a lo que la
+    tool devuelve es lo que rompe a un cliente. Al revés sería el caso
+    contrario, el de una clave añadida, que es compatible a propósito.
+    """
+    congelado = pc.cargar()
+    assert clave in congelado, (
+        f"{clave} no está en el golden: el muestreo dejó de cubrirla")
+
+    hoy = copy.deepcopy(congelado)
+    quitada = next(iter(hoy[clave]))
+    del hoy[clave][quitada]
+
+    d = pc.diferencias(congelado, hoy)
+    assert d["breaking"], (
+        f"quitarle `{quitada}` a {clave} no rompe: esa muestra no está atada")
+    assert any(quitada in linea for linea in d["breaking"])
+
+
+def test_una_tool_que_deja_de_contestar_rompe_aunque_sea_nueva():
+    """Perder una muestra entera es la forma más silenciosa de romper."""
+    congelado = pc.cargar()
+    hoy = copy.deepcopy(congelado)
+    del hoy[NUEVAS[0]]
+
+    d = pc.diferencias(congelado, hoy)
+    assert d["breaking"], f"perder {NUEVAS[0]} entera no rompe nada"

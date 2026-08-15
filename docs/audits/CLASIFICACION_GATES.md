@@ -46,7 +46,7 @@ solo gate, **no se puede decir «100% local»**.
 | G1.7 | cumplido | redacción verificada sobre el formateador real |
 | G1.8 | cumplido | cerrojo de proyecto, dos procesos de verdad |
 | G2.1 | cumplido | `python -m tests.contract_utils` sale 0 |
-| G2.2 | pendiente-local | de **2 tools de 134** a **53**, y medido: solo **14** dependen de un modelo vivo. Las **77** restantes solo necesitan argumentos válidos, que es trabajo (ver `docs/COBERTURA_PAYLOADS.md`) |
+| G2.2 | cumplido | **134 de 134** con payload congelado: 44 de éxito y 90 de error de dominio, 174 muestras capturadas por `call_tool`. Cero exclusiones sin dependencia medida (ver `docs/COBERTURA_PAYLOADS.md`) |
 | G2.3 | cumplido | `docs/INVENTARIO_TOOLS.md` generado; 134/134 ejecutadas por `call_tool` |
 | G2.4 | cumplido | 134 casos negativos, cero excepciones declaradas |
 | G2.5 | cumplido | CONTRACT-001 ratificada; CONTRACT-003 repite el mecanismo |
@@ -96,17 +96,18 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **30** |
+| cumplido | **31** |
 | parcial | **7** |
-| pendiente-local | **1** |
+| pendiente-local | **0** |
 | pendiente-ratificacion | **1** |
 | pendiente-externo | **15** |
 | **Total** | **54** |
 
-**Trabajo local pendiente: G2.2.** Mientras siga aquí, la frase honesta no es
-«100% local»: es el porcentaje y la lista.
+**Trabajo local pendiente: ninguno.** Los 23 gates que no están cumplidos
+esperan **un entorno o una firma**, no más trabajo en esta máquina: 7 parciales
+con el mecanismo ya demostrado aquí, 15 externos puros y 1 —G1.5— pendiente de
+que alguien ratifique [`CONTRACT_003_RATIFICATION.md`](CONTRACT_003_RATIFICATION.md).
 
-Lo que le falta a G2.2 está medido y es acotado: **77 tools** cuyo payload no se
-puede capturar sin escribirles una llamada válida, una por una. No es un
-impedimento externo —solo 14 dependen de un modelo vivo— sino trabajo de
-volumen.
+Esa frase solo se puede escribir porque `pendiente-local` está vacío, y hay una
+prueba que la ata: si algún gate vuelve a esa categoría, exige que las cuentas
+lo nombren.

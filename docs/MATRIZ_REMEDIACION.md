@@ -94,7 +94,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Autorizado por | Fecha | Estado |
 |---|---|---|---|---|
 | CONTRACT-001 | Cambios compatibles de contrato MCP (4 path opcionales, 7 parámetros nuevos, 5 descripciones, golden, guarda de ampliaciones) | Pablo — ratificación explícita | 2026-08-14 | **Cerrada — ratificada y verificada** |
-| CONTRACT-002 | El golden congela solo el envelope `{result}`: una extensión del payload es invisible para la red de seguridad del contrato | Hallazgo derivado de CONTRACT-001 | 2026-08-15 | **Parcialmente cerrada** — quinta pasada. `tests/golden/payloads_v1.json` congela la **forma** del payload —claves y tipos, nunca valores— y `tests/payload_contract.py` distingue lo que rompe (retirar, renombrar, cambiar de tipo) de lo que no (añadir). Seis mutaciones lo demuestran, incluida una clave **anidada**, que es justo lo que el `output_shape` declarado no podía ver. **Ampliada el 2026-08-15**: el muestreo pasa por `call_tool` —antes llamaba a las funciones registradas— y recorre **las 134 en dos escenarios deterministas**, así que el golden pasa de 2 tools a **53** (24 con payload de éxito, 29 solo de error). Y sobre todo, cada exclusión trae ahora su **dependencia medida** en `docs/COBERTURA_PAYLOADS.md`: «el resto necesita Desktop» era falso —solo **14** dependen de un modelo vivo; **77** solo necesitan argumentos válidos, que es trabajo—. **Sigue parcial** hasta que esas 77 estén cubiertas |
+| CONTRACT-002 | El golden congela solo el envelope `{result}`: una extensión del payload es invisible para la red de seguridad del contrato | Hallazgo derivado de CONTRACT-001 | 2026-08-15 | **Cerrada** — quinta pasada. `tests/golden/payloads_v1.json` congela la **forma** del payload —claves y tipos, nunca valores— y `tests/payload_contract.py` distingue lo que rompe (retirar, renombrar, cambiar de tipo) de lo que no (añadir). Seis mutaciones lo demuestran, incluida una clave **anidada**, que es justo lo que el `output_shape` declarado no podía ver. **Ampliada el 2026-08-15**: el muestreo pasa por `call_tool` —antes llamaba a las funciones registradas— y recorre **las 134 en dos escenarios deterministas**, así que el golden pasa de 2 tools a **53** (24 con payload de éxito, 29 solo de error). Y sobre todo, cada exclusión trae ahora su **dependencia medida** en `docs/COBERTURA_PAYLOADS.md`: «el resto necesita Desktop» era falso —solo **14** dependen de un modelo vivo; **77** solo necesitan argumentos válidos, que es trabajo—. **Cerrada del todo el 2026-08-15**: `tests/payload_argumentos.py` trae una llamada válida por tool, cada una sobre una **copia fresca** del proyecto sintético —muchas escriben, y compartiendo proyecto el resultado dependería del orden—, y con la red y los procesos **prohibidos**, que es lo que convierte «necesita Desktop» de suposición en medición. **134 de 134 con payload congelado**: 44 de éxito, 90 de error de dominio, 174 muestras. Cero exclusiones sin dependencia medida |
 | CONTRACT-003 | Tres cambios de riesgo que CORE-004 pide y que rompen el contrato: `confirm` exigido en `pbi_refresh_model` y `pbi_open_and_refresh`; `pbi_apply_plan` de `confirm=True` a `False`; y `readOnlyHint` retirado de `pbi_open_pbip_project` / `pbi_select_model` | Pendiente de ratificación — derivado de CORE-004(a)(b)(c) | 2026-08-15 | **Abierta — dossier preparado, no aplicado**. [`docs/audits/CONTRACT_003_RATIFICATION.md`](audits/CONTRACT_003_RATIFICATION.md) trae, por cambio: contrato actual y propuesto, diff de schema y anotaciones, a quién puede romper, el peligro de dejarlo como está, la alternativa compatible cuando la hay, el plan de deprecación, la versión semántica recomendada y las pruebas que se activarían. El contrato **no se ha tocado**: `python -m tests.contract_utils` sale 0 |
 
 ## Seguridad funcional
@@ -162,17 +162,17 @@ prueba que exige que sumen 54 y que ningún otro documento los contradiga.
 
 Existe porque durante un tiempo hubo dos cuentas incomparables —«30 cumplidos, 5
 parciales, 19 pendientes» y «22 externos»— y entre las dos se podía afirmar «no
-queda trabajo local» sin que nada lo desmintiera. **Hoy quedan tres gates con
-trabajo local: G2.2, G4.6 y G4.7.**
+queda trabajo local» sin que nada lo desmintiera. **Hoy no queda ningun gate con trabajo
+local**: lo que falta espera un entorno o una firma.
 
 ## Cuentas
 
-33 entradas: **18 cerradas**
-(CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
-DOC-002, DOC-003, DOC-004, INSTALL-005, INSTALL-007, INSTALL-008,
+33 entradas: **19 cerradas**
+(CONTRACT-001, CONTRACT-002, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006,
+DOC-001, DOC-002, DOC-003, DOC-004, INSTALL-005, INSTALL-007, INSTALL-008,
 INSTALL-011, INSTALL-012, TEST-001, TEST-002, TEST-004),
-**13 parcialmente cerradas**
-(CONTRACT-002, CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004,
+**12 parcialmente cerradas**
+(CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004,
 INSTALL-006, INSTALL-009, INSTALL-010, RELEASE-001, RELEASE-002,
 RELEASE-003, CLI-001),
 **2 abiertas**.
