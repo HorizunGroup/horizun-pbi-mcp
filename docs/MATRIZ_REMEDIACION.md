@@ -102,9 +102,9 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 |---|---|---|---|---|
 | CORE-001 | Detección falsa de proyecto cerrado (`project_state` ignora el título de ventana que `desktop_launcher` sí usa) | Crítica | G1.1 | **Cerrada** — 2026-08-14, con evidencia live |
 | CORE-002 | Traversal sin `ensure_within_base` y escritura sin transacción en `desktop_capture` | Crítica | G1.2, G1.3 | **Cerrada** — 2026-08-14, con captura live e igualdad byte a byte |
-| CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Parcialmente cerrada** |
+| CORE-003 | Tras el timeout, el hilo daemon sigue en `SaveChanges` y `safe_to_retry` sale `true` | Alta | G1.4 | **Cerrada** — 2026-08-15, quinta pasada. `safe_to_retry` es `False` cuando `cancel_confirmed` es `false`, y la regla se aplica al HECHO y no a un código concreto: cualquier salida que declare `cancel_confirmed: false` afirma que algo sigue corriendo. Un `refresh_timeout` sin `details` tampoco acredita: hace falta un `true` explícito |
 | CORE-004 | Anotaciones y confirmaciones que no describen el efecto (4 sub-hallazgos) | Alta | G1.5, G1.6 | **Abierta** |
-| CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Abierta** |
+| CORE-005 | `msg` y `exc` entran al log sin pasar por `redact()` | Alta | G1.7 | **Cerrada** — 2026-08-15, quinta pasada. Los dos campos pasan por `redact()`. Hizo falta además ampliar la redacción: reconocía cadenas que SON una ruta y no frases que CONTIENEN una, que es el caso del texto de una excepción; y `_redact_path` conservaba dos segmentos, justo donde vive el nombre del cliente |
 | CORE-006 | Sin cerrojo interproceso en `txn`/`planning` (el mecanismo existe en `idempotency`) | Alta | G1.8 | **Abierta** |
 
 ## Instalación y ciclo de vida
@@ -153,10 +153,13 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-32 entradas: **7 cerradas** (CONTRACT-001, CORE-001, CORE-002, INSTALL-011,
-INSTALL-012, TEST-001, TEST-004), **11 parcialmente cerradas** (CORE-003,
-INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010,
-RELEASE-001, RELEASE-002, RELEASE-003, CLI-001), **14 abiertas**.
+32 entradas: **9 cerradas**
+(CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, INSTALL-011,
+INSTALL-012, TEST-001, TEST-004),
+**10 parcialmente cerradas**
+(INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010,
+RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
+**13 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
@@ -165,9 +168,10 @@ el otro, o si el estado que declara esta matriz contradice el que declara
 `audits/AUDIT_2026-08-14.md`. Un conteo escrito de memoria envejece en la
 primera edición y nadie se entera.
 
-Al 2026-08-14, tras la **cuarta** pasada. La cuenta anterior era 6 / 11 / 14
-sobre 31 entradas: entra **INSTALL-012** —hallazgo nuevo, cerrado en la misma
-pasada que lo encontró— y ninguna otra cambia de casilla.
+Al 2026-08-15, tras la **quinta** pasada. La cuenta anterior era 7 / 11 / 14:
+cierran **CORE-003** (venía de parcial) y **CORE-005** (venía de abierta), las
+dos con regresión roja contra el commit anterior y sin depender de ninguna
+máquina limpia.
 
 Dos pasadas seguidas han cerrado un hallazgo que **introdujo la pasada
 anterior** (INSTALL-011 lo trajo la remediación de INSTALL-001; INSTALL-012, la

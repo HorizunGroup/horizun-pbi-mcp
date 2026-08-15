@@ -199,9 +199,12 @@ def test_las_listas_de_cerradas_y_parciales_son_las_filas_de_verdad():
     bloque = (MATRIZ.read_text(encoding="utf-8")
               .split("## Cuentas", 1)[1].split("##", 1)[0])
 
-    for etiqueta, patron in (("cerrada", r"\*\*\d+ cerradas\*\* \(([^)]+)\)"),
+    # `\s+` y no un espacio: el parrafo se reajusta de linea cada vez que la
+    # lista crece, y una prueba que exija un ancho concreto acaba dictando como
+    # se escribe el documento en vez de comprobar lo que dice.
+    for etiqueta, patron in (("cerrada", r"\*\*\d+ cerradas\*\*\s*\(([^)]+)\)"),
                              ("parcialmente cerrada",
-                              r"\*\*\d+ parcialmente cerradas\*\* \(([^)]+)\)")):
+                              r"\*\*\d+ parcialmente cerradas\*\*\s*\(([^)]+)\)")):
         citados = set(re.findall(ID, re.search(patron, bloque).group(1)))
         reales = {i for i, e in estados.items() if e == etiqueta}
         assert citados == reales, (

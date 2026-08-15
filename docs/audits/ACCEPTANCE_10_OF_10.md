@@ -293,10 +293,20 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **11** (G2.1, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Cumplidos con evidencia | **13** (G1.4, G1.7, G2.1, G4.2, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
 | Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
-| Pendientes | **39** |
+| Pendientes | **37** |
 | **Total** | **54** |
+
+### Quinta pasada — seguridad del core, el 2026-08-15
+
+| Gate | Cómo se comprobó | Resultado |
+|---|---|---|
+| G1.4 | `tests/test_core_seguridad_operativa.py`: la combinación `cancel_confirmed: false` + `safe_to_retry: true` pasa a ser inexpresable, y un `refresh_timeout` sin `details` tampoco se da por seguro | ✅ **2026-08-15** |
+| G1.7 | Un log con una ruta de cliente y un token conocidos, emitido por el formateador real: ninguno aparece literal en `msg` ni en `exc`, y el evento sigue siendo JSON de una línea | ✅ **2026-08-15** |
+
+Los dos son ejecutables sin máquina limpia, sin Desktop y sin remoto, que es por
+lo que se eligieron primero: cerraban entero, no a medias.
 
 Los treinta y nueve pendientes siguen siendo, en su mayoría, los que exigen una
 máquina limpia, un Desktop real, una publicación real o el remoto de GitHub —
