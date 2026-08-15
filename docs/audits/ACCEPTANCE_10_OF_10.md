@@ -87,7 +87,7 @@ código: este bloque es *pendiente de evidencia* mientras no haya corrida fechad
 
 ## G4 — Update con rollback y uninstall
 
-Cierra INSTALL-001, -006, -007, -008, -009.
+Cierra INSTALL-001, -006, -007, -008, -009, -011.
 
 | # | Gate | Cómo se decide | Cierra |
 |---|---|---|---|
@@ -99,8 +99,9 @@ Cierra INSTALL-001, -006, -007, -008, -009.
 | G4.6 | Dos instalaciones consecutivas dan las mismas versiones | Comparar el conjunto resuelto; exige lock y hashes | INSTALL-009 |
 | G4.7 | Hay bundle offline y runbook de proxy, y funcionan | Instalación en VM sin salida directa a internet | INSTALL-009 |
 | G4.8 | No se cae fuera de user-scope en silencio | Si winget no puede user-scope, se anuncia y se pide consentimiento; `ExecutionPolicy` se declara y se documenta cómo revertir | INSTALL-007 |
+| G4.9 | La recuperación de una promoción nunca opera fuera del data root ni fuera del cerrojo | Journal preparado a mano con rutas hostiles —`..`, absolutas ajenas, UNC, flujos alternos, junction— y con otro proceso reteniendo el cerrojo: ninguna ruta de fuera se crea, mueve ni borra, y no se recupera mientras el cerrojo es de otro | INSTALL-011 |
 
-**Umbral: 8 de 8.**
+**Umbral: 9 de 9.**
 
 ---
 
@@ -184,16 +185,21 @@ Cierra TEST-001, DOC-001 … DOC-004.
 | G1 Seguridad funcional | 8 | 6 | 2 (live, multiproceso) |
 | G2 Contrato y payloads | 5 | 5 | 0 |
 | G3 Instalación limpia | 6 | 0 | 6 (VM limpia) |
-| G4 Update y uninstall | 8 | 0 | 8 (VM limpia) |
+| G4 Update y uninstall | 9 | 2 | 7 (VM limpia) |
 | G5 Desktop real | 6 | 0 | 6 (Desktop) |
 | G6 Supply chain | 5 | 3 | 2 (publicación real) |
 | G7 Controles GitHub | 6 | 1 | 5 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **52** | **23** | **29** |
+| **Total** | **53** | **25** | **28** |
 
-**10 de 10 = los 52 gates cumplidos, con evidencia fechada.**
+**10 de 10 = los 53 gates cumplidos, con evidencia fechada.**
 
-Veintinueve de los cincuenta y dos exigen una máquina limpia, un Desktop real,
+El total subió de 52 a 53 el 2026-08-14 con **G4.9**, que no existía porque
+tampoco existía el hallazgo que cubre (INSTALL-011). Los dos «ejecutables hoy»
+de G4 son G4.2 y G4.9: uno mueve archivos reales en un directorio temporal y el
+otro es lógica pura, así que ninguno necesita una máquina limpia.
+
+Veintiocho de los cincuenta y tres exigen una máquina limpia, un Desktop real,
 una publicación real o el remoto de GitHub. Esa proporción es el hallazgo de
 fondo de la auditoría: **el producto se ha estado midiendo casi entero por
 lectura de código**, y las tres formas de "verde sin oráculo" —INSTALL-010,
@@ -236,17 +242,39 @@ existe**: la URL que ese bloque descargaría hoy devuelve 404. La lógica está
 cumplida; la evidencia de punta a punta, no. Bajo la regla 4, eso no es un gate
 cumplido.
 
+### Tercera pasada — el bloque de ciclo de vida, el 2026-08-14
+
+Rama `codex/installer-lifecycle-hardening`, cinco commits sobre `9290a7d`.
+Aquí sí se mueve el total: **G4.9 es nuevo**, porque el hallazgo que cubre
+—INSTALL-011— tampoco existía cuando se escribieron los gates.
+
+| Gate | Cómo se comprobó | Resultado |
+|---|---|---|
+| G4.9 | 35 pruebas en `tests/test_lifecycle_containment.py`: journal hostil con `..`, absolutas ajenas, UNC, flujos alternos y junction; cerrojo en manos de un proceso vivo ajeno | ✅ **2026-08-14** — 34 de las 35 fallan contra el commit anterior |
+| G4.2 | `tests/test_publicacion_atomica.py`, con el destino observado **en el instante de publicar** | ✅ **2026-08-14** — publicación por *rename*; ninguna copia sobre el destino vivo |
+| G4.1 | `tests/test_launcher_fallback.py`, fallo inyectado en pip, DLL, esquemas, handshake y promoción; el **lanzador real** contesta `tools/list` por stdio | 🟡 el mecanismo está demostrado de punta a punta con un runtime que arranca de verdad, pero es un runtime de prueba: falta la misma corrida sobre una instalación real, y eso es la VM |
+| G4.3 | Mismas pruebas, con `npm` simulado: `--prefix` apunta al staging y nunca al destino vivo | 🟡 la forma está demostrada; falta una corrida con `npm` real |
+| G3.3 | Runtime promovido y después corrompido —sin intérprete, sin *entry points*, y uno que revienta al arrancar— | 🟡 el lanzador deja de anunciarlo y sirve N−1, pero sobre runtimes de prueba: la corrida sobre una instalación real es la VM |
+
+**Por qué tres de los cinco son amarillos y no verdes.** En los tres el
+mecanismo se ejerce entero —el lanzador real, hablando MCP por stdio, entrega
+las 134 tools de la versión anterior— pero el runtime que se sirve es un venv
+de prueba con un servidor mínimo, no la instalación de 1 GB con pythonnet, las
+DLL de Analysis Services y los esquemas. Que el mecanismo funcione es
+condición necesaria y no suficiente: la regla 4 pide el entorno real, y aquí no
+lo hay. Llamarlos verdes sería exactamente el defecto que esta auditoría
+persigue.
+
 ### Cómputo actualizado
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **8** (G2.1, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
-| Parciales | **1** (G6.4) |
-| Pendientes | **43** |
-| **Total** | **52** |
+| Cumplidos con evidencia | **10** (G2.1, G4.2, G4.9, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4) |
+| Parciales | **4** (G3.3, G4.1, G4.3, G6.4) |
+| Pendientes | **39** |
+| **Total** | **53** |
 
-El total no se mueve: no se añadió ni se desdobló ningún gate. Los cuarenta y
-tres pendientes siguen siendo, en su mayoría, los que exigen una máquina
-limpia, un Desktop real, una publicación real o el remoto de GitHub — que es el
-hallazgo de fondo de la auditoría y no lo cambia ninguna cantidad de trabajo
-local.
+Los treinta y nueve pendientes siguen siendo, en su mayoría, los que exigen una
+máquina limpia, un Desktop real, una publicación real o el remoto de GitHub —
+que es el hallazgo de fondo de la auditoría y no lo cambia ninguna cantidad de
+trabajo local.

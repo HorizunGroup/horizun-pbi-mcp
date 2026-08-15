@@ -12,6 +12,15 @@ tag, sin publicación.**
 > [Segunda pasada](#segunda-pasada--2026-08-14). Sigue sin haber push, PR, tag
 > ni publicación.
 
+> **Tercera pasada — 2026-08-14, rama `codex/installer-lifecycle-hardening`.**
+> Cinco commits sobre `9290a7d`. No avanza por la lista: cierra los defectos que
+> una revisión independiente encontró en el bloque de ciclo de vida que la
+> pasada anterior dio por bueno. Registra **INSTALL-011** (hallazgo nuevo, Alta,
+> cerrado en la misma pasada) y su gate **G4.9**, y mejora la evidencia de
+> INSTALL-001, INSTALL-006 e INSTALL-010. El detalle está en
+> [Tercera pasada](#tercera-pasada--2026-08-14). Sigue sin haber push, PR, tag
+> ni publicación.
+
 ## Los siete commits de código
 
 Historial lógico y bisectable: cada commit deja la suite en verde y, cuando
@@ -92,16 +101,17 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
-| INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Parcialmente cerrada** — 2026-08-14. La siembra copia, se prepara en staging y se promueve con journal y recuperación; fallo inyectado en los 4 pasos deja N−1 intacto. G4.1 exige VM limpia |
+| INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Además de la siembra por copia y la promoción con journal, ahora el **lanzador real** selecciona y ejecuta N−1: con fallo inyectado en pip, DLL, esquemas, handshake y promoción, un cliente MCP por stdio recibe las 134 tools de la versión anterior, no las dos del bootstrap. G4.1 queda amarillo: el runtime servido es de prueba, y la corrida sobre una instalación real es la VM |
 | INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** — 2026-08-14 con preflight por versión de Node, fallo del opcional no fatal y motivo registrado. G3.4 exige VM con Node 18 |
 | INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Parcialmente cerrada** — 2026-08-14. Los cinco caminos resuelven a referencia fija y el one-paste verifica el SHA-256 antes de ejecutar; falta descargar el asset de v1.5.5 y comprobar sus bytes, y esa release no existe |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** |
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Abierta** |
-| INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** |
+| INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Esquemas y validador preparan en un hermano, se releen enteros y se publican con el ciclo de vida compartido; el destino se observa **en el instante de publicar** y sigue byte a byte como estaba. G4.2 cumplido; G4.3 amarillo porque `npm` está simulado |
 | INSTALL-007 | Reintento sin `--scope user` y `ExecutionPolicy` persistente | Media | G4.8 | **Abierta** |
 | INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Abierta** |
 | INSTALL-009 | Sin lock ni hashes, sin bundle offline ni runbook de proxy | Media | G4.6, G4.7 | **Abierta** |
-| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14. `ready` exige initialize + tools/list contra el runtime, ejecutado **antes** de promover; verificado con componentes reales (134 tools). G3.1 y G3.3 exigen máquina limpia |
+| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. El oráculo pasa de «100 tools cualesquiera con prefijo `pbi_`» a exigir el contrato: `serverInfo.name` exacto, versión igual a la preparada, `tools/list` bien formado y ninguna de las 134 ausente, contra un baseline **empaquetado en el wheel**. G3.3 amarillo (demostrado sobre runtimes de prueba); G3.1 exige VM limpia |
+| INSTALL-011 | La recuperación confía rutas del journal y se ejecuta fuera del lock, permitiendo operaciones fuera del data root y carreras con una promoción | Alta | G4.9 | **Cerrada** — 2026-08-14, tercera pasada. Reproducido: un journal preparado a mano movió `root/.staging-demo` a una carpeta hermana de la raíz. El journal deja de ser autoridad sobre rutas —esquema 2, solo nombres de hijos directos, validados léxica y resueltamente— y el ciclo de vida entero pasa a ocurrir dentro del cerrojo |
 
 ## Release y supply chain
 
@@ -132,15 +142,22 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-30 entradas: **5 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-001,
-TEST-004), **11 parcialmente cerradas** (CORE-003, INSTALL-001, INSTALL-002,
-INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002,
-RELEASE-003, CLI-001), **14 abiertas**. Conteo verificado sobre las filas, no escrito de
-memoria.
+31 entradas: **6 cerradas** (CONTRACT-001, CORE-001, CORE-002, INSTALL-011,
+TEST-001, TEST-004), **11 parcialmente cerradas** (CORE-003, INSTALL-001,
+INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010, RELEASE-001,
+RELEASE-002, RELEASE-003, CLI-001), **14 abiertas**.
 
-Al 2026-08-14, tras la segunda pasada. La cuenta anterior era 4 / 5 / 21: se
-cerró TEST-001 y pasaron a parciales INSTALL-003, RELEASE-001, RELEASE-002 y
-RELEASE-003.
+**Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
+lo recalcula desde las filas de las seis tablas y falla si el párrafo y la
+matriz dejan de coincidir, si un identificador aparece en un documento y no en
+el otro, o si el estado que declara esta matriz contradice el que declara
+`audits/AUDIT_2026-08-14.md`. Un conteo escrito de memoria envejece en la
+primera edición y nadie se entera.
+
+Al 2026-08-14, tras la tercera pasada. La cuenta anterior era 5 / 11 / 14 sobre
+30 entradas: entra **INSTALL-011** —hallazgo nuevo, cerrado en la misma pasada
+que lo encontró— y ninguna otra cambia de casilla, aunque tres mejoran su
+evidencia (INSTALL-001, INSTALL-006, INSTALL-010).
 
 CORE-002 se cerró el 2026-08-14 tras destrabar TEST-004: captura live real con
 página explícita y fit-to-page, PNG producido, **14 archivos antes y 14 después
@@ -600,3 +617,85 @@ romper el camino del PC vacío que aquella versión arregló. La salida razonabl
 —pendiente de decisión— es dejarlo **explícito y consentido** en vez de
 silencioso: user-scope por defecto, reintento solo bajo una bandera declarada,
 y verificación posterior de que nada aterrizó fuera del perfil.
+
+---
+
+## Tercera pasada — 2026-08-14
+
+Rama `codex/installer-lifecycle-hardening`, cinco commits sobre `9290a7d`. El
+objetivo no era avanzar por la lista, sino cerrar los defectos que una revisión
+independiente encontró en el bloque de ciclo de vida que la pasada anterior dio
+por bueno. **Sin push, sin PR, sin tag, sin publicación.**
+
+| Hash | Commit | Cierra |
+|---|---|---|
+| `01c2495` | `fix(bootstrap): make SHA verification independent of module autoload` | INSTALL-003 (evidencia) |
+| `1428907` | `fix(lifecycle): contain and serialize promotion recovery` | INSTALL-011 |
+| `4410bf0` | `fix(launcher): serve last-known-good runtime after failed upgrades` | INSTALL-001 |
+| `fac774f` | `fix(healthcheck): enforce the packaged MCP contract before ready` | INSTALL-010 |
+| `b482601` | `fix(installer): publish schemas and validator atomically` | INSTALL-006 |
+
+### El rojo de cada uno
+
+| Corrección | Rojo contra | Resultado |
+|---|---|---|
+| SHA sin autoload | `9290a7d` | 4 de 4 fallando |
+| Recuperación contenida | `01c2495` | **34 de 35** fallando |
+| Fallback a N−1 | `1428907` | el lanzador servía 2 tools donde ahora sirve 134 |
+| Contrato en el healthcheck | `4410bf0` | **18 fallando y 2 pasando** de 20 |
+| Publicación atómica | `fac774f` | 6 fallando y 4 sin llegar a cargar, de 16 |
+
+### INSTALL-011 — el hallazgo nuevo
+
+`promotion.recuperar()` sacaba `staging`, `destino` y `anterior` del
+`.promotion.json` como **rutas absolutas** y las usaba tal cual. El journal es
+un archivo dentro del directorio de datos: quien pueda escribirlo decide a qué
+carpeta le hace `os.rename` un proceso que normalmente arranca solo, sin nadie
+delante. Reproducido: un journal preparado a mano movió `root/.staging-demo` a
+`OUTSIDE_DESTINATION`, hermana de la raíz.
+
+Y la segunda mitad, que agrava la primera: `install()` llamaba a `recuperar()`
+**antes** de adquirir el cerrojo, o sea que la operación más destructiva del
+ciclo de vida era la única sin exclusión mutua.
+
+Se registra como hallazgo propio y no como nota al pie de INSTALL-001 porque es
+un defecto distinto, con su propio camino de explotación y su propio gate
+(G4.9). Esconderlo dentro de una entrada ya existente habría hecho que su cierre
+pareciera parte de otra cosa.
+
+### Un oráculo que casi cuela
+
+Merece quedar escrito porque es el mismo error de forma que persigue toda esta
+auditoría. El primer intento de probar que el bloque de un pegado no depende de
+`Get-FileHash` fue definir una función `Get-FileHash` que lanzaba. **No sirve.**
+En cuanto el guion provoca la importación de `Microsoft.PowerShell.Utility`
+—basta un `New-Object`— la del módulo vuelve a ganar y el oráculo se desactiva a
+mitad de camino. Con él, las pruebas daban por **bueno el bloque viejo**, que sí
+llamaba al comando. El detector definitivo es un `Set-PSBreakpoint` por nombre
+de comando, que se dispara mire quien mire y sobrevive a la reimportación.
+
+Un oráculo que puede desactivarse solo es peor que no tenerlo: no deja hueco
+visible, deja un verde.
+
+### Lo que NO se tocó, a propósito
+
+**INSTALL-004, -005, -007, -008, -009 y CLI-001** siguen sin empezar. El encargo
+de esta pasada era cerrar el rojo del bloque de ciclo de vida antes de seguir
+avanzando por la lista.
+
+### El baseline reportado no se reprodujo
+
+El punto de partida decía que la suite completa fallaba en dos pruebas de
+`tests/test_one_paste.py` por un `Get-FileHash` que no resolvía. **En esta
+máquina no se reprodujo:** la corrida sobre `9290a7d` limpio dio *2406 passed,
+5 skipped, 0 failed* en 438 s. Se midió además el mecanismo propuesto y tampoco
+se sostiene: en Windows PowerShell 5.1 `Microsoft.PowerShell.Utility` está en el
+estado inicial de la sesión, no se autocarga, y `Get-FileHash` resuelve incluso
+con `PSModulePath` vacío o apuntando a un recurso de red muerto.
+
+La corrección se hizo igualmente, y no por deferencia: una comprobación de
+integridad que depende de que el entorno resuelva un comando es un defecto por
+sí sola, reproduzca o no en esta máquina. Lo que cambia es lo que se puede
+afirmar — no «se arregló el fallo reportado», sino «se eliminó una dependencia
+ambiental de la única verificación del bloque, y ahora hay una prueba que lo
+fija».
