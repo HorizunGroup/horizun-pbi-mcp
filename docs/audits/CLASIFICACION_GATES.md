@@ -15,6 +15,12 @@ alguno deja de cuadrar: si sobra un gate, si falta, si aparece dos veces, si la
 suma no da 54, si un cumplido sigue listado como externo o si un «externo puro»
 confiesa trabajo local en su propia ficha.
 
+> **Los 20 que faltan tienen su plan, uno por uno**, en
+> [`PLAN_20_GATES_RESTANTES.md`](PLAN_20_GATES_RESTANTES.md): entorno exacto,
+> preparación, comando, la mutación que hay que inyectar para que el verde
+> signifique algo, resultado esperado, evidencia, limpieza, riesgo y quién tiene
+> que autorizarlo.
+
 ## Las cinco categorías, y por qué son estas
 
 | Categoría | Qué significa | Quién lo desbloquea |
