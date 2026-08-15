@@ -89,18 +89,35 @@ def test_cada_pieza_que_falta_trae_el_comando_que_la_completa(health):
     """Un diagnostico que no dice que hacer manda a la documentacion."""
     for pieza in _carga(health())["completeness"]["missing"]:
         assert pieza.get("fix"), f"{pieza['component']} no dice como completarse"
-        assert "scripts/" in pieza["fix"], pieza
         assert pieza.get("impact"), (
             f"{pieza['component']} no dice que deja de funcionar sin el")
 
 
-def test_el_comando_que_se_ofrece_existe_de_verdad(health):
-    """La forma mas facil de que esto envejezca: renombrar un script."""
+def test_el_comando_que_se_ofrece_EXISTE_donde_se_da_el_diagnostico(health):
+    """INSTALL-005, y esta prueba afirmaba lo contrario.
+
+    Exigia `scripts/` en el comando, o sea que codificaba el defecto: quien
+    instala por `pip` **no tiene** `scripts/`, y se le estaba diciendo que
+    ejecutara un archivo que no existe en su maquina. El diagnostico y su
+    remedio tienen que viajar juntos.
+
+    El oraculo es `pyproject.toml`: si el comando no esta declarado como
+    `console_script`, no lo tendra quien instale del wheel, por mucho que aqui
+    funcione desde el clon.
+    """
     raiz = Path(__file__).resolve().parent.parent
+    pyproject = (raiz / "pyproject.toml").read_text(encoding="utf-8")
+    declarados = {l.split("=")[0].strip()
+                  for l in pyproject.split("[project.scripts]", 1)[1]
+                  .split("[", 1)[0].splitlines()
+                  if "=" in l and not l.strip().startswith("#")}
+
     for pieza in _carga(health())["completeness"]["missing"]:
-        guion = next(t for t in pieza["fix"].split() if t.startswith("scripts/"))
-        assert (raiz / guion).is_file(), (
-            f"{pieza['component']} ofrece un script que no existe: {guion}")
+        comando = pieza["fix"].split()[0]
+        assert comando in declarados, (
+            f"{pieza['component']} ofrece `{comando}`, que no esta en "
+            f"[project.scripts]: quien instale por pip no lo tendra. "
+            f"Declarados: {sorted(declarados)}")
 
 
 def test_lo_opcional_se_distingue_de_lo_obligatorio(health):

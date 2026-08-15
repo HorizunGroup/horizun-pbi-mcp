@@ -116,7 +116,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** — 2026-08-14 con preflight por versión de Node, fallo del opcional no fatal y motivo registrado. G3.4 exige VM con Node 18 |
 | INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Parcialmente cerrada** — 2026-08-14. Los cinco caminos resuelven a referencia fija y el one-paste verifica el SHA-256 antes de ejecutar; falta descargar el asset de v1.5.5 y comprobar sus bytes, y esa release no existe |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** — 2026-08-15, quinta pasada. La verificación aísla la LÍNEA del plugin y juzga su estado: rechaza `disabled`, `inactive` y las líneas con error, y un formato que no reconozca **avisa en vez de aprobar**. Node deja de imprimirse en verde sin comparar: se contrasta contra un mínimo, y una prueba exige que ese mínimo coincida con el de `plugin_bootstrap.py` —si divergieran, el instalador aprobaría un Node que el bootstrap rechaza después—. **G3.5 sigue pendiente**: probarlo con el plugin realmente deshabilitado exige una instalación de Claude, y este ciclo no modifica instalaciones reales |
-| INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Parcialmente cerrada** — 2026-08-15, quinta pasada. `pbi_health_check` distingue *instalado* de *operativo*: `completeness` enumera cada pieza que falta, qué deja de funcionar sin ella y **el comando exacto** que la completa, y separa lo obligatorio de lo opcional. G3.6 cumplido y comprobado sobre una instalación **pip pura** —artefacto construido, venv limpio, fuera del checkout—. Queda el comando de completado guiado como *entry point*, que es la otra mitad del criterio |
+| INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Cerrada** — 2026-08-15, quinta pasada. `pbi_health_check` distingue *instalado* de *operativo*: `completeness` enumera cada pieza que falta, qué deja de funcionar sin ella y **el comando exacto** que la completa, y separa lo obligatorio de lo opcional. G3.6 cumplido y comprobado sobre una instalación **pip pura** —artefacto construido, venv limpio, fuera del checkout—. **Cerrada del todo el 2026-08-15**: los tres descargadores viven en `horizun_pbi_mcp/completado/` y el comando de completado viaja en el wheel como `horizun-pbi-completar`. Antes recomendaba `python scripts/fetch_libs.py`, y `scripts/` no se empaqueta: el diagnóstico era correcto y la instrucción, imposible. Verificado instalando wheel **y** sdist en venv limpios: el ejecutable está, y `--check` sale 1 enumerando lo que falta |
 | INSTALL-006 | Los esquemas se publican por copia archivo a archivo sobre el destino vivo | Media | G4.2, G4.3 | **Parcialmente cerrada** — 2026-08-14, tercera pasada. Esquemas y validador preparan en un hermano, se releen enteros y se publican con el ciclo de vida compartido; el destino se observa **en el instante de publicar** y sigue byte a byte como estaba. G4.2 cumplido. **Cuarta pasada**: cada publicador toma el cerrojo de la raíz de su componente antes de recuperar, preparar, promover o limpiar —dos procesos de verdad lo demuestran— y el respaldo de cada publicación se recoge al terminar, así que deja de crecer con cada actualización. G4.3 sigue amarillo por una sola razón: `npm` está simulado |
 | INSTALL-007 | Reintento sin `--scope user` y `ExecutionPolicy` persistente | Media | G4.8 | **Cerrada** — 2026-08-15, quinta pasada. El reintento **se conserva** —sin él se rompe el camino del PC vacío, que winget bloquea con `0x8A150044` cuando un manifiesto ajeno no está etiquetado como *user*— pero deja de ser silencioso: se anuncia **antes**, se comprueba **después** si aterrizó en el perfil, y `-SoloUserScope` permite prohibirlo a quien exija user-scope estricto. El cambio de `ExecutionPolicy` se declara permanente en el código y `RUNBOOK_INSTALACION.md` dice cómo revertirlo |
 | INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Cerrada** — 2026-08-15, quinta pasada. `--uninstall`, `--purge` e `--inventory`. **La ejecución en seco es el comportamiento por defecto**: sin `--confirm` enumeran y no tocan nada, así que un error de dedo es un susto y no una pérdida. `outputs/` y `backups/` sobreviven salvo que se pidan; tras desinstalar, `residual_bytes` es exactamente el peso de los datos del usuario. Bajo el cerrojo del ciclo de vida y sin salir nunca del data root |
@@ -154,13 +154,13 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 ## Cuentas
 
-33 entradas: **17 cerradas**
+33 entradas: **18 cerradas**
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
-DOC-002, DOC-003, DOC-004, INSTALL-007, INSTALL-008, INSTALL-011,
-INSTALL-012, TEST-001, TEST-002, TEST-004),
-**14 parcialmente cerradas**
+DOC-002, DOC-003, DOC-004, INSTALL-005, INSTALL-007, INSTALL-008,
+INSTALL-011, INSTALL-012, TEST-001, TEST-002, TEST-004),
+**13 parcialmente cerradas**
 (CONTRACT-002, CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004,
-INSTALL-005, INSTALL-006, INSTALL-009, INSTALL-010, RELEASE-001, RELEASE-002,
+INSTALL-006, INSTALL-009, INSTALL-010, RELEASE-001, RELEASE-002,
 RELEASE-003, CLI-001),
 **2 abiertas**.
 

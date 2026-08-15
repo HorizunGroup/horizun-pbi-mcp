@@ -109,7 +109,14 @@ def main() -> int:
         print(f"  [+] {l}")
     for l in sobran:
         print(f"  [-] {l}")
-    print("\nRegenera con: python scripts/generar_lock.py", file=sys.stderr)
+    # Que esto salga 1 no significa que el lock este roto: casi siempre
+    # significa que PyPI se movio, que es exactamente lo que el lock existe
+    # para que no pase a espaldas de nadie. Adoptarlo es una DECISION -se
+    # regenera y se corre la suite contra el conjunto nuevo-, no un tramite.
+    print("\nEl lock fija lo que se probo; arriba esta lo que PyPI ofrece hoy.",
+          file=sys.stderr)
+    print("Para adoptarlo: python scripts/generar_lock.py, y pasa la suite.",
+          file=sys.stderr)
     return 1
 
 

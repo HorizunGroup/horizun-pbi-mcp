@@ -37,8 +37,19 @@ ARCHIVOS = ("a.json", "b.json", "c.json")
 
 
 def _cargar(nombre: str):
+    """El modulo del PAQUETE. `scripts/` solo conserva un envoltorio.
+
+    La logica se movio a `horizun_pbi_mcp.completado` para que viaje en el
+    wheel (INSTALL-005): una instalacion por `pip` no tiene `scripts/`. Se carga
+    por ruta y con nombre unico porque varias pruebas sustituyen constantes del
+    modulo y una copia compartida las mezclaria.
+    """
+    modulo = {"fetch_pbir_schemas": "esquemas",
+              "fetch_report_validator": "validador",
+              "fetch_libs": "libs"}.get(nombre, nombre)
     spec = importlib.util.spec_from_file_location(
-        f"_{nombre}_{uuid.uuid4().hex}", RAIZ / "scripts" / f"{nombre}.py")
+        f"_{modulo}_{uuid.uuid4().hex}",
+        RAIZ / "src" / "horizun_pbi_mcp" / "completado" / f"{modulo}.py")
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo

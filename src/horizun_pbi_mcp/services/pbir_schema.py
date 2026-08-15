@@ -203,7 +203,7 @@ def _exigir_cache() -> Dict[str, Any]:
         raise SchemaUnavailable(
             "Los esquemas oficiales del PBIR no estan instalados o su hash no "
             "coincide, asi que no se puede validar lo que se va a escribir. "
-            "Ejecuta: python scripts/fetch_pbir_schemas.py",
+            "Ejecuta: horizun-pbi-completar",
             details=estado)
     return estado
 

@@ -24,8 +24,16 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def cargar_script():
-    ruta = REPO / "scripts" / "fetch_libs.py"
-    spec = importlib.util.spec_from_file_location("fetch_libs_bajo_prueba", ruta)
+    """El modulo del PAQUETE, no el envoltorio de `scripts/`.
+
+    La logica se movio a `horizun_pbi_mcp.completado.libs` para que viaje en el
+    wheel: una instalacion por `pip` no tiene `scripts/`, y el comando que
+    `pbi_health_check` recomienda tiene que existir en la misma instalacion. Se
+    carga una copia FRESCA en cada prueba porque varias sustituyen `LIBS` y
+    `MANIFIESTO`, y un modulo compartido las mezclaria.
+    """
+    ruta = (REPO / "src" / "horizun_pbi_mcp" / "completado" / "libs.py")
+    spec = importlib.util.spec_from_file_location("libs_bajo_prueba", ruta)
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
@@ -374,9 +382,14 @@ def test_libs_sigue_fuera_de_git():
 
 
 def test_el_manifiesto_real_existe_y_esta_fijado():
-    """El del repositorio, no el sintetico de las pruebas."""
-    m = json.loads((REPO / "scripts" / "libs_manifest.json").read_text(
-        encoding="utf-8"))
+    """El del PAQUETE, no el sintetico de las pruebas.
+
+    Vive junto al codigo que lo lee y se declara como `package-data`: sin el, un
+    `pip install` no sabria que descargar ni contra que verificarlo, y
+    `horizun-pbi-completar` no podria completar nada.
+    """
+    m = json.loads((REPO / "src" / "horizun_pbi_mcp" / "completado"
+                    / "libs_manifest.json").read_text(encoding="utf-8"))
     assert m["packages"], "el manifiesto real no tiene paquetes"
     versiones = {p["version"] for p in m["packages"]}
     assert len(versiones) == 1, f"versiones inconsistentes: {versiones}"

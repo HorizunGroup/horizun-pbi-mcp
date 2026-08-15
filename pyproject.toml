@@ -60,6 +60,12 @@ test = ["pytest>=8.0", "pyyaml>=6,<7"]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
 # Alias legacy: se conserva para no romper instalaciones existentes.
 powerbi-mcp = "horizun_pbi_mcp.server:main"
+# INSTALL-005. El wheel no puede traer las DLL de Microsoft ni los esquemas
+# PBIR, asi que una instalacion por `pip` arranca pero no puede trabajar.
+# `pbi_health_check` ya lo decia; lo que faltaba era que el comando que
+# recomienda EXISTA en esa misma instalacion, y no en un `scripts/` que el
+# wheel no lleva.
+horizun-pbi-completar = "horizun_pbi_mcp.completado:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -75,6 +81,10 @@ package-dir = { "" = "src" }
 # y una instalacion por `pip` no tiene `tests/`. Sin este archivo el oraculo
 # falla cerrado -no da nada por bueno- en vez de comprobar de menos.
 "horizun_pbi_mcp.lifecycle" = ["contract_baseline.json"]
+# Versiones y SHA-256 de las DLL de Analysis Services. El manifiesto SI viaja
+# -es una lista, no un binario-; las DLL no, que son de Microsoft. Sin el,
+# `horizun-pbi-completar` no sabria que descargar ni contra que verificarlo.
+"horizun_pbi_mcp.completado" = ["libs_manifest.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

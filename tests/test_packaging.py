@@ -420,9 +420,31 @@ def test_una_instalacion_pip_pura_no_se_declara_operativa(
     assert "pbir_schemas" in faltan, (
         "los esquemas PBIR no se comprueban: la escritura PBIR falla en la "
         "primera llamada y nada lo anuncia")
+    # INSTALL-005. Antes esto exigia `python scripts/...`, o sea que codificaba
+    # el defecto: el wheel NO lleva `scripts/`, y se le estaba diciendo a quien
+    # instala por pip que ejecutara un archivo que no tiene. El diagnostico y su
+    # remedio tienen que existir en la MISMA instalacion.
     for pieza in completo["missing"]:
-        assert pieza["fix"].startswith("python scripts/"), pieza
+        assert not pieza["fix"].startswith("python scripts/"), (
+            "el remedio apunta a un archivo que este venv no tiene: " f"{pieza}")
         assert pieza["impact"], pieza
+
+    ejecutable = (venv / ("Scripts" if os.name == "nt" else "bin")
+                  / ("horizun-pbi-completar.exe" if os.name == "nt"
+                     else "horizun-pbi-completar"))
+    assert ejecutable.is_file(), (
+        f"el comando que el diagnostico recomienda no se instalo: {ejecutable}")
+
+    # Y ejecutado de verdad. `--check` no descarga nada: solo diagnostica, que
+    # es lo unico que se puede exigir sin salir a internet en una prueba.
+    r = subprocess.run([str(ejecutable), "--check"], cwd=str(fuera_del_checkout),
+                       env=_entorno_limpio(venv), capture_output=True, text=True,
+                       timeout=300)
+    assert r.returncode == 1, (
+        "una instalacion pip pura NO esta completa, asi que --check tiene que "
+        f"salir 1 y salio {r.returncode}: {r.stdout[-800:]} {r.stderr[-800:]}")
+    assert "OBLIGATORIO" in r.stdout and "analysis_services_dlls" in r.stdout, (
+        f"el comando no dice que falta: {r.stdout[-800:]}")
 
 
 @pytest.mark.parametrize("cual", ["wheel", "sdist"])

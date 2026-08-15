@@ -57,7 +57,7 @@ def _cap_esquema_interno() -> Dict[str, Any]:
     return {
         "available": estado["ready"],
         "reason": ("disponible" if estado["ready"] else
-                   f"{estado['reason']}. Ejecuta: python scripts/fetch_pbir_schemas.py"),
+                   f"{estado['reason']}. Ejecuta: horizun-pbi-completar"),
         "documents": estado.get("expected", 0),
         "unavailable_upstream": sorted(no_pub),
         "note": ("Valida cada documento contra su JSON Schema oficial, sin red. "
@@ -90,7 +90,7 @@ def _cap_validador_oficial() -> Dict[str, Any]:
             "" if listo else
             "Faltan los esquemas oficiales en la cache local; sin ellos no se "
             "puede comprobar lo que se escribiria. Ejecuta: python "
-            "scripts/fetch_pbir_schemas.py"),
+            "horizun-pbi-completar"),
         "unvalidatable_schemas": no_pub,
         "written_unchecked_schemas": sin_comprobar,
         "unchecked_note": (
@@ -134,7 +134,7 @@ def _completitud(settings) -> Dict[str, Any]:
             "required": True,
             "impact": "la capa EN VIVO no funciona: nada que hable con el "
                       "modelo de Power BI Desktop",
-            "fix": "python scripts/fetch_libs.py",
+            "fix": "horizun-pbi-completar",
         })
 
     try:
@@ -149,7 +149,7 @@ def _completitud(settings) -> Dict[str, Any]:
             "component": "pbir_schemas",
             "required": True,
             "impact": "toda escritura PBIR falla con schema_unavailable",
-            "fix": "python scripts/fetch_pbir_schemas.py",
+            "fix": "horizun-pbi-completar",
         })
 
     try:
@@ -167,7 +167,7 @@ def _completitud(settings) -> Dict[str, Any]:
             "required": False,
             "impact": "se pierde la validacion con el CLI oficial de Microsoft; "
                       "el resto del producto funciona",
-            "fix": "python scripts/fetch_report_validator.py",
+            "fix": "horizun-pbi-completar",
         })
 
     obligatorias = [f for f in faltan if f["required"]]

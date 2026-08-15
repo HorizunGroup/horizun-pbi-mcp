@@ -87,6 +87,23 @@ nothing published yet.**
   a Python traceback in all three downloaders: it exits 1 with `FALLO:`, which
   is what the person installing actually reads.
 
+- **`pip install` now leaves you a command that actually exists.** The
+  health check already told you what was missing and named the exact command to
+  fix it — and that command was `python scripts/fetch_libs.py`, while
+  **`scripts/` does not ship in the wheel**. A perfect diagnosis followed by an
+  impossible instruction. Worse, a test *required* that shape and a second one
+  checked the file existed in the checkout; both passed, both encoded the
+  defect. The three downloaders now live in `horizun_pbi_mcp/completado/` and
+  ship as **`horizun-pbi-completar`**, which downloads the Analysis Services
+  DLLs and the PBIR schemas verified by SHA-256, treats the Microsoft validator
+  as optional (INSTALL-002), and answers `--check` without downloading
+  anything. The DLL manifest moved with the code that reads it and is declared
+  as package data; the default install target is now where the server actually
+  reads (`settings.libs_dir`) instead of `<checkout>/libs`. `scripts/fetch_*.py`
+  remain as one-line wrappers for the plugin installer and CI. Verified on a
+  clean pip install of **both wheel and sdist**: the executable is in the venv,
+  `--check` exits 1 and names what is missing.
+
 - **Build once**: `scripts/release_build.py` produces the wheel and sdist in a
   single build, runs `twine check --strict`, emits `SHA256SUMS` and a
   reproducible CycloneDX SBOM, and freezes the installer asset;

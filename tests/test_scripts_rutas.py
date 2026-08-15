@@ -24,36 +24,67 @@ REPO = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO / "scripts"
 
 
-def _cargar(nombre: str):
-    ruta = SCRIPTS / f"{nombre}.py"
+#: Donde vive ahora la logica de los descargadores. `scripts/fetch_*.py` son
+#: envoltorios de una linea desde INSTALL-005: el wheel no lleva `scripts/`, y
+#: el comando que `pbi_health_check` recomienda tiene que existir en la misma
+#: instalacion que da el diagnostico.
+COMPLETADO = REPO / "src" / "horizun_pbi_mcp" / "completado"
+
+
+def _cargar(nombre: str, base: Path | None = None):
+    ruta = (base or SCRIPTS) / f"{nombre}.py"
     spec = importlib.util.spec_from_file_location(f"_script_{nombre}", ruta)
     modulo = importlib.util.module_from_spec(spec)
-    # Los scripts insertan src/ en sys.path por su cuenta; cargarlos no ejecuta
-    # su main() porque __name__ no es __main__.
+    # Cargarlos no ejecuta su main(): __name__ no es __main__.
     spec.loader.exec_module(modulo)
     return modulo
 
 
-def test_el_manifiesto_de_esquemas_existe_donde_el_script_lo_busca():
+def test_el_manifiesto_de_esquemas_existe_donde_el_modulo_lo_busca():
     """La regresion exacta: la constante apuntaba al arbol anterior."""
-    modulo = _cargar("fetch_pbir_schemas")
+    modulo = _cargar("esquemas", COMPLETADO)
     assert modulo.MANIFIESTO.is_file(), (
-        f"fetch_pbir_schemas.py busca el manifiesto en {modulo.MANIFIESTO} "
-        "y no existe. Si se movio el paquete, este script se quedo atras — "
+        f"completado/esquemas.py busca el manifiesto en {modulo.MANIFIESTO} "
+        "y no existe. Si se movio el paquete, este modulo se quedo atras — "
         "es el que ejecutan el bootstrap del plugin, el CI y el README.")
 
 
 def test_el_manifiesto_es_el_mismo_que_lee_el_servidor():
     """Dos rutas para el mismo archivo divergen; debe haber UNA."""
-    modulo = _cargar("fetch_pbir_schemas")
+    modulo = _cargar("esquemas", COMPLETADO)
     del_servidor = (REPO / "src" / "horizun_pbi_mcp" / "services" / "schemas"
                     / "pbir_manifest.json")
     assert modulo.MANIFIESTO.resolve() == del_servidor.resolve(), (
-        "El script escribiria el manifiesto donde el servidor no lee: "
-        f"script={modulo.MANIFIESTO} servidor={del_servidor}")
+        "El modulo escribiria el manifiesto donde el servidor no lee: "
+        f"modulo={modulo.MANIFIESTO} servidor={del_servidor}")
 
 
-@pytest.mark.parametrize("script", ["fetch_libs", "make_mcp_config", "doctor"])
+def test_el_manifiesto_de_las_dll_viaja_con_el_codigo_que_lo_lee():
+    """Estaba en `scripts/`, que el wheel no lleva.
+
+    Un `pip install` se quedaba sin la lista de versiones y hashes, o sea sin
+    poder completarse a si mismo: es la otra mitad de INSTALL-005.
+    """
+    modulo = _cargar("libs", COMPLETADO)
+    assert modulo.MANIFIESTO.is_file(), modulo.MANIFIESTO
+    assert modulo.MANIFIESTO.parent == COMPLETADO, (
+        "el manifiesto de las DLL tiene que vivir junto al modulo que lo lee, "
+        f"y esta en {modulo.MANIFIESTO.parent}")
+
+
+@pytest.mark.parametrize("nombre", ["fetch_libs", "fetch_pbir_schemas",
+                                    "fetch_report_validator"])
+def test_el_envoltorio_de_scripts_sigue_apuntando_a_algo_que_existe(nombre):
+    """Los invoca el instalador del plugin POR RUTA, y el README los documenta.
+
+    Un envoltorio que importa un modulo que se renombro falla en el sitio
+    exacto donde nadie esta mirando: durante una instalacion desatendida.
+    """
+    modulo = _cargar(nombre)
+    assert callable(modulo.main), f"{nombre}.py no expone main()"
+
+
+@pytest.mark.parametrize("script", ["make_mcp_config", "doctor"])
 def test_las_rutas_de_repo_declaradas_existen(script):
     """Barrido: toda constante Path del modulo que caiga dentro del repo y
     parezca fuente (src/, scripts/) tiene que existir."""

@@ -266,6 +266,19 @@ python -m pip install horizun-pbi-mcp
 ```
 
 ```bash
+horizun-pbi-completar
+```
+
+The second command is **not optional**. The wheel cannot ship the Analysis
+Services DLLs (Microsoft binaries) or the PBIR schemas (no redistribution
+permission), so a bare `pip install` leaves a server that starts, speaks MCP and
+answers all 134 tools — and cannot work: the LIVE layer has nothing to talk to
+the model with, and every PBIR write fails with `schema_unavailable`.
+`horizun-pbi-completar` downloads both, verified by SHA-256, and
+`horizun-pbi-completar --check` tells you where you stand without downloading
+anything. `pbi_health_check` reports the same thing in its `completeness` block.
+
+```bash
 codex mcp add horizun-pbi-mcp -- horizun-pbi-mcp
 ```
 
@@ -382,7 +395,7 @@ Official references: [Microsoft Graph app-only authentication](https://learn.mic
 | Symptom | Cause | Solution |
 |---|---|---|
 | `No se detecto ningun modelo` | Desktop closed, or port changed | The port changes on every startup; it's discovered automatically. Open the report |
-| `adomd_not_installed` / `tom_not_installed` | Missing DLLs | `python scripts/fetch_libs.py` |
+| `adomd_not_installed` / `tom_not_installed` | Missing DLLs | `horizun-pbi-completar` (installed package) or `python scripts/fetch_libs.py` (from the clone) |
 | `clr_not_available` | .NET missing | Try `PBI_MCP_DOTNET_RUNTIME=coreclr` |
 | `pbir_not_enabled` | The report isn't in PBIR | Save as `.pbip` with the enhanced report format |
 | Visual changes don't show up | PBIR loads on open | Close and reopen Desktop |

@@ -28,7 +28,6 @@ import time
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RAIZ / "scripts"))
 sys.path.insert(0, str(RAIZ / "src"))
 
 ARCHIVOS = ("a.json", "b.json", "c.json")
@@ -63,7 +62,7 @@ def _manifiesto(marca: str) -> dict:
 
 
 def _publicar_schemas(destino: Path, marca: str, pausa: float) -> int:
-    import fetch_pbir_schemas as fps
+    from horizun_pbi_mcp.completado import esquemas as fps
 
     if pausa:
         _pausar_en_el_hueco(fps.promotion, pausa)
@@ -78,7 +77,7 @@ def _publicar_schemas(destino: Path, marca: str, pausa: float) -> int:
 
 
 def _publicar_validator(destino: Path, marca: str, pausa: float) -> int:
-    import fetch_report_validator as frv
+    from horizun_pbi_mcp.completado import validador as frv
 
     if pausa:
         _pausar_en_el_hueco(frv.promotion, pausa)

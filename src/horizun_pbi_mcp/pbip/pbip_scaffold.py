@@ -122,7 +122,7 @@ def _revisar_informe(report_dir: Path) -> Dict[str, Any]:
     if resultado.status == report_validator.UNAVAILABLE:
         return {"checked": False,
                 "reason": "El validador oficial de informes no esta instalado "
-                          "(python scripts/fetch_report_validator.py)."}
+                          "(horizun-pbi-completar)."}
 
     errores = [d.__dict__ for d in resultado.diagnostics if d.severity == "error"]
     if errores:

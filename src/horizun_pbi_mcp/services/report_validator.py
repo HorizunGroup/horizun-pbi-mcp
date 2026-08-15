@@ -269,7 +269,7 @@ def estado() -> Dict[str, Any]:
                  "node_major": mayor, "cli_path": str(cli) if cli else None,
                  "version": version, "expected_version": VERSION_REQUERIDA,
                  "compatible": compatible, "reason": motivo,
-                 "install_hint": "python scripts/fetch_report_validator.py"}
+                 "install_hint": "horizun-pbi-completar"}
     with _estado_cache_lock:
         # Evita crecimiento si las pruebas o una reparacion cambian muchas
         # rutas. Solo hacen falta las huellas recientes.
