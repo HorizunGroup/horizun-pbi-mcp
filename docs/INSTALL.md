@@ -34,7 +34,7 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 ```powershell
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1'
-$sha = '33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5'
+$sha = '2630c22df3f8afcd3cf5e904b69256e15eca3b880c226c774a442d318ab36f04'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una

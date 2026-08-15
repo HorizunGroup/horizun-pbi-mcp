@@ -181,6 +181,33 @@ function WingetIntento($id, $conScope) {
                    })
 }
 
+#: Version minima que el validador PBIR oficial de Microsoft acepta. Es la
+#: misma que exige scripts/plugin_bootstrap.py; si divergieran, el instalador
+#: diria "Ok" de un Node que el bootstrap va a rechazar despues.
+$script:NodeMinimo = 20
+
+function EstadoDeNode {
+    # Devuelve el texto a mostrar y si SIRVE. Antes se imprimia `node --version`
+    # como Ok sin compararlo con nada: un Node 18 salia en verde y el validador
+    # quedaba apagado sin que el instalador lo dijera.
+    $crudo = ''
+    try { $crudo = (& node --version 2>&1 | Out-String).Trim() } catch { $crudo = '' }
+    $mayor = 0
+    if ($crudo -match 'v?(\d+)\.') { $mayor = [int]$Matches[1] }
+    return @{ Texto = $crudo; Mayor = $mayor; Sirve = ($mayor -ge $script:NodeMinimo) }
+}
+
+function ReportarNode {
+    $n = EstadoDeNode
+    if ($n.Sirve) {
+        Ok ("node " + $n.Texto)
+    } else {
+        Aviso ("node " + $n.Texto + " es anterior a la version " + $script:NodeMinimo +
+               " que exige el validador PBIR oficial. El MCP funciona igual; el " +
+               "validador queda apagado hasta actualizar Node.")
+    }
+}
+
 function InstalarConWinget($id, $nombre) {
     if (-not (Tiene 'winget')) {
         Aviso ("winget no esta disponible; instala " + $nombre + " a mano (busca '" + $id + "').")
@@ -296,7 +323,7 @@ else {
 
 # --- 4. Node LTS (OPCIONAL: enciende el validador PBIR oficial) --------------
 Paso "Node.js LTS (opcional, para el validador oficial de Microsoft)"
-if (Tiene 'node') { Ok ("node " + (& node --version)) }
+if (Tiene 'node') { ReportarNode }
 else {
     Falta "Node.js LTS (opcional)"
     # El MSI de Node suele ser por-maquina: sin admin puede fallar, y NO es
@@ -307,7 +334,7 @@ else {
         } else {
             Aviso "Sin Node el MCP funciona igual; el validador PBIR queda apagado hasta instalarlo."
         }
-    } elseif (Tiene 'node') { Ok ("node " + (& node --version)) }
+    } elseif (Tiene 'node') { ReportarNode }
 }
 
 # --- 5. Claude Code ----------------------------------------------------------
@@ -353,10 +380,31 @@ if (Tiene 'claude') {
                     -Accion { (& claude plugin list 2>&1 | Out-String) }
     if ($script:Seco) {
         Write-Host "  [DIAGNOSTICO] En seco no se registra ni se verifica nada." -ForegroundColor Yellow
-    } elseif ($lista -match 'horizun-pbi-mcp') {
-        Ok "Plugin registrado y verificado en 'claude plugin list'."
     } else {
-        Aviso "El plugin NO aparece en 'claude plugin list'. Reintenta con: claude plugin marketplace add HorizunGroup/horizun-pbi-mcp ; claude plugin install horizun-pbi-mcp@horizun"
+        # INSTALL-004. Antes esto era `$lista -match 'horizun-pbi-mcp'`: una
+        # coincidencia de subcadena sobre TODA la salida. Un plugin
+        # deshabilitado, una version vieja o una linea de error que mencionara
+        # el nombre satisfacian el match igual que un plugin sano, y el
+        # instalador se despedia en verde sobre una configuracion muerta.
+        #
+        # Ahora se busca la LINEA del plugin y se mira su estado. Se acepta lo
+        # que Claude Code imprime hoy para "activo" -`enabled`, o la linea sin
+        # marca de desactivado- y se rechaza explicitamente lo que marca
+        # apagado. Si el formato cambia y no se reconoce, se avisa en vez de
+        # dar por bueno: no reconocer no es aprobar.
+        $linea = ($lista -split "`r?`n" | Where-Object { $_ -match 'horizun-pbi-mcp' } |
+                  Select-Object -First 1)
+        if (-not $linea) {
+            Aviso "El plugin NO aparece en 'claude plugin list'. Reintenta con: claude plugin marketplace add HorizunGroup/horizun-pbi-mcp ; claude plugin install horizun-pbi-mcp@horizun"
+        } elseif ($linea -match '(?i)(disabled|deshabilitad|inactive|desactivad)') {
+            Aviso ("El plugin aparece DESHABILITADO en 'claude plugin list': " +
+                   $linea.Trim() + ". Habilitalo con: claude plugin enable horizun-pbi-mcp")
+        } elseif ($linea -match '(?i)error') {
+            Aviso ("La linea del plugin en 'claude plugin list' reporta un error: " +
+                   $linea.Trim())
+        } else {
+            Ok ("Plugin registrado y habilitado: " + $linea.Trim())
+        }
     }
 } else {
     if ($script:Seco) {

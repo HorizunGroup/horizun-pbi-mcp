@@ -387,3 +387,66 @@ def test_el_instalador_sigue_siendo_ascii_sin_bom_y_con_lf():
     assert b"\r" not in crudo, "instalar.ps1 tiene CRLF; .gitattributes exige LF"
     no_ascii = [b for b in crudo if b > 127]
     assert not no_ascii, f"instalar.ps1 dejo de ser ASCII ({len(no_ascii)} bytes)"
+
+
+# ============================================================================
+# INSTALL-004 — el instalador no puede declarar exito sobre algo que no sirve
+# ============================================================================
+def test_la_verificacion_del_plugin_no_es_una_subcadena_suelta():
+    """`$lista -match 'horizun-pbi-mcp'` daba por bueno demasiado.
+
+    Es una coincidencia sobre TODA la salida de `claude plugin list`. Un plugin
+    deshabilitado, una version vieja o una linea de error que mencione el
+    nombre la satisfacen igual que un plugin sano, y el instalador se despide
+    en verde sobre una configuracion muerta.
+    """
+    # Se miran las lineas EJECUTABLES, no los comentarios: el comentario que
+    # explica el defecto lo cita literalmente, y prohibir la cadena obligaria a
+    # borrar la explicacion junto con el defecto. Es la tercera vez que aparece
+    # esta trampa en el repositorio; conviene reconocerla a la primera.
+    lineas = [l for l in INSTALADOR.read_text(encoding="ascii").splitlines()
+              if not l.lstrip().startswith("#")]
+    codigo = chr(10).join(lineas)
+    assert "$lista -match 'horizun-pbi-mcp'" not in codigo, (
+        "la verificacion vuelve a ser una subcadena sobre toda la salida")
+    assert "$lista -split" in codigo, (
+        "no se aisla la LINEA del plugin antes de juzgarla")
+
+
+@pytest.mark.parametrize("marca", ["disabled", "deshabilitad", "inactive",
+                                   "desactivad", "error"])
+def test_la_verificacion_reconoce_los_estados_que_no_sirven(marca):
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert marca in texto, (
+        f"la verificacion no reconoce «{marca}» como un plugin que no sirve")
+
+
+def test_un_formato_no_reconocido_no_se_da_por_bueno():
+    """No reconocer no es aprobar: si Claude cambia el formato, se avisa."""
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "no reconocer no es aprobar" in texto.lower(), (
+        "no consta la decision de que un formato desconocido no se aprueba")
+
+
+def test_node_se_compara_contra_un_minimo_y_no_solo_se_imprime():
+    """Imprimir `node --version` como Ok deja pasar un Node 18 en verde."""
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "NodeMinimo" in texto, "el instalador no declara una version minima de Node"
+    assert 'Ok ("node " + (& node --version))' not in texto, (
+        "node se vuelve a reportar en verde sin compararlo con nada")
+
+
+def test_el_minimo_de_node_del_instalador_y_del_bootstrap_coinciden():
+    """Si divergen, el instalador aprueba un Node que el bootstrap rechazara."""
+    import re
+
+    texto = INSTALADOR.read_text(encoding="ascii")
+    del_instalador = int(re.search(r"\$script:NodeMinimo\s*=\s*(\d+)", texto).group(1))
+
+    bootstrap = (RAIZ / "scripts" / "plugin_bootstrap.py").read_text(encoding="utf-8")
+    del_bootstrap = int(re.search(r"^NODE_MINIMO\s*=\s*(\d+)", bootstrap, re.M).group(1))
+
+    assert del_instalador == del_bootstrap, (
+        f"instalar.ps1 exige Node {del_instalador} y plugin_bootstrap.py "
+        f"{del_bootstrap}: el instalador aprobaria un Node que el bootstrap "
+        "rechaza despues")

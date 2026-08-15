@@ -17,9 +17,9 @@
       "version": "1.5.5",
       "platform": "windows",
       "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1",
-      "sha256": "33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5",
+      "sha256": "2630c22df3f8afcd3cf5e904b69256e15eca3b880c226c774a442d318ab36f04",
       "max_bytes": 131072,
-      "actual_bytes": 21016,
+      "actual_bytes": 23398,
       "encoding": "ascii",
       "eol": "lf",
       "bom": false,
@@ -29,8 +29,12 @@
       "verified_at": "2026-08-14",
       "status": "pending_remote_release",
       "status_note": "El tag v1.5.5 y su release NO existen todavia en el remoto (comprobado con git ls-remote --tags: el ultimo publicado es v1.5.4). El SHA-256 es el de los bytes locales congelados; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende.",
-      "used_by": ["scripts/one_paste.ps1", "README.md", "docs/INSTALL.md",
-                  "skills/horizun-pbi-setup/SKILL.md"]
+      "used_by": [
+        "scripts/one_paste.ps1",
+        "README.md",
+        "docs/INSTALL.md",
+        "skills/horizun-pbi-setup/SKILL.md"
+      ]
     },
     "mcp-publisher": {
       "version": "1.8.1",
@@ -43,7 +47,9 @@
       "purpose": "Valida y publica .mcp/server.json en el MCP Registry.",
       "verified_at": "2026-08-14",
       "status": "published",
-      "used_by": [".github/workflows/publish-mcp.yml"]
+      "used_by": [
+        ".github/workflows/publish-mcp.yml"
+      ]
     }
   }
 }
