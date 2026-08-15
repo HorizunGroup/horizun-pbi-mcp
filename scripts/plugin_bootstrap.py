@@ -442,6 +442,57 @@ def _semilla(destino_cache: Path, root: Path, nombre_py: Path) -> str | None:
     return None
 
 
+#: Versiones y SHA-256 de cada dependencia transitiva. Lo genera
+#: `scripts/generar_lock.py`; sin el, `pip install <repo>` resuelve de cero en
+#: cada instalacion.
+LOCK = PLUGIN_ROOT / "scripts" / "requirements.lock"
+
+
+def _instalar_dependencias(sp: dict[str, Path], env: dict[str, str]) -> dict[str, Any]:
+    """Instala las dependencias FIJADAS, y el paquete propio aparte.
+
+    INSTALL-009. `pip install <PLUGIN_ROOT>` resolvia las dependencias de cero
+    en cada instalacion: dos maquinas -o la misma en dos semanas- acababan con
+    entornos distintos que nadie pidio, y cuando una falla y la otra no, no hay
+    forma de saber en que se diferencian.
+
+    Con el lock, las dependencias se instalan con `--require-hashes`: version
+    exacta y SHA-256 comprobado. El paquete propio va aparte con `--no-deps`,
+    porque es la fuente local y no tiene hash publicado; inventarle uno para que
+    la linea quede bonita seria falsificar la garantia.
+
+    **Cae al resolutor normal si el lock no cubre este entorno, y lo dice.** El
+    lock se resuelve con UN interprete, y `--require-hashes` exige que todo lo
+    que se vaya a instalar este listado: uno hecho en 3.14 puede no cubrir las
+    ruedas que 3.10 necesita. Fallar la instalacion entera por una garantia que
+    no aplica seria peor que la garantia; quedarse callado, tambien. Por eso el
+    estado registra cual de los dos caminos se tomo.
+
+    El intento fijado gasta los MISMOS reintentos que gastaria el camino de
+    siempre. Con menos, una carrera DNS -que aqui esta medida y es frecuente-
+    tumbaria el lock por un motivo que no tiene nada que ver con el lock, y la
+    instalacion saldria sin fijar habiendo un lock perfectamente valido.
+    """
+    if LOCK.is_file():
+        try:
+            _run([str(sp["python"]), "-m", "pip", "install", "--require-hashes",
+                  "-r", str(LOCK)], env=env)
+            _run([str(sp["python"]), "-m", "pip", "install", "--no-deps",
+                  str(PLUGIN_ROOT)], env=env)
+            return {"source": "lock", "lock": str(LOCK),
+                    "note": "Versiones fijadas y verificadas por SHA-256."}
+        except Exception as exc:                             # noqa: BLE001
+            motivo = f"{type(exc).__name__}: {exc}"
+    else:
+        motivo = f"no existe {LOCK}"
+
+    _run([str(sp["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
+    return {"source": "resolver", "reason": motivo,
+            "note": ("El lock no cubre este entorno: las dependencias se "
+                     "resolvieron en el momento y NO estan fijadas. Regenera el "
+                     "lock con este interprete: python scripts/generar_lock.py")}
+
+
 def _adoptar_runtime_existente(root: Path) -> dict[str, Any] | None:
     """Le pone evidencia al runtime que ya estaba instalado, comprobandolo.
 
@@ -783,7 +834,7 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                           message="Instalando el paquete abierto y sus dependencias.")
             _run([str(sp["python"]), "-m", "pip", "install", "--upgrade", "pip",
                   "setuptools"], env=env)
-            _run([str(sp["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
+            dependencias = _instalar_dependencias(sp, env)
 
             _write_status(p, state="installing", ready=False, step="analysis-services",
                           message="Descargando y verificando las DLL de Microsoft.")
@@ -837,6 +888,7 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                                      "servidor": salud.get("servidor"),
                                      "version": salud.get("version")},
                           anterior_conservado=resultado["anterior"],
+                          dependencias=dependencias,
                           recuperacion_previa=recuperado.get("accion"),
                           runtime_adoptado=adoptado,
                           # Un journal rechazado no impide instalar -no se toco

@@ -42,7 +42,13 @@ resultado se espera y qué evidencia hay que guardar.
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**13 gates externos.** Los cuatro de release y los cinco del remoto comparten
+**13 filas, 22 gates externos** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+`G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
+y decir «13 externos» dejaría fuera nueve gates que nadie estaría vigilando; el
+cómputo de [`ACCEPTANCE_10_OF_10.md`](ACCEPTANCE_10_OF_10.md) se deriva de esta
+tabla con los rangos expandidos, y una prueba exige que las dos cuenten igual.
+
+Los cuatro de release y los cinco del remoto comparten
 una sola dependencia: que exista una release real de v1.5.5, que **no existe**, y
 que este ciclo tiene prohibido crear.
 
@@ -142,6 +148,11 @@ journal huérfano; la siguiente instalación termina limpia.
 **Bloqueo exacto.** No existe ni el bundle ni el runbook, y comprobarlos exige
 una VM sin salida directa a internet. La parte *construir el bundle* sí es
 trabajo local y queda pendiente bajo INSTALL-009.
+
+**Ojo con el hermano.** G4.6 —el lock con hashes— compartía hallazgo con este y
+**no** era externo: se cerró el 2026-08-15 instalando el lock en dos venv limpios y
+comparando `pip freeze`. Que dos gates citen el mismo hallazgo no los hace igual
+de inalcanzables; conviene mirarlos por separado antes de aparcar los dos.
 
 ---
 

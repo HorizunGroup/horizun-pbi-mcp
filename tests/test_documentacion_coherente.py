@@ -286,3 +286,86 @@ def test_ningun_documento_afirma_que_hay_una_release_publicada():
         texto = doc.read_text(encoding="utf-8")
         assert "v1.5.5 publicada" not in texto, doc.name
         assert "release publicada" not in texto.lower(), doc.name
+
+
+EXTERNOS = RAIZ / "docs" / "audits" / "EXTERNAL_GATES.md"
+
+
+def gates_externos() -> set[str]:
+    """Los gates de la tabla resumen de EXTERNAL_GATES, rangos expandidos.
+
+    La tabla escribe `G5.1-G5.6` en una fila porque los seis comparten bloqueo.
+    Contar filas daria 13 donde hay 22 gates, que es justo el error que esta
+    funcion existe para no cometer.
+    """
+    salida: set[str] = set()
+    dentro = False
+    for linea in EXTERNOS.read_text(encoding="utf-8").splitlines():
+        if linea.startswith("| Gate | Hallazgo |"):
+            dentro = True
+            continue
+        if not linea.startswith("|"):
+            dentro = False
+            continue
+        if not dentro or _es_separador(linea):
+            continue
+        celda = _celdas(linea)[0]
+        m = re.fullmatch(r"(G(\d+)\.(\d+))[–\-—](G?\2\.(\d+))", celda)
+        if m:
+            salida.update(f"G{m.group(2)}.{n}"
+                          for n in range(int(m.group(3)), int(m.group(5)) + 1))
+        elif re.fullmatch(r"G\d+\.\d+", celda):
+            salida.add(celda)
+    return salida
+
+
+def test_el_computo_deriva_la_columna_externa_de_external_gates():
+    """La tabla de bloques no puede opinar sobre lo que otra lista decide.
+
+    Antes decia «G4: 3 ejecutables hoy» meses despues de que G4.4, G4.5, G4.6,
+    G4.8, G4.9 y G4.10 se cerraran aqui mismo, y nadie lo notaba porque el
+    numero estaba escrito a mano. Ahora sale de contar: si un gate entra o sale
+    de EXTERNAL_GATES y esta tabla no se entera, esto falla.
+    """
+    externos = gates_externos()
+    definidos = set(gates_declarados())
+    assert externos <= definidos, (
+        f"EXTERNAL_GATES cita gates que no existen: {sorted(externos - definidos)}")
+
+    texto = ACEPTACION.read_text(encoding="utf-8")
+    por_bloque = Counter(g.split(".")[0] for g in externos)
+    filas = 0
+    for linea in texto.splitlines():
+        m = re.match(r"^\| (G\d) [^|]*\| (\d+) \| (\d+) \| (\d+)", linea)
+        if not m:
+            continue
+        filas += 1
+        bloque, total, aqui, fuera = m.group(1), *map(int, m.groups()[1:])
+        assert fuera == por_bloque[bloque], (
+            f"{bloque}: la tabla dice {fuera} gates externos y EXTERNAL_GATES "
+            f"lista {por_bloque[bloque]}")
+        assert aqui + fuera == total, (
+            f"{bloque}: {aqui}+{fuera} no suma los {total} gates del bloque")
+    assert filas == 8, f"la tabla de computo tiene {filas} bloques, no 8"
+
+    m = re.search(r"\| \*\*Total\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \|",
+                  texto)
+    assert int(m.group(3)) == len(externos), (
+        f"el total declara {m.group(3)} externos y EXTERNAL_GATES lista {len(externos)}")
+    assert int(m.group(2)) + int(m.group(3)) == int(m.group(1)) == len(definidos)
+
+
+def test_ningun_gate_esta_a_la_vez_cumplido_y_declarado_externo():
+    """G4.6 salio de la lista externa porque se cerro; G3.6, antes que el.
+
+    La contradiccion es facil de introducir -se cierra un gate y se olvida
+    sacarlo- y deja el documento diciendo que algo esta bloqueado por una VM
+    que ya no hace falta.
+    """
+    ultimo = ACEPTACION.read_text(encoding="utf-8").split("### Cómputo actualizado", 1)[1]
+    cumplidos = set(re.findall(
+        r"G\d+\.\d+",
+        re.search(r"Cumplidos con evidencia \| \*\*\d+\*\* \(([^)]+)\)", ultimo).group(1)))
+    choque = cumplidos & gates_externos()
+    assert not choque, (
+        f"cumplidos con evidencia y a la vez en EXTERNAL_GATES: {sorted(choque)}")

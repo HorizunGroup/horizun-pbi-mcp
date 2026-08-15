@@ -40,6 +40,26 @@ nothing published yet.**
   write a file or change the execution policy. Every effect goes through a
   single gate that dry-run closes, which is what makes "zero effects" provable
   rather than asserted.
+- **Two installs a fortnight apart no longer give you two different
+  products.** `install()` ran `pip install <repo>`, which **resolves from
+  scratch every time**; when one machine worked and another didn't, the first
+  question — what got installed on each? — had no answer, because nobody wrote
+  it down. `scripts/requirements.lock` now pins all 43 transitive dependencies
+  by exact version and SHA-256, `scripts/generar_lock.py` regenerates it by
+  asking pip what it would install (`--dry-run --report`, installing nothing)
+  and `--check` reports *what* drifted. The installer takes it as the preferred
+  path: `pip install --require-hashes -r`, with the local package installed
+  separately under `--no-deps` — it has no published hash, and inventing one to
+  make the line look complete would have forged the only guarantee the file
+  offers. **When the lock doesn't cover the interpreter it falls back to the
+  ordinary resolver and says so** in the install status
+  (`dependencias.source`, with the reason and the command to regenerate):
+  failing the whole install over a guarantee that doesn't apply would be worse
+  than the guarantee, and staying quiet would be worse still. Checked against
+  real pip — two clean venvs, the lock installed in each, `pip freeze`
+  identical and matching what was pinned. The offline bundle and the proxy
+  runbook are the half that remains, and they need a VM with no route out.
+
 - **Build once**: `scripts/release_build.py` produces the wheel and sdist in a
   single build, runs `twine check --strict`, emits `SHA256SUMS` and a
   reproducible CycloneDX SBOM, and freezes the installer asset;
