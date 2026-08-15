@@ -206,9 +206,6 @@
       "warnings": []
     },
     "pbi_apply_plan.con-argumentos": {
-      "details": {
-        "plan_token": "str"
-      },
       "duration_ms": "float",
       "error": "str",
       "message": "str",
@@ -2666,7 +2663,7 @@
       "status": "str",
       "warnings": []
     },
-    "pbi_select_model.con-proyecto": {
+    "pbi_select_model.con-argumentos": {
       "duration_ms": "float",
       "error": "str",
       "message": "str",

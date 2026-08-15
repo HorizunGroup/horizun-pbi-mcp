@@ -344,7 +344,11 @@ def test_plan_y_apply_por_las_tools(proyecto, tools):
                   {"operation": "hide_columns",
                    "arguments": {"columns": [{"table": "Fact", "column": "Amount"}]}})
     assert plan["ok"] is True and plan["status"] == envelope.PLANNED
-    aplicado = llamar(tools, "pbi_apply_plan", {"plan_token": plan["plan_token"]})
+    # `confirm=True` explicito desde 2.0.0: el default paso de `True` a `False`
+    # (CONTRACT-003, cambio 2). Esta llamada es exactamente la que la guia de
+    # migracion pide cambiar, y esta prueba es su primer caso.
+    aplicado = llamar(tools, "pbi_apply_plan",
+                      {"plan_token": plan["plan_token"], "confirm": True})
     assert aplicado["ok"] is True and aplicado["applied"] == 1
 
 

@@ -537,7 +537,7 @@ def register(mcp) -> None:
         return guard(_impl)
 
     @mcp.tool()
-    def pbi_apply_plan(plan_token: str, confirm: bool = True,
+    def pbi_apply_plan(plan_token: str, confirm: bool = False,
                        expected_operation: str = "", request_id: str = "") -> Dict[str, Any]:
         """Aplica un plan calculado con pbi_plan_change o con un dry_run.
 
@@ -546,6 +546,11 @@ def register(mcp) -> None:
 
         `expected_operation` es opcional: si lo indicas, el plan solo se aplica
         si fue generado para esa operacion (`plan_operation_mismatch` si no).
+
+        **Exige `confirm=true`.** Hasta 2.0.0 el default era `True`, o sea que
+        omitir el parametro APLICABA: un gate que viene abierto no es un gate, y
+        ademas rompia la simetria con las otras ocho tools con `confirm`, que es
+        justo la inconsistencia que hace que un agente generalice mal.
         """
         def _impl():
             if not confirm:

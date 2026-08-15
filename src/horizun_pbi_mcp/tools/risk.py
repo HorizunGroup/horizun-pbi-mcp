@@ -60,6 +60,12 @@ READ_ONLY_EMITS_FILE = "read_only_emits_file"
 READ_EXTERNAL = "read_external"
 READ_EXTERNAL_EMITS_FILE = "read_external_emits_file"
 SIDE_EFFECT_EXTERNAL = "side_effect_external"
+#: Cambia el estado de la SESION -que proyecto o que modelo esta activo- y
+#: nada mas. No escribe artefactos del usuario y repetirla deja el mismo
+#: estado, pero **no es una lectura**: cambia a que apunta todo lo que venga
+#: despues. CONTRACT-003, cambio 3.
+SESSION_WRITE = "session_write"
+
 WRITE_REVERSIBLE = "write_reversible"
 WRITE_DESTRUCTIVE = "write_destructive"
 WRITE_IRREVERSIBLE = "write_irreversible"
@@ -70,6 +76,12 @@ CLASES_DE_LECTURA = frozenset(
      READ_EXTERNAL_EMITS_FILE, SIDE_EFFECT_EXTERNAL})
 
 CLASES_MUNDO_ABIERTO = frozenset({READ_EXTERNAL, READ_EXTERNAL_EMITS_FILE})
+
+#: Clases que se anuncian idempotentes: repetir la llamada deja el mismo
+#: estado, sin acumular efectos. Solo se declara donde es CIERTO —abrir dos
+#: veces el mismo proyecto deja el mismo proyecto activo—, porque un cliente
+#: que se fie de esto reintentara sin preguntar.
+CLASES_IDEMPOTENTES = frozenset({SESSION_WRITE})
 
 #: Clases que el cliente debe tratar como destructivas.
 CLASES_DESTRUCTIVAS = frozenset({WRITE_DESTRUCTIVE, WRITE_IRREVERSIBLE})
@@ -118,9 +130,13 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_measure_dependencies": READ_ONLY,
     "pbi_model_summary": READ_ONLY,
     # Cambian el estado de SESION (proyecto/modelo activo), no artefactos del
-    # usuario. La sesion es del servidor y se reconstruye sola.
-    "pbi_open_pbip_project": READ_ONLY,
-    "pbi_select_model": READ_ONLY,
+    # usuario. **Ya no son READ_ONLY**: CONTRACT-003, cambio 3, ratificado el
+    # 2026-08-15 para 2.0.0. Un cliente que decide por `readOnlyHint` las
+    # ejecutaba sin preguntar, y con eso puede reapuntar la sesion a otro
+    # proyecto; la siguiente escritura -esa si destructiva- iria al sitio
+    # equivocado.
+    "pbi_open_pbip_project": SESSION_WRITE,
+    "pbi_select_model": SESSION_WRITE,
     "pbi_page_building_blocks": READ_ONLY,
     "pbi_plan_audit_fixes": READ_ONLY,
     "pbi_plan_change": READ_ONLY,
@@ -250,6 +266,9 @@ def annotations_for(nombre: str) -> Dict[str, Any]:
     return {
         "readOnlyHint": False,
         "destructiveHint": clase in CLASES_DESTRUCTIVAS,
-        "idempotentHint": False,
+        # Solo donde repetir la llamada deja el mismo estado. Es lo que le da a
+        # un cliente prudente motivo para no pedir confirmacion dos veces por
+        # una operacion cotidiana como abrir un proyecto.
+        "idempotentHint": clase in CLASES_IDEMPOTENTES,
         "openWorldHint": open_world,
     }

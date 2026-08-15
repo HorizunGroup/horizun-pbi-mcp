@@ -44,6 +44,25 @@ def filas(servidor):
     return inv.inventario(servidor)
 
 
+@pytest.fixture(autouse=True)
+def sesion_limpia(monkeypatch):
+    """Sin proyecto activo, pase lo que pase antes.
+
+    La clase `estado_ausente` significa literalmente «ejecutarla sin proyecto
+    abierto», y la sesion es un SINGLETON de proceso: basta con que una prueba
+    anterior deje un `.pbip` abierto para que diez tools contesten `ok: true` y
+    el caso negativo mida lo contrario de lo que dice medir.
+
+    Se vio al cambiar el default de `pbi_apply_plan`: la suite completa
+    empezo a fallar en tools que no tienen nada que ver con ese cambio, porque
+    la dependencia de orden ya estaba y solo hacia falta mover una pieza. Con
+    esto, el orden de los archivos deja de ser una variable.
+    """
+    from horizun_pbi_mcp import config
+
+    monkeypatch.setattr(config, "_session", None)
+
+
 @pytest.fixture(scope="module")
 def llamadas_observadas():
     """Las llamadas que de verdad ocurrieron, no las que el inventario promete.

@@ -136,6 +136,10 @@ ARGUMENTOS = {
 # y `{pbip}` por el proyecto sintetico.
 ARGUMENTOS.update({
     "pbi_open_pbip_project": {"path": "{pbip}"},
+    # Desde CONTRACT-003 es `session_write`, asi que el escenario
+    # `con-proyecto` -que solo ejecuta lecturas- ya no la cubre. Un puerto que
+    # no sirve nada da un error de dominio estable y sin salir a ningun lado.
+    "pbi_select_model": {"port": 65000},
     "pbi_create_pbip_project": {"out_dir": "{tmp}/nuevo", "name": "Nuevo"},
     "pbi_add_image_resource": {"path": "{tmp}/recursos/logo.png"},
     "pbi_add_table_from_file": {"path": "{tmp}/recursos/datos.csv"},

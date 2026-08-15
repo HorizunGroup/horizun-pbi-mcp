@@ -40,8 +40,8 @@ lo genera tiene un informe abierto.
 
 | Dependencia | Tools |
 |---|---|
-| modelo-vivo | **25** |
-| solo error de dominio en estos escenarios (validation_error) | **22** |
+| solo error de dominio en estos escenarios (validation_error) | **25** |
+| modelo-vivo | **24** |
 | solo error de dominio en estos escenarios (no_active_pbip) | **10** |
 | solo error de dominio en estos escenarios (schema_unsupported) | **10** |
 | solo error de dominio en estos escenarios (page_spec_invalid) | **3** |
@@ -49,11 +49,10 @@ lo genera tiene un informe abierto.
 | solo error de dominio en estos escenarios (unexpected) | **2** |
 | solo error de dominio en estos escenarios (pbix_conversion_failed) | **2** |
 | solo error de dominio en estos escenarios (visual_factory_error) | **2** |
-| solo error de dominio en estos escenarios (desktop_not_found) | **2** |
 | solo error de dominio en estos escenarios (conditional_format_error) | **2** |
 | solo error de dominio en estos escenarios (sharepoint_not_configured) | **2** |
-| solo error de dominio en estos escenarios (plan_not_found) | **1** |
 | solo error de dominio en estos escenarios (pbix_read_error) | **1** |
+| solo error de dominio en estos escenarios (desktop_not_found) | **1** |
 | solo error de dominio en estos escenarios (recovery_failed) | **1** |
 | solo error de dominio en estos escenarios (model_discovery_error) | **1** |
 | solo error de dominio en estos escenarios (model_author_error) | **1** |
@@ -73,7 +72,7 @@ lo genera tiene un informe abierto.
 | `pbi_apply_audit_fixes` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_apply_design_system` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_apply_page_spec` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (page_spec_invalid) |
-| `pbi_apply_plan` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (plan_not_found) |
+| `pbi_apply_plan` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_apply_theme` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (no_active_pbip) |
 | `pbi_arrange_visuals` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_audit_model` | error de dominio congelado | con-proyecto, sin-proyecto | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
@@ -153,7 +152,7 @@ lo genera tiene un informe abierto.
 | `pbi_model_summary` | error de dominio congelado | con-proyecto, sin-proyecto | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
 | `pbi_normalize_page_layout` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_normalize_report` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (no_active_pbip) |
-| `pbi_open_and_refresh` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (desktop_not_found) |
+| `pbi_open_and_refresh` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_open_in_desktop` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (desktop_not_found) |
 | `pbi_open_pbip_project` | éxito congelado | con-argumentos | — |
 | `pbi_page_building_blocks` | éxito congelado | con-proyecto, sin-proyecto | — |
@@ -167,7 +166,7 @@ lo genera tiene un informe abierto.
 | `pbi_purge_backups` | éxito congelado | con-argumentos | — |
 | `pbi_recover_from_journal` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (recovery_failed) |
 | `pbi_reflow_pages` | éxito congelado | con-argumentos | — |
-| `pbi_refresh_model` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
+| `pbi_refresh_model` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_rename_measure` | éxito congelado | con-argumentos | — |
 | `pbi_rename_page` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_reorder_pages` | éxito congelado | con-argumentos | — |
@@ -176,7 +175,7 @@ lo genera tiene un informe abierto.
 | `pbi_report_capabilities` | éxito congelado | con-proyecto, sin-proyecto | — |
 | `pbi_run_dax` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
 | `pbi_search_model` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
-| `pbi_select_model` | error de dominio congelado | con-proyecto, sin-proyecto | solo error de dominio en estos escenarios (model_discovery_error) |
+| `pbi_select_model` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (model_discovery_error) |
 | `pbi_session_info` | éxito congelado | con-proyecto, sin-proyecto | — |
 | `pbi_set_color_from_field` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (conditional_format_error) |
 | `pbi_set_column_visibility` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |

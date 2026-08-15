@@ -56,8 +56,8 @@ dar por hecho al ver 134 filas en verde:
 | Con caso negativo que las hace fallar | **126** |
 | Sin modo de fallo (ejecutadas, se exige `ok: true`) | **8** |
 | Excepciones declaradas con motivo | **0** |
-| De solo lectura | **55** |
-| Con `confirm` | **9** |
+| De solo lectura | **53** |
+| Con `confirm` | **11** |
 | Con payload congelado | **134** |
 
 ## Las tools, una por una
@@ -153,9 +153,9 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_model_summary` | solo lectura | 1 | 0 | — | sí | tipo invalido | `source` |
 | `pbi_normalize_page_layout` | escritura | 3 | 1 | — | sí | falta un requerido | `page` |
 | `pbi_normalize_report` | escritura | 2 | 0 | — | sí | tipo invalido | `dry_run` |
-| `pbi_open_and_refresh` | destructiva | 8 | 0 | — | sí | tipo invalido | `path` |
+| `pbi_open_and_refresh` | destructiva | 9 | 0 | sí | sí | tipo invalido | `path` |
 | `pbi_open_in_desktop` | escritura | 5 | 0 | — | sí | tipo invalido | `path` |
-| `pbi_open_pbip_project` | solo lectura | 1 | 1 | — | sí | falta un requerido | `path` |
+| `pbi_open_pbip_project` | escritura | 1 | 1 | — | sí | falta un requerido | `path` |
 | `pbi_page_building_blocks` | solo lectura | 0 | 0 | — | sí | sin proyecto activo | — |
 | `pbi_plan_audit_fixes` | solo lectura | 2 | 1 | — | sí | falta un requerido | `rules` |
 | `pbi_plan_change` | solo lectura | 2 | 2 | — | sí | falta un requerido | `arguments, operation` |
@@ -167,7 +167,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_purge_backups` | destructiva | 4 | 0 | sí | sí | tipo invalido | `days` |
 | `pbi_recover_from_journal` | destructiva | 4 | 1 | sí | sí | falta un requerido | `journal` |
 | `pbi_reflow_pages` | escritura | 4 | 1 | — | sí | falta un requerido | `system` |
-| `pbi_refresh_model` | destructiva | 4 | 0 | — | sí | tipo invalido | `type` |
+| `pbi_refresh_model` | destructiva | 5 | 0 | sí | sí | tipo invalido | `type` |
 | `pbi_rename_measure` | escritura | 5 | 3 | — | sí | falta un requerido | `new_name, old_name, table` |
 | `pbi_rename_page` | escritura | 3 | 2 | — | sí | falta un requerido | `new_name, page` |
 | `pbi_reorder_pages` | escritura | 2 | 1 | — | sí | falta un requerido | `order` |
@@ -176,7 +176,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_report_capabilities` | solo lectura | 0 | 0 | — | sí | sin proyecto activo | — |
 | `pbi_run_dax` | escritura | 5 | 1 | — | sí | falta un requerido | `query` |
 | `pbi_search_model` | solo lectura | 4 | 1 | — | sí | falta un requerido | `term` |
-| `pbi_select_model` | solo lectura | 3 | 0 | — | sí | tipo invalido | `port` |
+| `pbi_select_model` | escritura | 3 | 0 | — | sí | tipo invalido | `port` |
 | `pbi_session_info` | solo lectura | 0 | 0 | — | sí | sin modo de fallo | — |
 | `pbi_set_color_from_field` | escritura | 6 | 3 | — | sí | falta un requerido | `field, page, visual_id` |
 | `pbi_set_column_visibility` | escritura | 5 | 2 | — | sí | falta un requerido | `column, table` |
