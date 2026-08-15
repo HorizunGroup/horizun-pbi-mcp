@@ -139,7 +139,9 @@ def escenario(servidor, tmp_path):
     temp.mkdir()
     centinela = tmp_path / "EJECUTADO.txt"
 
-    def lanzar(modo: str, *, salida: int = 0, hash_falso: str | None = None):
+    def lanzar(modo: str, *, salida: int = 0, hash_falso: str | None = None,
+               preludio: str = "", entorno_extra: dict | None = None,
+               mutar=None):
         payload = f'"ejecutado" | Set-Content -LiteralPath "{centinela}"\n'
         if salida:
             payload += f"exit {salida}\n"
@@ -154,13 +156,17 @@ def escenario(servidor, tmp_path):
             _Servidor.escenario = "ok"
 
         puerto = servidor.server_address[1]
+        texto = _adaptar(f"http://127.0.0.1:{puerto}/instalar.ps1", sha)
+        if mutar is not None:
+            texto = mutar(texto)
+        if preludio:
+            texto = preludio.rstrip("\n") + "\n" + texto
         bloque = tmp_path / "bloque.ps1"
-        bloque.write_text(
-            _adaptar(f"http://127.0.0.1:{puerto}/instalar.ps1", sha),
-            encoding="ascii")
+        bloque.write_text(texto, encoding="ascii")
 
         import os
         entorno = dict(os.environ, TEMP=str(temp), TMP=str(temp))
+        entorno.update(entorno_extra or {})
         res = subprocess.run(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
              "-File", str(bloque)],
@@ -170,6 +176,33 @@ def escenario(servidor, tmp_path):
     lanzar.centinela = centinela
     lanzar.temp = temp
     return lanzar
+
+
+@pytest.fixture
+def perfil_frio(tmp_path):
+    """Entorno de un perfil RECIEN creado: sin cache de analisis de modulos.
+
+    `ModuleAnalysisCache` -el indice que le ahorra a PowerShell recorrer el
+    `PSModulePath` entero para resolver un comando- vive bajo `LOCALAPPDATA`.
+    Apuntando `LOCALAPPDATA` a un directorio vacio, el interprete arranca sin
+    ese indice, exactamente como en la primera ejecucion de una maquina nueva.
+    Se quita ademas la entrada de modulos del usuario del `PSModulePath`, que
+    en un perfil nuevo tampoco existe.
+
+    Esto no es decorado: es el estado en el que la resolucion de comandos es
+    mas fragil, y por tanto donde una verificacion de integridad que dependiera
+    de resolver un cmdlet se apagaria sola.
+    """
+    import os
+
+    frio = tmp_path / "perfil-frio"
+    (frio / "Local").mkdir(parents=True)
+    (frio / "Roaming").mkdir(parents=True)
+    sistema = [p for p in (os.environ.get("PSModulePath") or "").split(os.pathsep)
+               if p and ("system32" in p.lower() or "program files" in p.lower())]
+    return {"LOCALAPPDATA": str(frio / "Local"),
+            "APPDATA": str(frio / "Roaming"),
+            "PSModulePath": os.pathsep.join(sistema)}
 
 
 def _sobrantes(temp: Path) -> list:
@@ -241,6 +274,112 @@ def test_una_salida_no_cero_del_instalador_se_reporta(escenario):
     assert "3" in res.stdout + res.stderr
 
 
+# ------------------------------- el hash no puede depender del ambiente ------
+#
+# Lo que estas cuatro pruebas cierran: el bloque calculaba el SHA-256 con
+# `Get-FileHash`, que es un CMDLET. Usar un cmdlet obliga a resolverlo, y la
+# resolucion depende de cosas que quien pega el bloque no controla -modulos
+# cargados, PSModulePath, la cache de analisis de modulos-. Cuando la
+# resolucion no ocurre, `$real` se queda vacio y la unica comprobacion de
+# integridad del bloque se apaga SOLA. Una verificacion que el entorno puede
+# desactivar no es una verificacion, y el sintoma es el peor posible: el bloque
+# no explota, simplemente deja de comprobar.
+#
+# El oraculo no persigue el fallo intermitente: lo fija. Se ejecuta el bloque
+# en una sesion donde `Get-FileHash` es IMPOSIBLE de usar y se exige que
+# verifique igual.
+
+def _detector_de_get_filehash(marca: Path) -> str:
+    """Preludio que deja constancia en disco si alguien invoca `Get-FileHash`.
+
+    Un punto de interrupcion POR NOMBRE DE COMANDO, no una funcion que lo
+    tape. Se probaron las dos y la diferencia importa: una funcion
+    `Get-FileHash` definida en el script deja de tener efecto en cuanto
+    cualquier cosa -un `New-Object`, un `Get-Command`- provoca la importacion
+    de `Microsoft.PowerShell.Utility`, porque la del modulo vuelve a ganar. Un
+    oraculo que se desactiva solo a mitad del guion es peor que no tenerlo:
+    daba por bueno el bloque VIEJO, que si llamaba al cmdlet.
+
+    El punto de interrupcion se dispara mire quien mire, antes de ejecutar el
+    comando, y sobrevive a que el modulo se reimporte.
+    """
+    return ("Set-PSBreakpoint -Command Get-FileHash -Action { 'si' | "
+            f"Set-Content -LiteralPath '{marca}' " + "} | Out-Null\n")
+
+
+@requiere_windows
+def test_el_bloque_nunca_invoca_get_filehash(escenario, tmp_path):
+    """Verifica el hash Y no llama al comando. Las dos cosas a la vez."""
+    marca = tmp_path / "GET_FILEHASH_LLAMADO.txt"
+    res = escenario("ok", preludio=_detector_de_get_filehash(marca))
+
+    assert not marca.exists(), (
+        "el bloque calculo el hash invocando Get-FileHash: la comprobacion de "
+        "integridad vuelve a depender de que el entorno resuelva un comando")
+    assert res.returncode == 0, f"{res.stdout}\n{res.stderr}"
+    assert "SHA-256 verificado" in res.stdout
+    assert escenario.centinela.exists(), "no llego a ejecutar el instalador verificado"
+
+
+@requiere_windows
+def test_sin_invocar_get_filehash_un_hash_malo_sigue_sin_ejecutar(escenario, tmp_path):
+    """No depender del entorno NO puede significar 'se salta la comprobacion'."""
+    marca = tmp_path / "GET_FILEHASH_LLAMADO.txt"
+    res = escenario("hash_incorrecto", preludio=_detector_de_get_filehash(marca))
+    assert not marca.exists()
+    assert not escenario.centinela.exists(), "ejecuto un archivo que no cuadra"
+    assert res.returncode != 0
+    assert "abortada" in (res.stdout + res.stderr).lower()
+
+
+@requiere_windows
+@pytest.mark.parametrize("modo,ejecuta", [("ok", True), ("hash_incorrecto", False)])
+def test_en_un_perfil_frio_el_bloque_se_comporta_igual(escenario, perfil_frio,
+                                                       modo, ejecuta):
+    """TEMP/TMP aislados y sin cache de analisis de modulos: mismo veredicto."""
+    res = escenario(modo, entorno_extra=perfil_frio)
+    assert escenario.centinela.exists() is ejecuta, (
+        f"en un perfil frio, con '{modo}', el veredicto cambio:\n"
+        f"{res.stdout}\n{res.stderr}")
+    assert (res.returncode == 0) is ejecuta
+    assert _sobrantes(escenario.temp) == [], "quedo basura en el TEMP aislado"
+
+
+@requiere_windows
+def test_si_el_hash_no_se_puede_calcular_no_se_ejecuta_nada(escenario):
+    """Fail-closed: 'no se pudo comprobar' tiene que valer lo mismo que 'no cuadra'.
+
+    Se rompe A PROPOSITO el calculo -el tipo de la BCL se sustituye por uno que
+    no existe- y se exige que el bloque no ejecute ni un byte. La sustitucion se
+    verifica: si el bloque deja de calcular asi, la prueba falla en vez de pasar
+    sin comprobar nada, que es exactamente el defecto que persigue.
+    """
+    def romper(texto: str) -> str:
+        nuevo, n = re.subn(r"\[Security\.Cryptography\.SHA256\]",
+                           "[Security.Cryptography.NoExisteEsteTipo]", texto)
+        assert n == 1, "el bloque ya no calcula el SHA-256 con la BCL"
+        return nuevo
+
+    res = escenario("ok", mutar=romper)
+    assert not escenario.centinela.exists(), (
+        "con el calculo del hash roto, el bloque ejecuto igualmente")
+    assert res.returncode != 0
+    assert "abortada" in (res.stdout + res.stderr).lower()
+    assert _sobrantes(escenario.temp) == []
+
+
+def test_el_bloque_no_calcula_el_hash_con_un_cmdlet():
+    """La forma, ademas del comportamiento: aqui se lee de un vistazo."""
+    texto = _snippet_canonico()
+    assert "Get-FileHash" not in texto, (
+        "el bloque volvio a calcular el hash con un cmdlet: la comprobacion "
+        "vuelve a depender de que el entorno resuelva comandos")
+    assert "[Security.Cryptography.SHA256]::Create()" in texto, (
+        "el hash ya no se calcula con la BCL")
+    assert "SHA256Managed" not in texto, (
+        "SHA256Managed lanza en una maquina con FIPS activado; ::Create() no")
+
+
 # ------------------------------------------------- forma del bloque ----------
 def test_el_bloque_no_usa_invoke_expression():
     texto = _snippet_canonico()
@@ -298,7 +437,32 @@ def test_cada_documento_incrusta_el_bloque_canonico_palabra_por_palabra(rel):
     texto = (RAIZ / rel).read_text(encoding="utf-8")
     assert _snippet_canonico() in texto, (
         f"{rel} no lleva el bloque canonico de scripts/one_paste.ps1 tal cual. "
-        "No lo edites en el documento: edita el canonico.")
+        "No lo edites en el documento: edita el canonico. "
+        "Para repararlo: python scripts/sync_one_paste.py")
+
+
+def test_ninguna_copia_del_bloque_diverge_del_canonico():
+    """`in texto` solo mira UNA aparicion, y el README lleva DOS.
+
+    Comprobar que el canonico aparece "en algun sitio" deja pasar justo la
+    regresion que importa: un documento con dos bloques, uno al dia y otro
+    viejo. Quien pegue el segundo instalara otra cosa. Aqui se compara TODA
+    aparicion del bloque, reconocida por su User-Agent.
+    """
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    import sync_one_paste
+
+    canonico = sync_one_paste.snippet_canonico()
+    divergentes = []
+    for rel in DOCUMENTOS:
+        texto = (RAIZ / rel).read_text(encoding="utf-8")
+        assert sync_one_paste.HUELLA in texto, f"{rel} ya no lleva el bloque"
+        _, cambiados = sync_one_paste.sincronizar(texto, canonico)
+        if cambiados:
+            divergentes.append(f"{rel} ({cambiados} bloque/s)")
+    assert not divergentes, (
+        f"copias del bloque que no son el canonico: {divergentes}. "
+        "Reparalo con: python scripts/sync_one_paste.py")
 
 
 def test_el_manifest_y_el_bloque_declaran_la_misma_descarga():

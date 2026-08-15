@@ -62,7 +62,18 @@ try {
         $salida.Dispose(); $entrada.Dispose(); $respuesta.Dispose()
     }
     if ($total -eq 0) { throw "La descarga llego vacia. No se ejecuta nada." }
-    $real = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sha -cnotmatch '^[0-9a-f]{64}$') {
+        throw "El hash publicado en el bloque no es un SHA-256 de 64 hex en minusculas. No se ejecuta nada."
+    }
+    $flujo = [IO.File]::Open($tmp, 'Open', 'Read', 'Read')
+    try {
+        $algoritmo = [Security.Cryptography.SHA256]::Create()
+        try { $digest = $algoritmo.ComputeHash($flujo) } finally { $algoritmo.Dispose() }
+    } finally { $flujo.Dispose() }
+    $real = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+    if ($real.Length -ne 64) {
+        throw "No se pudo calcular el SHA-256 de lo descargado. No se ejecuta nada."
+    }
     if ($real -ne $sha) {
         throw ("SHA-256 NO coincide. Esperado " + $sha + ", recibido " + $real + ". No se ejecuta nada.")
     }
