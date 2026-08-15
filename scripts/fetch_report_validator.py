@@ -27,15 +27,10 @@ from pathlib import Path
 
 RAIZ_REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ_REPO / "src"))
-# El propio directorio de scripts: al ejecutar el fichero ya esta en sys.path,
-# pero no cuando lo carga una prueba por ruta.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from plugin_bootstrap import flags_sin_ventana  # noqa: E402
-
 # El ciclo de vida COMPARTIDO: la misma promocion y el mismo cerrojo que
 # publican el runtime.
 from horizun_pbi_mcp.lifecycle import locking as cerrojos  # noqa: E402
+from horizun_pbi_mcp.lifecycle import procesos  # noqa: E402
 from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
 
 PAQUETE = "@microsoft/powerbi-report-authoring-cli"
@@ -57,7 +52,7 @@ def _correr(args, cwd=None, timeout=900):
     # asigne una consola visible al hijo cuando el padre no tiene ninguna:
     # `node` y `npm` estrenaban ventana en cada instalacion del validador.
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                          shell=False, timeout=timeout, **flags_sin_ventana())
+                          shell=False, timeout=timeout, **procesos.sin_ventana())
 
 
 def comprobar_node() -> int:

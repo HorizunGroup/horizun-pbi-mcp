@@ -236,6 +236,14 @@ SCRIPTS_DEL_BOOTSTRAP = ("plugin_bootstrap.py", "fetch_report_validator.py",
                          "fetch_libs.py", "fetch_pbir_schemas.py")
 
 
+#: Los dos nombres del MISMO ayudante. `procesos.sin_ventana` es la unica
+#: implementacion, en el paquete; `flags_sin_ventana` es como la reexporta
+#: `plugin_bootstrap`, que la carga por ruta porque corre antes de que el
+#: paquete sea importable. Aceptar los dos NO afloja la guarda: sigue siendo una
+#: lista cerrada, y un `subprocess.run` sin ninguno de los dos falla igual.
+AYUDANTES = {"flags_sin_ventana", "sin_ventana"}
+
+
 def _llamadas_a_subprocess(ruta: Path):
     """(funcion que la contiene, nodo, ¿declara creationflags?) por llamada."""
     arbol = ast.parse(ruta.read_text(encoding="utf-8"))
@@ -255,7 +263,7 @@ def _llamadas_a_subprocess(ruta: Path):
                 k.arg == "creationflags"
                 or (k.arg is None and isinstance(k.value, ast.Call)
                     and getattr(k.value.func, "id",
-                                getattr(k.value.func, "attr", "")) == "flags_sin_ventana")
+                                getattr(k.value.func, "attr", "")) in AYUDANTES)
                 for k in nodo.keywords)
             yield contenedor.name, nodo, declara
 

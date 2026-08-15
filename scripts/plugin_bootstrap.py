@@ -46,6 +46,7 @@ _promocion = _cargar_modulo_del_paquete("promotion")
 _cerrojos = _cargar_modulo_del_paquete("locking")
 _salud = _cargar_modulo_del_paquete("healthcheck")
 _estado = _cargar_modulo_del_paquete("runtime_state")
+_procesos = _cargar_modulo_del_paquete("procesos")
 
 #: Lo reconstruible: vive bajo `<raiz>/<VERSION>` y se descarga verificado por
 #: hash. Borrarlo cuesta una reinstalacion, nunca un dato del usuario.
@@ -365,22 +366,10 @@ def runtime_env(p: dict[str, Path]) -> dict[str, str]:
     return env
 
 
-def flags_sin_ventana() -> dict[str, Any]:
-    """Opciones de `subprocess` para que el hijo NO estrene consola.
-
-    El instalador corre con DETACHED_PROCESS, o sea SIN consola propia. Cuando
-    un proceso sin consola arranca una aplicacion de consola, Windows le crea
-    una VISIBLE al hijo salvo que ESE CreateProcess pida lo contrario: el flag
-    del padre no se hereda. Por eso cada `pip`, cada `npm` y cada descarga
-    aparecian en pantalla al abrir Claude. Redirigir stdout no evita nada: la
-    consola se asigna igual, tenga o no donde escribir.
-
-    Todo subproceso de la instalacion pasa por aqui; el que se olvide, vuelve a
-    abrir la ventana.
-    """
-    if os.name != "nt":
-        return {}
-    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+#: La UNICA implementacion, en el paquete. Aqui solo se reexporta con el nombre
+#: de siempre: lo usan `plugin_launcher` y una prueba que vigila que ningun
+#: subproceso del instalador se olvide de pasarlo.
+flags_sin_ventana = _procesos.sin_ventana
 
 
 

@@ -28,6 +28,20 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+try:                                    # dentro del paquete, instalado o no
+    from . import procesos
+except ImportError:                     # cargado POR RUTA por `plugin_bootstrap`
+    # Ese cargador ejecuta este archivo suelto, sin paquete, para no arrastrar
+    # el `__init__` del producto -y con el, dependencias que en ese momento
+    # todavia no existen-. Aqui se hace lo mismo con el hermano: la alternativa
+    # era una cuarta copia de las cuatro lineas del flag de ventana.
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location(
+        "_horizun_lifecycle_procesos", Path(__file__).with_name("procesos.py"))
+    procesos = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(procesos)
+
 #: Arranque en frio de un venv nuevo en Windows: importar pythonnet y construir
 #: 17 modulos de tools no es instantaneo. Generoso a proposito -un timeout corto
 #: convertiria una maquina lenta en una instalacion fallida-, pero acotado: sin
@@ -50,12 +64,6 @@ def contrato() -> dict[str, Any]:
     if not isinstance(datos.get("tools"), list) or not datos["tools"]:
         raise ValueError(f"{BASELINE} no lleva la lista de tools")
     return datos
-
-
-def _flags_sin_ventana() -> dict[str, Any]:
-    if os.name != "nt":
-        return {}
-    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
 
 
 def entry_points(runtime: Path) -> list[Path]:
@@ -116,7 +124,7 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
             [str(python), "-c", _ARRANQUE],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace",
-            cwd=str(cwd) if cwd else None, env=entorno, **_flags_sin_ventana())
+            cwd=str(cwd) if cwd else None, env=entorno, **procesos.sin_ventana())
     except OSError as exc:
         resultado["error"] = f"no se pudo lanzar el runtime: {exc}"
         return resultado
