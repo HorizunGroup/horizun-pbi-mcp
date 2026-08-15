@@ -92,8 +92,8 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
-| INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Abierta** |
-| INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** |
+| INSTALL-001 | La siembra mueve el runtime de N−1 antes de validar el nuevo, sin rollback | Alta | G4.1 | **Parcialmente cerrada** — 2026-08-14. La siembra copia, se prepara en staging y se promueve con journal y recuperación; fallo inyectado en los 4 pasos deja N−1 intacto. G4.1 exige VM limpia |
+| INSTALL-002 | Node <20 o fallo del validador opcional deja `state=failed` | Alta | G3.4 | **Parcialmente cerrada** — 2026-08-14 con preflight por versión de Node, fallo del opcional no fatal y motivo registrado. G3.4 exige VM con Node 18 |
 | INSTALL-003 | Cinco caminos publicados ejecutan desde `main` sin pin ni verificación | Crítica | G6.3, G6.4 | **Parcialmente cerrada** — 2026-08-14. Los cinco caminos resuelven a referencia fija y el one-paste verifica el SHA-256 antes de ejecutar; falta descargar el asset de v1.5.5 y comprobar sus bytes, y esa release no existe |
 | INSTALL-004 | La verificación final es una coincidencia de subcadena sobre `plugin list` | Media | G3.5 | **Parcialmente cerrada** |
 | INSTALL-005 | El wheel no lleva scripts, DLL, esquemas ni bootstrap | Alta | G3.6 | **Abierta** |
@@ -133,9 +133,10 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 ## Cuentas
 
 30 entradas: **5 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-001,
-TEST-004), **9 parcialmente cerradas** (CORE-003, INSTALL-002, INSTALL-003,
-INSTALL-004, INSTALL-006, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
-**16 abiertas**. Conteo verificado sobre las filas, no escrito de memoria.
+TEST-004), **10 parcialmente cerradas** (CORE-003, INSTALL-001, INSTALL-002,
+INSTALL-003, INSTALL-004, INSTALL-006, RELEASE-001, RELEASE-002, RELEASE-003,
+CLI-001), **15 abiertas**. Conteo verificado sobre las filas, no escrito de
+memoria.
 
 Al 2026-08-14, tras la segunda pasada. La cuenta anterior era 4 / 5 / 21: se
 cerró TEST-001 y pasaron a parciales INSTALL-003, RELEASE-001, RELEASE-002 y
@@ -531,3 +532,41 @@ Nada de esto está autorizado en este ciclo y ninguna se ha hecho:
    de `gh api` como evidencia.
 5. Después de publicar: descargar el asset, comparar hashes y cerrar la parte
    remota de INSTALL-003, RELEASE-001 y RELEASE-002.
+
+
+---
+
+## Tercera pasada — ciclo de vida de instalación (2026-08-14, en curso)
+
+Rama `codex/installer-lifecycle-hardening`, base `513fc1d`.
+
+| Hash | Commit | Cierra |
+|---|---|---|
+| `5307ab5` | `fix(installer): preserve last-known-good runtime during upgrades` | INSTALL-001, INSTALL-002 |
+
+**Arquitectura introducida.** El núcleo del ciclo de vida vive ahora en
+`src/horizun_pbi_mcp/lifecycle/` —dentro del paquete, no en `scripts/`—, solo
+con biblioteca estándar. `plugin_bootstrap.py` lo carga **por ruta**, no con
+`import`: corre con el Python anfitrión antes de que exista el entorno aislado,
+e importar el paquete arrastraría dependencias que todavía no están. Esa
+ubicación es también el cimiento de INSTALL-005: si el núcleo viaja en el wheel,
+la CLI empaquetada puede preparar el runtime igual que el plugin, en vez de
+haber dos implementaciones.
+
+**Rojo:** 21 de 21 en `tests/test_lifecycle_upgrade.py` contra `513fc1d`.
+
+### Lo que queda de esta macro-iteración
+
+Sin empezar, y ninguna se ha tocado: **INSTALL-004, -005, -006, -007, -008,
+-009, -010 y CLI-001**. La arquitectura de staging/promoción/rollback ya está
+disponible para todas ellas, que es la dependencia que compartían.
+
+Nota sobre **INSTALL-007**: pide retirar el reintento de winget sin
+`--scope user`. Ese reintento se añadió **a propósito** en v1.5.4 (`b2d851a`
+y anteriores) porque winget responde `No applicable installer found`
+(0x8A150044) cuando un manifiesto ajeno no está etiquetado como *user*, aunque
+su instalador por defecto sí instale en el perfil. Retirarlo sin más vuelve a
+romper el camino del PC vacío que aquella versión arregló. La salida razonable
+—pendiente de decisión— es dejarlo **explícito y consentido** en vez de
+silencioso: user-scope por defecto, reintento solo bajo una bandera declarada,
+y verificación posterior de que nada aterrizó fuera del perfil.
