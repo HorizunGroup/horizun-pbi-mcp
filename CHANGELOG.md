@@ -47,6 +47,42 @@ nothing published yet.**
 
 ### Fixed
 
+- **A failed upgrade cost you the 134 tools, with the previous runtime still
+  intact on disk.** The launcher only ever looked at the current version: if its
+  status was not `ready`, it served the bootstrap MCP with its two tools —
+  install and check status — while N−1 sat there, whole and bootable. The
+  fallback existed on disk and not in the code. There is now a state file at the
+  data root with three independent facts (`activo`, `last_known_good`,
+  `ultimo_intento`), because *the upgrade failed* and *N−1 is still serving* are
+  true at the same time and used to overwrite each other. The acceptance test
+  drives the real launcher over stdio and counts what a client actually receives.
+- **The upgrade recovery trusted absolute paths written in a file.**
+  `promotion.recuperar()` read `staging`, `destino` and `anterior` straight out
+  of `.promotion.json`. That file lives in the data directory, so whoever can
+  write it decides which folder an unattended installer renames — demonstrated
+  by moving a staging directory to a sibling of the data root. The journal now
+  stores only names of direct children, validated both lexically (no `..`,
+  separators, absolute paths, UNC, alternate streams) and after resolution (no
+  junctions or symlinks). Recovery, seeding, promotion and cleanup all moved
+  inside the lifecycle lock; they used to run before it was acquired.
+- **`ready` accepted any hundred tools whose name started with `pbi_`**, with
+  the contract at 134. It also ignored `serverInfo` entirely and never compared
+  the version the server announced with the one just prepared. Three different
+  broken runtimes passed. The healthcheck now checks the packaged contract:
+  exact server name, matching version, well-formed `tools/list`, and not one of
+  the 134 missing. Extra tools are still fine — adding one must not turn into a
+  failed install.
+- **Schemas and the PBIR validator were published on top of the live
+  directory** — the schemas file by file, the validator with
+  `npm install --prefix <destino>`. Either one, interrupted, left old and new
+  mixed. Both now stage in a sibling directory, verify, and publish with a
+  rename through the same lifecycle used for the runtime.
+- **The SHA-256 check in the one-paste block depended on the environment
+  resolving a command.** It used `Get-FileHash`; if that had not resolved, the
+  computed hash would have been empty and the only integrity check in the block
+  would have switched itself off. It now uses `[Security.Cryptography.SHA256]`,
+  a type the runtime resolves, and refuses outright if the published hash is not
+  64 lowercase hex or the computed one is not 64 characters.
 - **`py -3` was downloading and installing a Python runtime during a
   *diagnostic* probe.** On modern Windows `py` is the Python Install Manager:
   asking it for an interpreter it does not have makes it fetch one. With a clean
