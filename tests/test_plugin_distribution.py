@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -447,8 +448,15 @@ def test_la_limpieza_borra_lo_huerfano_y_conserva_lo_del_usuario(tmp_path, monke
     p = bootstrap.paths(raiz)
     p["cache"].mkdir(parents=True)
 
+    # Dos versiones viejas con runtime. La MAS RECIENTE se indulta como N-1
+    # -INSTALL-001: la limpieza no puede dejar la instalacion sin nada a lo que
+    # volver- y la otra se va. Antes se borraban las dos, y el ensayo real lo
+    # destapo: se llegaba a `ready` sin un solo interprete anterior utilizable.
+    antigua = raiz / "0.9.0" / "runtime"
+    antigua.mkdir(parents=True)
     vieja = raiz / "1.0.0" / "runtime"
     vieja.mkdir(parents=True)
+    os.utime(raiz / "1.0.0", (time.time(), time.time()))
     resto = raiz / "runtime"                       # diseño viejo, en la raiz
     resto.mkdir(parents=True)
     (raiz / "outputs").mkdir()
@@ -467,7 +475,11 @@ def test_la_limpieza_borra_lo_huerfano_y_conserva_lo_del_usuario(tmp_path, monke
 
     borrados = bootstrap._limpiar_huerfanos(p)
 
-    assert not (raiz / "1.0.0").exists() and not resto.exists()
+    assert (raiz / "1.0.0" / "runtime").is_dir(), (
+        "se borro el unico N-1 utilizable: si la version vigente falla al "
+        "arrancar, no queda a donde volver")
+    assert not (raiz / "0.9.0").exists(), "solo se indulta UNA, la mas reciente"
+    assert not resto.exists()
     assert not cliente.exists() and not abandonada.exists()
     assert ajena.exists(), "no se tocan las carpetas de otros plugins"
     assert p["cache"].is_dir(), "la version vigente se queda"

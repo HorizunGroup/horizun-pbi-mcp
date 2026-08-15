@@ -335,3 +335,33 @@ def test_con_node_viejo_la_instalacion_llega_a_ready(bootstrap, tmp_path, monkey
     assert estado["validator"]["state"] == "skipped_node_too_old"
     assert estado["validator"]["node"] == "v18.20.4", (
         "no se registro la version detectada: doctor no podria explicar el hueco")
+
+
+def test_tras_una_actualizacion_CON_EXITO_queda_un_N1_arrancable(
+        bootstrap, tmp_path, monkeypatch):
+    """Lo destapo el ensayo real, no las pruebas de arriba.
+
+    Aquellas prueban `promover()` aislada y los caminos de FALLO. Esto solo
+    ocurre en el camino de EXITO: al actualizar desde `1.5.4`, la promocion
+    conserva como `.previous-` lo que hubiera en el destino -en una
+    actualizacion de version distinta, una carpeta recien creada con el status
+    y nada mas- y despues la limpieza borraba `1.5.4`, que era el unico runtime
+    completo. Quedaba `ready`, con un N-1 "conservado" que no tenia interprete.
+    """
+    raiz = tmp_path / "datos"
+    donante = raiz / "1.5.4"
+    py_donante = _sembrar_runtime(donante, bootstrap, marca="#N-1")
+
+    monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: None)
+    monkeypatch.setenv("HORIZUN_PBI_PLUGIN_DATA", str(raiz))
+
+    assert bootstrap.install(raiz, include_validator=False) == 0
+    assert bootstrap.read_status(raiz)["state"] == "ready"
+
+    utilizables = [d for d in raiz.iterdir()
+                   if d.is_dir() and d != bootstrap.paths(raiz)["cache"]
+                   and (d / "runtime").is_dir()]
+    assert utilizables, (
+        "tras actualizar con exito no queda NINGUN runtime anterior: si la "
+        "version nueva falla al arrancar, no hay a donde volver")
+    assert py_donante.is_file(), "se borro el unico N-1 completo que habia"

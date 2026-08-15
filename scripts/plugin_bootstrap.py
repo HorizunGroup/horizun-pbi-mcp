@@ -298,8 +298,30 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
     rescata antes.
     """
     borrados: list[str] = []
-    for viejo in _versiones_en_disco(p["root"]):
-        if viejo != p["cache"] and _borrar(viejo):
+    viejas = [d for d in _versiones_en_disco(p["root"]) if d != p["cache"]]
+
+    # INSTALL-001: la limpieza no puede dejar la instalacion sin N-1 arrancable.
+    #
+    # Lo destapo el ensayo real, no las pruebas unitarias, y por un motivo que
+    # conviene recordar: aquellas probaban `promover()` aislada y los caminos de
+    # FALLO, mientras que esto solo ocurre en el camino de EXITO. Al actualizar
+    # desde `1.5.4`, la promocion conservaba como `.previous-` lo que hubiera en
+    # el destino -que en una actualizacion de version distinta es una carpeta
+    # recien creada con el status y nada mas- y acto seguido esta limpieza
+    # borraba `1.5.4`, que era el unico runtime completo que quedaba. Resultado:
+    # `ready`, N-1 "conservado" y ni un interprete al que volver.
+    #
+    # Asi que antes de borrar se comprueba si lo conservado sirve de verdad, y
+    # si no sirve se indulta la version vieja mas reciente que si tenga runtime.
+    hay_n1 = any((d / "runtime").is_dir() for d in _promocion.anteriores(p["root"]))
+    if not hay_n1:
+        con_runtime = [d for d in viejas if (d / "runtime").is_dir()]
+        if con_runtime:
+            reserva = max(con_runtime, key=lambda d: d.stat().st_mtime)
+            viejas = [d for d in viejas if d != reserva]
+
+    for viejo in viejas:
+        if _borrar(viejo):
             borrados.append(str(viejo))
     for nombre in (*CACHE, "install-status.json", "install.lock", "install.log"):
         resto = p["root"] / nombre
