@@ -122,6 +122,32 @@ def read_status(base: Path | None = None) -> dict[str, Any]:
     # runtime anterior siguiera entero. Los dos hechos van juntos y separados:
     # como fue el ultimo intento, y que se esta sirviendo de verdad.
     seleccion = seleccionar_runtime(base)
+    estado = _estado.leer(p["root"])
+
+    # `state` deja de ser el resultado del ultimo intento y pasa a ser el estado
+    # OPERATIVO. G3.3 lo pide literalmente: corromper el runtime y exigir
+    # `state != ready`. Antes se cambiaba `sirviendo` a last-known-good y
+    # `state` seguia en `ready`, o sea que el campo que un cliente mira para
+    # saber si esto funciona seguia diciendo que si sobre algo que ya no
+    # arranca. El resultado del ultimo intento no se pierde: se muda a
+    # `estado_instalacion`.
+    result["estado_instalacion"] = result.get("state")
+    degradacion = estado["degradado"]
+    if degradacion and degradacion["carpeta"] != p["cache"].name:
+        degradacion = None                # es de otra version: ya no aplica
+    if (result.get("state") == "ready" and not degradacion
+            and seleccion["modo"] != "activo"):
+        # Degradacion que se ve sin arrancar nada -falta el interprete, faltan
+        # los entry points-. No hace falta esperar a que alguien la anote.
+        degradacion = {"carpeta": p["cache"].name, "fase": "estructura",
+                       "motivo": "el runtime activo ya no esta completo en "
+                                 "disco (interprete o entry points)",
+                       "ts": None}
+    if degradacion and result.get("state") == "ready":
+        result["state"] = "degraded"
+        result["ready"] = False
+    result["degradacion"] = degradacion
+
     result["sirviendo"] = seleccion["modo"]
     result["sirviendo_version"] = seleccion["version"]
     # La evidencia de LO QUE SE VA A EJECUTAR. `last_known_good` de abajo es el
@@ -130,10 +156,79 @@ def read_status(base: Path | None = None) -> dict[str, Any]:
     # `activo`. Quien diagnostica necesita saber que se ejecutaria, no que
     # campo esta relleno.
     result["sirviendo_evidencia"] = seleccion["evidencia"]
-    estado = _estado.leer(p["root"])
     result["last_known_good"] = estado["last_known_good"]
     result["ultimo_intento"] = estado["ultimo_intento"]
     return result
+
+
+#: Plazo del preflight de ARRANQUE. Mas corto que el de instalacion (180 s) a
+#: proposito: aqui hay un cliente MCP esperando, y su propio plazo de arranque
+#: es del orden del minuto. Pasado eso el cliente ya se habria rendido, asi que
+#: seguir esperando solo retrasa el momento de servirle N−1.
+PREFLIGHT_TIMEOUT = 60
+
+
+def _degradar(root: Path, carpeta: str, veredicto: dict[str, Any]) -> bool:
+    """Anota que ese runtime ya no es operativo. **Bajo el cerrojo.**
+
+    Escribir `runtime-state.json` es tocar el estado del ciclo de vida, y si hay
+    una instalacion en curso su dueño lo esta reescribiendo: pisarlo desde el
+    lanzador seria la misma carrera que INSTALL-011 acaba de cerrar por el otro
+    lado. Si el cerrojo es de otro, **no se escribe**, y no pasa nada: el estado
+    degradado tambien se DEDUCE al leerlo, asi que el diagnostico no depende de
+    haber podido anotarlo.
+    """
+    with _cerrojos.CerrojoDeCicloDeVida(root, etiqueta="degradar") as cerrojo:
+        if not cerrojo.adquirido:
+            return False
+        motivo = veredicto.get("error") or "no supero el handshake MCP"
+        _estado.registrar_degradacion(root, carpeta=carpeta, motivo=motivo,
+                                      fase=veredicto.get("fase"))
+        return True
+
+
+def elegir_runtime_verificado(base: Path | None = None) -> dict[str, Any]:
+    """El runtime al que se le puede entregar el stdio del cliente. O ninguno.
+
+    **INSTALL-012.** El lanzador ejecutaba el activo heredandole el stdio del
+    cliente y, si moria pronto con codigo distinto de cero, arrancaba N−1 sobre
+    esa MISMA conexion, con el argumento de que "no llego a escribir nada". Eso
+    no se medía: el hijo escribe directamente en el stdout del cliente, asi que
+    el lanzador no ve un solo byte de lo que emite. Un runtime que contesta
+    `initialize` y se cae a los dos segundos dejaba al cliente hablando con dos
+    servidores en el mismo canal.
+
+    Aqui se verifica ANTES de entregar nada, en un proceso aparte y con
+    tuberias propias. Al que salga de esta funcion se le da el stdio del
+    cliente, y a partir de ese momento no se arranca nada mas sobre esa
+    conexion, pase lo que pase.
+
+    El precio es un arranque de servidor extra por sesion. Se paga a gusto: la
+    alternativa era un proxy que intermediara el stdio durante toda la sesion, y
+    eso añade un salto de tuberias a cada mensaje, para siempre, en vez de unos
+    segundos una vez.
+    """
+    p = paths(base)
+    root = p["root"]
+    descartadas: set[str] = set()
+
+    while True:
+        seleccion = seleccionar_runtime(base, excluir=descartadas)
+        if seleccion["modo"] == "ninguno":
+            return seleccion
+
+        py = Path(seleccion["python"])
+        sp = paths(root, cache=py.parent.parent.parent)
+        veredicto = _salud.verificar(py, env=runtime_env(sp), cwd=root,
+                                     timeout=PREFLIGHT_TIMEOUT)
+        if veredicto["ok"]:
+            seleccion["preflight"] = {"tools": veredicto["tools"],
+                                      "servidor": veredicto.get("servidor"),
+                                      "version": veredicto.get("version")}
+            return seleccion
+
+        _degradar(root, seleccion["carpeta"], veredicto)
+        descartadas.add(seleccion["carpeta"])
 
 
 def _runtime_arrancable(root: Path, registro: dict[str, Any] | None) -> Path | None:
@@ -171,7 +266,7 @@ def _runtime_arrancable(root: Path, registro: dict[str, Any] | None) -> Path | N
 
 
 def seleccionar_runtime(base: Path | None = None, *,
-                        excluir: str | None = None) -> dict[str, Any]:
+                        excluir: "set[str] | None" = None) -> dict[str, Any]:
     """Que runtime debe ejecutar el lanzador AHORA.
 
     Este es el corazon de la correccion. El lanzador comprobaba solo tres
@@ -190,15 +285,25 @@ def seleccionar_runtime(base: Path | None = None, *,
     except OSError:                                          # pragma: no cover
         status = {}
 
-    # `excluir` lleva la carpeta que el lanzador acaba de ver morir. Sin ella,
-    # el segundo intento volveria a elegir exactamente lo mismo: el status
-    # sigue diciendo `ready` y la carpeta sigue teniendo su interprete.
+    # `excluir` lleva las carpetas que el preflight ya rechazo en este mismo
+    # arranque. Sin ellas, el segundo intento volveria a elegir exactamente lo
+    # mismo: el status sigue diciendo `ready` y la carpeta sigue teniendo su
+    # interprete y sus entry points.
+    fuera = set(excluir or ())
+    # Lo que YA se midio que no arranca no se vuelve a elegir. Sin esto,
+    # `sirviendo` seguia apuntando al runtime que `state` acababa de declarar
+    # degradado -las dos cosas en la misma respuesta, contradiciendose- porque
+    # la comprobacion estructural no puede ver que le falta el paquete. La marca
+    # la levanta una instalacion buena, que es la salida real de una degradacion.
+    if estado["degradado"]:
+        fuera.add(estado["degradado"]["carpeta"])
+
     def _descartada(registro: dict[str, Any] | None) -> bool:
-        return bool(excluir and registro and registro.get("carpeta") == excluir)
+        return bool(registro and registro.get("carpeta") in fuera)
 
     # 1. La version que toca, si el status la respalda y arranca.
     if (status.get("ready") and status.get("version") == VERSION
-            and excluir != p["cache"].name):
+            and p["cache"].name not in fuera):
         py = _runtime_arrancable(root, estado["activo"] or _estado.evidencia(
             p["cache"].name, version=VERSION, servidor="-", tools=1))
         if py is not None and py == p["python"]:

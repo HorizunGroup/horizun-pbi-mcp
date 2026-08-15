@@ -221,6 +221,35 @@ def hablar_mcp(comando: list[str], *, env: dict, timeout: int = 120) -> dict:
         "tools": [t.get("name") for t in
                   ((lista or {}).get("result") or {}).get("tools") or []],
         "mensajes": mensajes,
+        "stdout_crudo": proc.stdout,
         "stderr": proc.stderr,
         "rc": proc.returncode,
+    }
+
+
+def mezcla(sesion: dict) -> dict:
+    """Señales de que MAS DE UN servidor escribio en el mismo canal.
+
+    Ninguna de las tres es una heuristica: cada una es imposible en una sesion
+    con un solo servidor MCP correcto.
+
+      - dos respuestas para el mismo `id`: el protocolo empareja peticion y
+        respuesta por id, y un servidor contesta cada una una vez;
+      - dos `serverInfo` distintos: solo hay un `initialize` por conexion;
+      - lineas que no son JSON-RPC: el canal es exclusivamente JSON-RPC.
+    """
+    from collections import Counter
+
+    por_id = Counter(m["id"] for m in sesion["mensajes"]
+                     if isinstance(m, dict) and m.get("id") is not None)
+    identidades = set()
+    for m in sesion["mensajes"]:
+        info = ((m or {}).get("result") or {}).get("serverInfo")
+        if isinstance(info, dict):
+            identidades.add((info.get("name"), info.get("version")))
+    return {
+        "ids_repetidos": {i: n for i, n in por_id.items() if n > 1},
+        "identidades": identidades,
+        "lineas_no_json": [m["_no_json"] for m in sesion["mensajes"]
+                           if isinstance(m, dict) and "_no_json" in m],
     }

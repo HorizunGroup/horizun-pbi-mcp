@@ -5,7 +5,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -124,12 +123,6 @@ def bootstrap_server() -> int:
     return 0
 
 
-#: Por debajo de esto, un runtime que sale con codigo distinto de cero no llego
-#: a servir: se cayo al arrancar. Por encima, ya estuvo trabajando y volver a
-#: lanzar otro sobre el mismo stdio confundiria al cliente mas que ayudarle.
-SEGUNDOS_DE_ARRANQUE = 20.0
-
-
 def _servir(seleccion: dict[str, Any]) -> int:
     """Ejecuta el runtime elegido heredando el stdio del cliente."""
     python = Path(seleccion["python"])
@@ -151,30 +144,32 @@ def _servir(seleccion: dict[str, Any]) -> int:
 
 
 def main() -> int:
-    seleccion = bootstrap.seleccionar_runtime()
+    """Verifica PRIMERO, entrega el canal DESPUES, y nunca al reves.
 
-    if seleccion["modo"] == "activo":
-        arranque = time.monotonic()
-        codigo = _servir(seleccion)
-        if codigo == 0 or time.monotonic() - arranque >= SEGUNDOS_DE_ARRANQUE:
-            return codigo
-        # Se cayo en el arranque. G3.3: un runtime promovido puede corromperse
-        # DESPUES -alguien borra su site-packages, un antivirus se lleva un
-        # archivo- y entonces el status sigue diciendo `ready` sobre algo que ya
-        # no arranca. Como no llego a escribir nada por stdout, las tuberias del
-        # cliente siguen limpias y se le puede servir el N−1 por las mismas.
-        print(f"launcher: el runtime activo salio con {codigo} al arrancar; "
-              "se intenta el ultimo runtime bueno.", file=sys.stderr)
-        alternativa = bootstrap.seleccionar_runtime(excluir=seleccion["carpeta"])
-        if alternativa["modo"] == "last-known-good":
-            return _servir(alternativa)
-        return codigo
+    INSTALL-012. Antes se ejecutaba el runtime activo heredandole el stdio del
+    cliente y, si moria pronto con codigo distinto de cero, se arrancaba N−1
+    sobre esa MISMA conexion. El argumento era que no habia llegado a escribir
+    nada; nadie lo comprobaba, y no se podia comprobar: el hijo escribe
+    directamente en el stdout del cliente, asi que este proceso no ve un solo
+    byte de lo que emite. La duracion de un proceso no dice nada sobre lo que
+    alcanzo a emitir, y un runtime que contestaba `initialize` y se caia a los
+    dos segundos dejaba al cliente hablando con dos servidores por el mismo
+    canal, con dos `serverInfo` y dos respuestas para el mismo `id`.
+
+    `elegir_runtime_verificado()` hace el handshake en un proceso aparte, con
+    tuberias propias. El stdin del cliente no se toca, asi que no hay peticiones
+    consumidas que reproducir. Al que salga de ahi se le entrega el stdio, y a
+    partir de ese momento no se arranca nada mas sobre esa conexion: si se cae,
+    se devuelve su codigo y el fallback queda para la siguiente reconexion.
+    """
+    seleccion = bootstrap.elegir_runtime_verificado()
 
     if seleccion["modo"] == "last-known-good":
         print(f"launcher: la version {bootstrap.VERSION} no esta operativa; "
               f"sirviendo el ultimo runtime bueno ({seleccion['version']}). "
-              "El error de la actualizacion sigue en install-status.json.",
+              "La causa esta en pbi_install_status, campo `degradacion`.",
               file=sys.stderr)
+    if seleccion["python"]:
         return _servir(seleccion)
 
     return bootstrap_server()

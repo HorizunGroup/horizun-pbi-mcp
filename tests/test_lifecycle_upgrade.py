@@ -50,6 +50,12 @@ def _sembrar_runtime(carpeta: Path, bs, marca: str = "#viejo") -> Path:
     py = carpeta / "runtime" / relativa
     py.parent.mkdir(parents=True, exist_ok=True)
     py.write_text(marca, encoding="utf-8")
+    # Los ejecutables de consola que crea `pip install`. Sin ellos el runtime
+    # esta estructuralmente incompleto y el estado lo reporta degradado -con
+    # razon-, asi que una siembra sin ellos no representa una instalacion.
+    for entrada in bs._salud.entry_points(carpeta / "runtime"):
+        entrada.parent.mkdir(parents=True, exist_ok=True)
+        entrada.write_bytes(b"")
     (carpeta / "libs").mkdir(parents=True, exist_ok=True)
     (carpeta / "libs" / "Microsoft.AnalysisServices.dll").write_text(
         "dll", encoding="utf-8")

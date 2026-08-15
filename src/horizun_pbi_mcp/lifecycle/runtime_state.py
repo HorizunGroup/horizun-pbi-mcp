@@ -50,7 +50,7 @@ RESULTADOS = ("ok", "failed")
 
 def vacio() -> dict[str, Any]:
     return {"esquema": ESQUEMA, "activo": None, "last_known_good": None,
-            "ultimo_intento": None}
+            "ultimo_intento": None, "degradado": None}
 
 
 def evidencia(carpeta: str, *, version: str, servidor: str, tools: int,
@@ -99,6 +99,10 @@ def leer(root: Path) -> dict[str, Any]:
     intento = datos.get("ultimo_intento")
     if isinstance(intento, dict) and intento.get("resultado") in RESULTADOS:
         salida["ultimo_intento"] = intento
+    degradado = datos.get("degradado")
+    if isinstance(degradado, dict) and degradado.get("carpeta") \
+            and degradado.get("motivo"):
+        salida["degradado"] = degradado
     return salida
 
 
@@ -148,6 +152,27 @@ def registrar_promocion(root: Path, *, nuevo: dict[str, Any],
     estado["activo"] = nuevo
     estado["ultimo_intento"] = {"resultado": "ok", "version": nuevo["version"],
                                 "ts": time.time()}
+    # Promover es la salida de una degradacion: lo que acaba de superar el
+    # handshake no puede seguir marcado como roto. Si no se limpiara aqui, la
+    # reinstalacion arreglaria el runtime y dejaria el estado mintiendo.
+    estado["degradado"] = None
+    escribir(root, estado)
+    return estado
+
+
+def registrar_degradacion(root: Path, *, carpeta: str, motivo: str,
+                          fase: str | None = None) -> dict[str, Any]:
+    """Marca que el runtime de `carpeta` ya NO es operativo, y por que.
+
+    Va aparte de `ultimo_intento` porque son hechos distintos y de momentos
+    distintos: *la ultima instalacion salio bien* puede convivir con *lo que
+    instalo ya no arranca*. Un runtime se corrompe DESPUES de instalarse -un
+    antivirus se lleva un archivo, alguien borra el paquete-, y meter las dos
+    cosas en un campo obligaba a que una borrase a la otra.
+    """
+    estado = leer(root)
+    estado["degradado"] = {"carpeta": carpeta, "motivo": motivo, "fase": fase,
+                           "ts": time.time()}
     escribir(root, estado)
     return estado
 

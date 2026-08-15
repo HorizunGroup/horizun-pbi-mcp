@@ -311,7 +311,15 @@ def test_un_runtime_promovido_que_se_corrompe_deja_de_anunciarse_ready(
             entrada.unlink()
 
     status = bootstrap.read_status(raiz)
-    assert status["state"] == "ready", "el status en disco no cambia solo"
+    # G3.3 al pie de la letra. Esta prueba afirmaba `state == "ready"` y era
+    # justo lo que el gate prohibe: el campo que un cliente mira para saber si
+    # esto funciona no puede seguir diciendo que si sobre un runtime corrompido.
+    # Lo que NO cambia solo es el archivo en disco, y por eso se conserva
+    # aparte, en `estado_instalacion`.
+    assert status["estado_instalacion"] == "ready", (
+        "se perdio el resultado del ultimo intento de instalacion")
+    assert status["state"] == "degraded", status["state"]
+    assert status["ready"] is False
     assert status["sirviendo"] == "last-known-good", (
         "se sigue anunciando como operativo un runtime que ya no arranca")
     assert status["sirviendo_version"] == "1.5.4"
