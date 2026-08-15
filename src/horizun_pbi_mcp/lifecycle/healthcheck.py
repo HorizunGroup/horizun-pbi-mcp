@@ -144,15 +144,26 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
     import threading
 
     lineas: list[str] = []
-    visto_el_final = threading.Event()
+    #: La respuesta que se espera ya llego. Permite CERRAR STDIN, no dejar de leer.
+    contestado = threading.Event()
 
     def _leer() -> None:
-        # `finally` y no un `return` por rama: el hilo tiene que despertar al
-        # principal TAMBIEN cuando stdout se cierra sin haber contestado, que es
-        # lo que pasa cuando el runtime se muere al arrancar. Sin esto, un
-        # proceso que revienta en el primer import costaba el TIMEOUT entero
-        # -tres minutos- para acabar diciendo lo que ya se sabia en el primer
-        # segundo, y multiplicado por cada intento de una instalacion.
+        # Se lee hasta EOF, y no hasta ver la respuesta esperada. Antes el hilo
+        # volvia en cuanto veia `id: 2`, asi que TODO lo que el servidor
+        # escribiera despues quedaba sin mirar: un `print` de despedida, un
+        # `atexit`, el aviso de una libreria al descargarse. Eso es basura en el
+        # canal JSON-RPC igual que la del principio, y peor de diagnosticar,
+        # porque le llega al cliente a mitad de sesion.
+        #
+        # Leer hasta EOF tiene un segundo efecto que conviene decir: deja de
+        # importar el ORDEN en que lleguen las respuestas. Un servidor que
+        # conteste `tools/list` antes que `initialize` -las dos validas- ya no
+        # produce un falso negativo.
+        #
+        # `finally` y no un `return` por rama: el principal tiene que despertar
+        # tambien cuando stdout se cierra sin una sola respuesta, que es lo que
+        # pasa cuando el runtime se muere al arrancar. Sin esto, un proceso que
+        # revienta en el primer import costaba el TIMEOUT entero.
         try:
             for linea in proc.stdout:
                 if not linea.strip():
@@ -160,11 +171,11 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
                 lineas.append(linea)
                 try:
                     if json.loads(linea).get("id") == 2:
-                        return
+                        contestado.set()
                 except ValueError:
-                    return                        # stdout sucio: no hay mas que ver
+                    pass                          # se juzga abajo, con todo
         finally:
-            visto_el_final.set()
+            contestado.set()
 
     lector = threading.Thread(target=_leer, daemon=True)
     lector.start()
@@ -175,13 +186,15 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
     except OSError:
         pass                                       # murio al arrancar; se ve abajo
 
-    respondio = visto_el_final.wait(timeout)
+    respondio = contestado.wait(timeout)
     errores = ""
+    # Cerrar stdin es la señal de apagado: se hace en cuanto hay respuesta -o al
+    # agotarse el plazo-, pero la lectura sigue, porque justo al apagarse es
+    # cuando un servidor escribe sus ultimas lineas.
     try:
         proc.stdin.close()
     except OSError:
         pass
-
     # Cerrar stdin es la señal de apagado del transporte stdio. Un servidor que
     # no la atiende deja un proceso por cada arranque del cliente, y esos
     # procesos siguen ahi con el runtime abierto. Se le da un plazo, se le mata
@@ -200,7 +213,10 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
                              error=f"el runtime (pid {proc.pid}) no murio ni "
                                    "con kill; queda un proceso suelto")
             return resultado
-    lector.join(timeout=5)
+    # El proceso ya termino, asi que stdout esta en EOF y el lector sale solo.
+    # Se le espera ANTES de juzgar: si no, se juzgarian lineas a medio leer.
+    lector.join(timeout=15)
+    lectura_incompleta = lector.is_alive()
     try:
         errores = proc.stderr.read() or ""
     except (OSError, ValueError):                  # pragma: no cover
@@ -211,6 +227,13 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
                 flujo.close()
             except (OSError, ValueError):          # pragma: no cover
                 pass
+
+    if lectura_incompleta:                         # pragma: no cover
+        resultado.update(
+            fase="lectura-incompleta",
+            error="no se pudo leer stdout hasta el final; no se puede afirmar "
+                  "que el canal quedara limpio")
+        return resultado
 
     if not respondio and not lineas:
         resultado.update(fase="timeout",

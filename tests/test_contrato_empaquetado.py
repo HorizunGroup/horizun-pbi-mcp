@@ -195,6 +195,35 @@ def test_un_print_de_depuracion_en_stdout_se_rechaza(runtime):
     assert veredicto["fase"] == "stdout-sucio", veredicto
 
 
+def test_la_basura_escrita_DESPUES_de_tools_list_se_rechaza(runtime):
+    """El lector paraba en cuanto veía la respuesta con `id: 2`.
+
+    Todo lo que el servidor escribiera después —un `print` de despedida, un
+    `atexit`, el aviso de una librería al descargarse— quedaba sin mirar. Y eso
+    es basura en el canal JSON-RPC igual que la del principio: llega al cliente
+    en mitad de la sesión, no en el arranque, que es cuando es más difícil de
+    diagnosticar.
+    """
+    py = runtime(version="1.5.5", basura_al_cerrar=True)
+    veredicto = _verificar(py, version_esperada="1.5.5")
+    assert veredicto["ok"] is False, (
+        "dio por bueno un runtime que ensucia stdout al apagarse")
+    assert veredicto["fase"] == "stdout-sucio", veredicto
+    assert "apagando" in veredicto["error"], veredicto
+
+
+def test_responder_en_otro_orden_no_es_un_falso_negativo(runtime):
+    """`tools/list` antes que `initialize`: las dos válidas, solo desordenadas.
+
+    Leer hasta EOF obliga a no depender del orden de llegada. Un falso negativo
+    aquí rechazaría un runtime bueno y tumbaría una instalación que iba bien.
+    """
+    py = runtime(version="1.5.5", invierte=True)
+    veredicto = _verificar(py, version_esperada="1.5.5")
+    assert veredicto["ok"] is True, veredicto
+    assert veredicto["tools"] == 134
+
+
 def test_un_runtime_que_no_arranca_se_rechaza_sin_esperar_el_timeout(runtime):
     py = runtime(version="1.5.5", muere=True)
     veredicto = _verificar(py, version_esperada="1.5.5")
