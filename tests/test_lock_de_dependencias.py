@@ -1,21 +1,31 @@
-"""INSTALL-009 / G4.6 — dos instalaciones consecutivas dan las mismas versiones.
+"""INSTALL-009 / G4.6 — reproducibilidad en TODAS las versiones soportadas.
 
-El defecto cabe en una linea: `install()` ejecutaba `pip install <PLUGIN_ROOT>`,
-que **resuelve las dependencias de cero cada vez**. La misma maquina, dos
-semanas despues, acaba con un conjunto distinto sin que nadie lo pida ni lo
-note; dos maquinas, con dos productos distintos. Y cuando una funciona y la
-otra no, no hay forma de saber en que se diferencian, porque nadie escribio en
-ningun sitio que se instalo.
+El defecto original cabe en una linea: `install()` ejecutaba
+`pip install <PLUGIN_ROOT>`, que **resuelve las dependencias de cero cada vez**.
 
-Lo que se comprueba aqui son las dos mitades del arreglo, y ninguna sobra:
+La primera remediacion trajo el suyo propio, y era mas sutil: **un solo lock**,
+resuelto con el interprete de quien lo generase, cuya cabecera decia «Python
+3.14 en win32». `pyproject` admite `>=3.10` y CI corre 3.10 y 3.13. En esas dos
+`--require-hashes` falla —el lock no lista las ruedas que necesitan— y el
+instalador cae al resolutor **sin hashes**. O sea: la garantia existia
+exactamente en la maquina de quien la escribio, y en las demas se anunciaba en
+una linea del estado que nadie lee.
 
-1. **El lock fija de verdad.** Version exacta y SHA-256 por dependencia, el
-   paquete propio fuera -no tiene hash publicado- y sin nombres repetidos.
-2. **El instalador lo usa, y cuando no puede, lo dice.** Un lock que existe
-   pero que el instalador no llega a usar no fija nada; y un fallback silencioso
-   es peor que no tener lock, porque deja creer que la instalacion esta fijada
-   cuando no lo esta. Por eso la mitad de estas pruebas van del camino
-   degradado, no del feliz.
+Que no era una diferencia teorica lo dice el propio material: entre el lock de
+3.10 y el de 3.14 **difieren siete entradas** —ruedas compiladas para otro ABI y
+una version distinta de `rpds-py`—.
+
+Lo que se comprueba aqui, y ninguna parte sobra:
+
+1. **Cada lock de la matriz fija de verdad**: version exacta, SHA-256, sin
+   repetidos, sin el paquete propio, y con todas las dependencias declaradas.
+2. **La cabecera dice a que combinacion pertenece** y coincide con su nombre.
+3. **La seleccion es exacta**: un interprete sin lock no recibe «el mas
+   parecido».
+4. **El fallback no es silencioso**: queda escrito en el estado, y dice que esa
+   instalacion no es reproducible.
+5. **`--check` es determinista y offline**: no vuelve a preguntarle a PyPI, que
+   es lo que hacia salir 1 en cuanto alguien publicaba una version.
 """
 from __future__ import annotations
 
@@ -30,16 +40,13 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
-LOCK = RAIZ / "scripts" / "requirements.lock"
+LOCKS = RAIZ / "scripts" / "locks"
 
 #: Unica causa declarada de skip para la prueba que instala de verdad, y la
 #: pone una persona. Es la misma valvula de `test_packaging.py`, a proposito:
 #: dos formas de declararse offline serian dos formas de no probar nada.
 OFFLINE = os.environ.get("PBI_MCP_PACKAGING_OFFLINE") == "1"
 
-#: `nombre==version --hash=sha256:<64 hex>`. Sin rangos, sin `>=`, sin lineas
-#: sin hash: cualquiera de las tres cosas devuelve la resolucion al momento de
-#: instalar, que es justo lo que INSTALL-009 quita de en medio.
 LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*"
                    r"==[A-Za-z0-9][A-Za-z0-9.\-+!]*"
                    r" --hash=sha256:[0-9a-f]{64}$")
@@ -70,52 +77,84 @@ def _nombre(linea: str) -> str:
     return linea.split("==", 1)[0].lower().replace("_", "-")
 
 
-# ===================== 1. El lock del repositorio =========================
-
-def test_el_lock_existe_y_se_versiona():
-    """Sin archivo no hay determinismo, por muy bien escrito que este el codigo."""
-    assert LOCK.is_file(), (
-        "falta scripts/requirements.lock. Generalo con: "
-        "python scripts/generar_lock.py")
+def _combinaciones():
+    return _cargar("generar_lock_ids", "generar_lock.py").MATRIZ
 
 
-def test_cada_linea_fija_version_exacta_y_sha256():
-    malas = [l for l in _entradas(LOCK.read_text(encoding="utf-8"))
-             if not LINEA.match(l)]
+# ===================== 1. Los locks del repositorio =======================
+
+def test_la_matriz_cubre_lo_que_pyproject_declara_soportar(generar):
+    """`requires-python = ">=3.10"` y CI corre 3.10 y 3.13. Los tres, cubiertos.
+
+    Es la prueba que la version anterior no podia pasar: habia un solo lock y
+    decia «Python 3.14», mientras el producto prometia funcionar desde 3.10.
+    """
+    versiones = {v for v, _ in generar.MATRIZ}
+    pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    minima = re.search(r'requires-python\s*=\s*">=([\d.]+)"', pyproject).group(1)
+    ci = (RAIZ / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    de_ci = set(re.findall(r'"(\d+\.\d+)"', ci.split("python-version:", 1)[1][:80]))
+
+    assert minima in versiones, (
+        f"pyproject promete funcionar desde {minima} y no hay lock para esa "
+        f"version: {sorted(versiones)}")
+    assert de_ci <= versiones, (
+        f"CI corre {sorted(de_ci)} y la matriz de locks cubre {sorted(versiones)}")
+
+
+@pytest.mark.parametrize("version,plataforma", _combinaciones())
+def test_cada_lock_de_la_matriz_esta_integro(generar, version, plataforma):
+    """Formato, hashes, duplicados, cabecera y dependencias declaradas."""
+    fallos = generar.problemas_de(generar.ruta_de(version, plataforma),
+                                  version, plataforma)
+    assert not fallos, fallos
+
+
+@pytest.mark.parametrize("version,plataforma", _combinaciones())
+def test_cada_linea_fija_version_exacta_y_sha256(generar, version, plataforma):
+    malas = [l for l in _entradas(
+        generar.ruta_de(version, plataforma).read_text(encoding="utf-8"))
+        if not LINEA.match(l)]
     assert not malas, (
         "estas lineas no fijan version+hash, asi que pip volveria a resolver "
         f"en el momento de instalar: {malas}")
 
 
-def test_el_paquete_propio_no_figura_en_el_lock():
-    """Es la fuente local: no tiene hash publicado y se instala con --no-deps.
+def test_los_locks_no_son_copias_el_uno_del_otro(generar):
+    """La prueba que justifica que haya matriz y no un archivo.
 
-    Inventarle un hash para que la linea "quede bonita" seria falsificar la
-    unica garantia que el archivo ofrece.
+    Si los tres fueran identicos, la matriz seria burocracia. No lo son: entre
+    3.10 y 3.14 cambian las ruedas compiladas -otro ABI- y alguna version.
     """
-    nombres = {_nombre(l) for l in _entradas(LOCK.read_text(encoding="utf-8"))}
+    por_combinacion = {
+        f"py{v}": set(_entradas(generar.ruta_de(v, pl).read_text(encoding="utf-8")))
+        for v, pl in generar.MATRIZ}
+    a, b = por_combinacion["py3.10"], por_combinacion["py3.14"]
+    assert a != b, (
+        "el lock de 3.10 y el de 3.14 son identicos: o la resolucion cruzada no "
+        "esta haciendo nada, o sobra la matriz")
+    assert len(a ^ b) >= 2
+
+
+@pytest.mark.parametrize("version,plataforma", _combinaciones())
+def test_el_paquete_propio_no_figura_en_ningun_lock(generar, version, plataforma):
+    """Es la fuente local: no tiene hash publicado y se instala con --no-deps."""
+    nombres = {_nombre(l) for l in _entradas(
+        generar.ruta_de(version, plataforma).read_text(encoding="utf-8"))}
     assert "horizun-pbi-mcp" not in nombres
 
 
-def test_ninguna_dependencia_aparece_dos_veces():
-    """Dos versiones del mismo paquete = la resolucion decide, no el lock."""
-    nombres = [_nombre(l) for l in _entradas(LOCK.read_text(encoding="utf-8"))]
-    repetidos = sorted({n for n in nombres if nombres.count(n) > 1})
-    assert not repetidos, f"fijadas dos veces: {repetidos}"
+def test_ya_no_queda_el_lock_unico():
+    """El de una sola combinacion tenia que irse, no quedarse «por si acaso».
 
-
-def test_el_lock_declara_con_que_interprete_se_resolvio():
-    """El limite tiene que estar EN el archivo, no solo en la cabeza de alguien.
-
-    Un lock resuelto en 3.14 puede no cubrir las ruedas que 3.10 necesita.
-    Quien lo lea tiene que poder saberlo sin ir a buscar el commit.
+    Dos fuentes de verdad para lo mismo acaban divergiendo, y la vieja es la
+    que alguien lee.
     """
-    cabecera = LOCK.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert re.search(r"Resuelto con Python \d+\.\d+", cabecera)
-    assert "--no-deps" in cabecera
+    assert not (RAIZ / "scripts" / "requirements.lock").exists(), (
+        "sigue ahi scripts/requirements.lock, que solo cubria una combinacion")
 
 
-# ===================== 2. El generador del lock ===========================
+# ===================== 2. El generador ====================================
 
 def _reporte(*paquetes: tuple[str, str, str | None]) -> dict:
     return {"install": [
@@ -130,63 +169,99 @@ def test_lineas_del_lock_fija_nombre_version_y_hash(generar):
 
 
 def test_un_paquete_sin_hash_se_omite_en_vez_de_inventarselo(generar):
-    """El propio paquete llega asi: sin `download_info` con hash."""
     lineas = generar.lineas_del_lock(
         _reporte(("horizun-pbi-mcp", "1.5.5", None), ("anyio", "4.14.2", "cd" * 32)))
     assert [_nombre(l) for l in lineas] == ["anyio"]
 
 
 def test_el_mismo_conjunto_en_otro_orden_da_el_mismo_lock(generar):
-    """G4.6 en el generador: pip no promete orden, el lock si.
-
-    Si el orden dependiera de como venga el reporte, `--check` gritaria en cada
-    ejecucion y en dos dias alguien lo apagaria.
-    """
+    """pip no promete orden; el lock si. Sin esto, `--check` gritaria siempre."""
     a = ("anyio", "4.14.2", "11" * 32)
     b = ("pydantic", "2.9.0", "22" * 32)
     assert (generar.lineas_del_lock(_reporte(a, b))
             == generar.lineas_del_lock(_reporte(b, a)))
 
 
-def test_check_pasa_cuando_el_lock_coincide(generar, tmp_path, monkeypatch,
-                                            capsys):
-    lock = tmp_path / "requirements.lock"
-    lock.write_text(f"# cabecera\n\nanyio==4.14.2 --hash=sha256:{'11' * 32}\n",
-                    encoding="utf-8")
-    monkeypatch.setattr(generar, "LOCK", lock)
-    monkeypatch.setattr(generar, "resolver",
-                        lambda: _reporte(("anyio", "4.14.2", "11" * 32)))
+def test_el_nombre_del_archivo_codifica_la_combinacion(generar):
+    assert generar.nombre_de("3.10", "win_amd64") == "requirements-py310-win_amd64.lock"
+    assert generar.nombre_de("3.13", "manylinux") == "requirements-py313-manylinux.lock"
+
+
+# ---------------------------------------- `--check` determinista y offline --
+
+def _lock_falso(tmp_path: Path, generar, *, version="3.10", plataforma="win_amd64",
+                entradas=None, cabecera=None) -> Path:
+    entradas = entradas if entradas is not None else [
+        f"anyio==4.14.2 --hash=sha256:{'11' * 32}"]
+    lineas = cabecera or generar.cabecera(version, plataforma, len(entradas))
+    ruta = tmp_path / generar.nombre_de(version, plataforma)
+    ruta.write_text("\n".join(lineas + entradas) + "\n", encoding="utf-8",
+                    newline="")
+    return ruta
+
+
+def test_check_no_toca_la_red(generar, monkeypatch, capsys):
+    """La razon de existir de `--check`, y lo que la version anterior no hacia.
+
+    Antes comparaba contra lo que pip resolveria HOY, asi que salia 1 en cuanto
+    alguien publicaba una version nueva —paso en la misma sesion en que se
+    genero el lock: `charset-normalizer` 3.5.0 -> 3.5.1 en dos horas—. Un check
+    que grita por algo que no es un fallo acaba desactivado.
+    """
+    def _prohibido(*a, **k):
+        raise AssertionError("`--check` intento resolver contra PyPI")
+
+    monkeypatch.setattr(generar, "resolver", _prohibido)
+    monkeypatch.setattr(generar.subprocess, "run", _prohibido)
     monkeypatch.setattr(sys, "argv", ["generar_lock.py", "--check"])
+
     assert generar.main() == 0
-    assert "al dia" in capsys.readouterr().out
+    assert "integros" in capsys.readouterr().out
 
 
-def test_check_delata_un_lock_desfasado(generar, tmp_path, monkeypatch, capsys):
-    """Y dice QUE cambio: un `--check` que solo grita no lo arregla nadie."""
-    lock = tmp_path / "requirements.lock"
-    lock.write_text(f"# cabecera\n\nanyio==4.14.2 --hash=sha256:{'11' * 32}\n",
-                    encoding="utf-8")
-    monkeypatch.setattr(generar, "LOCK", lock)
-    monkeypatch.setattr(generar, "resolver",
-                        lambda: _reporte(("anyio", "4.15.0", "33" * 32)))
-    monkeypatch.setattr(sys, "argv", ["generar_lock.py", "--check"])
-    assert generar.main() == 1
-    salida = capsys.readouterr().out
-    assert "[+] anyio==4.15.0" in salida
-    assert "[-] anyio==4.14.2" in salida
+def test_check_delata_un_hash_mal_formado(generar, tmp_path, monkeypatch):
+    ruta = _lock_falso(tmp_path, generar,
+                       entradas=["anyio==4.14.2 --hash=sha256:demasiado-corto"])
+    fallos = generar.problemas_de(ruta, "3.10", "win_amd64")
+    assert any("version+hash" in f for f in fallos), fallos
 
 
-def test_check_falla_si_no_hay_lock(generar, tmp_path, monkeypatch):
-    monkeypatch.setattr(generar, "LOCK", tmp_path / "no-esta.lock")
-    monkeypatch.setattr(generar, "resolver", lambda: _reporte())
-    monkeypatch.setattr(sys, "argv", ["generar_lock.py", "--check"])
-    assert generar.main() == 1
+def test_check_delata_una_dependencia_declarada_y_sin_fijar(generar, tmp_path):
+    """El lock viejo al que alguien le anadio una dependencia despues.
+
+    Sin esto, `--require-hashes` revienta durante la instalacion de otra
+    persona, que es el peor sitio para enterarse.
+    """
+    ruta = _lock_falso(tmp_path, generar)
+    fallos = generar.problemas_de(ruta, "3.10", "win_amd64")
+    assert any("declaradas y sin fijar" in f for f in fallos), fallos
+    assert any("mcp" in f for f in fallos), fallos
 
 
-# ===================== 3. El instalador usa el lock =======================
+def test_check_delata_una_cabecera_que_no_corresponde(generar, tmp_path):
+    """Renombrar el archivo no convierte un lock de 3.14 en uno de 3.10."""
+    ruta = _lock_falso(tmp_path, generar, version="3.10",
+                       cabecera=generar.cabecera("3.14", "win_amd64", 1))
+    fallos = generar.problemas_de(ruta, "3.10", "win_amd64")
+    assert any("python-version" in f for f in fallos), fallos
+
+
+def test_check_delata_un_duplicado(generar, tmp_path):
+    ruta = _lock_falso(tmp_path, generar, entradas=[
+        f"anyio==4.14.2 --hash=sha256:{'11' * 32}",
+        f"anyio==4.15.0 --hash=sha256:{'22' * 32}"])
+    fallos = generar.problemas_de(ruta, "3.10", "win_amd64")
+    assert any("dos veces" in f for f in fallos), fallos
+
+
+def test_check_delata_un_lock_ausente(generar, tmp_path):
+    fallos = generar.problemas_de(tmp_path / "no-esta.lock", "3.10", "win_amd64")
+    assert fallos and "no existe" in fallos[0]
+
+
+# ===================== 3. La seleccion en el instalador ===================
 
 def _grabador(monkeypatch, bootstrap, romper=None):
-    """Sustituye `_run` por un grabador. `romper` es un predicado sobre el cmd."""
     ordenes: list[list[str]] = []
 
     def _run(command, *, env, intentos=3):
@@ -202,83 +277,101 @@ def _pip(ordenes: list[list[str]]) -> list[list[str]]:
     return [o for o in ordenes if "pip" in o and "install" in o]
 
 
-def test_con_lock_se_instala_fijado_y_el_paquete_propio_aparte(
-        bootstrap, tmp_path, monkeypatch):
-    ordenes = _grabador(monkeypatch, bootstrap)
-    resultado = bootstrap._instalar_dependencias(
-        {"python": tmp_path / "python.exe"}, {})
-
-    assert resultado["source"] == "lock"
-    fijado, propio = _pip(ordenes)
-    assert "--require-hashes" in fijado and str(bootstrap.LOCK) in fijado
-    assert "--no-deps" in propio and str(bootstrap.PLUGIN_ROOT) in propio
-    # Lo que NO puede pasar: la orden de siempre, que resuelve de cero. Si
-    # sobrevive junto al lock, el lock no fija nada.
-    assert not any(o[-1] == str(bootstrap.PLUGIN_ROOT) and "--no-deps" not in o
-                   for o in _pip(ordenes))
+def _finge_interprete(monkeypatch, bootstrap, version, plataforma):
+    monkeypatch.setattr(bootstrap, "combinacion_de",
+                        lambda python: (version, plataforma))
 
 
-def test_dos_instalaciones_consecutivas_piden_exactamente_lo_mismo(
-        bootstrap, tmp_path, monkeypatch):
-    """G4.6 literal, y por eso se comparan los CONJUNTOS RESUELTOS.
+def test_elige_el_lock_EXACTO_de_su_interprete(bootstrap, tmp_path, monkeypatch):
+    """Coincidencia exacta, no «el mas parecido».
 
-    Que las dos ordenes sean iguales no basta por si solo -`pip install <repo>`
-    tambien es igual las dos veces y resuelve distinto-. Lo que hace la
-    diferencia es que la orden lleve dentro el conjunto entero fijado: mismas
-    versiones, mismos hashes, las dos veces.
+    Un lock de 3.14 aplicado a 3.10 lleva ruedas de otro ABI y
+    `--require-hashes` rechaza el archivo entero: elegir el mas parecido falla
+    igual, mas tarde y con peor mensaje.
     """
-    primera = _grabador(monkeypatch, bootstrap)
-    bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
-    segunda = _grabador(monkeypatch, bootstrap)
-    bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+    for version, plataforma in _combinaciones():
+        _finge_interprete(monkeypatch, bootstrap, version, plataforma)
+        ordenes = _grabador(monkeypatch, bootstrap)
+        resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
-    assert primera == segunda
-    pedido = _entradas(LOCK.read_text(encoding="utf-8"))
-    assert pedido and all(LINEA.match(l) for l in pedido)
+        assert resultado["source"] == "lock", (version, resultado)
+        esperado = LOCKS / f"requirements-py{version.replace('.', '')}-{plataforma}.lock"
+        assert resultado["lock"] == str(esperado)
+        fijado = _pip(ordenes)[0]
+        assert "--require-hashes" in fijado and str(esperado) in fijado
 
 
-def test_sin_lock_cae_al_resolutor_y_lo_dice(bootstrap, tmp_path, monkeypatch):
-    monkeypatch.setattr(bootstrap, "LOCK", tmp_path / "no-esta.lock")
+def test_un_interprete_sin_lock_no_recibe_uno_parecido(bootstrap, tmp_path,
+                                                       monkeypatch):
+    """3.12 no esta en la matriz: no se le da el de 3.13 «que casi vale»."""
+    _finge_interprete(monkeypatch, bootstrap, "3.12", "win_amd64")
     ordenes = _grabador(monkeypatch, bootstrap)
     resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
     assert resultado["source"] == "resolver"
-    assert "no existe" in resultado["reason"]
-    assert "NO estan fijadas" in resultado["note"]
-    assert _pip(ordenes) == [[str(tmp_path / "py"), "-m", "pip", "install",
-                             str(bootstrap.PLUGIN_ROOT)]]
+    assert resultado["lock"] is None
+    assert "no hay lock para py3.12/win_amd64" in resultado["reason"]
+    assert not any("--require-hashes" in o for o in ordenes), (
+        "se intento un lock de otra combinacion")
 
 
-def test_si_el_lock_no_cubre_el_entorno_no_finge_determinismo(
-        bootstrap, tmp_path, monkeypatch):
-    """El caso real: lock resuelto en 3.14, instalacion en 3.10.
+def test_otra_plataforma_tampoco_recibe_el_de_windows(bootstrap, tmp_path,
+                                                      monkeypatch):
+    _finge_interprete(monkeypatch, bootstrap, "3.13", "linux_x86_64")
+    _grabador(monkeypatch, bootstrap)
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+    assert resultado["source"] == "resolver"
+    assert "linux_x86_64" in resultado["reason"]
 
-    `--require-hashes` exige que TODO lo que vaya a instalarse este listado, asi
-    que falla entero. Fallar la instalacion por una garantia que no aplica seria
-    peor que la garantia; **quedarse callado, tambien**, y esto ultimo es lo que
-    mide la prueba: la instalacion sale adelante, y el estado no dice `lock`.
-    """
+
+def test_si_no_se_puede_saber_la_version_no_se_adivina(bootstrap, tmp_path,
+                                                      monkeypatch):
+    monkeypatch.setattr(bootstrap, "combinacion_de", lambda python: None)
+    _grabador(monkeypatch, bootstrap)
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+    assert resultado["source"] == "resolver"
+    assert "no se pudo determinar" in resultado["reason"]
+
+
+def test_el_fallback_dice_que_NO_es_reproducible(bootstrap, tmp_path, monkeypatch):
+    """Un fallback silencioso es peor que no tener lock: deja creer que si."""
+    _finge_interprete(monkeypatch, bootstrap, "3.12", "win_amd64")
+    _grabador(monkeypatch, bootstrap)
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+
+    assert "NO es reproducible" in resultado["note"]
+    assert "generar_lock.py" in resultado["note"], (
+        "el estado tiene que decir COMO se arregla, no solo que no lo esta")
+
+
+def test_el_paquete_propio_va_aparte_y_sin_deps(bootstrap, tmp_path, monkeypatch):
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
+    ordenes = _grabador(monkeypatch, bootstrap)
+    bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+
+    fijado, propio = _pip(ordenes)
+    assert "--no-deps" in propio and str(bootstrap.PLUGIN_ROOT) in propio
+    assert not any(o[-1] == str(bootstrap.PLUGIN_ROOT) and "--no-deps" not in o
+                   for o in _pip(ordenes)), (
+        "sobrevive la orden que resuelve de cero: el lock no fija nada")
+
+
+def test_si_el_lock_falla_cae_al_resolutor_y_lo_dice(bootstrap, tmp_path,
+                                                    monkeypatch):
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
     ordenes = _grabador(monkeypatch, bootstrap,
                         romper=lambda c: "--require-hashes" in c)
     resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
     assert resultado["source"] == "resolver"
     assert "fallo inyectado" in resultado["reason"]
-    assert "generar_lock.py" in resultado["note"], (
-        "el estado tiene que decir COMO se arregla, no solo que fallo")
-    assert "fijadas" not in resultado.get("note", "").replace("NO estan fijadas", "")
     assert _pip(ordenes)[-1][-1] == str(bootstrap.PLUGIN_ROOT)
 
 
 def test_el_intento_fijado_gasta_los_mismos_reintentos_que_el_de_siempre(
         bootstrap, tmp_path, monkeypatch):
-    """Una carrera DNS no puede costar el pin.
-
-    Con menos reintentos que el camino ordinario, un fallo de red -medido y
-    frecuente en este proyecto- tumbaria el lock por un motivo que no tiene nada
-    que ver con el lock, y la instalacion saldria sin fijar habiendo un lock
-    perfectamente valido.
-    """
+    """Una carrera DNS no puede costar el pin."""
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
     vistos: list[int] = []
 
     def _run(command, *, env, intentos=3):
@@ -290,18 +383,39 @@ def test_el_intento_fijado_gasta_los_mismos_reintentos_que_el_de_siempre(
     assert vistos == [3]
 
 
-# ============ 4. El oraculo real: instalar dos veces y comparar ===========
+def test_la_combinacion_se_le_pregunta_al_interprete_de_DESTINO(
+        bootstrap, tmp_path, monkeypatch):
+    """No al que corre el instalador, que es otro.
 
-def _venv_con_el_lock(destino: Path) -> dict[str, str]:
-    """Crea un venv limpio, instala el lock y devuelve lo que quedo dentro."""
+    El instalador corre con el Python anfitrion y crea un venv que puede ser de
+    otra version. Preguntarselo al de aqui elegiria el lock equivocado.
+    """
+    visto = {}
+
+    class _Salida:
+        stdout = "3.13\nwin_amd64\n"
+
+    def _run(cmd, **kwargs):
+        visto["python"] = cmd[0]
+        return _Salida()
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", _run)
+    destino = tmp_path / "venv" / "python.exe"
+    assert bootstrap.combinacion_de(destino) == ("3.13", "win_amd64")
+    assert visto["python"] == str(destino)
+
+
+# ===================== 4. El oraculo real =================================
+
+def _venv_con_el_lock(destino: Path, lock: Path) -> dict[str, str]:
     subprocess.run([sys.executable, "-m", "venv", str(destino)], check=True,
                    capture_output=True, timeout=600)
     py = destino / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     r = subprocess.run([str(py), "-m", "pip", "install", "--require-hashes",
-                        "-r", str(LOCK)], capture_output=True, text=True,
+                        "-r", str(lock)], capture_output=True, text=True,
                        timeout=2400)
     assert r.returncode == 0, (
-        "el lock no instala en el interprete de esta maquina:\n"
+        f"{lock.name} no instala en el interprete de esta maquina:\n"
         f"{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
     freeze = subprocess.run([str(py), "-m", "pip", "freeze"], check=True,
                             capture_output=True, text=True, timeout=600)
@@ -318,22 +432,24 @@ def test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones(
         tmp_path_factory):
     """G4.6 contra el oraculo real: pip, dos veces, y se comparan los conjuntos.
 
-    Las pruebas de arriba miden que se PIDE lo mismo. Esta mide que se OBTIENE
-    lo mismo, que es lo que dice el gate y no se deduce de lo otro: pip podria
-    resolver un extra, o el lock podria estar incompleto y nadie se enteraria
-    hasta la maquina de otro.
-
-    Es lenta y necesita indice: por eso lleva la marca `packaging` y la misma
-    valvula manual que el resto de pruebas que instalan de verdad. Ninguna
-    prueba se declara offline sola.
+    Se usa el lock de ESTE interprete, que es el unico que se puede instalar
+    aqui. Los otros dos de la matriz se verifican por integridad —formato,
+    hashes, cabecera, dependencias— y su instalacion real ocurre en CI, que si
+    corre 3.10 y 3.13.
     """
     if OFFLINE:
         pytest.skip("PBI_MCP_PACKAGING_OFFLINE=1 declarado a mano: sin indice "
                     "no hay instalacion real que comparar")
 
+    generar = _cargar("generar_lock_oraculo", "generar_lock.py")
+    mio = f"{sys.version_info.major}.{sys.version_info.minor}"
+    lock = generar.ruta_de(mio, "win_amd64" if os.name == "nt" else "manylinux")
+    if not lock.is_file():
+        pytest.skip(f"no hay lock para {mio} en esta plataforma: {lock.name}")
+
     base = tmp_path_factory.mktemp("lock_dos_veces")
-    primera = _venv_con_el_lock(base / "a")
-    segunda = _venv_con_el_lock(base / "b")
+    primera = _venv_con_el_lock(base / "a", lock)
+    segunda = _venv_con_el_lock(base / "b", lock)
 
     difieren = {n: (primera.get(n), segunda.get(n))
                 for n in set(primera) | set(segunda)
@@ -341,9 +457,7 @@ def test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones(
     assert not difieren, (
         f"dos instalaciones consecutivas dieron versiones distintas: {difieren}")
 
-    # Y coinciden con lo fijado, no solo entre si: dos instalaciones igual de
-    # equivocadas tambien serian iguales.
-    for linea in _entradas(LOCK.read_text(encoding="utf-8")):
+    for linea in _entradas(lock.read_text(encoding="utf-8")):
         nombre, resto = linea.split("==", 1)
         version = resto.split(" ", 1)[0]
         assert primera.get(_nombre(nombre)) == version, (
@@ -367,20 +481,20 @@ def _sembrar_runtime(carpeta: Path, bs) -> None:
     (carpeta / "schemas" / "pbir" / "report.json").write_text("{}")
 
 
-@pytest.mark.parametrize("hay_lock, esperado", [(True, "lock"), (False, "resolver")],
-                         ids=["con-lock", "sin-lock"])
+@pytest.mark.parametrize("combinacion,esperado", [
+    (("3.14", "win_amd64"), "lock"),
+    (("3.12", "win_amd64"), "resolver"),
+], ids=["con-lock", "sin-lock"])
 def test_el_estado_ready_registra_de_donde_salieron_las_dependencias(
-        bootstrap, tmp_path, monkeypatch, hay_lock, esperado):
+        bootstrap, tmp_path, monkeypatch, combinacion, esperado):
     """La mitad que hace diagnosticable el problema.
 
     Cuando una maquina funciona y otra no, la primera pregunta es que se
-    instalo en cada una. Si el estado no lo dice, la respuesta es "no se sabe" y
-    el lock solo sirve para las que ya iban bien.
+    instalo en cada una. Si el estado no lo dice, la respuesta es «no se sabe».
     """
     raiz = tmp_path / "datos"
     _sembrar_runtime(raiz / bootstrap.VERSION, bootstrap)
-    if not hay_lock:
-        monkeypatch.setattr(bootstrap, "LOCK", tmp_path / "no-esta.lock")
+    _finge_interprete(monkeypatch, bootstrap, *combinacion)
     _grabador(monkeypatch, bootstrap)
     monkeypatch.setattr(bootstrap._salud, "verificar",
                         lambda *a, **k: {"ok": True, "fase": "completo",
@@ -393,7 +507,8 @@ def test_el_estado_ready_registra_de_donde_salieron_las_dependencias(
     estado = bootstrap.read_status(raiz)
     assert estado["state"] == "ready"
     assert estado["dependencias"]["source"] == esperado
-    # Y sobrevive al viaje por JSON: es lo que leera quien diagnostique.
     crudo = json.loads((raiz / bootstrap.VERSION / "install-status.json")
                        .read_text(encoding="utf-8"))
     assert crudo["dependencias"]["source"] == esperado
+    if esperado == "resolver":
+        assert "NO es reproducible" in crudo["dependencias"]["note"]

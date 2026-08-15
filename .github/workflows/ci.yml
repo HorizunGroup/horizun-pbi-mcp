@@ -53,6 +53,15 @@ jobs:
         with:
           node-version: "20"
 
+      # INSTALL-009. Determinista y OFFLINE: no le pregunta a PyPI si hay
+      # versiones nuevas -para eso esta `--updates`, que es informativo-, sino
+      # si los locks que probamos siguen siendo coherentes: formato, hashes,
+      # duplicados, cabecera y toda dependencia declarada fijada. Corre en las
+      # DOS versiones de la matriz, que es donde importa: el lock de 3.10 no lo
+      # verifica nadie mas.
+      - name: Integridad de los locks de dependencias
+        run: python scripts/generar_lock.py --check
+
       - name: Instalar el paquete y las dependencias de test
         run: |
           python -m pip install --upgrade pip

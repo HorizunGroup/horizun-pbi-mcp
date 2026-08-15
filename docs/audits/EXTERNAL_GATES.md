@@ -43,15 +43,16 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
 | G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
+| G4.6 | INSTALL-009 | runner no-Windows (**la matriz de Windows ya está cerrada**) | Linux o macOS con Python ≥3.10 |
 | G5.1–G5.6 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G6.1 | RELEASE-001 | Release publicada | Permiso de publicación |
 | G6.2 | RELEASE-002 | Release publicada | Permiso de publicación |
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**12 filas, 21 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+**13 filas, 22 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
 `G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «12 externos» dejaría fuera nueve gates que nadie estaría vigilando.
+y decir «13 externos» dejaría fuera nueve gates que nadie estaría vigilando.
 
 > **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
 > G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
@@ -152,6 +153,24 @@ estado anterior byte a byte.
 
 **Resultado esperado.** Destino idéntico al de antes; ningún `.staging-` ni
 journal huérfano; la siguiente instalación termina limpia.
+
+---
+
+## G4.6 — reproducibilidad fuera de Windows
+
+**Bloqueo exacto.** La matriz `win_amd64 × {3.10, 3.13, 3.14}` está fijada por
+versión y SHA-256, y CI la instala de verdad en 3.10 y 3.13. Lo que falta es una
+plataforma que no sea Windows: ahí no hay lock, el instalador cae al resolutor
+—y lo declara— y esa instalación no es reproducible.
+
+**Infraestructura.** Un runner Linux o macOS con Python ≥3.10.
+
+**Procedimiento.** Añadir la plataforma a `MATRIZ` en `scripts/generar_lock.py`,
+regenerar, y correr la suite completa allí: `test_dos_instalaciones_reales_...`
+instala dos veces desde el lock y compara `pip freeze`.
+
+**Resultado esperado.** Los dos `pip freeze` idénticos entre sí e iguales a lo
+fijado, y `dependencias.source == "lock"` en el estado de instalación.
 
 ---
 

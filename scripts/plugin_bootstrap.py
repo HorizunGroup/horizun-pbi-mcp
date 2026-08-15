@@ -431,10 +431,53 @@ def _semilla(destino_cache: Path, root: Path, nombre_py: Path) -> str | None:
     return None
 
 
-#: Versiones y SHA-256 de cada dependencia transitiva. Lo genera
-#: `scripts/generar_lock.py`; sin el, `pip install <repo>` resuelve de cero en
-#: cada instalacion.
-LOCK = PLUGIN_ROOT / "scripts" / "requirements.lock"
+#: Un lock por combinacion soportada de interprete y plataforma. Lo genera
+#: `scripts/generar_lock.py`; sin ellos, `pip install <repo>` resuelve de cero
+#: en cada instalacion.
+LOCKS = PLUGIN_ROOT / "scripts" / "locks"
+
+
+def combinacion_de(python: Path) -> tuple[str, str] | None:
+    """Version y plataforma **del interprete que va a instalar**, no del actual.
+
+    Preguntarselo al de aqui seria el error entero: el instalador corre con el
+    Python anfitrion y crea un venv que puede ser otro. Un lock elegido por la
+    version equivocada es peor que ninguno, porque `--require-hashes` falla a
+    mitad y la instalacion acaba cayendo al resolutor igual, habiendo perdido el
+    tiempo.
+    """
+    try:
+        salida = subprocess.run(
+            [str(python), "-c",
+             "import sys,sysconfig;"
+             "print(f'{sys.version_info.major}.{sys.version_info.minor}');"
+             "print(sysconfig.get_platform().replace('-','_').replace('.','_'))"],
+            capture_output=True, text=True, timeout=120, check=True,
+            **flags_sin_ventana())
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lineas = [l.strip() for l in salida.stdout.splitlines() if l.strip()]
+    if len(lineas) != 2:
+        return None
+    return lineas[0], lineas[1]
+
+
+def lock_para(python: Path) -> tuple[Path | None, str]:
+    """El lock EXACTO de esa combinacion, o `None` y el motivo.
+
+    Coincidencia exacta y nada mas. Un lock de 3.13 aplicado a 3.10 no es «casi
+    correcto»: lleva ruedas compiladas para otro ABI -aqui difieren siete
+    entradas entre 3.10 y 3.14- y `--require-hashes` lo rechaza entero.
+    """
+    combinacion = combinacion_de(python)
+    if combinacion is None:
+        return None, "no se pudo determinar la version del interprete de destino"
+    version, plataforma = combinacion
+    ruta = LOCKS / f"requirements-py{version.replace('.', '')}-{plataforma}.lock"
+    if not ruta.is_file():
+        return None, (f"no hay lock para py{version}/{plataforma}: la matriz "
+                      f"soportada esta en {LOCKS}")
+    return ruta, ""
 
 
 def _instalar_dependencias(sp: dict[str, Path], env: dict[str, str]) -> dict[str, Any]:
@@ -450,36 +493,41 @@ def _instalar_dependencias(sp: dict[str, Path], env: dict[str, str]) -> dict[str
     porque es la fuente local y no tiene hash publicado; inventarle uno para que
     la linea quede bonita seria falsificar la garantia.
 
-    **Cae al resolutor normal si el lock no cubre este entorno, y lo dice.** El
-    lock se resuelve con UN interprete, y `--require-hashes` exige que todo lo
-    que se vaya a instalar este listado: uno hecho en 3.14 puede no cubrir las
-    ruedas que 3.10 necesita. Fallar la instalacion entera por una garantia que
-    no aplica seria peor que la garantia; quedarse callado, tambien. Por eso el
-    estado registra cual de los dos caminos se tomo.
+    **El lock se elige por coincidencia EXACTA de interprete y plataforma.**
+    Un lock resuelto en 3.14 no sirve para 3.10: entre esas dos combinaciones
+    difieren siete entradas -ruedas compiladas para otro ABI- y
+    `--require-hashes` rechaza el archivo entero. Elegir «el mas parecido»
+    habria sido peor que no elegir: falla igual, mas tarde y con peor mensaje.
+
+    **Si no hay lock para esta combinacion, cae al resolutor y lo dice.** Fallar
+    la instalacion entera por una garantia que no aplica seria peor que la
+    garantia; quedarse callado, tambien. El estado registra cual de los dos
+    caminos se tomo, y en el segundo dice sin rodeos que esa instalacion **no es
+    reproducible**.
 
     El intento fijado gasta los MISMOS reintentos que gastaria el camino de
     siempre. Con menos, una carrera DNS -que aqui esta medida y es frecuente-
     tumbaria el lock por un motivo que no tiene nada que ver con el lock, y la
     instalacion saldria sin fijar habiendo un lock perfectamente valido.
     """
-    if LOCK.is_file():
+    lock, motivo = lock_para(sp["python"])
+    if lock is not None:
         try:
             _run([str(sp["python"]), "-m", "pip", "install", "--require-hashes",
-                  "-r", str(LOCK)], env=env)
+                  "-r", str(lock)], env=env)
             _run([str(sp["python"]), "-m", "pip", "install", "--no-deps",
                   str(PLUGIN_ROOT)], env=env)
-            return {"source": "lock", "lock": str(LOCK),
+            return {"source": "lock", "lock": str(lock), "reason": None,
                     "note": "Versiones fijadas y verificadas por SHA-256."}
         except Exception as exc:                             # noqa: BLE001
             motivo = f"{type(exc).__name__}: {exc}"
-    else:
-        motivo = f"no existe {LOCK}"
 
     _run([str(sp["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
-    return {"source": "resolver", "reason": motivo,
-            "note": ("El lock no cubre este entorno: las dependencias se "
-                     "resolvieron en el momento y NO estan fijadas. Regenera el "
-                     "lock con este interprete: python scripts/generar_lock.py")}
+    return {"source": "resolver", "reason": motivo, "lock": None,
+            "note": ("Esta instalacion NO es reproducible: las dependencias se "
+                     "resolvieron en el momento y no estan fijadas por hash. "
+                     "Anade la combinacion a la matriz de "
+                     "scripts/generar_lock.py y regenera.")}
 
 
 def _adoptar_runtime_existente(root: Path) -> dict[str, Any] | None:

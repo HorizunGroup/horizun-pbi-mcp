@@ -46,7 +46,7 @@ solo gate, **no se puede decir «100% local»**.
 | G1.7 | cumplido | redacción verificada sobre el formateador real |
 | G1.8 | cumplido | cerrojo de proyecto, dos procesos de verdad |
 | G2.1 | cumplido | `python -m tests.contract_utils` sale 0 |
-| G2.2 | pendiente-local | el golden cubre **2 tools públicas de 134**; el inventario de CONTRACT-002 demuestra que muchas más son alcanzables sin Desktop |
+| G2.2 | pendiente-local | el golden cubre **2 tools públicas de 134**; «el resto necesita Desktop» es una hipótesis sin comprobar tool por tool |
 | G2.3 | cumplido | `docs/INVENTARIO_TOOLS.md` generado; 134/134 ejecutadas por `call_tool` |
 | G2.4 | cumplido | 134 casos negativos, cero excepciones declaradas |
 | G2.5 | cumplido | CONTRACT-001 ratificada; CONTRACT-003 repite el mecanismo |
@@ -61,7 +61,7 @@ solo gate, **no se puede decir «100% local»**.
 | G4.3 | parcial | staging y cerrojo demostrados; `npm` está simulado |
 | G4.4 | cumplido | `uninstall` con CLI real sobre un data root de prueba |
 | G4.5 | cumplido | `purge` enumera y pesa antes de borrar |
-| G4.6 | pendiente-local | el lock cubre **solo Python 3.14/win32** y `pyproject` admite ≥3.10; en 3.10 y 3.13 se cae al resolutor sin hashes |
+| G4.6 | parcial | matriz `win_amd64 × {3.10, 3.13, 3.14}` fijada; CI instala de verdad desde el lock en 3.10 y 3.13. Fuera de esa matriz el instalador cae al resolutor **y lo dice**; falta un runner que no sea Windows |
 | G4.7 | pendiente-local | el bundle offline **no existe**, y construirlo es trabajo local; solo la VM sin red es externa |
 | G4.8 | cumplido | no se cae fuera de user-scope en silencio |
 | G4.9 | cumplido | contención de la recuperación, 35 pruebas |
@@ -97,11 +97,11 @@ solo gate, **no se puede decir «100% local»**.
 | Categoría | Gates |
 |---|---|
 | cumplido | **29** |
-| parcial | **4** |
-| pendiente-local | **3** |
+| parcial | **5** |
+| pendiente-local | **2** |
 | pendiente-ratificacion | **1** |
 | pendiente-externo | **17** |
 | **Total** | **54** |
 
-**Trabajo local pendiente: G2.2, G4.6 y G4.7.** Mientras esos tres sigan aquí,
-la frase honesta no es «100% local»: es el porcentaje y la lista.
+**Trabajo local pendiente: G2.2 y G4.7.** Mientras esos dos sigan aquí, la
+frase honesta no es «100% local»: es el porcentaje y la lista.
