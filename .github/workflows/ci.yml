@@ -53,19 +53,22 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Instalar el paquete y las dependencias de test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[test]
+
       # INSTALL-009. Determinista y OFFLINE: no le pregunta a PyPI si hay
       # versiones nuevas -para eso esta `--updates`, que es informativo-, sino
       # si los locks que probamos siguen siendo coherentes: formato, hashes,
       # duplicados, cabecera y toda dependencia declarada fijada. Corre en las
       # DOS versiones de la matriz, que es donde importa: el lock de 3.10 no lo
       # verifica nadie mas.
+      #
+      # DESPUES de instalar y no antes: en 3.10 hace falta `tomli` para leer
+      # pyproject, y viene en el extra de test.
       - name: Integridad de los locks de dependencias
         run: python scripts/generar_lock.py --check
-
-      - name: Instalar el paquete y las dependencias de test
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .[test]
 
       # Esquemas oficiales del PBIR. Se descargan con hash verificado; sin
       # ellos, las pruebas que escriben PBIR fallarian con schema_unavailable.

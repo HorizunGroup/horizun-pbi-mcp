@@ -553,3 +553,44 @@ def test_el_estado_ready_registra_de_donde_salieron_las_dependencias(
     assert crudo["dependencias"]["source"] == esperado
     if esperado == "resolver":
         assert "NO es reproducible" in crudo["dependencias"]["note"]
+
+
+def test_el_verificador_arranca_sin_tomllib(monkeypatch, tmp_path):
+    """El defecto que CI encontro y esta maquina no podia: `tomllib` es 3.11+.
+
+    `generar_lock.py --check` corre en CI en las DOS versiones de la matriz, y
+    en 3.10 moria en el import antes de comprobar nada. El verificador de la
+    reproducibilidad no arrancaba en el interprete mas antiguo que el producto
+    promete, que es justo el que nadie mas verifica.
+
+    Aqui se esconde `tomllib` y se exige que el modulo siga cargando por el
+    respaldo. No se puede reproducir cambiando de interprete -solo hay uno-,
+    asi que se reproduce quitandole el modulo.
+    """
+    import builtins
+    import importlib.util
+
+    real = builtins.__import__
+
+    def _sin_tomllib(nombre, *a, **k):
+        if nombre == "tomllib":
+            raise ModuleNotFoundError("No module named 'tomllib'")
+        return real(nombre, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _sin_tomllib)
+
+    spec = importlib.util.spec_from_file_location(
+        "generar_lock_sin_tomllib", RAIZ / "scripts" / "generar_lock.py")
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)          # si esto revienta, 3.10 se queda fuera
+
+    assert modulo.dependencias_declaradas(), (
+        "sin `tomllib` el script carga pero no sabe leer pyproject")
+
+
+def test_el_extra_de_test_trae_el_lector_de_toml_para_310():
+    """Y CI tiene con que: el respaldo no sirve si nadie lo instala."""
+    pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    extra = pyproject.split("[project.optional-dependencies]", 1)[1]
+    assert "tomli" in extra and "3.11" in extra, (
+        "el extra de test no trae `tomli` para las versiones sin `tomllib`")

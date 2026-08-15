@@ -54,7 +54,9 @@ Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG
 [project.optional-dependencies]
 # pyyaml: tests/test_release_pipeline.py analiza el DAG de los workflows.
 # Sin el, esas guardas no se ejecutarian en CI, que es justo donde importan.
-test = ["pytest>=8.0", "pyyaml>=6,<7"]
+# tomli: `scripts/generar_lock.py --check` lee pyproject y corre en CI
+# tambien en 3.10, donde `tomllib` todavia no existe.
+test = ["pytest>=8.0", "pyyaml>=6,<7", "tomli>=2; python_version < '3.11'"]
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"

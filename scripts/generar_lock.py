@@ -50,8 +50,24 @@ import re
 import subprocess
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+# `tomllib` es de 3.11 para arriba, y este script tiene que correr en **3.10**:
+# es la version minima que los classifiers prometen, y es justo la que verifica
+# su propio lock en CI. Importarlo a secas hacia que el verificador de la matriz
+# no arrancara en el interprete mas antiguo que dice cubrir -lo delato CI, no
+# esta maquina-.
+try:                                        # pragma: no cover - depende de la version
+    import tomllib
+except ModuleNotFoundError:                 # pragma: no cover
+    try:
+        import tomli as tomllib             # type: ignore[no-redef]
+    except ModuleNotFoundError as exc:      # pragma: no cover
+        raise SystemExit(
+            "Este script lee pyproject.toml y necesita un lector de TOML. En "
+            "Python 3.10 no viene en la biblioteca estandar: instala `tomli` "
+            "(`python -m pip install tomli`) o usa Python >= 3.11."
+        ) from exc
 from typing import Any, Dict, Iterable, List, Tuple
 
 RAIZ = Path(__file__).resolve().parent.parent
