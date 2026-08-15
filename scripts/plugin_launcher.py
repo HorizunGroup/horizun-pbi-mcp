@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -123,24 +124,59 @@ def bootstrap_server() -> int:
     return 0
 
 
+#: Por debajo de esto, un runtime que sale con codigo distinto de cero no llego
+#: a servir: se cayo al arrancar. Por encima, ya estuvo trabajando y volver a
+#: lanzar otro sobre el mismo stdio confundiria al cliente mas que ayudarle.
+SEGUNDOS_DE_ARRANQUE = 20.0
+
+
+def _servir(seleccion: dict[str, Any]) -> int:
+    """Ejecuta el runtime elegido heredando el stdio del cliente."""
+    python = Path(seleccion["python"])
+    # Las rutas de libs, esquemas y validador tienen que ser las DE ESA
+    # version: si se sirve N−1, sus DLL y sus esquemas estan en su carpeta, no
+    # en la de la actualizacion que fallo.
+    p = bootstrap.paths(cache=python.parent.parent.parent)
+    env = bootstrap.runtime_env(p)
+    # `-m` en vez de la ruta del fichero: el paquete se instala con pip en el
+    # entorno del plugin, asi que el arranque no depende de donde este el
+    # arbol de fuentes.
+    command = [str(python), "-m", "horizun_pbi_mcp.server"]
+    # SIN creationflags, a proposito y medido: esta llamada no redirige el
+    # stdio, asi que el hijo hereda el del cliente. Pedir CREATE_NO_WINDOW le
+    # daria una consola NUEVA y el servidor leeria de ella en vez de las
+    # tuberias del cliente: el handshake MCP se queda colgado para siempre.
+    # Aqui no hay ventana que evitar: el cliente ya arranca al lanzador sin ella.
+    return subprocess.call(command, cwd=str(bootstrap.PLUGIN_ROOT), env=env)
+
+
 def main() -> int:
-    status = bootstrap.read_status()
-    p = bootstrap.paths()
-    if status.get("ready") and status.get("version") == bootstrap.VERSION and p["python"].is_file():
-        env = bootstrap.runtime_env(p)
-        # `-m` en vez de la ruta del fichero: el paquete se instala con pip en el
-        # entorno del plugin, asi que el arranque no depende de donde este el
-        # arbol de fuentes.
-        command = [str(p["python"]), "-m", "horizun_pbi_mcp.server"]
-        if os.name == "nt":
-            # SIN creationflags, a proposito y medido: esta llamada no redirige
-            # el stdio, asi que el hijo hereda el del cliente. Pedir
-            # CREATE_NO_WINDOW le daria una consola NUEVA y el servidor leeria
-            # de ella en vez de las tuberias del cliente: el handshake MCP se
-            # queda colgado para siempre. Aqui no hay ventana que evitar: el
-            # cliente ya arranca al lanzador sin ella.
-            return subprocess.call(command, cwd=str(bootstrap.PLUGIN_ROOT), env=env)
-        os.execve(str(p["python"]), command, env)
+    seleccion = bootstrap.seleccionar_runtime()
+
+    if seleccion["modo"] == "activo":
+        arranque = time.monotonic()
+        codigo = _servir(seleccion)
+        if codigo == 0 or time.monotonic() - arranque >= SEGUNDOS_DE_ARRANQUE:
+            return codigo
+        # Se cayo en el arranque. G3.3: un runtime promovido puede corromperse
+        # DESPUES -alguien borra su site-packages, un antivirus se lleva un
+        # archivo- y entonces el status sigue diciendo `ready` sobre algo que ya
+        # no arranca. Como no llego a escribir nada por stdout, las tuberias del
+        # cliente siguen limpias y se le puede servir el N−1 por las mismas.
+        print(f"launcher: el runtime activo salio con {codigo} al arrancar; "
+              "se intenta el ultimo runtime bueno.", file=sys.stderr)
+        alternativa = bootstrap.seleccionar_runtime(excluir=seleccion["carpeta"])
+        if alternativa["modo"] == "last-known-good":
+            return _servir(alternativa)
+        return codigo
+
+    if seleccion["modo"] == "last-known-good":
+        print(f"launcher: la version {bootstrap.VERSION} no esta operativa; "
+              f"sirviendo el ultimo runtime bueno ({seleccion['version']}). "
+              "El error de la actualizacion sigue en install-status.json.",
+              file=sys.stderr)
+        return _servir(seleccion)
+
     return bootstrap_server()
 
 

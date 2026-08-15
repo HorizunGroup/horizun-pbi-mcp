@@ -45,6 +45,7 @@ def _cargar_modulo_del_paquete(nombre: str):
 _promocion = _cargar_modulo_del_paquete("promotion")
 _cerrojos = _cargar_modulo_del_paquete("locking")
 _salud = _cargar_modulo_del_paquete("healthcheck")
+_estado = _cargar_modulo_del_paquete("runtime_state")
 
 #: Lo reconstruible: vive bajo `<raiz>/<VERSION>` y se descarga verificado por
 #: hash. Borrarlo cuesta una reinstalacion, nunca un dato del usuario.
@@ -115,12 +116,131 @@ def read_status(base: Path | None = None) -> dict[str, Any]:
     result["data_dir"] = str(p["root"])
     result["runtime_dir"] = str(p["cache"])
     result["log"] = str(p["log"])
+
+    # Lo que `install-status.json` por si solo no puede decir: si hay algo
+    # sirviendo. Antes, un `failed` se leia como "no hay nada", aunque el
+    # runtime anterior siguiera entero. Los dos hechos van juntos y separados:
+    # como fue el ultimo intento, y que se esta sirviendo de verdad.
+    seleccion = seleccionar_runtime(base)
+    result["sirviendo"] = seleccion["modo"]
+    result["sirviendo_version"] = seleccion["version"]
+    # La evidencia de LO QUE SE VA A EJECUTAR. `last_known_good` de abajo es el
+    # campo del estado y puede estar vacio -tras la primera instalacion buena
+    # todavia no hay un N−1-, y aun asi haber algo que servir: el propio
+    # `activo`. Quien diagnostica necesita saber que se ejecutaria, no que
+    # campo esta relleno.
+    result["sirviendo_evidencia"] = seleccion["evidencia"]
+    estado = _estado.leer(p["root"])
+    result["last_known_good"] = estado["last_known_good"]
+    result["ultimo_intento"] = estado["ultimo_intento"]
     return result
+
+
+def _runtime_arrancable(root: Path, registro: dict[str, Any] | None) -> Path | None:
+    """Interprete de un registro, o `None`. Evidencia + contencion + disco.
+
+    Las tres condiciones, y ninguna sobra. **La evidencia**, porque que una
+    carpeta contenga un `python.exe` no la convierte en un runtime al que
+    volver: puede ser una siembra a medias o un venv sin el paquete, y elegirla
+    como alternativa cambiaria "la actualizacion fallo" por "ademas rompi lo
+    que funcionaba". **La contencion**, porque el nombre sale de un archivo del
+    directorio de datos y se valida como el del journal. **El disco**, porque
+    un registro puede sobrevivir a la carpeta que describe.
+    """
+    if not registro:
+        return None
+    try:
+        carpeta = _promocion.bajo_root(Path(root), registro.get("carpeta"),
+                                       que="carpeta")
+    except _promocion.PromocionError:
+        return None
+    if carpeta.name.startswith(_promocion.PREFIJO_STAGING):
+        return None                       # a medio construir: nunca se sirve
+    if not carpeta.is_dir():
+        return None
+    py = paths(root, cache=carpeta)["python"]
+    if not py.is_file():
+        return None
+    # Estructural, no un handshake: arrancar el servidor en cada inicio del
+    # cliente costaria segundos en cada sesion. El oraculo completo -el
+    # handshake MCP contra el contrato- se ejecuta al instalar, y `doctor` lo
+    # repite a peticion. Aqui solo se descarta lo que es visiblemente inservible.
+    if any(not e.exists() for e in _salud.entry_points(py.parent.parent)):
+        return None
+    return py
+
+
+def seleccionar_runtime(base: Path | None = None, *,
+                        excluir: str | None = None) -> dict[str, Any]:
+    """Que runtime debe ejecutar el lanzador AHORA.
+
+    Este es el corazon de la correccion. El lanzador comprobaba solo tres
+    cosas -status `ready`, version igual a la actual, y que existiera el
+    interprete de ESA version- y si alguna fallaba servia el MCP de bootstrap,
+    con sus dos tools. O sea que despues de una actualizacion rota, Codex o
+    Claude recibian dos tools aunque la version anterior siguiera en disco con
+    las 134: el fallback existia en el disco y no existia en el codigo.
+    """
+    p = paths(base)
+    root = p["root"]
+    estado = _estado.leer(root)
+
+    try:
+        status = _status_crudo(p)
+    except OSError:                                          # pragma: no cover
+        status = {}
+
+    # `excluir` lleva la carpeta que el lanzador acaba de ver morir. Sin ella,
+    # el segundo intento volveria a elegir exactamente lo mismo: el status
+    # sigue diciendo `ready` y la carpeta sigue teniendo su interprete.
+    def _descartada(registro: dict[str, Any] | None) -> bool:
+        return bool(excluir and registro and registro.get("carpeta") == excluir)
+
+    # 1. La version que toca, si el status la respalda y arranca.
+    if (status.get("ready") and status.get("version") == VERSION
+            and excluir != p["cache"].name):
+        py = _runtime_arrancable(root, estado["activo"] or _estado.evidencia(
+            p["cache"].name, version=VERSION, servidor="-", tools=1))
+        if py is not None and py == p["python"]:
+            return {"modo": "activo", "python": str(py),
+                    "carpeta": p["cache"].name, "version": VERSION,
+                    "evidencia": estado["activo"]}
+
+    # 2. y 3. Lo ultimo que SI supero el handshake. `activo` va primero porque
+    # una actualizacion a una version NUEVA que falla no llega a apartar nada:
+    # el runtime que estaba sirviendo sigue en su carpeta, con su evidencia, y
+    # es el mejor candidato aunque el estado no lo llame todavia N−1.
+    for registro in (estado["activo"], estado["last_known_good"]):
+        if _descartada(registro):
+            continue
+        py = _runtime_arrancable(root, registro)
+        if py is None:
+            continue
+        return {"modo": "last-known-good", "python": str(py),
+                "carpeta": registro["carpeta"], "version": registro["version"],
+                "evidencia": registro}
+
+    return {"modo": "ninguno", "python": None, "carpeta": None,
+            "version": None, "evidencia": None}
+
+
+def _status_crudo(p: dict[str, Path]) -> dict[str, Any]:
+    """El archivo tal cual, sin los campos DERIVADOS que añade `read_status`.
+
+    `read_status` calcula `sirviendo`, `last_known_good` y `ultimo_intento` en
+    el momento de leer. Persistirlos los convertiria en copias que envejecen: el
+    dia que no cuadren con el disco, el archivo diria una cosa y la realidad otra.
+    """
+    try:
+        datos = json.loads(p["status"].read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        datos = {"state": "not_installed", "ready": False, "version": VERSION}
+    return datos if isinstance(datos, dict) else {}
 
 
 def _write_status(p: dict[str, Path], **values: Any) -> None:
     p["cache"].mkdir(parents=True, exist_ok=True)
-    current = read_status(p["root"])
+    current = _status_crudo(p)
     current.update(values, version=VERSION, updated=time.time())
     tmp = p["status"].with_suffix(".json.tmp")
     tmp.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -214,6 +334,43 @@ def _semilla(destino_cache: Path, root: Path, nombre_py: Path) -> str | None:
             continue
         if _promocion.semillar(destino_cache, donante, CACHE):
             return str(donante)
+    return None
+
+
+def _adoptar_runtime_existente(root: Path) -> dict[str, Any] | None:
+    """Le pone evidencia al runtime que ya estaba instalado, comprobandolo.
+
+    El caso: alguien tiene 1.5.4 instalada por una version del instalador
+    ANTERIOR a este estado, actualiza a 1.5.5 y la actualizacion falla. Sin
+    esto, el estado no tendria ningun `activo`, el lanzador no encontraria
+    fallback y le serviria el MCP de bootstrap con dos tools, teniendo en disco
+    una instalacion entera y sana. Justo el defecto que se esta corrigiendo,
+    reaparecido por la puerta de atras de la migracion.
+
+    Y se hace de la unica forma que vale: **comprobandolo**. No se adopta una
+    carpeta por tener un `python.exe` -esa suposicion es el defecto- sino
+    ejecutando contra ella el mismo handshake MCP que se le exige a cualquier
+    runtime antes de promoverlo. Cuesta unos segundos y ocurre una sola vez,
+    porque el resultado queda escrito.
+    """
+    estado = _estado.leer(root)
+    if estado["activo"] or estado["last_known_good"]:
+        return None
+
+    candidatos = sorted(_versiones_en_disco(root),
+                        key=lambda d: d.stat().st_mtime, reverse=True)
+    for carpeta in candidatos:
+        sp = paths(root, cache=carpeta)
+        if not sp["python"].is_file():
+            continue
+        salud = _salud.verificar(sp["python"], env=runtime_env(sp), cwd=root)
+        if not salud["ok"]:
+            continue
+        registro = _estado.evidencia(carpeta.name, version=carpeta.name,
+                                     servidor=salud.get("servidor") or "",
+                                     tools=salud["tools"])
+        _estado.escribir(root, dict(estado, activo=registro))
+        return registro
     return None
 
 
@@ -314,12 +471,24 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
     #
     # Asi que antes de borrar se comprueba si lo conservado sirve de verdad, y
     # si no sirve se indulta la version vieja mas reciente que si tenga runtime.
-    hay_n1 = any((d / "runtime").is_dir() for d in _promocion.anteriores(p["root"]))
-    if not hay_n1:
+    # Ahora el N−1 tiene NOMBRE: el last-known-good del estado. Antes se
+    # deducia -"¿hay algun .previous- con una carpeta runtime dentro?"- y esa
+    # deduccion es la que fallaba: la promocion conservaba como `.previous-` lo
+    # que hubiera en el destino, que al actualizar desde otra version es una
+    # carpeta recien creada con el status y nada mas. Contaba como N−1 y no
+    # arrancaba nada.
+    lkg = _estado.leer(p["root"])["last_known_good"]
+    protegidas = set()
+    if _runtime_arrancable(p["root"], lkg) is not None:
+        protegidas.add((p["root"] / lkg["carpeta"]).resolve())
+    else:
+        # Sin last-known-good arrancable se indulta la version vieja mas
+        # reciente que si tenga runtime, para no quedarse sin nada a lo que
+        # volver mientras el estado se reconstruye.
         con_runtime = [d for d in viejas if (d / "runtime").is_dir()]
         if con_runtime:
-            reserva = max(con_runtime, key=lambda d: d.stat().st_mtime)
-            viejas = [d for d in viejas if d != reserva]
+            protegidas.add(max(con_runtime, key=lambda d: d.stat().st_mtime).resolve())
+    viejas = [d for d in viejas if d.resolve() not in protegidas]
 
     for viejo in viejas:
         if _borrar(viejo):
@@ -328,7 +497,7 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
         resto = p["root"] / nombre
         if resto.exists() and _borrar(resto):
             borrados.append(str(resto))
-    borrados += _promocion.limpiar(p["root"])
+    borrados += _promocion.limpiar(p["root"], proteger=protegidas)
     for ajena in _carpetas_de_cliente():
         # Nunca una carpeta que contenga a la nuestra, ni al reves.
         if (ajena == p["root"] or p["root"].is_relative_to(ajena)
@@ -476,6 +645,8 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                           message=f"Promocion interrumpida sin recuperar: {exc}")
             return 1
 
+        adoptado = _adoptar_runtime_existente(root)
+
         staging = None
         try:
             if sys.version_info < (3, 10):
@@ -540,6 +711,18 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             resultado = _promocion.promover(root, staging, p["cache"])
             staging = None                      # ya no existe: se convirtio en destino
 
+            # La evidencia con la que se promovio, guardada en la RAIZ. De aqui
+            # sale el last-known-good que servira el lanzador si la proxima
+            # actualizacion se rompe, y por eso lleva QUE se comprobo y no solo
+            # que carpeta es.
+            apartado = resultado["anterior"]
+            _estado.registrar_promocion(
+                root,
+                nuevo=_estado.evidencia(
+                    p["cache"].name, version=VERSION,
+                    servidor=salud.get("servidor") or "", tools=salud["tools"]),
+                anterior_apartado=Path(apartado).name if apartado else None)
+
             for key in ("outputs", "backups"):
                 p[key].mkdir(parents=True, exist_ok=True)
             _write_status(p, state="ready", ready=True, step="complete",
@@ -549,6 +732,7 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                                      "version": salud.get("version")},
                           anterior_conservado=resultado["anterior"],
                           recuperacion_previa=recuperado.get("accion"),
+                          runtime_adoptado=adoptado,
                           # Un journal rechazado no impide instalar -no se toco
                           # nada de lo que decia-, pero tiene que verse: es la
                           # unica senal de que algo escribio ahi un journal que
@@ -564,13 +748,38 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             descartado = False
             if staging is not None:
                 descartado = _borrar(staging)
-            anterior_utilizable = p["python"].is_file()
+            # Anotar el fallo NO puede borrar la constancia de lo que si
+            # arranca: son dos hechos distintos y tienen que convivir.
+            _estado.registrar_fallo(root, version=VERSION,
+                                    error=f"{type(exc).__name__}: {exc}")
+            seleccion = seleccionar_runtime(base)
+            sirve = seleccion["modo"] != "ninguno"
             _write_status(
                 p, state="failed", ready=False, staging_descartado=descartado,
-                runtime_anterior_utilizable=anterior_utilizable,
-                message=(f"{type(exc).__name__}: {exc}. La instalación anterior "
-                         "NO se tocó: sigue utilizable. Relanzar REANUDA desde "
-                         "este paso; lo ya descargado está verificado por hash."))
+                # Dos hechos distintos, dos campos. `runtime_anterior_utilizable`
+                # es el literal: la carpeta anterior sigue ahi con su interprete,
+                # o sea que la actualizacion no destruyo nada -que es lo que
+                # afirma INSTALL-001-. `sirviendo_tras_el_fallo` es el estricto:
+                # que se va a EJECUTAR, decidido con la evidencia del handshake.
+                # Meter los dos en un campo fue el error original: "hay un
+                # python.exe" acabo leyendose como "hay algo que funciona".
+                runtime_anterior_utilizable=p["python"].is_file(),
+                sirviendo_tras_el_fallo=seleccion["modo"],
+                message=(
+                    f"{type(exc).__name__}: {exc}. La instalación anterior NO "
+                    "se tocó" + (
+                        f": se sigue sirviendo {seleccion['version']} "
+                        f"({seleccion['modo']}). "
+                        if sirve else " y no hay ningún runtime utilizable. ") +
+                    # El mensaje anterior decia "Relanzar REANUDA desde este
+                    # paso", y no era verdad: el staging se descarta, asi que
+                    # relanzar vuelve a empezar -reaprovechando por copia lo
+                    # que ya este verificado en disco, que no es lo mismo que
+                    # reanudar-. Peor aun, invitaba a reiniciar el cliente una y
+                    # otra vez esperando que continuara solo.
+                    "Reintentar NO reanuda: descarta lo preparado y empieza de "
+                    "nuevo, reaprovechando lo ya verificado en disco. Para "
+                    "reintentar, llama a la tool pbi_install_runtime."))
             return 1
 
 

@@ -116,16 +116,24 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
     visto_el_final = threading.Event()
 
     def _leer() -> None:
-        for linea in proc.stdout:
-            if linea.strip():
+        # `finally` y no un `return` por rama: el hilo tiene que despertar al
+        # principal TAMBIEN cuando stdout se cierra sin haber contestado, que es
+        # lo que pasa cuando el runtime se muere al arrancar. Sin esto, un
+        # proceso que revienta en el primer import costaba el TIMEOUT entero
+        # -tres minutos- para acabar diciendo lo que ya se sabia en el primer
+        # segundo, y multiplicado por cada intento de una instalacion.
+        try:
+            for linea in proc.stdout:
+                if not linea.strip():
+                    continue
                 lineas.append(linea)
                 try:
                     if json.loads(linea).get("id") == 2:
-                        visto_el_final.set()
                         return
                 except ValueError:
-                    visto_el_final.set()          # stdout sucio: no hay mas que ver
-                    return
+                    return                        # stdout sucio: no hay mas que ver
+        finally:
+            visto_el_final.set()
 
     lector = threading.Thread(target=_leer, daemon=True)
     lector.start()

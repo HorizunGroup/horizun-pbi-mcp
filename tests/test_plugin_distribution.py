@@ -291,7 +291,11 @@ def test_el_lanzador_oculta_al_instalador_y_no_al_servidor():
     por_funcion = {donde: declara for donde, _n, declara in _llamadas_a_subprocess(ruta)}
     assert por_funcion.get("_start_install") is True, (
         "el instalador en segundo plano debe pedir CREATE_NO_WINDOW")
-    assert por_funcion.get("main") is False, (
+    # El arranque del servidor real vive en `_servir`, que es la que usan tanto
+    # el runtime activo como el fallback a N-1. Si esto siguiera mirando solo a
+    # `main`, el camino del fallback podria estrenar consola sin que nadie se
+    # enterara -y es justo el camino que se recorre cuando algo ya fue mal-.
+    assert por_funcion.get("_servir") is False, (
         "el servidor real hereda el stdio del cliente: sin creationflags")
 
 

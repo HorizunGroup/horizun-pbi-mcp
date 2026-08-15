@@ -94,7 +94,7 @@ def _es_nombre_simple(valor: Any) -> bool:
     return True
 
 
-def _bajo_root(root: Path, nombre: Any, *, que: str) -> Path:
+def bajo_root(root: Path, nombre: Any, *, que: str) -> Path:
     """`root/nombre`, comprobado LEXICA y RESUELTAMENTE como hijo directo.
 
     Las dos comprobaciones hacen falta y ninguna sustituye a la otra. La lexica
@@ -128,18 +128,18 @@ def _interpretar_journal(root: Path, datos: dict[str, Any]) -> dict[str, Any]:
     if fase not in FASES_RECUPERABLES:
         raise JournalInvalido(f"fase {fase!r} no recuperable")
 
-    destino = _bajo_root(root, datos.get("destino"), que="destino")
+    destino = bajo_root(root, datos.get("destino"), que="destino")
     if destino.name.startswith((PREFIJO_STAGING, PREFIJO_ANTERIOR)):
         raise JournalInvalido(
             f"destino={destino.name!r} lleva un prefijo reservado")
 
-    staging = _bajo_root(root, datos.get("staging"), que="staging")
+    staging = bajo_root(root, datos.get("staging"), que="staging")
     if not staging.name.startswith(PREFIJO_STAGING):
         raise JournalInvalido(f"staging={staging.name!r} sin el prefijo {PREFIJO_STAGING!r}")
 
     anterior = None
     if datos.get("anterior") is not None:
-        anterior = _bajo_root(root, datos["anterior"], que="anterior")
+        anterior = bajo_root(root, datos["anterior"], que="anterior")
         if not anterior.name.startswith(PREFIJO_ANTERIOR):
             raise JournalInvalido(
                 f"anterior={anterior.name!r} sin el prefijo {PREFIJO_ANTERIOR!r}")
@@ -411,13 +411,21 @@ def restaurar_anterior(root: Path, destino: Path) -> Path | None:
     return elegido
 
 
-def limpiar(root: Path, *, conservar: int = CONSERVAR_ANTERIORES) -> list[str]:
+def limpiar(root: Path, *, conservar: int = CONSERVAR_ANTERIORES,
+            proteger: "set[Path] | None" = None) -> list[str]:
     """Borra stagings huerfanos y los `.previous-` que sobran.
 
     **Solo toca rutas con nuestros prefijos.** Una carpeta que no reconocemos
     no se borra ni aunque estorbe: esa regla es lo que separa una limpieza de
     una perdida de datos.
+
+    `proteger` lleva las rutas que no se borran pase lo que pase. La usa quien
+    conoce el last-known-good: conservar "el mas reciente por nombre" no basta
+    -`.previous-fallido-...` ordena por delante de `.previous-1.5.5-...`- y
+    borrar el N−1 bueno por un criterio de ordenacion seria justo el fallo que
+    todo esto existe para evitar.
     """
+    intocables = {p.resolve() for p in (proteger or set())}
     borrados: list[str] = []
     try:
         hijos = list(root.iterdir())
@@ -426,10 +434,13 @@ def limpiar(root: Path, *, conservar: int = CONSERVAR_ANTERIORES) -> list[str]:
 
     for d in hijos:
         if d.is_dir() and d.name.startswith(PREFIJO_STAGING):
+            if d.resolve() in intocables:
+                continue
             if _borrar_arbol(d):
                 borrados.append(str(d))
 
-    for sobra in anteriores(root)[max(conservar, 0):]:
+    sobran = [d for d in anteriores(root) if d.resolve() not in intocables]
+    for sobra in sobran[max(conservar, 0):]:
         if _borrar_arbol(sobra):
             borrados.append(str(sobra))
     return borrados
