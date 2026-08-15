@@ -44,6 +44,17 @@ def filas(servidor):
     return inv.inventario(servidor)
 
 
+@pytest.fixture(scope="module")
+def llamadas_observadas():
+    """Las llamadas que de verdad ocurrieron, no las que el inventario promete.
+
+    El informe dijo «las 134 ejecutadas por MCP» mientras el documento decia 132
+    y pytest marcaba dos skips. Un recuento que sale de la tabla no puede
+    desmentir a la tabla: este sale de la ejecucion.
+    """
+    return []
+
+
 def _llamar(mcp, nombre, args):
     """Devuelve `('rechazo', mensaje)` o `('payload', dict)`, nunca revienta."""
     from mcp.server.fastmcp.exceptions import ToolError
@@ -72,14 +83,39 @@ def _nombres():
     return sorted(t["name"] for t in golden["tools"])
 
 
+def _romper_adaptador(monkeypatch, adaptador) -> None:
+    """Sustituye el adaptador del entorno y lo hace fallar.
+
+    Primero se vacian los descubridores —para que la tool no mire la maquina de
+    quien corre la suite— y despues se rompe el primero. Lo segundo sin lo
+    primero seria una prueba que pasa o falla segun si hay Desktop abierto.
+    """
+    import importlib
+
+    modulo = importlib.import_module(adaptador["modulo"])
+    for nombre in adaptador["vacio"]:
+        monkeypatch.setattr(modulo, nombre, lambda: [])
+
+    def _revienta():
+        raise RuntimeError("adaptador del entorno roto a proposito")
+
+    monkeypatch.setattr(modulo, adaptador["vacio"][0], _revienta)
+
+
 @pytest.mark.parametrize("nombre", _nombres())
 def test_cada_tool_rechaza_su_caso_negativo(nombre, servidor, filas,
-                                            isolated_settings):
+                                            isolated_settings, monkeypatch,
+                                            llamadas_observadas):
     fila = next(f for f in filas if f["tool"] == nombre)
     caso = fila["negativo"]
-    if caso["clase"] == "declarada":
-        pytest.skip(f"excepción declarada en el inventario: {caso['motivo']}")
+    assert caso["clase"] != "declarada", (
+        f"{nombre} quedo sin ejecutar: {caso['motivo']}. El inventario no puede "
+        "declarar 134 y ejecutar menos")
 
+    if caso["clase"] == "adaptador_roto":
+        _romper_adaptador(monkeypatch, caso["adaptador"])
+
+    llamadas_observadas.append(nombre)
     clase, resultado = _llamar(servidor, nombre, caso["args"])
 
     assert clase != "excepcion", (
@@ -103,6 +139,17 @@ def test_cada_tool_rechaza_su_caso_negativo(nombre, servidor, filas,
 
     assert isinstance(resultado, dict), (
         f"{nombre} contestó algo que no es un sobre: {type(resultado)}")
+
+    if caso["clase"] == "adaptador_roto":
+        # Lo que se exige no es que falle -eso lo garantiza la inyeccion-, sino
+        # COMO falla: un sobre con codigo estable. Una traza que sube hasta el
+        # cliente es el defecto, y la comprueba el assert de arriba.
+        assert resultado.get("ok") is False, (
+            f"{nombre} dio por bueno un adaptador roto: {str(resultado)[:200]}")
+        assert resultado.get("error") == caso["adaptador"]["codigo"], (
+            f"{nombre} contesto con el codigo {resultado.get('error')!r} y el "
+            f"inventario declara {caso['adaptador']['codigo']!r}")
+        return
 
     if caso["clase"] == "sin_modo_de_fallo":
         # La exención se comprueba: mientras conteste que sí sin proyecto, es
@@ -209,3 +256,72 @@ def test_una_tool_nueva_sin_parametros_y_destructiva_se_declara_sola():
     caso = inv.caso_negativo("pbi_inventada", {}, destructiva=True)
     assert caso["clase"] == "declarada"
     assert "destructiva" in caso["motivo"]
+
+
+def test_se_observaron_las_134_llamadas(llamadas_observadas, filas):
+    """El recuento sale de la EJECUCION, no del inventario.
+
+    Va al final del archivo a proposito: pytest ejecuta los tests en orden, asi
+    que para cuando llega aqui las 134 parametrizaciones ya han corrido y la
+    lista esta llena. Si alguna se salta -un skip, un error de recoleccion-,
+    esto lo dice con el nombre.
+    """
+    faltan = sorted({f["tool"] for f in filas} - set(llamadas_observadas))
+    assert not faltan, f"no se llamo a: {faltan}"
+    assert len(llamadas_observadas) == 134, (
+        f"se observaron {len(llamadas_observadas)} llamadas por MCP, no 134")
+
+
+def test_ninguna_tool_queda_declarada_sin_ejecutar(filas):
+    """G2.4 admite excepciones declaradas; el inventario ya no necesita ninguna.
+
+    Se deja como assert y no como comentario porque el dia que alguien vuelva a
+    declarar una, tiene que ser una decision visible y no una regresion callada.
+    """
+    declaradas = [f["tool"] for f in filas
+                  if f["negativo"]["clase"] == "declarada"]
+    assert not declaradas, (
+        f"vuelven a quedar tools sin ejecutar: {declaradas}. Si es inevitable, "
+        "TEST-002 vuelve a parcial y la documentacion tiene que decir el "
+        "numero real, no 134")
+
+
+def test_una_excepcion_interna_hace_fallar_esta_prueba():
+    """La red que sostiene a las otras 134: que el detector detecte.
+
+    Y aqui salio algo que no se sabia. **FastMCP envuelve cualquier excepcion
+    del cuerpo de una tool en `ToolError`**, el mismo tipo con el que rechaza un
+    argumento invalido. O sea que la rama `except Exception -> "excepcion"` de
+    `_llamar` **no se dispara nunca** para una tool que revienta: solo cubre
+    fallos de `call_tool` en si, como pedir una tool que no existe.
+
+    Lo que de verdad separa un fallo interno de un rechazo legitimo es el
+    contenido: la validacion de pydantic dice «validation error» y una
+    `RuntimeError` cualquiera, no. Esa es la comprobacion que sostiene el
+    archivo entero, y es la que se verifica aqui —con una tool de mentira sobre
+    un servidor de usar y tirar, para no depender de que ninguna de las 134 se
+    porte mal—.
+    """
+    from mcp.server.fastmcp import FastMCP
+
+    juguete = FastMCP("inventario-de-mentira")
+
+    @juguete.tool()
+    def revienta() -> dict:
+        raise RuntimeError("esto no deberia llegar al cliente")
+
+    clase, detalle = _llamar(juguete, "revienta", {})
+
+    assert clase == "rechazo", (
+        "FastMCP dejo de envolver las excepciones del cuerpo en ToolError: "
+        f"revisa las ramas de `_llamar`, ahora devuelve {clase!r}")
+    assert "esto no deberia llegar al cliente" in detalle
+
+    # Y esta es la linea que separa el verde del rojo en las 134 de arriba:
+    # un fallo interno NO puede pasar por un rechazo de validacion.
+    assert "validation error" not in detalle.lower(), (
+        "un fallo interno se esta presentando como error de validacion: las "
+        "134 pruebas de arriba lo darian por bueno")
+
+    with pytest.raises(AssertionError):
+        assert "validation error" in detalle.lower()

@@ -18,9 +18,10 @@ menos un caso negativo; las excepciones se declaran con motivo»).
 | tipo invalido | un valor de otro tipo en el parametro que se indica | lo mismo: rechazo en la validacion |
 | sin proyecto activo | ejecutarla de verdad, sin nada abierto | responde un sobre `ok: false` con codigo, nunca una excepcion |
 | sin modo de fallo | ejecutarla de verdad, sin nada abierto | responde `ok: true`: no hay entrada ni estado que la haga fallar |
+| adaptador roto | se le rompe el adaptador del entorno que consulta | responde un sobre con codigo, **nunca una traza** |
 | **declarada** | no se ejecuta | el motivo va en la tabla de abajo, que es lo que G2.4 exige |
 
-Las cuatro primeras **se ejecutan por MCP** (`call_tool`) cada vez que corre la
+Las cinco primeras **se ejecutan por MCP** (`call_tool`) cada vez que corre la
 suite: la columna no es una promesa, es lo que acaba de pasar.
 
 «Sin modo de fallo» no es un aprobado gratis. Son tools que contestan lo mismo
@@ -41,8 +42,9 @@ dar por hecho al ver 134 filas en verde:
   con la sintaxis rota» o «un tema con un color imposible» no salen de un
   esquema: hay que escribirlos a mano, tool por tool, y varios ya viven en los
   archivos de su dominio.
-* **La columna de payload congelado la llena CONTRACT-002**, no esto. Hoy son
-  dos de 134, y el resto necesita Power BI Desktop —TEST-003—.
+* **La columna de payload congelado la llena CONTRACT-002**, no esto, y hoy
+  son dos tools de 134. Que el resto «necesita Desktop» es una hipotesis que
+  esta sin comprobar tool por tool.
 
 
 ## Cuentas
@@ -50,22 +52,13 @@ dar por hecho al ver 134 filas en verde:
 | | |
 |---|---|
 | Tools | **134** |
-| Ejecutadas por MCP en cada corrida | **132** |
-| Con caso negativo que las hace fallar | **124** |
+| Ejecutadas por MCP en cada corrida | **134** |
+| Con caso negativo que las hace fallar | **126** |
 | Sin modo de fallo (ejecutadas, se exige `ok: true`) | **8** |
-| Excepciones declaradas con motivo | **2** |
+| Excepciones declaradas con motivo | **0** |
 | De solo lectura | **55** |
 | Con `confirm` | **9** |
 | Con payload congelado | **2** |
-
-## Excepciones, con su motivo
-
-G2.4 admite lagunas **declaradas**. Estas son, y ninguna se declara por comodidad: o el esquema no permite construir una entrada invalida, o ejecutarla tocaria el entorno real.
-
-| Tool | Motivo |
-|---|---|
-| `pbi_list_desktop_models` | sondea los puertos de Analysis Services: el resultado depende de si quien corre la suite tiene Power BI Desktop abierto |
-| `pbi_test_connection` | abre una conexion real contra el motor tabular; sin Desktop tarda lo que tarde el descubrimiento, y con Desktop contesta otra cosa |
 
 ## Las tools, una por una
 
@@ -142,7 +135,7 @@ G2.4 admite lagunas **declaradas**. Estas son, y ninguna se declara por comodida
 | `pbi_list_bookmarks` | solo lectura | 0 | 0 | — | — | sin proyecto activo | — |
 | `pbi_list_convertible_pbix` | solo lectura | 2 | 1 | — | — | falta un requerido | `path` |
 | `pbi_list_design_systems` | solo lectura | 1 | 0 | — | — | tipo invalido | `request_id` |
-| `pbi_list_desktop_models` | solo lectura | 0 | 0 | — | — | **declarada** | — |
+| `pbi_list_desktop_models` | solo lectura | 0 | 0 | — | — | adaptador roto | — |
 | `pbi_list_hierarchies` | solo lectura | 1 | 0 | — | — | tipo invalido | `source` |
 | `pbi_list_measures` | solo lectura | 3 | 0 | — | — | tipo invalido | `source` |
 | `pbi_list_page_presets` | solo lectura | 0 | 0 | — | — | sin modo de fallo | — |
@@ -196,7 +189,7 @@ G2.4 admite lagunas **declaradas**. Estas son, y ninguna se declara por comodida
 | `pbi_sharepoint_download_folder` | escritura | 7 | 1 | — | — | falta un requerido | `site_url` |
 | `pbi_sharepoint_list_folder` | solo lectura | 5 | 1 | — | — | falta un requerido | `site_url` |
 | `pbi_start_here` | solo lectura | 1 | 0 | — | — | tipo invalido | `request_id` |
-| `pbi_test_connection` | solo lectura | 0 | 0 | — | — | **declarada** | — |
+| `pbi_test_connection` | solo lectura | 0 | 0 | — | — | sin proyecto activo | — |
 | `pbi_update_measure` | escritura | 8 | 2 | — | — | falta un requerido | `name, table` |
 | `pbi_update_visual_position` | escritura | 8 | 6 | — | — | falta un requerido | `height, page, visual_id, width, x, y` |
 | `pbi_validate_desktop_render` | escritura | 9 | 0 | — | — | tipo invalido | `path` |

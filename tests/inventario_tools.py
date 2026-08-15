@@ -21,6 +21,7 @@ lo dice.
 | Tiene parametros requeridos | llamarla con `{}` | pydantic la rechaza **antes** del cuerpo |
 | Tiene parametros, ninguno requerido | un valor de otro tipo en el primero | igual: rechazo en la validacion |
 | No declara parametros | ejecutarla sin proyecto activo | salvo que sea destructiva |
+| Solo depende de un adaptador del entorno | romperle el adaptador | se sustituye; no se toca Desktop |
 
 La tercera fila es la unica que **ejecuta el cuerpo**, y por eso es la unica que
 mira la clasificacion de riesgo de `tools/risk.py`. Una tool sin parametros no
@@ -34,12 +35,25 @@ asi que no hay proyecto sobre el que actuar y lo unico que una tool podria
 escribir cae en el directorio temporal de la prueba. Lo destructivo no se
 ejecuta ni asi.
 
-## Lo que NO se ejecuta, y se dice
+## Las dos que estuvieron declaradas, y por que ya no lo estan
 
-Dos tools sondean el entorno real para responder. Ejecutarlas aqui haria que la
-suite dependiera de si quien la corre tiene Power BI Desktop abierto, que es
-exactamente lo que la fixture `proyecto_cerrado` existe para evitar. Se declaran
-con motivo, que es lo que G2.4 permite, en vez de ejecutarse a medias.
+`pbi_list_desktop_models` y `pbi_test_connection` se declararon como «no se
+ejecutan» porque sondean el entorno real y su resultado dependia de si quien
+corre la suite tiene Power BI Desktop abierto. **Eso era un problema de
+determinismo, no de imposibilidad**, y declararlo como excepcion permanente
+convertia una carencia de la prueba en una propiedad del producto. El inventario
+decia 134 y ejecutaba 132.
+
+* `pbi_test_connection` **no necesitaba nada**: sin modelo activo contesta
+  `no_active_model` al instante, sin abrir ninguna conexion. Nunca llegaba a la
+  red; se estaba evitando por si acaso.
+* `pbi_list_desktop_models` necesita que se le sustituyan dos adaptadores —la
+  enumeracion de procesos y la de archivos de puerto—. Con eso deja de mirar la
+  maquina, y se le puede exigir lo que de verdad importa de una tool de
+  descubrimiento: **si su adaptador revienta, el cliente recibe un sobre con
+  codigo, no una traza**.
+
+Ninguna de las dos abre, cierra ni consulta Power BI.
 """
 from __future__ import annotations
 
@@ -58,16 +72,24 @@ PAYLOADS = REPO_ROOT / "tests" / "golden" / "payloads_v1.json"
 VALOR_IMPOSIBLE: Dict[str, Any] = {"__tipo_invalido__": True}
 VALOR_IMPOSIBLE_PARA_OBJETO = "no-soy-un-objeto"
 
-#: Sondean el entorno real —puertos de Analysis Services, ventanas de Desktop—
-#: para poder contestar. Su resultado depende de la maquina, asi que ejecutarlas
-#: en la suite la haria fallar o pasar segun quien la corra.
-NO_SE_EJECUTAN = {
-    "pbi_list_desktop_models":
-        "sondea los puertos de Analysis Services: el resultado depende de si "
-        "quien corre la suite tiene Power BI Desktop abierto",
-    "pbi_test_connection":
-        "abre una conexion real contra el motor tabular; sin Desktop tarda lo "
-        "que tarde el descubrimiento, y con Desktop contesta otra cosa",
+#: Tools cuyo unico modo de fallo esta en un ADAPTADOR del entorno, no en su
+#: entrada ni en el estado del proyecto. Se les inyecta el fallo en ese
+#: adaptador y se exige un sobre estructurado.
+#:
+#: `pbi_list_desktop_models` estuvo declarada como «no se ejecuta» porque sondea
+#: los puertos de Analysis Services y su resultado depende de si quien corre la
+#: suite tiene Desktop abierto. Eso era un problema de DETERMINISMO, no de
+#: imposibilidad: sustituyendo la enumeracion de procesos y de archivos de
+#: puerto, la tool se ejecuta igual que las demas y **sin tocar Desktop**. Lo
+#: que se comprueba es la propiedad que importa de una tool de descubrimiento:
+#: si su adaptador revienta, el cliente recibe un sobre con codigo, no una
+#: traza.
+ADAPTADORES = {
+    "pbi_list_desktop_models": {
+        "modulo": "horizun_pbi_mcp.powerbi.desktop_discovery",
+        "vacio": ("_ports_from_processes", "_workspace_port_files"),
+        "codigo": "unexpected",
+    },
 }
 
 #: No declaran parametros Y no dependen de ningun estado: no hay entrada que
@@ -113,9 +135,9 @@ def caso_negativo(nombre: str, esquema: Dict[str, Any],
     props = esquema.get("properties") or {}
     requeridos = esquema.get("required") or []
 
-    if motivo := NO_SE_EJECUTAN.get(nombre):
-        return {"clase": "declarada", "args": None, "campo": None,
-                "motivo": motivo}
+    if nombre in ADAPTADORES:
+        return {"clase": "adaptador_roto", "args": {}, "campo": None,
+                "motivo": None, "adaptador": ADAPTADORES[nombre]}
 
     if requeridos:
         return {"clase": "falta_requerido", "args": {}, "motivo": None,
@@ -190,6 +212,7 @@ CLASES = {
     "tipo_invalido": "tipo invalido",
     "estado_ausente": "sin proyecto activo",
     "sin_modo_de_fallo": "sin modo de fallo",
+    "adaptador_roto": "adaptador roto",
     "declarada": "**declarada**",
 }
 
@@ -213,9 +236,10 @@ menos un caso negativo; las excepciones se declaran con motivo»).
 | tipo invalido | un valor de otro tipo en el parametro que se indica | lo mismo: rechazo en la validacion |
 | sin proyecto activo | ejecutarla de verdad, sin nada abierto | responde un sobre `ok: false` con codigo, nunca una excepcion |
 | sin modo de fallo | ejecutarla de verdad, sin nada abierto | responde `ok: true`: no hay entrada ni estado que la haga fallar |
+| adaptador roto | se le rompe el adaptador del entorno que consulta | responde un sobre con codigo, **nunca una traza** |
 | **declarada** | no se ejecuta | el motivo va en la tabla de abajo, que es lo que G2.4 exige |
 
-Las cuatro primeras **se ejecutan por MCP** (`call_tool`) cada vez que corre la
+Las cinco primeras **se ejecutan por MCP** (`call_tool`) cada vez que corre la
 suite: la columna no es una promesa, es lo que acaba de pasar.
 
 «Sin modo de fallo» no es un aprobado gratis. Son tools que contestan lo mismo
@@ -236,8 +260,9 @@ dar por hecho al ver 134 filas en verde:
   con la sintaxis rota» o «un tema con un color imposible» no salen de un
   esquema: hay que escribirlos a mano, tool por tool, y varios ya viven en los
   archivos de su dominio.
-* **La columna de payload congelado la llena CONTRACT-002**, no esto. Hoy son
-  dos de 134, y el resto necesita Power BI Desktop —TEST-003—.
+* **La columna de payload congelado la llena CONTRACT-002**, no esto, y hoy
+  son dos tools de 134. Que el resto «necesita Desktop» es una hipotesis que
+  esta sin comprobar tool por tool.
 
 """
 
