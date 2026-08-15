@@ -162,19 +162,34 @@ def test_los_scripts_que_ofrece_el_runbook_existen():
     assert not faltan, f"el runbook ofrece scripts que no existen: {faltan}"
 
 
-def test_el_runbook_no_promete_comandos_que_no_existen():
-    """`uninstall` y `purge` NO existen todavia (INSTALL-008).
+#: Lo que el runbook TIENE que declarar ausente, hoy. La lista se encoge
+#: cuando algo deja de faltar, y esa es la senal de que la prueba mide la
+#: realidad y no una foto vieja: `uninstall` y `purge` salieron de aqui cuando
+#: INSTALL-008 los implemento.
+AUSENTES_HOY = ("No existe un bundle offline",)
 
-    Un runbook que los ofreciera mandaria a la gente a escribir un comando que
-    falla. Tiene que decir que no existen y dar el procedimiento manual.
+#: Y lo que YA NO puede declarar ausente, porque existe. Sin esto, la lista de
+#: arriba podria encogerse y el runbook quedarse diciendo lo contrario.
+YA_NO_FALTAN = ("uninstall", "purge")
+
+
+def test_el_runbook_no_promete_comandos_que_no_existen():
+    """Un runbook que ofrece un comando inexistente manda a la gente al vacio.
+
+    Y uno que sigue declarando ausente algo que ya existe, tambien: la persona
+    se pone a hacer el procedimiento manual de algo que se resuelve con una
+    orden. Se comprueban las dos direcciones.
     """
     texto = RUNBOOK.read_text(encoding="utf-8")
-    # `uninstall` y `purge` YA existen desde INSTALL-008; el bundle offline
-    # no. La lista se encoge cuando algo deja de faltar, que es la señal de
-    # que esta prueba mide la realidad y no una foto vieja.
-    for ausente in ("No existe un bundle offline",):
+    for ausente in AUSENTES_HOY:
         assert ausente in texto, (
             f"el runbook no declara que falta: {ausente!r}")
+    for existe in YA_NO_FALTAN:
+        assert f"No existe {existe}" not in texto, (
+            f"el runbook declara ausente `{existe}`, que existe desde "
+            "INSTALL-008")
+        assert f"--{existe}" in texto, (
+            f"`--{existe}` existe y el runbook no lo documenta")
 
 
 def test_el_runbook_enumera_antes_de_retirar_nada():

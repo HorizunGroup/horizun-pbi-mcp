@@ -44,15 +44,16 @@ resultado se espera y qué evidencia hay que guardar.
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
 | G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
 | G4.6 | INSTALL-009 | runner no-Windows (**la matriz de Windows ya está cerrada**) | Linux o macOS con Python ≥3.10 |
-| G5.1–G5.6 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
+| G5.1–G5.4 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
+| G5.6 | TEST-003 | Desktop (**la prueba ya existe y es local**) | Desktop con un `.pbip` de prueba |
 | G6.1 | RELEASE-001 | Release publicada | Permiso de publicación |
 | G6.2 | RELEASE-002 | Release publicada | Permiso de publicación |
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**13 filas, 22 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+**14 filas, 21 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
 `G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «13 externos» dejaría fuera nueve gates que nadie estaría vigilando.
+y decir «14 externos» dejaría fuera cinco gates que nadie estaría vigilando.
 
 > **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
 > G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
@@ -195,7 +196,23 @@ de inalcanzables; conviene mirarlos por separado antes de aparcar los dos.
 
 ---
 
-## G5.1–G5.6 — Desktop real
+## G5.1–G5.4 y G5.6 — Desktop real
+
+> **G5.5 salió de esta lista el 2026-08-15**, y es el tercer caso después de
+> G3.6 y G4.7. Se había clasificado el bloque G5 entero como imposible sin mirar
+> gate por gate. G5.5 —«un `.pbip` abierto se detecta como abierto»— **ya tenía
+> evidencia live fechada el 2026-08-14**: es el mismo hallazgo que G1.1, CORE-001,
+> y su prueba `test_live_la_ventana_real_delata_un_pbip_sin_handles` corre sobre
+> un proyecto sintético desechable y solo cierra los procesos que ella misma
+> arrancó. Estaba cumplido y contado como externo.
+>
+> **G5.6 pasó a parcial** por lo mismo a medias: la prueba
+> `test_live_captura_real_deja_el_proyecto_byte_a_byte_igual` existe, es local y
+> se ejecutó para CORE-002. Lo que falta no es escribirla, es repetirla dentro
+> de la matriz de escenarios de TEST-003.
+>
+> La lección se repite: la etiqueta «externo» se pega a bloques enteros, y
+> dentro de un bloque puede haber gates que ya están hechos.
 
 **Bloqueo exacto.** Los seis gates miden filtros, capturas, `data_loaded` y
 rollback contra Power BI Desktop con un modelo cargado. Este ciclo tiene

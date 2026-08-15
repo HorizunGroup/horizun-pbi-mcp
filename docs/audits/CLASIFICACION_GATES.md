@@ -70,8 +70,8 @@ solo gate, **no se puede decir «100% local»**.
 | G5.2 | pendiente-externo | Desktop, `refresh` y una captura con datos |
 | G5.3 | pendiente-externo | Desktop con un modelo vacío de verdad |
 | G5.4 | pendiente-externo | Desktop, y cambio de página con captura |
-| G5.5 | pendiente-externo | Desktop con un `.pbip` realmente abierto |
-| G5.6 | pendiente-externo | Desktop, y rollback comparado byte a byte |
+| G5.5 | cumplido | mismo hallazgo y misma evidencia **live fechada el 2026-08-14** que G1.1: `test_live_la_ventana_real_delata_un_pbip_sin_handles`, sobre un `.pbip` sintético y desechable |
+| G5.6 | parcial | la prueba **existe y es local**: `test_live_captura_real_deja_el_proyecto_byte_a_byte_igual`, sobre proyecto sintético. Se ejecutó el 2026-08-14 para CORE-002; falta repetirla con la matriz de escenarios de TEST-003 |
 | G6.1 | pendiente-externo | release publicada de v1.5.5 |
 | G6.2 | pendiente-externo | release publicada, con CI verde del mismo commit |
 | G6.3 | cumplido | ningún camino publicado ejecuta desde `main` |
@@ -96,11 +96,11 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **29** |
-| parcial | **5** |
+| cumplido | **30** |
+| parcial | **6** |
 | pendiente-local | **2** |
 | pendiente-ratificacion | **1** |
-| pendiente-externo | **17** |
+| pendiente-externo | **15** |
 | **Total** | **54** |
 
 **Trabajo local pendiente: G2.2 y G4.7.** Mientras esos dos sigan aquí, la

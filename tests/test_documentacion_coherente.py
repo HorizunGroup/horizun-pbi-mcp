@@ -374,3 +374,41 @@ def test_ningun_gate_esta_a_la_vez_cumplido_y_declarado_externo():
     choque = cumplidos & gates_externos()
     assert not choque, (
         f"cumplidos con evidencia y a la vez en EXTERNAL_GATES: {sorted(choque)}")
+
+
+DOSSIER = RAIZ / "docs" / "audits" / "CONTRACT_003_RATIFICATION.md"
+
+#: Lo que una decision de contrato necesita tener delante para poder tomarse.
+#: Sin esto, "pendiente de ratificacion" es un aparcamiento indefinido.
+APARTADOS = ("Contrato actual", "Contrato propuesto", "Diff de",
+             "A quién puede romper", "Peligro de dejarlo como está",
+             "Alternativa compatible", "Plan de deprecación",
+             "Versión semántica recomendada",
+             "Pruebas que se activarían tras ratificación")
+
+
+def test_el_dossier_de_contract_003_esta_completo():
+    """Un hallazgo bloqueado por una decision tiene que traer la decision hecha.
+
+    CONTRACT-003 lleva abierto porque romper el contrato exige una firma
+    humana. Lo que no puede pasar es que quien tenga que firmar no encuentre
+    ahi lo que necesita para hacerlo.
+    """
+    assert DOSSIER.is_file(), "falta el dossier de ratificacion de CONTRACT-003"
+    texto = DOSSIER.read_text(encoding="utf-8")
+    faltan = [a for a in APARTADOS if a not in texto]
+    assert not faltan, f"el dossier no cubre: {faltan}"
+    assert texto.count("## Cambio ") == 3, (
+        "el dossier tiene que tratar los TRES cambios de CORE-004(a)(b)(c)")
+
+
+def test_el_dossier_declara_que_no_se_aplico():
+    """La linea que impide que alguien lo lea como un registro de cambios."""
+    texto = DOSSIER.read_text(encoding="utf-8")
+    assert "NO aplicado" in texto and "Nada de lo que hay aquí está en el código" in texto
+
+
+def test_contract_003_sigue_abierta_mientras_no_se_ratifique():
+    """Un dossier no cierra el hallazgo: lo deja listo para decidir."""
+    assert estados_de_la_matriz()["CONTRACT-003"] == "abierta", (
+        "CONTRACT-003 no puede darse por cerrada sin ratificacion registrada")

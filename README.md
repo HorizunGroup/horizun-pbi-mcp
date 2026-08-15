@@ -644,7 +644,7 @@ More DAX in [`examples/sample_queries.md`](examples/sample_queries.md).
 ## Troubleshooting
 
 - **Doesn't detect the port / "No se detecto ningun modelo":** open the report in Power BI Desktop; the port changes on every startup (the MCP discovers it on its own). If you use the Microsoft Store version, it's still detected by process.
-- **`adomd_not_installed` / `tom_not_installed`:** run `python scripts/fetch_libs.py`. Check that `libs/Microsoft.AnalysisServices.AdomdClient.dll` exists.
+- **`adomd_not_installed` / `tom_not_installed`:** run `horizun-pbi-completar` (installed package) or `python scripts/fetch_libs.py` (from the clone). Check that `libs/Microsoft.AnalysisServices.AdomdClient.dll` exists.
 - **`clr_not_available`:** .NET is missing; try `PBI_MCP_DOTNET_RUNTIME=coreclr`.
 - **DAX error:** the engine's message is returned as-is in `message`. Check the syntax (EVALUATE, quotes).
 - **`pbir_not_enabled`:** the report isn't in PBIR. Save as `.pbip` and enable *Power BI Project (PBIR) format* under Options → Preview Features (if applicable to your version) before saving.

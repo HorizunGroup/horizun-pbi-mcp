@@ -197,11 +197,11 @@ confusión es la que permitió afirmar «no queda trabajo local».
 | G2 Contrato y payloads | 5 | 5 | 0 |
 | G3 Instalación limpia | 6 | 1 | 5 (VM limpia) |
 | G4 Update y uninstall | 10 | 7 | 3 (VM limpia, npm real, runner no-Windows) |
-| G5 Desktop real | 6 | 0 | 6 (Desktop) |
+| G5 Desktop real | 6 | 1 | 5 (Desktop) |
 | G6 Supply chain | 5 | 2 | 3 (publicación real) |
 | G7 Controles GitHub | 6 | 1 | 5 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **54** | **32** | **22** |
+| **Total** | **54** | **33** | **21** |
 
 **10 de 10 = los 54 gates cumplidos, con evidencia fechada.**
 
@@ -303,9 +303,9 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **29** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
-| Parciales | **5** (G3.3, G4.1, G4.3, G4.6, G6.4) |
-| Pendientes | **20** — de los cuales **2 son trabajo local** (G2.2, G4.7), 1 espera ratificación (G1.5) y 17 son externos |
+| Cumplidos con evidencia | **30** (G1.1, G1.2, G1.3, G1.4, G1.6, G1.7, G1.8, G2.1, G2.3, G2.4, G2.5, G3.6, G4.2, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Parciales | **6** (G3.3, G4.1, G4.3, G4.6, G5.6, G6.4) |
+| Pendientes | **18** — de los cuales **2 son trabajo local** (G2.2, G4.7), 1 espera ratificación (G1.5) y 15 son externos |
 | **Total** | **54** |
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
