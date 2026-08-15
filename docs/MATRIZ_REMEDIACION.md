@@ -101,7 +101,7 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | INSTALL-007 | Reintento sin `--scope user` y `ExecutionPolicy` persistente | Media | G4.8 | **Abierta** |
 | INSTALL-008 | No existe `uninstall` ni `purge` | Media | G4.4, G4.5 | **Abierta** |
 | INSTALL-009 | Sin lock ni hashes, sin bundle offline ni runbook de proxy | Media | G4.6, G4.7 | **Abierta** |
-| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Abierta** |
+| INSTALL-010 | `ready` se escribe sin handshake contra el runtime instalado | Alta | G3.1, G3.3 | **Parcialmente cerrada** — 2026-08-14. `ready` exige initialize + tools/list contra el runtime, ejecutado **antes** de promover; verificado con componentes reales (134 tools). G3.1 y G3.3 exigen máquina limpia |
 
 ## Release y supply chain
 
@@ -133,9 +133,9 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 ## Cuentas
 
 30 entradas: **5 cerradas** (CONTRACT-001, CORE-001, CORE-002, TEST-001,
-TEST-004), **10 parcialmente cerradas** (CORE-003, INSTALL-001, INSTALL-002,
-INSTALL-003, INSTALL-004, INSTALL-006, RELEASE-001, RELEASE-002, RELEASE-003,
-CLI-001), **15 abiertas**. Conteo verificado sobre las filas, no escrito de
+TEST-004), **11 parcialmente cerradas** (CORE-003, INSTALL-001, INSTALL-002,
+INSTALL-003, INSTALL-004, INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002,
+RELEASE-003, CLI-001), **14 abiertas**. Conteo verificado sobre las filas, no escrito de
 memoria.
 
 Al 2026-08-14, tras la segunda pasada. La cuenta anterior era 4 / 5 / 21: se
@@ -543,6 +543,9 @@ Rama `codex/installer-lifecycle-hardening`, base `513fc1d`.
 | Hash | Commit | Cierra |
 |---|---|---|
 | `5307ab5` | `fix(installer): preserve last-known-good runtime during upgrades` | INSTALL-001, INSTALL-002 |
+| `c725e19` | `fix(installer): never clean away the last usable N-1 runtime` | INSTALL-001 (hallado por ensayo) |
+| `ff079a3` | `fix(installer): require an MCP handshake before declaring ready` | INSTALL-010 |
+| `30597a1` | `fix(healthcheck): wait for the reply instead of racing stdin EOF` | INSTALL-010 (hallado por ensayo) |
 
 **Arquitectura introducida.** El núcleo del ciclo de vida vive ahora en
 `src/horizun_pbi_mcp/lifecycle/` —dentro del paquete, no en `scripts/`—, solo
@@ -555,10 +558,37 @@ haber dos implementaciones.
 
 **Rojo:** 21 de 21 en `tests/test_lifecycle_upgrade.py` contra `513fc1d`.
 
+### El ensayo real, y lo que encontró que las pruebas no veían
+
+Antes de tocar nada más se ejecutó el ciclo de vida completo contra un perfil
+temporal (`HORIZUN_PBI_PLUGIN_DATA`), con componentes reales. Encontró **dos
+defectos que ninguna prueba unitaria veía**, y ambos en el camino de éxito:
+
+1. **La limpieza borraba el último N−1 utilizable.** La promoción conservaba
+   como `.previous-` una carpeta recién creada con solo el status, y acto
+   seguido `_limpiar_huerfanos` borraba `1.5.4`. Resultado: `ready` sin nada a
+   lo que volver. Corregido en `c725e19`.
+2. **El healthcheck tenía una carrera de EOF** que producía *falsos negativos*:
+   `communicate()` cierra stdin y el servidor puede apagarse antes de contestar
+   `tools/list`. Un falso negativo aquí rechaza un runtime bueno y tumba una
+   instalación que iba bien — peor que el defecto original, que al menos fallaba
+   hacia el lado optimista. Corregido por sincronización de evento en `30597a1`.
+
+Corrida final, las cuatro etapas en verde:
+
+| Etapa | Resultado |
+|---|---|
+| Instalación limpia | `ready` en 47,5 s · 10 DLL · 23 esquemas · validador con Node v25.8.2 · **134 tools** |
+| Actualización | `ready` en 14,6 s · **134 tools** · N−1 intacto (intérprete + 10 DLL) |
+| Actualización rota | `failed` · staging descartado · cero huérfanos · **N−1 sirviendo 134 tools** |
+
+Esa última fila es la que INSTALL-001 pedía y que hasta ahora nadie había
+comprobado arrancando el runtime, solo mirando si el directorio seguía en disco.
+
 ### Lo que queda de esta macro-iteración
 
 Sin empezar, y ninguna se ha tocado: **INSTALL-004, -005, -006, -007, -008,
--009, -010 y CLI-001**. La arquitectura de staging/promoción/rollback ya está
+-009 y CLI-001**. La arquitectura de staging/promoción/rollback ya está
 disponible para todas ellas, que es la dependencia que compartían.
 
 Nota sobre **INSTALL-007**: pide retirar el reintento de winget sin
