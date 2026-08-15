@@ -30,7 +30,16 @@ param(
     # Diagnostica y describe el plan sin ejecutar NINGUN efecto: no descarga, no
     # instala, no registra plugins, no toca la politica de ejecucion, no escribe
     # ni borra archivos y no arranca Claude ni Codex.
-    [switch]$DryRun
+    [switch]$DryRun,
+
+    # INSTALL-007. Prohibe el reintento sin `--scope user`. Por defecto el
+    # reintento existe -y sin el, el camino del PC vacio se rompe: winget
+    # responde 0x8A150044 cuando un manifiesto ajeno no esta etiquetado como
+    # 'user', aunque su instalador por defecto SI instale en el perfil-, pero
+    # deja de ser silencioso: se anuncia antes y se comprueba despues donde
+    # aterrizo. Con esta bandera, un equipo que exija user-scope estricto
+    # prefiere fallar a instalar fuera del perfil.
+    [switch]$SoloUserScope
 )
 
 $ErrorActionPreference = 'Continue'
@@ -208,6 +217,24 @@ function ReportarNode {
     }
 }
 
+function ComprobarDondeAterrizo($nombre) {
+    # Se instalo SIN --scope: hay que decir donde acabo, no suponerlo. Si cayo
+    # fuera del perfil no es un fallo -sigue sin haber elevacion- pero es una
+    # diferencia con lo que se prometio y tiene que constar.
+    $cmd = Get-Command $nombre -ErrorAction SilentlyContinue
+    if (-not $cmd -or -not $cmd.Source) {
+        Aviso ("No se pudo comprobar donde quedo instalado " + $nombre + ".")
+        return
+    }
+    if ($cmd.Source.StartsWith($env:USERPROFILE, [StringComparison]::OrdinalIgnoreCase)) {
+        Ok ($nombre + " quedo en tu perfil: " + $cmd.Source)
+    } else {
+        Aviso ($nombre + " quedo FUERA de tu perfil: " + $cmd.Source +
+               ". No se pidio administrador en ningun momento, pero no es una " +
+               "instalacion de usuario. Para desinstalarlo: winget uninstall " + $nombre)
+    }
+}
+
 function InstalarConWinget($id, $nombre) {
     if (-not (Tiene 'winget')) {
         Aviso ("winget no esta disponible; instala " + $nombre + " a mano (busca '" + $id + "').")
@@ -235,8 +262,25 @@ function InstalarConWinget($id, $nombre) {
         # Microsoft puede cambiar sin avisar: se prueban las dos formas. Sigue
         # sin haber elevacion: si algo exigiera administrador, winget falla y
         # se reporta como pendiente, nunca se pide UAC.
+        if ($SoloUserScope) {
+            Aviso ($nombre + " no publica un instalador etiquetado como 'user' " +
+                   "(codigo " + $codigo + ") y -SoloUserScope prohibe reintentar " +
+                   "sin --scope. No se instalo nada.")
+            return $false
+        }
+        # Se ANUNCIA antes de hacerlo. Que el reintento sea razonable no lo hace
+        # invisible: quien pego esto leyo "nivel usuario" y tiene derecho a
+        # saber que se esta probando la otra forma, y a poder prohibirlo.
+        Aviso ($nombre + " no acepto --scope user (codigo " + $codigo + "). Se " +
+               "reintenta con el instalador por defecto, que normalmente instala " +
+               "en tu perfil y NUNCA pide administrador. Para prohibirlo, vuelve " +
+               "a ejecutar con -SoloUserScope.")
         $codigo = WingetIntento $id $false
-        if ($exitos -contains $codigo) { Refresh-Path; return $true }
+        if ($exitos -contains $codigo) {
+            Refresh-Path
+            ComprobarDondeAterrizo $nombre
+            return $true
+        }
 
         if ($intento -eq 1) { Start-Sleep -Seconds 4 }
     }
@@ -257,6 +301,10 @@ if ($script:Seco) {
 
 # --- 1. Politica de ejecucion del usuario ------------------------------------
 Paso "Politica de ejecucion de PowerShell (solo tu usuario)"
+# INSTALL-007. Este cambio es PERMANENTE: se queda tras la instalacion y el
+# instalador no lo revierte, porque revertirlo dejaria a Claude sin poder
+# ejecutar sus propios guiones. Se declara aqui y se documenta como deshacerlo
+# en docs/RUNBOOK_INSTALACION.md.
 $permisivas = @('RemoteSigned', 'Unrestricted', 'Bypass')
 $actual = Get-ExecutionPolicy -Scope CurrentUser
 if ($actual -in @('Restricted', 'Undefined', 'AllSigned')) {

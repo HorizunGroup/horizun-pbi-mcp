@@ -450,3 +450,49 @@ def test_el_minimo_de_node_del_instalador_y_del_bootstrap_coinciden():
         f"instalar.ps1 exige Node {del_instalador} y plugin_bootstrap.py "
         f"{del_bootstrap}: el instalador aprobaria un Node que el bootstrap "
         "rechaza despues")
+
+
+# ============================================================================
+# INSTALL-007 — user-scope: explicito y consentible, no silencioso
+# ============================================================================
+def test_el_reintento_sin_scope_se_puede_prohibir():
+    """El reintento existe a proposito -sin el se rompe el PC vacio- pero
+    quien exija user-scope estricto tiene que poder decir que no."""
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "$SoloUserScope" in texto, (
+        "no hay forma de prohibir la instalacion fuera de user-scope")
+    assert "[switch]$SoloUserScope" in texto, "la bandera no se declara en param()"
+
+
+def test_el_reintento_sin_scope_se_anuncia_antes():
+    """Que sea razonable no lo hace invisible: quien pego esto leyo «nivel
+    usuario»."""
+    lineas = [l for l in INSTALADOR.read_text(encoding="ascii").splitlines()
+              if not l.lstrip().startswith("#")]
+    codigo = chr(10).join(lineas)
+    i_aviso = codigo.find("no acepto --scope user")
+    i_reintento = codigo.find("WingetIntento $id $false")
+    assert i_aviso != -1, "el reintento sin --scope no se anuncia"
+    assert i_aviso < i_reintento, (
+        "se anuncia DESPUES de reintentar, que es no anunciarlo")
+
+
+def test_tras_instalar_sin_scope_se_comprueba_donde_aterrizo():
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "ComprobarDondeAterrizo" in texto, (
+        "se instala sin --scope y nadie comprueba si acabo en el perfil")
+    assert "USERPROFILE" in texto
+
+
+def test_el_cambio_de_politica_se_declara_permanente():
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "PERMANENTE" in texto, (
+        "el cambio de ExecutionPolicy no se declara permanente")
+
+
+def test_el_runbook_dice_como_revertir_la_politica():
+    runbook = (RAIZ / "docs" / "RUNBOOK_INSTALACION.md").read_text(encoding="utf-8")
+    assert "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restricted" in runbook, (
+        "el runbook no dice como revertir la politica de ejecucion")
+    assert "-SoloUserScope" in runbook, (
+        "el runbook no menciona la bandera de user-scope estricto")

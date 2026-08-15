@@ -234,7 +234,45 @@ bundle de verdad, con su verificación, es trabajo pendiente.
 
 ---
 
-## 8. Qué hacer con un `install.log`
+## 8. Revertir lo que el instalador dejó permanente
+
+Dos cosas sobreviven a la instalación y el instalador **no las deshace**. Están
+aquí porque un cambio permanente que nadie documenta es un cambio que nadie
+puede revertir.
+
+**Política de ejecución de PowerShell.** Si estaba en `Restricted`, `Undefined`
+o `AllSigned`, el instalador la pone en `RemoteSigned` **para tu usuario**
+—nunca para la máquina, y nunca con elevación—. No se revierte al terminar
+porque Claude necesita ejecutar sus propios guiones. Para ver dónde está y
+volver atrás:
+
+```powershell
+Get-ExecutionPolicy -Scope CurrentUser
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restricted
+```
+
+Después de revertirla, Claude Code puede dejar de funcionar. Es una decisión
+tuya, no un descuido del instalador.
+
+**Paquetes instalados por `winget`.** Python, Node y Claude Code se instalan a
+nivel de usuario. Cuando un paquete no publica un instalador etiquetado como
+*user*, winget responde `0x8A150044` y el instalador **lo anuncia y reintenta**
+con el instalador por defecto, que normalmente instala en tu perfil igual — y
+después **comprueba dónde aterrizó** y te lo dice. En ningún caso se pide
+administrador.
+
+Si tu equipo exige user-scope estricto y prefiere fallar antes que instalar
+fuera del perfil:
+
+```powershell
+.\instalar.ps1 -SoloUserScope
+```
+
+Para quitar un paquete: `winget uninstall <nombre>`, uno a uno.
+
+---
+
+## 9. Qué hacer con un `install.log`
 
 ```
 %LOCALAPPDATA%\HorizunPbiMcp\plugin\<version>\install.log
