@@ -138,15 +138,15 @@ def test_si_la_actualizacion_falla_el_lanzador_sigue_sirviendo_n_menos_1(
         bootstrap, raiz, monkeypatch, donde):
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
 
-    # Ahora la actualizacion a 1.5.5, rota en `donde`.
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    # Ahora la actualizacion a 2.0.0, rota en `donde`.
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
 
     pasos: list[str] = []
 
     def _run_roto(command, *, env, intentos=3):
         if "venv" in command:
             pasos.append("venv")
-            runtime_falso.crear(Path(command[-1]).parent, version="1.5.5")
+            runtime_falso.crear(Path(command[-1]).parent, version="2.0.0")
             return
         texto = " ".join(str(c) for c in command)
         etapa = ("pip" if "pip" in texto else
@@ -162,7 +162,7 @@ def test_si_la_actualizacion_falla_el_lanzador_sigue_sirviendo_n_menos_1(
         {"ok": False, "fase": "tools-list", "tools": 2,
          "error": "solo registro 2 tools"} if donde == "handshake" else
         {"ok": True, "fase": "completo", "tools": len(CONTRATO),
-         "servidor": runtime_falso.SERVIDOR_REAL, "version": "1.5.5"}))
+         "servidor": runtime_falso.SERVIDOR_REAL, "version": "2.0.0"}))
     if donde == "promocion":
         def _promover_roto(*a, **k):
             raise bootstrap._promocion.PromocionError("no se pudo publicar")
@@ -199,7 +199,7 @@ def test_un_validador_roto_no_hace_falta_ningun_fallback(bootstrap, raiz,
     version vieja por un componente que el producto declara prescindible.
     """
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     # Se fuerza el preflight a "elegible" para no depender de que la maquina
     # tenga Node: lo que se prueba es el manejo del fallo, no el preflight.
     monkeypatch.setattr(bootstrap, "preflight_validador",
@@ -207,10 +207,10 @@ def test_un_validador_roto_no_hace_falta_ningun_fallback(bootstrap, raiz,
 
     def _run(command, *, env, intentos=3):
         if "venv" in command:
-            runtime_falso.crear(Path(command[-1]).parent, version="1.5.5")
+            runtime_falso.crear(Path(command[-1]).parent, version="2.0.0")
             return
         if "pip" in command:
-            runtime_falso.escribir_stub(Path(command[0]), version="1.5.5")
+            runtime_falso.escribir_stub(Path(command[0]), version="2.0.0")
             return
         if "fetch_report_validator" in " ".join(str(c) for c in command):
             raise subprocess.CalledProcessError(1, command)
@@ -218,7 +218,7 @@ def test_un_validador_roto_no_hace_falta_ningun_fallback(bootstrap, raiz,
     monkeypatch.setattr(bootstrap, "_run", _run)
     monkeypatch.setattr(bootstrap._salud, "verificar", lambda *a, **k: {
         "ok": True, "fase": "completo", "tools": len(CONTRATO),
-        "servidor": runtime_falso.SERVIDOR_REAL, "version": "1.5.5"})
+        "servidor": runtime_falso.SERVIDOR_REAL, "version": "2.0.0"})
 
     assert bootstrap.install(raiz, include_validator=True) == 0
 
@@ -228,7 +228,7 @@ def test_un_validador_roto_no_hace_falta_ningun_fallback(bootstrap, raiz,
     assert status["validator"]["state"] == "failed_optional", status["validator"]
 
     sesion = _lanzar(raiz)
-    assert sesion["servidor"].get("version") == "1.5.5", sesion
+    assert sesion["servidor"].get("version") == "2.0.0", sesion
     assert sesion["tools"] == CONTRATO
 
 
@@ -241,7 +241,7 @@ def test_el_error_de_la_actualizacion_no_se_pierde_al_servir_n_menos_1(
     dos en `install-status.json`, y ganaba el que borraba al otro.
     """
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: (_ for _ in ()).throw(
         RuntimeError("la DNS otra vez")))
 
@@ -298,8 +298,8 @@ def test_un_runtime_promovido_que_se_corrompe_deja_de_anunciarse_ready(
         bootstrap, raiz, monkeypatch, como):
     """`ready` en disco no es una promesa perpetua: el disco cambia despues."""
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar_bien(bootstrap, raiz, "1.5.5", monkeypatch)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar_bien(bootstrap, raiz, "2.0.0", monkeypatch)
 
     assert bootstrap.read_status(raiz)["sirviendo"] == "activo"
     activo = bootstrap.paths(raiz)
@@ -339,8 +339,8 @@ def test_un_activo_que_revienta_al_arrancar_cae_al_ultimo_bueno(bootstrap, raiz,
     cliente siguen limpias y el lanzador puede servirle N−1 por las mismas.
     """
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar_bien(bootstrap, raiz, "1.5.5", monkeypatch, muere=True)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar_bien(bootstrap, raiz, "2.0.0", monkeypatch, muere=True)
 
     assert bootstrap.read_status(raiz)["sirviendo"] == "activo"
 
@@ -356,7 +356,7 @@ def test_un_activo_que_revienta_al_arrancar_cae_al_ultimo_bueno(bootstrap, raiz,
 # ============================================================================
 def test_una_carpeta_con_interprete_pero_sin_evidencia_no_sirve_de_fallback(
         bootstrap, raiz, monkeypatch):
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     # Un runtime perfectamente arrancable... del que nadie ha comprobado nada.
     runtime_falso.crear(raiz / "1.5.4", version="1.5.4")
 
@@ -376,7 +376,7 @@ def test_una_carpeta_con_interprete_pero_sin_evidencia_no_sirve_de_fallback(
 ])
 def test_un_registro_incompleto_o_tramposo_no_se_elige(bootstrap, raiz,
                                                        monkeypatch, estropear):
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     runtime_falso.crear(raiz / "1.5.4", version="1.5.4")
     registro = bootstrap._estado.evidencia(
         "1.5.4", version="1.5.4", servidor=runtime_falso.SERVIDOR_REAL,
@@ -393,7 +393,7 @@ def test_una_instalacion_anterior_sin_estado_se_adopta_comprobandola(
     """La migracion, que es por donde el defecto reaparecia.
 
     Quien tenga 1.5.4 instalada por el instalador ANTERIOR a este estado no
-    tiene `runtime-state.json`. Si la actualizacion a 1.5.5 falla y nadie ha
+    tiene `runtime-state.json`. Si la actualizacion a 2.0.0 falla y nadie ha
     adoptado lo que ya habia, el lanzador no encuentra fallback y sirve el
     bootstrap con dos tools, teniendo en disco una instalacion entera y sana.
 
@@ -402,7 +402,7 @@ def test_una_instalacion_anterior_sin_estado_se_adopta_comprobandola(
     """
     runtime_falso.crear(raiz / "1.5.4", version="1.5.4")
     assert bootstrap._estado.leer(raiz)["activo"] is None
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: (_ for _ in ()).throw(
         RuntimeError("la actualizacion se cae")))
 
@@ -423,7 +423,7 @@ def test_no_se_adopta_una_carpeta_que_no_supera_el_handshake(bootstrap, raiz,
                                                              monkeypatch):
     """Adoptar por tener `python.exe` seria repetir el defecto con otro nombre."""
     runtime_falso.crear(raiz / "1.5.4", version="1.5.4", muere=True)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
     monkeypatch.setattr(bootstrap, "_run", lambda *a, **k: (_ for _ in ()).throw(
         RuntimeError("la actualizacion se cae")))
 
@@ -439,14 +439,14 @@ def test_tras_una_promocion_buena_queda_UN_n_menos_1_que_arranca(bootstrap, raiz
     """No una carpeta que solo tenga `install-status.json`.
 
     Este es el fallo que destapo el ensayo real y no las pruebas unitarias: al
-    actualizar de 1.5.4 a 1.5.5, la promocion conservaba como `.previous-` lo
+    actualizar de 1.5.4 a 2.0.0, la promocion conservaba como `.previous-` lo
     que hubiera en el destino -una carpeta recien creada con el status y nada
     mas- y la limpieza se llevaba 1.5.4, que era el unico runtime completo.
     Resultado: `ready`, un N−1 "conservado" y ni un interprete al que volver.
     """
     _instalar_bien(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar_bien(bootstrap, raiz, "1.5.5", monkeypatch)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar_bien(bootstrap, raiz, "2.0.0", monkeypatch)
 
     estado = bootstrap._estado.leer(raiz)
     lkg = estado["last_known_good"]
@@ -461,5 +461,5 @@ def test_tras_una_promocion_buena_queda_UN_n_menos_1_que_arranca(bootstrap, raiz
                 if d.is_dir() and bootstrap._runtime_arrancable(
                     raiz, {"carpeta": d.name, "version": "x",
                            "servidor": "x", "tools": 1})]
-    assert sorted(hermanas) == ["1.5.4", "1.5.5"], (
+    assert sorted(hermanas) == ["1.5.4", "2.0.0"], (
         f"quedaron mas runtimes arrancables de la cuenta: {hermanas}")

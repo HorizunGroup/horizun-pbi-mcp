@@ -141,7 +141,7 @@ def registrar_promocion(root: Path, *, nuevo: dict[str, Any],
         elif activo_previo["carpeta"] != nuevo["carpeta"]:
             # Salto de version: el runtime anterior vive en OTRA carpeta y
             # nadie la ha tocado. Sigue siendo el ultimo bueno, con su nombre.
-            # Sin esta rama, actualizar de 1.5.4 a 1.5.5 dejaba el estado sin
+            # Sin esta rama, actualizar de 1.5.4 a 2.0.0 dejaba el estado sin
             # N−1 y la limpieza se llevaba por delante la unica carpeta que
             # arrancaba.
             estado["last_known_good"] = activo_previo

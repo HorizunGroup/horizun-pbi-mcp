@@ -101,8 +101,8 @@ def test_el_contrato_declara_las_134_tools_y_el_servidor():
 # El camino bueno
 # ============================================================================
 def test_un_runtime_que_sirve_el_contrato_entero_pasa(runtime):
-    py = runtime(version="1.5.5")
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is True, veredicto
     assert veredicto["tools"] == 134
     assert veredicto["servidor"] == "horizun-pbi-mcp"
@@ -110,8 +110,8 @@ def test_un_runtime_que_sirve_el_contrato_entero_pasa(runtime):
 
 def test_las_tools_de_MAS_no_rompen_nada(runtime):
     """Ampliar el producto no puede convertirse en una instalacion fallida."""
-    py = runtime(version="1.5.5", nombres=CONTRATO + ["pbi_tool_nueva"])
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", nombres=CONTRATO + ["pbi_tool_nueva"])
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is True, veredicto
     assert veredicto["extra"] == ["pbi_tool_nueva"]
 
@@ -121,8 +121,8 @@ def test_las_tools_de_MAS_no_rompen_nada(runtime):
 # ============================================================================
 def test_cien_tools_ya_no_bastan(runtime):
     """El umbral viejo era 100 con el contrato en 134."""
-    py = runtime(version="1.5.5", nombres=CONTRATO[:100])
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", nombres=CONTRATO[:100])
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["tools"] == 100
     assert "faltan 34" in veredicto["error"], veredicto
@@ -130,9 +130,9 @@ def test_cien_tools_ya_no_bastan(runtime):
 
 def test_133_tools_con_una_del_contrato_ausente_se_rechaza(runtime):
     """Una sola tool de menos ya rompe a quien la tuviera configurada."""
-    py = runtime(version="1.5.5",
+    py = runtime(version="2.0.0",
                  nombres=[n for n in CONTRATO if n != "pbi_run_dax"])
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["tools"] == 133
     assert veredicto["faltan"] == ["pbi_run_dax"], veredicto
@@ -144,10 +144,10 @@ def test_134_tools_con_una_del_contrato_sustituida_se_rechaza(runtime):
     Cualquier oraculo basado en "¿cuantas hay?" da esto por bueno. Solo mirar
     QUE tools son distingue el producto de algo que se le parece.
     """
-    py = runtime(version="1.5.5",
+    py = runtime(version="2.0.0",
                  nombres=[n for n in CONTRATO if n != "pbi_run_dax"]
                  + ["pbi_relleno"])
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["tools"] == 134
     assert veredicto["faltan"] == ["pbi_run_dax"], veredicto
@@ -155,29 +155,29 @@ def test_134_tools_con_una_del_contrato_sustituida_se_rechaza(runtime):
 
 def test_134_nombres_pbi_equivocados_se_rechazan(runtime):
     """Contarlas y mirarles el prefijo no distingue el producto de un remedo."""
-    py = runtime(version="1.5.5",
+    py = runtime(version="2.0.0",
                  nombres=[f"pbi_inventada_{n}" for n in range(134)])
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["tools"] == 134, "el numero cuadraba: por eso colaba"
     assert "faltan 134" in veredicto["error"], veredicto
 
 
 def test_otro_servidor_mcp_en_el_venv_no_cuela(runtime):
-    py = runtime(version="1.5.5", servidor="algun-otro-servidor")
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", servidor="algun-otro-servidor")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] == "server-info", veredicto
     assert "algun-otro-servidor" in veredicto["error"]
 
 
 def test_una_version_distinta_de_la_preparada_no_cuela(runtime):
-    """Promover 1.5.5 y que arranque 1.5.4 significa que pip no hizo nada."""
+    """Promover 2.0.0 y que arranque 1.5.4 significa que pip no hizo nada."""
     py = runtime(version="1.5.4")
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] == "version", veredicto
-    assert "1.5.4" in veredicto["error"] and "1.5.5" in veredicto["error"]
+    assert "1.5.4" in veredicto["error"] and "2.0.0" in veredicto["error"]
 
 
 def test_sin_version_esperada_no_se_inventa_una(runtime):
@@ -189,8 +189,8 @@ def test_sin_version_esperada_no_se_inventa_una(runtime):
 def test_un_print_de_depuracion_en_stdout_se_rechaza(runtime):
     """stdout es el canal JSON-RPC: un `print` rompe al cliente sin romper una
     prueba unitaria."""
-    py = runtime(version="1.5.5", basura=True)
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", basura=True)
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] == "stdout-sucio", veredicto
 
@@ -204,8 +204,8 @@ def test_la_basura_escrita_DESPUES_de_tools_list_se_rechaza(runtime):
     en mitad de la sesión, no en el arranque, que es cuando es más difícil de
     diagnosticar.
     """
-    py = runtime(version="1.5.5", basura_al_cerrar=True)
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", basura_al_cerrar=True)
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False, (
         "dio por bueno un runtime que ensucia stdout al apagarse")
     assert veredicto["fase"] == "stdout-sucio", veredicto
@@ -218,15 +218,15 @@ def test_responder_en_otro_orden_no_es_un_falso_negativo(runtime):
     Leer hasta EOF obliga a no depender del orden de llegada. Un falso negativo
     aquí rechazaría un runtime bueno y tumbaría una instalación que iba bien.
     """
-    py = runtime(version="1.5.5", invierte=True)
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", invierte=True)
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is True, veredicto
     assert veredicto["tools"] == 134
 
 
 def test_un_runtime_que_no_arranca_se_rechaza_sin_esperar_el_timeout(runtime):
-    py = runtime(version="1.5.5", muere=True)
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    py = runtime(version="2.0.0", muere=True)
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] in ("sin-respuesta", "timeout"), veredicto
 
@@ -245,9 +245,9 @@ def test_un_tools_list_malformado_se_rechaza(tmp_path, cuerpo, fase):
     """Un `result` que no es una lista de tools con nombre no lo puede usar
     ningun cliente, aunque el JSON-RPC sea impecable."""
     carpeta = tmp_path / "rt"
-    py = runtime_falso.crear(carpeta, version="1.5.5")
+    py = runtime_falso.crear(carpeta, version="2.0.0")
     servidor = _servidor_a_medida(py, cuerpo)
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] == fase, (veredicto, servidor)
 
@@ -271,7 +271,7 @@ def _servidor_a_medida(python: Path, respuesta_tools: str) -> Path:
         "            'result': {'protocolVersion': '2024-11-05',\n"
         "                       'capabilities': {},\n"
         "                       'serverInfo': {'name': 'horizun-pbi-mcp',\n"
-        "                                      'version': '1.5.5'}}}) + '\\n')\n"
+        "                                      'version': '2.0.0'}}}) + '\\n')\n"
         "        sys.stdout.flush()\n"
         "    elif p.get('method') == 'tools/list':\n"
         f"        sys.stdout.write({respuesta_tools!r} + '\\n')\n"
@@ -301,7 +301,7 @@ def _servidor_que_ignora_el_cierre(python: Path) -> None:
         "            'result': {'protocolVersion': '2024-11-05',\n"
         "                       'capabilities': {},\n"
         "                       'serverInfo': {'name': 'horizun-pbi-mcp',\n"
-        "                                      'version': '1.5.5'}}}) + '\\n')\n"
+        "                                      'version': '2.0.0'}}}) + '\\n')\n"
         "        sys.stdout.flush()\n"
         "    elif p.get('method') == 'tools/list':\n"
         "        sys.stdout.write(json.dumps({'jsonrpc': '2.0', 'id': p['id'],\n"
@@ -321,11 +321,11 @@ def test_un_runtime_que_no_muere_al_cerrar_stdin_se_rechaza_y_no_queda_suelto(
     healthcheck: se le mataba, `returncode` quedaba en `None` y `None` estaba
     en la lista de codigos aceptables.
     """
-    py = runtime_falso.crear(tmp_path / "rt", version="1.5.5")
+    py = runtime_falso.crear(tmp_path / "rt", version="2.0.0")
     _servidor_que_ignora_el_cierre(py)
 
     veredicto = healthcheck.verificar(py, cwd=tmp_path, timeout=60,
-                                      version_esperada="1.5.5")
+                                      version_esperada="2.0.0")
 
     assert veredicto["ok"] is False, "dio por bueno un runtime que no se apaga"
     assert veredicto["fase"] == "no-termina", veredicto
@@ -352,9 +352,9 @@ def _procesos_hijos_de(python: Path) -> list:
 
 def test_el_healthcheck_falla_cerrado_si_falta_el_contrato(runtime, monkeypatch):
     """Sin contrato no se puede comprobar, y eso no puede valer por 'esta bien'."""
-    py = runtime(version="1.5.5")
+    py = runtime(version="2.0.0")
     monkeypatch.setattr(healthcheck, "BASELINE",
                         healthcheck.BASELINE.with_name("no-existe.json"))
-    veredicto = _verificar(py, version_esperada="1.5.5")
+    veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["fase"] == "contrato", veredicto

@@ -49,7 +49,7 @@ def bd():
 
 
 CONTENIDO = {
-    "wheelhouse/horizun_pbi_mcp-1.5.5-py3-none-any.whl": b"rueda propia",
+    "wheelhouse/horizun_pbi_mcp-2.0.0-py3-none-any.whl": b"rueda propia",
     "wheelhouse/mcp-1.29.0-py3-none-any.whl": b"rueda de mcp",
     "libs/Microsoft.AnalysisServices.AdomdClient.dll": b"dll adomd",
     "libs/Microsoft.AnalysisServices.Tabular.dll": b"dll tom",
@@ -70,7 +70,7 @@ def preparado(tmp_path):
 
 @pytest.fixture
 def bundle(bd, preparado, tmp_path):
-    manifiesto = bd.manifiesto_de(preparado, "1.5.5", "requirements-py314.lock")
+    manifiesto = bd.manifiesto_de(preparado, "2.0.0", "requirements-py314.lock")
     return bd.empaquetar(preparado, tmp_path / "b.zip", manifiesto)
 
 
@@ -87,7 +87,7 @@ def _sin_red(monkeypatch, bd):
 # ============================ formato y manifiesto ==========================
 
 def test_el_manifiesto_lleva_hash_y_tamano_de_cada_archivo(bd, preparado):
-    m = bd.manifiesto_de(preparado, "1.5.5", "lock")
+    m = bd.manifiesto_de(preparado, "2.0.0", "lock")
     assert set(m["archivos"]) == set(CONTENIDO)
     for rel, datos in CONTENIDO.items():
         assert m["archivos"][rel]["sha256"] == hashlib.sha256(datos).hexdigest()
@@ -107,13 +107,13 @@ def test_el_hash_del_manifiesto_va_fuera_del_manifiesto(bd, bundle):
 
 def test_un_bundle_recien_construido_se_verifica(bd, bundle):
     m = bd.verificar(bundle)
-    assert m["version"] == "1.5.5"
+    assert m["version"] == "2.0.0"
     assert len(m["archivos"]) == len(CONTENIDO)
 
 
 def test_un_bundle_vacio_no_se_construye(bd, tmp_path):
     with pytest.raises(bd.BundleError, match="nada que empaquetar"):
-        bd.manifiesto_de(tmp_path, "1.5.5", "lock")
+        bd.manifiesto_de(tmp_path, "2.0.0", "lock")
 
 
 # ============================ manipulación =================================
@@ -226,7 +226,7 @@ def test_un_bundle_gigante_no_se_abre(bd, bundle, monkeypatch):
 def test_un_miembro_gigante_no_se_empaqueta(bd, preparado, monkeypatch):
     monkeypatch.setattr(bd, "LIMITE_MIEMBRO", 5)
     with pytest.raises(bd.BundleError, match="limite por archivo"):
-        bd.manifiesto_de(preparado, "1.5.5", "lock")
+        bd.manifiesto_de(preparado, "2.0.0", "lock")
 
 
 # ============================ instalación sin red ==========================
@@ -234,7 +234,7 @@ def test_un_miembro_gigante_no_se_empaqueta(bd, preparado, monkeypatch):
 def test_instala_sin_tocar_la_red(bd, bundle, tmp_path, monkeypatch):
     """El gate, en una línea: PyPI, GitHub y npm bloqueados, y aun así instala."""
     _sin_red(monkeypatch, bd)
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
 
     r = bd.instalar(bundle, destino)
 
@@ -246,7 +246,7 @@ def test_instala_sin_tocar_la_red(bd, bundle, tmp_path, monkeypatch):
 def test_lo_instalado_es_byte_a_byte_lo_del_bundle(bd, bundle, tmp_path,
                                                    monkeypatch):
     _sin_red(monkeypatch, bd)
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
     bd.instalar(bundle, destino)
     for rel, ref in bd.verificar(bundle)["archivos"].items():
         assert hashlib.sha256((destino / rel).read_bytes()).hexdigest() == ref["sha256"]
@@ -256,7 +256,7 @@ def test_reinstalar_conserva_la_version_anterior_y_luego_la_recoge(
         bd, bundle, tmp_path, monkeypatch):
     """Promocion del ciclo de vida compartido: journal, `.previous-` y limpieza."""
     _sin_red(monkeypatch, bd)
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
     bd.instalar(bundle, destino)
     r = bd.instalar(bundle, destino)
 
@@ -269,7 +269,7 @@ def test_reinstalar_conserva_la_version_anterior_y_luego_la_recoge(
 def test_si_falla_la_promocion_lo_anterior_sigue_entero(bd, bundle, tmp_path,
                                                         monkeypatch):
     _sin_red(monkeypatch, bd)
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
     bd.instalar(bundle, destino)
     antes = {f.name: f.read_bytes() for f in destino.rglob("*") if f.is_file()}
 
@@ -291,7 +291,7 @@ def test_si_falla_la_promocion_lo_anterior_sigue_entero(bd, bundle, tmp_path,
 
 def test_dos_instalaciones_a_la_vez_no_se_pisan(bd, bundle, tmp_path, monkeypatch):
     _sin_red(monkeypatch, bd)
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
     bd.instalar(bundle, destino)
 
     class Ocupado:
@@ -324,7 +324,7 @@ def test_la_cli_falla_con_codigo_1_y_mensaje(bd, tmp_path, capsys):
 
 
 def test_la_cli_instala(bd, bundle, tmp_path, capsys):
-    destino = tmp_path / "datos" / "1.5.5"
+    destino = tmp_path / "datos" / "2.0.0"
     assert bd.main(["instalar", str(bundle), "--destino", str(destino)]) == 0
     assert "Instalado desde el bundle" in capsys.readouterr().out
 
@@ -370,7 +370,7 @@ def test_el_bundle_real_instala_las_134_tools_sin_indice(tmp_path_factory):
     zips = list((base / "entrega").glob("*.zip"))
     assert len(zips) == 1, zips
 
-    destino = base / "datos" / "1.5.5"
+    destino = base / "datos" / "2.0.0"
     assert bd.main(["instalar", str(zips[0]), "--destino", str(destino)]) == 0
     wheelhouse = destino / "wheelhouse"
     assert len(list(wheelhouse.glob("*.whl"))) >= 40

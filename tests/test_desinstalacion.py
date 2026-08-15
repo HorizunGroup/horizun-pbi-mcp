@@ -47,9 +47,9 @@ def instalado(tmp_path, bootstrap):
     """Un data root con la forma de una instalación usada."""
     root = tmp_path / "datos"
     for rel, texto in (
-            ("1.5.5/runtime/Scripts/python.exe", "interprete"),
-            ("1.5.5/libs/Microsoft.AnalysisServices.dll", "dll" * 400),
-            ("1.5.5/install-status.json", '{"state":"ready"}'),
+            ("2.0.0/runtime/Scripts/python.exe", "interprete"),
+            ("2.0.0/libs/Microsoft.AnalysisServices.dll", "dll" * 400),
+            ("2.0.0/install-status.json", '{"state":"ready"}'),
             (".previous-1.5.4-9-abc/runtime/Scripts/python.exe", "viejo"),
             ("runtime-state.json", '{"esquema":1}'),
             ("outputs/informe.md", "lo que exporto el usuario" * 50),
@@ -72,11 +72,11 @@ def test_el_inventario_dice_que_es_cada_cosa_y_cuanto_ocupa(bootstrap, instalado
 
     assert inv["exists"] is True
     por_nombre = {e["name"]: e for e in inv["entries"]}
-    assert por_nombre["1.5.5"]["kind"] == "runtime"
+    assert por_nombre["2.0.0"]["kind"] == "runtime"
     assert por_nombre[".previous-1.5.4-9-abc"]["kind"] == "runtime-anterior"
     assert por_nombre["outputs"]["kind"] == "datos-del-usuario"
     assert por_nombre["backups"]["user_data"] is True
-    assert por_nombre["1.5.5"]["user_data"] is False
+    assert por_nombre["2.0.0"]["user_data"] is False
     assert all(e["bytes"] > 0 for e in inv["entries"]), inv
     assert inv["total_bytes"] == sum(e["bytes"] for e in inv["entries"])
     assert 0 < inv["user_bytes"] < inv["total_bytes"]
@@ -111,7 +111,7 @@ def test_desinstalar_deja_los_datos_del_usuario_y_nada_mas(bootstrap, instalado)
     queda = _huella(instalado)
     assert queda == {str(Path("outputs/informe.md")),
                      str(Path("backups/proyecto/journal.json"))}, queda
-    assert set(r["removed"]) >= {"1.5.5", ".previous-1.5.4-9-abc",
+    assert set(r["removed"]) >= {"2.0.0", ".previous-1.5.4-9-abc",
                                  "runtime-state.json"}
     assert sorted(r["kept"]) == ["backups", "outputs"]
     assert r["residual_bytes"] == r["user_bytes"], (

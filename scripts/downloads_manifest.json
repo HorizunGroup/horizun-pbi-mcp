@@ -14,9 +14,9 @@
   "downloads": {
     "instalar.ps1": {
       "name": "horizun-pbi-mcp-instalar.ps1",
-      "version": "1.5.5",
+      "version": "2.0.0",
       "platform": "windows",
-      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v1.5.5/horizun-pbi-mcp-instalar.ps1",
+      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1",
       "sha256": "d78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5",
       "max_bytes": 131072,
       "actual_bytes": 25971,
@@ -24,11 +24,11 @@
       "eol": "lf",
       "bom": false,
       "source_path": "scripts/instalar.ps1",
-      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v1.5.5",
+      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v2.0.0",
       "purpose": "Instalador de un pegado para Windows sin administrador. El asset de la release es una copia byte a byte de scripts/instalar.ps1.",
       "verified_at": "2026-08-14",
       "status": "pending_remote_release",
-      "status_note": "El tag v1.5.5 y su release NO existen todavia en el remoto (comprobado con git ls-remote --tags: el ultimo publicado es v1.5.4). El SHA-256 es el de los bytes locales congelados; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende.",
+      "status_note": "El tag v2.0.0 y su release NO existen todavia en el remoto. La ultima publicada de verdad sigue siendo v1.5.4: v1.5.5 nunca llego a publicarse, y por eso la ruptura de contrato de CONTRACT-003 se expresa como 2.0.0 y no como un parche sobre algo que nadie tiene. El SHA-256 es el de los bytes locales congelados; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende.",
       "used_by": [
         "scripts/one_paste.ps1",
         "README.md",

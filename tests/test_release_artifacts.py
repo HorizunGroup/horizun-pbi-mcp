@@ -116,7 +116,7 @@ def test_sha256sums_cubre_todo_lo_publicable(artefacto):
 
 
 def test_el_artefacto_recien_construido_se_verifica(artefacto):
-    res = _verificar(artefacto, "1.5.5")
+    res = _verificar(artefacto, "2.0.0")
     assert res.returncode == 0, f"{res.stdout}\n{res.stderr}"
     assert "digests OK" in res.stdout
 

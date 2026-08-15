@@ -584,7 +584,7 @@ def test_el_hash_publicado_es_el_de_los_bytes_reales_del_instalador():
 
 
 def test_el_manifest_no_afirma_que_el_asset_remoto_ya_existe():
-    """v1.5.5 no esta publicada. Decir lo contrario seria la mentira comoda."""
+    """v2.0.0 no esta publicada. Decir lo contrario seria la mentira comoda."""
     entrada = _entrada_manifest()
     assert entrada["status"] == "pending_remote_release", (
         "si la release ya existe, verifica el asset descargandolo y cambia el "

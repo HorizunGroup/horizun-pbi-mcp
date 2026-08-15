@@ -448,7 +448,7 @@ def limpiar(root: Path, *, conservar: int = CONSERVAR_ANTERIORES,
 
     `proteger` lleva las rutas que no se borran pase lo que pase. La usa quien
     conoce el last-known-good: conservar "el mas reciente por nombre" no basta
-    -`.previous-fallido-...` ordena por delante de `.previous-1.5.5-...`- y
+    -`.previous-fallido-...` ordena por delante de `.previous-2.0.0-...`- y
     borrar el N−1 bueno por un criterio de ordenacion seria justo el fallo que
     todo esto existe para evitar.
     """

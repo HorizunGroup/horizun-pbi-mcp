@@ -106,8 +106,8 @@ def test_un_activo_que_ensucia_el_canal_no_provoca_dos_servidores(
     puede acabar viendo respuestas de dos servidores en el mismo canal.
     """
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch, **ROTURAS[rotura])
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch, **ROTURAS[rotura])
 
     sesion = _lanzar(raiz)
     señales = runtime_falso.mezcla(sesion)
@@ -131,8 +131,8 @@ def test_y_ademas_se_sirve_n_menos_1_entero(bootstrap, raiz, monkeypatch, rotura
     N−1 lo recibe limpio y el cliente ve una sesión normal de 134 tools.
     """
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch, **ROTURAS[rotura])
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch, **ROTURAS[rotura])
 
     sesion = _lanzar(raiz)
 
@@ -151,8 +151,8 @@ def test_el_lanzador_no_se_come_las_peticiones_del_cliente(bootstrap, raiz,
     antes de que el lanzador decida, y las tres se contestan.
     """
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch, muere_tras_initialize=True)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch, muere_tras_initialize=True)
 
     sesion = _lanzar(raiz)
 
@@ -163,8 +163,8 @@ def test_el_lanzador_no_se_come_las_peticiones_del_cliente(bootstrap, raiz,
 def test_sin_alternativa_el_activo_roto_no_se_sirve_a_medias(bootstrap, raiz,
                                                              monkeypatch):
     """Sin N−1 al que caer, se sirve el bootstrap: un solo servidor, siempre."""
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch, muere_tras_initialize=True)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch, muere_tras_initialize=True)
 
     sesion = _lanzar(raiz)
     señales = runtime_falso.mezcla(sesion)
@@ -212,7 +212,7 @@ def _corromper(bootstrap, raiz: Path, como: str) -> None:
             capture_output=True, text=True, check=True, timeout=120).stdout.strip()
         shutil.rmtree(Path(sp) / "horizun_pbi_mcp")
     elif como == "responde-a-medias":
-        runtime_falso.escribir_stub(p["python"], version="1.5.5",
+        runtime_falso.escribir_stub(p["python"], version="2.0.0",
                                     muere_tras_initialize=True)
 
 
@@ -227,8 +227,8 @@ def test_tras_corromper_el_activo_el_estado_deja_de_ser_ready(
     no arranca.
     """
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch)
     assert bootstrap.read_status(raiz)["state"] == "ready"
 
     _corromper(bootstrap, raiz, como)
@@ -250,8 +250,8 @@ def test_el_estado_degradado_no_se_contradice_consigo_mismo(
         bootstrap, raiz, monkeypatch, como):
     """Cuatro cosas a la vez y ninguna borra a la otra."""
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch)
     _corromper(bootstrap, raiz, como)
     if como in ("sin-import", "responde-a-medias"):
         _lanzar(raiz)
@@ -259,13 +259,13 @@ def test_el_estado_degradado_no_se_contradice_consigo_mismo(
     status = bootstrap.read_status(raiz)
 
     assert status["degradacion"], f"[{como}] no dice por que esta degradado"
-    assert status["degradacion"]["carpeta"] == "1.5.5"
+    assert status["degradacion"]["carpeta"] == "2.0.0"
     assert status["degradacion"]["motivo"], "la causa esta vacia"
     assert status["sirviendo"] == "last-known-good", status
     assert status["sirviendo_version"] == "1.5.4", status
     # El ultimo intento de instalacion NO se pierde: son hechos distintos.
     assert status["ultimo_intento"]["resultado"] == "ok"
-    assert status["ultimo_intento"]["version"] == "1.5.5"
+    assert status["ultimo_intento"]["version"] == "2.0.0"
     assert status["estado_instalacion"] == "ready", (
         "se perdio el resultado del ultimo intento al degradar el activo")
 
@@ -283,8 +283,8 @@ def test_la_degradacion_no_se_escribe_si_el_lock_es_de_otro(
     import time as _time
 
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch)
     _corromper(bootstrap, raiz, "sin-import")
 
     ajeno = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"],
@@ -315,18 +315,18 @@ def test_la_degradacion_no_se_escribe_si_el_lock_es_de_otro(
     lock.unlink()
     _lanzar(raiz)
     assert bootstrap.read_status(raiz)["state"] == "degraded"
-    assert bootstrap._estado.leer(raiz)["degradado"]["carpeta"] == "1.5.5"
+    assert bootstrap._estado.leer(raiz)["degradado"]["carpeta"] == "2.0.0"
 
 
 def test_una_instalacion_buena_limpia_la_degradacion(bootstrap, raiz, monkeypatch):
     """Reinstalar es la salida, y tiene que borrar la marca."""
     _instalar(bootstrap, raiz, "1.5.4", monkeypatch)
-    monkeypatch.setattr(bootstrap, "VERSION", "1.5.5")
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch, muere_tras_initialize=True)
+    monkeypatch.setattr(bootstrap, "VERSION", "2.0.0")
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch, muere_tras_initialize=True)
     _lanzar(raiz)
     assert bootstrap.read_status(raiz)["state"] == "degraded"
 
-    _instalar(bootstrap, raiz, "1.5.5", monkeypatch)          # ahora sana
+    _instalar(bootstrap, raiz, "2.0.0", monkeypatch)          # ahora sana
 
     status = bootstrap.read_status(raiz)
     assert status["state"] == "ready", status

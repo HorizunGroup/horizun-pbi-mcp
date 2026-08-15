@@ -106,7 +106,7 @@ On a **copy** outside OneDrive, never on the original:
 
 ## Tagging
 
-The release candidate version is **`v1.5.5`**. The exceptions below are documented
+The release candidate version is **`v2.0.0`**. The exceptions below are documented
 product limits, not hidden bugs or skipped criteria.
 
 The version declared in `branding.VERSION` / `pyproject.toml` must match the tag **before** tagging. Installing from a tag and getting a package that reports a different version is exactly what these checks exist to prevent.
@@ -148,7 +148,7 @@ What that means in practice, and what to check before tagging:
    otherwise. Check it locally first:
 
    ```bash
-   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 1.5.5
+   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 2.0.0
    ```
 
 4. **The release asset `horizun-pbi-mcp-instalar.ps1` must be the frozen bytes**

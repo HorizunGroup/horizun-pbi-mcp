@@ -5,12 +5,12 @@ primero. Si `SHA256SUMS` no cuadra, o falta un archivo, o sobra uno que nadie
 declaro, el job se para antes de tocar nada.
 
 Con `--expect-version` comprueba ademas que el tag y **todos** los manifiestos
-declaran el mismo numero. Es la guarda que impide publicar 1.5.5 desde un arbol
-que dice 1.5.4 en tres archivos y 1.5.5 en otros dos.
+declaran el mismo numero. Es la guarda que impide publicar 2.0.0 desde un arbol
+que dice 1.5.4 en tres archivos y 2.0.0 en otros dos.
 
 Uso:
     python scripts/release_verify.py --dir artefactos
-    python scripts/release_verify.py --dir artefactos --expect-version 1.5.5
+    python scripts/release_verify.py --dir artefactos --expect-version 2.0.0
 """
 from __future__ import annotations
 

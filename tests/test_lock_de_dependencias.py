@@ -170,7 +170,7 @@ def test_lineas_del_lock_fija_nombre_version_y_hash(generar):
 
 def test_un_paquete_sin_hash_se_omite_en_vez_de_inventarselo(generar):
     lineas = generar.lineas_del_lock(
-        _reporte(("horizun-pbi-mcp", "1.5.5", None), ("anyio", "4.14.2", "cd" * 32)))
+        _reporte(("horizun-pbi-mcp", "2.0.0", None), ("anyio", "4.14.2", "cd" * 32)))
     assert [_nombre(l) for l in lineas] == ["anyio"]
 
 

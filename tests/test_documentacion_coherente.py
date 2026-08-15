@@ -182,7 +182,10 @@ def test_las_cuentas_de_la_matriz_salen_de_contar_las_filas():
     declarado_cerradas = int(re.search(r"\*\*(\d+) cerradas\*\*", bloque).group(1))
     declarado_parciales = int(
         re.search(r"\*\*(\d+) parcialmente cerradas\*\*", bloque).group(1))
-    declarado_abiertas = int(re.search(r"\*\*(\d+) abiertas\*\*", bloque).group(1))
+    # Singular tambien: el dia que quede UNA, «1 abiertas» seria una errata que
+    # nadie corrige y una prueba que deja de encontrar el numero.
+    declarado_abiertas = int(
+        re.search(r"\*\*(\d+) abiertas?\*\*", bloque).group(1))
 
     assert declarado_total == len(estados), (
         f"«Cuentas» dice {declarado_total} entradas y hay {len(estados)}")
@@ -408,7 +411,19 @@ def test_el_dossier_declara_que_no_se_aplico():
     assert "NO aplicado" in texto and "Nada de lo que hay aquí está en el código" in texto
 
 
-def test_contract_003_sigue_abierta_mientras_no_se_ratifique():
-    """Un dossier no cierra el hallazgo: lo deja listo para decidir."""
-    assert estados_de_la_matriz()["CONTRACT-003"] == "abierta", (
-        "CONTRACT-003 no puede darse por cerrada sin ratificacion registrada")
+def test_contract_003_solo_se_cierra_con_la_ratificacion_registrada():
+    """Un dossier no cierra el hallazgo; una firma, si —y tiene que constar—.
+
+    Estuvo abierta todo el ciclo anterior a proposito. Se cerro el 2026-08-15,
+    y lo que esta prueba exige es que el cierre **cite la ratificacion**: sin
+    esa palabra en la fila, cerrarla seria exactamente lo que la regla prohibe.
+    """
+    matriz = MATRIZ.read_text(encoding="utf-8")
+    fila = next(l for l in matriz.splitlines() if l.startswith("| CONTRACT-003 |"))
+    if estados_de_la_matriz()["CONTRACT-003"] == "abierta":
+        return                      # sin firma, abierta: tambien es correcto
+    assert "ratificada" in fila.lower(), (
+        "CONTRACT-003 se da por cerrada sin citar la ratificacion")
+    assert "2.0.0" in fila, (
+        "la ratificacion era EXCLUSIVAMENTE para una mayor: la fila tiene que "
+        "decir en que version se aplico")

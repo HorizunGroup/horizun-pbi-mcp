@@ -137,7 +137,7 @@ def test_un_staging_externo_no_se_renombra_ni_se_borra(promo, tmp_path):
     antes = _huella(ajeno)
 
     # `destino` existe: por la rama antigua esto habria BORRADO el staging.
-    destino = _carpeta_con_marca(root / "1.5.5", "vigente")
+    destino = _carpeta_con_marca(root / "2.0.0", "vigente")
     _escribir_journal_crudo(root, fase="preparada", staging=str(ajeno),
                             destino=str(destino), anterior=None, ts=time.time())
 
@@ -156,13 +156,13 @@ def test_un_anterior_externo_no_se_renombra(promo, tmp_path):
 
     _escribir_journal_crudo(root, fase="anterior-apartado",
                             staging=str(root / ".staging-noexiste"),
-                            destino=str(root / "1.5.5"), anterior=str(ajeno),
+                            destino=str(root / "2.0.0"), anterior=str(ajeno),
                             ts=time.time())
 
     resultado = promo.recuperar(root)
 
     assert ajeno.is_dir() and _huella(ajeno) == antes
-    assert not (root / "1.5.5").exists(), "trajo dentro una carpeta de fuera"
+    assert not (root / "2.0.0").exists(), "trajo dentro una carpeta de fuera"
     assert resultado["accion"] == "journal-invalido", resultado
 
 
@@ -218,7 +218,7 @@ def test_un_enlace_de_directorio_no_saca_la_promocion_de_la_raiz(promo, tmp_path
     antes = _huella(real)
 
     _escribir_journal_crudo(root, esquema=2, fase="preparada",
-                            staging=".staging-trampa", destino="1.5.5",
+                            staging=".staging-trampa", destino="2.0.0",
                             anterior=None, ts=time.time())
 
     resultado = promo.recuperar(root)
@@ -230,27 +230,27 @@ def test_un_enlace_de_directorio_no_saca_la_promocion_de_la_raiz(promo, tmp_path
 @pytest.mark.parametrize("journal,por_que", [
     ({}, "sin esquema ni fase"),
     ({"esquema": 1, "fase": "preparada", "staging": ".staging-x",
-      "destino": "1.5.5"}, "esquema viejo"),
+      "destino": "2.0.0"}, "esquema viejo"),
     ({"esquema": 99, "fase": "preparada", "staging": ".staging-x",
-      "destino": "1.5.5"}, "esquema del futuro"),
+      "destino": "2.0.0"}, "esquema del futuro"),
     ({"esquema": 2, "fase": "inventada", "staging": ".staging-x",
-      "destino": "1.5.5"}, "fase que no existe"),
+      "destino": "2.0.0"}, "fase que no existe"),
     ({"esquema": 2, "fase": "completa", "staging": ".staging-x",
-      "destino": "1.5.5"}, "fase que no deberia sobrevivir en disco"),
-    ({"esquema": 2, "fase": "preparada", "staging": "1.5.5",
-      "destino": "1.5.5"}, "staging sin su prefijo"),
+      "destino": "2.0.0"}, "fase que no deberia sobrevivir en disco"),
+    ({"esquema": 2, "fase": "preparada", "staging": "2.0.0",
+      "destino": "2.0.0"}, "staging sin su prefijo"),
     ({"esquema": 2, "fase": "preparada", "staging": ".staging-x",
       "destino": ".previous-x"}, "destino con prefijo reservado"),
     ({"esquema": 2, "fase": "anterior-apartado", "staging": ".staging-x",
-      "destino": "1.5.5", "anterior": "otra-cosa"}, "anterior sin su prefijo"),
-    ({"esquema": 2, "fase": "preparada", "staging": 12, "destino": "1.5.5"},
+      "destino": "2.0.0", "anterior": "otra-cosa"}, "anterior sin su prefijo"),
+    ({"esquema": 2, "fase": "preparada", "staging": 12, "destino": "2.0.0"},
      "staging que no es texto"),
 ])
 def test_un_journal_invalido_falla_de_forma_segura(promo, tmp_path, journal, por_que):
     """Invalido = no se toca NADA de lo que menciona, y se dice por que."""
     root = tmp_path / "datos"
     root.mkdir()
-    vigente = _carpeta_con_marca(root / "1.5.5", "vigente")
+    vigente = _carpeta_con_marca(root / "2.0.0", "vigente")
     staging = _carpeta_con_marca(root / ".staging-x", "staging")
     previo = _carpeta_con_marca(root / ".previous-x", "previo")
     antes = (_huella(vigente), _huella(staging), _huella(previo))
@@ -288,7 +288,7 @@ def test_el_journal_que_escribe_la_promocion_no_lleva_rutas_absolutas(promo, tmp
     """La otra mitad: si se escribiera absoluto, validarlo al leer no serviria."""
     root = tmp_path / "datos"
     staging = _carpeta_con_marca(root / ".staging-nuevo", "nuevo")
-    destino = root / "1.5.5"
+    destino = root / "2.0.0"
 
     visto = {}
     original = promo._escribir_journal
@@ -316,13 +316,13 @@ def test_el_journal_que_escribe_la_promocion_no_lleva_rutas_absolutas(promo, tmp
 def test_la_recuperacion_legitima_sigue_funcionando(promo, tmp_path):
     """Contener no puede significar dejar de recuperar."""
     root = tmp_path / "datos"
-    staging = _carpeta_con_marca(root / ".staging-1.5.5-abc", "nuevo")
-    anterior = _carpeta_con_marca(root / ".previous-1.5.5-9-abc", "viejo")
-    destino = root / "1.5.5"
+    staging = _carpeta_con_marca(root / ".staging-2.0.0-abc", "nuevo")
+    anterior = _carpeta_con_marca(root / ".previous-2.0.0-9-abc", "viejo")
+    destino = root / "2.0.0"
 
     _escribir_journal_crudo(root, esquema=2, fase="anterior-apartado",
-                            staging=".staging-1.5.5-abc", destino="1.5.5",
-                            anterior=".previous-1.5.5-9-abc", ts=time.time())
+                            staging=".staging-2.0.0-abc", destino="2.0.0",
+                            anterior=".previous-2.0.0-9-abc", ts=time.time())
 
     resultado = promo.recuperar(root)
 
@@ -334,16 +334,16 @@ def test_la_recuperacion_legitima_sigue_funcionando(promo, tmp_path):
 def test_sin_staging_la_recuperacion_devuelve_el_anterior(promo, tmp_path):
     root = tmp_path / "datos"
     root.mkdir()
-    _carpeta_con_marca(root / ".previous-1.5.5-9-abc", "viejo")
+    _carpeta_con_marca(root / ".previous-2.0.0-9-abc", "viejo")
 
     _escribir_journal_crudo(root, esquema=2, fase="anterior-apartado",
-                            staging=".staging-perdido", destino="1.5.5",
-                            anterior=".previous-1.5.5-9-abc", ts=time.time())
+                            staging=".staging-perdido", destino="2.0.0",
+                            anterior=".previous-2.0.0-9-abc", ts=time.time())
 
     resultado = promo.recuperar(root)
 
     assert resultado["accion"] == "revertida", resultado
-    assert (root / "1.5.5" / "MARCA.txt").read_text(encoding="utf-8") == "viejo"
+    assert (root / "2.0.0" / "MARCA.txt").read_text(encoding="utf-8") == "viejo"
 
 
 # ============================================================================
@@ -359,11 +359,11 @@ def test_dos_promociones_en_el_mismo_segundo_no_pisan_el_mismo_previous(
     """
     monkeypatch.setattr(promo.time, "time", lambda: 1786000000.0)
     root = tmp_path / "datos"
-    _carpeta_con_marca(root / "1.5.5", "vigente-de-partida")
+    _carpeta_con_marca(root / "2.0.0", "vigente-de-partida")
 
     for i in range(2):
         staging = _carpeta_con_marca(root / f".staging-v-{i}", f"nuevo{i}")
-        promo.promover(root, staging, root / "1.5.5")
+        promo.promover(root, staging, root / "2.0.0")
 
     nombres = [d.name for d in promo.anteriores(root)]
     assert len(set(nombres)) == len(nombres) == 2, (
@@ -509,9 +509,9 @@ def test_recuperacion_y_promocion_no_se_solapan(bootstrap, tmp_path,
     root = tmp_path / "datos"
     root.mkdir()
     staging = _carpeta_con_marca(root / ".staging-x", "staging")
-    vigente = _carpeta_con_marca(root / "1.5.5", "vigente")
+    vigente = _carpeta_con_marca(root / "2.0.0", "vigente")
     _escribir_journal_crudo(root, esquema=2, fase="preparada",
-                            staging=".staging-x", destino="1.5.5",
+                            staging=".staging-x", destino="2.0.0",
                             anterior=None, ts=time.time())
     antes = (_huella(staging), _huella(vigente),
              (root / ".promotion.json").read_text(encoding="utf-8"))

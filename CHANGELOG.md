@@ -5,10 +5,46 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [2.0.0] — unreleased
 
-Supply chain and release pipeline. **No tool changes (134, contract untouched);
-nothing published yet.**
+**Breaking.** Three contract changes, ratified in writing before being applied —
+the dossier is [`docs/audits/CONTRACT_003_RATIFICATION.md`](docs/audits/CONTRACT_003_RATIFICATION.md)
+and it was written *before* the code. Still 134 tools; what changed is what they
+require of the caller.
+
+The version jumps to 2.0.0 and not 1.5.5 because **1.5.5 was never published**:
+the last release that exists is 1.5.4. Expressing a contract break as a patch on
+something nobody has would be dishonest twice over.
+
+### Breaking
+
+- **`pbi_refresh_model` and `pbi_open_and_refresh` now require
+  `confirm: true`.** They were the only two of the 134 marked
+  `destructiveHint` with nothing to confirm: an agent that decides by *"does it
+  have a `confirm`?"* had nothing to ask about, and a refresh locks the model
+  for minutes and discards whatever was in memory unsaved.
+  **Migration:** add `confirm: true`. Without it you get `validation_error` and
+  **nothing runs** — the layer underneath is never reached.
+- **`pbi_apply_plan.confirm` now defaults to `false`** (was `true`). It was the
+  only `confirm` of the 134 that came pre-opened, and a gate that comes open is
+  not a gate. This is the change most likely to break existing callers, because
+  omitting a defaulted parameter is the normal thing to do.
+  **Migration:** pass `confirm: true` explicitly where you meant to apply.
+- **`pbi_open_pbip_project` and `pbi_select_model` are no longer
+  `readOnlyHint: true`.** They write *session* state — which project or model
+  everything after them points at — so a client treating them as reads could
+  repoint the session silently and send the next (genuinely destructive) write
+  somewhere else. They are now `session_write`: `readOnlyHint: false`,
+  `destructiveHint: false` — they destroy nothing of yours — and
+  **`idempotentHint: true`**, which is true and is checked by opening the same
+  project twice and comparing the resulting state.
+  **Migration:** none in the call; a prudent client may now ask before opening.
+
+### Added
+
+- `docs/MIGRACION_1x_A_2.0.md`: every affected call, before and after.
+
+
 
 ### Security
 

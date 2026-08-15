@@ -260,7 +260,7 @@ def test_la_limpieza_solo_borra_rutas_con_nuestros_prefijos(bootstrap, tmp_path)
     prom = bootstrap._promocion
     raiz = tmp_path / "datos"
     raiz.mkdir()
-    huerfano = prom.crear_staging(raiz, "1.5.5")
+    huerfano = prom.crear_staging(raiz, "2.0.0")
     ajena = raiz / "no-es-nuestra"
     ajena.mkdir()
     (ajena / "dato.txt").write_text("del usuario", encoding="utf-8")

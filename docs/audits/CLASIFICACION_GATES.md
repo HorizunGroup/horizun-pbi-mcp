@@ -41,7 +41,7 @@ solo gate, **no se puede decir «100% local»**.
 | G1.2 | cumplido | `tests/test_capture_atomicity.py`, 13 pruebas |
 | G1.3 | cumplido | `tests/test_capture_atomicity.py`: la captura es transaccional |
 | G1.4 | cumplido | `tests/test_core_seguridad_operativa.py` |
-| G1.5 | pendiente-ratificacion | los tres cambios de CORE-004(a)(b)(c) rompen el contrato congelado; dossier en `CONTRACT_003_RATIFICATION.md` |
+| G1.5 | cumplido | CONTRACT-003 **ratificado el 2026-08-15** y aplicado en 2.0.0: `confirm` exigido en las dos de refresh, default de `pbi_apply_plan` a `false`, y las dos de sesión reclasificadas a `session_write` con `idempotentHint` comprobado. 21 regresiones |
 | G1.6 | cumplido | el validador escribe en `tempfile.gettempdir()`, no en el proyecto |
 | G1.7 | cumplido | redacción verificada sobre el formateador real |
 | G1.8 | cumplido | cerrojo de proyecto, dos procesos de verdad |
@@ -96,18 +96,23 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **31** |
+| cumplido | **32** |
 | parcial | **7** |
 | pendiente-local | **0** |
-| pendiente-ratificacion | **1** |
+| pendiente-ratificacion | **0** |
 | pendiente-externo | **15** |
 | **Total** | **54** |
 
-**Trabajo local pendiente: ninguno.** Los 23 gates que no están cumplidos
-esperan **un entorno o una firma**, no más trabajo en esta máquina: 7 parciales
-con el mecanismo ya demostrado aquí, 15 externos puros y 1 —G1.5— pendiente de
-que alguien ratifique [`CONTRACT_003_RATIFICATION.md`](CONTRACT_003_RATIFICATION.md).
+**Trabajo local pendiente: ninguno. Pendiente de ratificación: ninguno.**
+Los 22 gates que no están cumplidos esperan **un entorno**: 7 parciales con el
+mecanismo ya demostrado aquí y 15 externos puros.
 
-Esa frase solo se puede escribir porque `pendiente-local` está vacío, y hay una
-prueba que la ata: si algún gate vuelve a esa categoría, exige que las cuentas
-lo nombren.
+La firma que faltaba llegó: CONTRACT-003 se ratificó el 2026-08-15 y sus tres
+cambios están aplicados en 2.0.0. El dossier
+[`CONTRACT_003_RATIFICATION.md`](CONTRACT_003_RATIFICATION.md) se conserva como
+lo que es —el registro de una decisión tomada con los datos delante— y la
+migración para quien consuma el contrato está en
+[`../MIGRACION_1x_A_2.0.md`](../MIGRACION_1x_A_2.0.md).
+
+Esa frase solo se puede escribir porque `pendiente-local` y
+`pendiente-ratificacion` están vacíos, y hay una prueba que la ata.
