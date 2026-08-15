@@ -149,18 +149,18 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | DOC-001 | El README ofrece `mode=both` —con ejemplo— y lo declara bloqueado en el mismo archivo | Media | G8.5 | **Cerrada** — 2026-08-15, quinta pasada. El ejemplo deja de mandar usarlo y cada listado del modo dice que está bloqueado. Una prueba caza los usos de `mode` sin distintivo y **no** las menciones que explican el bloqueo |
 | DOC-002 | `AGENTS.md:126` niega la publicación en PyPI que ahora hace `release.yml` (antes `publish-pypi.yml`, retirado el 2026-08-14) | Media | G8.6 | **Cerrada** — 2026-08-15, quinta pasada. `AGENTS.md` describe la política real: se publica por tag y solo tras el build-and-test verde del mismo commit. La prueba compara la afirmación con los workflows que existen |
 | DOC-003 | "Completely empty PC" no dice que Power BI Desktop queda fuera | Baja | G8.7 | **Cerrada** — 2026-08-15, quinta pasada. El README dice qué cubre el «PC vacío» y qué no: sin Desktop queda todo el lado `.pbip` y no queda la capa LIVE, la captura ni la validación de render |
-| DOC-004 | Sin runbook de update, rollback, uninstall, purge, proxy ni offline | Media | G8.8 | **Abierta** |
+| DOC-004 | Sin runbook de update, rollback, uninstall, purge, proxy ni offline | Media | G8.8 | **Cerrada** — 2026-08-15, quinta pasada. `docs/RUNBOOK_INSTALACION.md` cubre los seis procedimientos, cada paso un comando ejecutable y comprobado contra la instalación real en solo lectura. **Dice explícitamente lo que NO existe** —`uninstall`, `purge` y el bundle offline— y da el procedimiento manual, en vez de ofrecer comandos que fallarían. Una prueba exige que los scripts citados existan |
 | CLI-001 | El one-paste instala y verifica solo Claude | Media | G3.2 | **Parcialmente cerrada** |
 
 ## Cuentas
 
-33 entradas: **13 cerradas**
+33 entradas: **14 cerradas**
 (CONTRACT-001, CORE-001, CORE-002, CORE-003, CORE-005, CORE-006, DOC-001,
-DOC-002, DOC-003, INSTALL-011, INSTALL-012, TEST-001, TEST-004),
+DOC-002, DOC-003, DOC-004, INSTALL-011, INSTALL-012, TEST-001, TEST-004),
 **12 parcialmente cerradas**
 (CORE-004, INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-005,
 INSTALL-006, INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
-**8 abiertas**.
+**7 abiertas**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
 lo recalcula desde las filas de las seis tablas y falla si el párrafo y la

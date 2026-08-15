@@ -129,3 +129,58 @@ def test_el_pc_vacio_declara_que_power_bi_desktop_queda_fuera():
         texto, re.I | re.S), (
         "el README promete un PC vacio y no dice que Power BI Desktop queda "
         "fuera ni que sin el no hay LIVE, captura ni validacion de render")
+
+
+# ============================================================================
+# DOC-004 — un runbook cuyos comandos no existen es peor que no tenerlo
+# ============================================================================
+RUNBOOK = RAIZ / "docs" / "RUNBOOK_INSTALACION.md"
+
+
+def test_existe_el_runbook_de_instalacion():
+    assert RUNBOOK.is_file(), (
+        "docs/RECOVERY.md solo cubre journals y rollback de escrituras al "
+        "proyecto; el ciclo de vida de la instalacion no estaba escrito")
+
+
+@pytest.mark.parametrize("procedimiento", [
+    "Actualizar", "rollback de instalación", "Desinstalar", "Purga",
+    "Proxy", "Offline",
+])
+def test_el_runbook_cubre_cada_procedimiento(procedimiento):
+    texto = RUNBOOK.read_text(encoding="utf-8")
+    assert procedimiento.lower() in texto.lower(), (
+        f"el runbook no cubre «{procedimiento}»")
+
+
+def test_los_scripts_que_ofrece_el_runbook_existen():
+    """La forma mas facil de que un runbook envejezca: renombrar un script."""
+    texto = RUNBOOK.read_text(encoding="utf-8")
+    guiones = set(re.findall(r"scripts/[A-Za-z0-9_]+\.py", texto))
+    assert guiones, "el runbook no ofrece ningun comando ejecutable"
+    faltan = sorted(g for g in guiones if not (RAIZ / g).is_file())
+    assert not faltan, f"el runbook ofrece scripts que no existen: {faltan}"
+
+
+def test_el_runbook_no_promete_comandos_que_no_existen():
+    """`uninstall` y `purge` NO existen todavia (INSTALL-008).
+
+    Un runbook que los ofreciera mandaria a la gente a escribir un comando que
+    falla. Tiene que decir que no existen y dar el procedimiento manual.
+    """
+    texto = RUNBOOK.read_text(encoding="utf-8")
+    for ausente in ("No existe un comando de desinstalación",
+                    "Tampoco existe `purge`",
+                    "No existe un bundle offline"):
+        assert ausente in texto, (
+            f"el runbook no declara que falta: {ausente!r}")
+
+
+def test_el_runbook_conserva_lo_del_usuario_antes_de_borrar():
+    """`outputs/` y `backups/` son del usuario y sobreviven a cada version."""
+    texto = RUNBOOK.read_text(encoding="utf-8")
+    assert "outputs" in texto and "backups" in texto
+    idx_conservar = texto.find("lo que hay que conservar")
+    idx_borrar = texto.find("Borra el data root")
+    assert 0 < idx_conservar < idx_borrar, (
+        "el runbook manda borrar antes de decir que hay que salvar")

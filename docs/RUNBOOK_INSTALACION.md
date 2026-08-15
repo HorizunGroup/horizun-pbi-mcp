@@ -1,0 +1,251 @@
+# Runbook de instalación — update, rollback, desinstalación, proxy y offline
+
+`docs/RECOVERY.md` cubre los journals y el rollback de **escrituras al
+proyecto**: qué hacer cuando una operación sobre un `.pbip` se queda a medias.
+Este documento cubre la otra mitad, que no estaba escrita en ningún sitio: el
+**ciclo de vida de la instalación**.
+
+Cada paso es un comando ejecutable. Donde no lo hay, se dice —y se dice por qué.
+
+> **Convención de rutas.** Todo cuelga del *data root*, que es estable y no
+> depende del cliente que instale:
+>
+> ```
+> %LOCALAPPDATA%\HorizunPbiMcp\plugin\
+> ```
+>
+> Comprueba el tuyo con `python scripts/plugin_bootstrap.py --status`; el campo
+> `data_dir` es la verdad. Un override explícito por `HORIZUN_PBI_PLUGIN_DATA`
+> lo cambia, y es lo que usan las pruebas.
+
+---
+
+## 0. Lo primero, siempre: mirar
+
+```bash
+python scripts/plugin_bootstrap.py --status
+```
+
+Devuelve el estado completo. Los cinco campos que deciden qué hacer:
+
+| Campo | Qué responde |
+|---|---|
+| `state` | el estado **operativo**: `ready`, `degraded`, `failed`, `installing`, `not_installed` |
+| `estado_instalacion` | cómo acabó el último intento de instalar; **no** es lo mismo |
+| `sirviendo` | qué se está ejecutando: `activo`, `last-known-good` o `ninguno` |
+| `sirviendo_version` | la versión de eso |
+| `degradacion` | por qué el activo dejó de servir, si es el caso |
+
+**`state: degraded` no es un fallo de instalación.** Significa que la última
+instalación fue bien y que lo que instaló ya no arranca — alguien borró un
+archivo, un antivirus se llevó el paquete, el disco falló. Se resuelve
+reinstalando (§1), no recuperando.
+
+Y en el otro sentido: `estado_instalacion: failed` con `sirviendo:
+last-known-good` significa que la actualización se cayó **y que sigues
+trabajando** con la versión anterior. No hay prisa.
+
+---
+
+## 1. Actualizar
+
+No hay que hacer nada especial: la actualización es la instalación.
+
+```bash
+python scripts/plugin_bootstrap.py
+```
+
+Desde un cliente MCP, la tool `pbi_install_runtime` hace lo mismo en segundo
+plano y `pbi_install_status` informa del avance.
+
+**Qué garantiza.** El runtime nuevo se prepara en un directorio aparte y **el
+vigente no se toca en ningún momento** de la preparación. Solo se publica —con
+un `rename`— después de que el preparado supere un handshake MCP real contra el
+contrato: nombre exacto del servidor, versión igual a la preparada y las 134
+tools. Si algo falla, el staging se descarta y sigues exactamente donde estabas.
+
+**Reintentar NO reanuda.** Descarta lo preparado y empieza de nuevo,
+reaprovechando por copia lo que ya esté verificado en disco. No reinicies el
+cliente esperando que continúe solo.
+
+---
+
+## 2. Volver atrás (rollback de instalación)
+
+**En la mayoría de los casos no hay que hacer nada.** Si la actualización falla,
+el lanzador sirve solo el último runtime bueno: verifica el runtime antes de
+entregarle el canal del cliente, y si no pasa, elige el anterior. Reinicia el
+cliente MCP y sigues con la versión anterior y sus 134 tools.
+
+Para comprobar cuál se serviría:
+
+```bash
+python -c "import sys; sys.path.insert(0,'scripts'); import plugin_bootstrap as b; print(b.seleccionar_runtime())"
+```
+
+**Volver a mano a una versión concreta.** Las versiones anteriores viven como
+directorios hermanos bajo el data root:
+
+```bash
+dir %LOCALAPPDATA%\HorizunPbiMcp\plugin
+```
+
+Verás `1.5.4`, `1.5.5`, y quizá `.previous-<version>-<ts>-<uuid>`. Para forzar
+que se sirva una de ellas, borra el estado y deja que se readopte:
+
+```bash
+del %LOCALAPPDATA%\HorizunPbiMcp\plugin\runtime-state.json
+python scripts/plugin_bootstrap.py
+```
+
+La adopción **comprueba** el runtime que encuentra con el mismo handshake antes
+de declararlo activo: no lo da por bueno porque exista un `python.exe`.
+
+**Nunca borres a mano un `.previous-*` sin mirar antes** cuál es el
+`last_known_good` en `runtime-state.json`. Es el único al que se puede volver.
+
+---
+
+## 3. Una promoción interrumpida
+
+Un corte de luz entre los dos renombrados de una promoción deja el data root con
+un `.promotion.json` y, quizá, sin la carpeta de la versión. **Se resuelve solo**:
+la siguiente instalación llama a la recuperación antes de nada, dentro del
+cerrojo del ciclo de vida.
+
+```bash
+python scripts/plugin_bootstrap.py
+```
+
+Si el journal no se puede interpretar, **no se toca nada de lo que menciona**:
+se aparta a `.promotion-rechazada-<uuid>.json` dentro del data root y el motivo
+sale en el status. Ese archivo es evidencia — mándalo si abres una incidencia.
+
+---
+
+## 4. Desinstalar
+
+> **No existe un comando de desinstalación.** Es INSTALL-008, y sigue abierto.
+> Lo que sigue es el procedimiento manual, que es exacto pero manual.
+
+**Primero, lo que hay que conservar.** Estas dos carpetas son **tuyas** y no se
+versionan con el runtime:
+
+```
+%LOCALAPPDATA%\HorizunPbiMcp\plugin\outputs\     exportaciones, informes, logs
+%LOCALAPPDATA%\HorizunPbiMcp\plugin\backups\     respaldos de tus proyectos
+```
+
+Cópialas fuera antes de nada si te importan.
+
+**Después, en orden:**
+
+1. Cierra Claude y Codex. Un runtime en uso no se puede borrar del todo.
+2. Retira el plugin de su cliente:
+   ```bash
+   claude plugin remove horizun-pbi-mcp
+   ```
+3. Borra el data root **menos** lo que salvaste:
+   ```bash
+   rmdir /s %LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5
+   del %LOCALAPPDATA%\HorizunPbiMcp\plugin\runtime-state.json
+   ```
+4. Comprueba que no queda nada en uso:
+   ```bash
+   python scripts/plugin_bootstrap.py --status
+   ```
+   Debe decir `not_installed`.
+
+Lo que **no** desinstala esto: Python, Node y Claude Code, que el instalador
+puso por `winget` y que probablemente uses para otras cosas. Se quitan con
+`winget uninstall`, uno a uno y a conciencia.
+
+---
+
+## 5. Purga completa
+
+> **Tampoco existe `purge`.** Es la otra mitad de INSTALL-008.
+
+Para enumerar antes de borrar —que es el orden correcto—:
+
+```bash
+python -c "import sys,pathlib; sys.path.insert(0,'scripts'); import plugin_bootstrap as b; r=b.paths()['root']; print(r); [print(f'{sum(f.stat().st_size for f in p.rglob(chr(42)) if f.is_file())/1e6:10.1f} MB  {p.name}') for p in sorted(r.iterdir()) if p.is_dir()]"
+```
+
+Eso lista cada directorio del data root con su tamaño. Decide con la lista
+delante; después borra lo que hayas decidido.
+
+---
+
+## 6. Proxy
+
+El instalador y los descargadores usan `urllib` y `subprocess` con `pip` y
+`npm`. Los tres respetan las variables estándar:
+
+```bash
+set HTTPS_PROXY=http://usuario:clave@proxy.empresa:8080
+set HTTP_PROXY=http://usuario:clave@proxy.empresa:8080
+set NO_PROXY=localhost,127.0.0.1
+python scripts/plugin_bootstrap.py
+```
+
+**Lo que hay que saber antes de intentarlo:**
+
+- Un proxy que **inspecciona TLS** rompe la verificación por hash de las DLL y
+  los esquemas: los bytes que llegan no son los publicados y la instalación se
+  niega. Eso es correcto y no se debe desactivar. Añade el certificado de la
+  empresa al almacén del sistema y a `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE`.
+- `npm` necesita además su propia configuración:
+  ```bash
+  npm config set proxy http://proxy.empresa:8080
+  npm config set https-proxy http://proxy.empresa:8080
+  ```
+- El validador PBIR es **opcional**: si npm no puede salir, la instalación
+  termina igual y el status lo dice en `validator.state`.
+
+**Este procedimiento no se ha ejecutado contra un proxy real.** Es el gate G4.7
+y está en [`audits/EXTERNAL_GATES.md`](audits/EXTERNAL_GATES.md).
+
+---
+
+## 7. Offline
+
+> **No existe un bundle offline.** Es INSTALL-009 y sigue abierto.
+
+Lo que sí se puede hacer hoy, si la máquina destino no tiene salida:
+
+1. En una máquina **con** red, instala normalmente y comprueba que llega a
+   `ready`.
+2. Copia el directorio de versión entero:
+   ```
+   %LOCALAPPDATA%\HorizunPbiMcp\plugin\1.5.5\
+   ```
+   Lleva el venv, las DLL, los esquemas y el validador.
+3. En la máquina destino, pégalo en la misma ruta y ejecuta:
+   ```bash
+   python scripts/plugin_bootstrap.py --status
+   ```
+
+**Limitación honesta:** un venv de Python **no es relocalizable** entre rutas
+distintas, y esto solo funciona si el data root es el mismo en las dos máquinas
+—mismo nombre de usuario, o `HORIZUN_PBI_PLUGIN_DATA` apuntando al mismo sitio
+en las dos—. No es un bundle: es una copia que funciona bajo esa condición. El
+bundle de verdad, con su verificación, es trabajo pendiente.
+
+---
+
+## 8. Qué hacer con un `install.log`
+
+```
+%LOCALAPPDATA%\HorizunPbiMcp\plugin\<version>\install.log
+```
+
+Es la salida completa del instalador en segundo plano. **No lleva secretos ni
+rutas de tus proyectos** —la redacción de telemetría se encarga—, así que se
+puede adjuntar a una incidencia tal cual.
+
+Lo primero que hay que buscar ahí es el `step` en el que se quedó: `python-runtime`,
+`python-packages`, `analysis-services`, `pbir-schemas`, `report-validator`,
+`healthcheck` o `promotion`. Cada uno tiene una causa típica distinta, y los
+cuatro del medio son descargas — donde una carrera DNS IPv6 medida por el equipo
+las tumba de forma intermitente. Reintentar es gratis: todo se verifica por hash.
