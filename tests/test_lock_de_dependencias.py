@@ -84,22 +84,57 @@ def _combinaciones():
 # ===================== 1. Los locks del repositorio =======================
 
 def test_la_matriz_cubre_lo_que_pyproject_declara_soportar(generar):
-    """`requires-python = ">=3.10"` y CI corre 3.10 y 3.13. Los tres, cubiertos.
+    """Todo lo que el producto PROMETE tiene lock. No una parte.
 
-    Es la prueba que la version anterior no podia pasar: habia un solo lock y
-    decia «Python 3.14», mientras el producto prometia funcionar desde 3.10.
+    La version anterior de esta prueba se conformaba con la minima y con lo que
+    corre CI, y con eso la matriz cubria 3.10, 3.13 y 3.14 mientras los
+    classifiers prometian tambien 3.11 y 3.12. En esas dos, `--require-hashes`
+    fallaba y la instalacion caia al resolutor sin hashes: la garantia no
+    existia justo donde nadie miraba.
+
+    Ahora el oraculo son los **classifiers**, que es donde el producto declara
+    a quien le sirve. Anadir un `Programming Language :: Python :: 3.x` sin su
+    lock pone esto en rojo.
     """
     versiones = {v for v, _ in generar.MATRIZ}
     pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
-    minima = re.search(r'requires-python\s*=\s*">=([\d.]+)"', pyproject).group(1)
-    ci = (RAIZ / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    de_ci = set(re.findall(r'"(\d+\.\d+)"', ci.split("python-version:", 1)[1][:80]))
 
+    declaradas = set(re.findall(
+        r'"Programming Language :: Python :: (\d+\.\d+)"', pyproject))
+    assert declaradas, "pyproject no declara ninguna version concreta de Python"
+    faltan = sorted(declaradas - versiones)
+    assert not faltan, (
+        f"los classifiers prometen {faltan} y no hay lock para esas versiones: "
+        f"la matriz cubre {sorted(versiones)}")
+
+    minima = re.search(r'requires-python\s*=\s*">=([\d.]+)"', pyproject).group(1)
     assert minima in versiones, (
         f"pyproject promete funcionar desde {minima} y no hay lock para esa "
         f"version: {sorted(versiones)}")
+    ci = (RAIZ / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    de_ci = set(re.findall(r'"(\d+\.\d+)"', ci.split("python-version:", 1)[1][:80]))
     assert de_ci <= versiones, (
         f"CI corre {sorted(de_ci)} y la matriz de locks cubre {sorted(versiones)}")
+
+
+def test_la_matriz_no_promete_plataformas_que_el_producto_no_declara(generar):
+    """G4.6, reevaluado: exigir un runner Linux era pedir de mas.
+
+    `pyproject` declara `Operating System :: Microsoft :: Windows` y nada mas.
+    Un lock para una plataforma que el producto no promete seria un archivo que
+    nadie verifica, y mantener «falta un runner no-Windows» como bloqueo era
+    exigir evidencia de un entorno no soportado.
+
+    Si algun dia se declara otra plataforma, esto obliga a que traiga su lock.
+    """
+    plataformas = {pl for _, pl in generar.MATRIZ}
+    pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    sistemas = set(re.findall(r'"Operating System :: ([^"]+)"', pyproject))
+
+    assert sistemas == {"Microsoft :: Windows"}, (
+        f"el producto declara {sistemas}: la matriz de locks tiene que cubrir "
+        f"todas, y hoy cubre {plataformas}")
+    assert plataformas == {"win_amd64"}, plataformas
 
 
 @pytest.mark.parametrize("version,plataforma", _combinaciones())
@@ -303,14 +338,20 @@ def test_elige_el_lock_EXACTO_de_su_interprete(bootstrap, tmp_path, monkeypatch)
 
 def test_un_interprete_sin_lock_no_recibe_uno_parecido(bootstrap, tmp_path,
                                                        monkeypatch):
-    """3.12 no esta en la matriz: no se le da el de 3.13 «que casi vale»."""
-    _finge_interprete(monkeypatch, bootstrap, "3.12", "win_amd64")
+    """3.9 no esta soportada: no se le da el de 3.10 «que casi vale».
+
+    Antes el ejemplo era 3.12, y dejo de servir cuando la matriz se amplio a
+    las cinco versiones que los classifiers prometen. Se cambia por una que el
+    producto NO declara soportar, que es el caso real: alguien con un Python
+    fuera del rango.
+    """
+    _finge_interprete(monkeypatch, bootstrap, "3.9", "win_amd64")
     ordenes = _grabador(monkeypatch, bootstrap)
     resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
     assert resultado["source"] == "resolver"
     assert resultado["lock"] is None
-    assert "no hay lock para py3.12/win_amd64" in resultado["reason"]
+    assert "no hay lock para py3.9/win_amd64" in resultado["reason"]
     assert not any("--require-hashes" in o for o in ordenes), (
         "se intento un lock de otra combinacion")
 
@@ -335,7 +376,7 @@ def test_si_no_se_puede_saber_la_version_no_se_adivina(bootstrap, tmp_path,
 
 def test_el_fallback_dice_que_NO_es_reproducible(bootstrap, tmp_path, monkeypatch):
     """Un fallback silencioso es peor que no tener lock: deja creer que si."""
-    _finge_interprete(monkeypatch, bootstrap, "3.12", "win_amd64")
+    _finge_interprete(monkeypatch, bootstrap, "3.9", "win_amd64")
     _grabador(monkeypatch, bootstrap)
     resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
@@ -483,7 +524,7 @@ def _sembrar_runtime(carpeta: Path, bs) -> None:
 
 @pytest.mark.parametrize("combinacion,esperado", [
     (("3.14", "win_amd64"), "lock"),
-    (("3.12", "win_amd64"), "resolver"),
+    (("3.9", "win_amd64"), "resolver"),
 ], ids=["con-lock", "sin-lock"])
 def test_el_estado_ready_registra_de_donde_salieron_las_dependencias(
         bootstrap, tmp_path, monkeypatch, combinacion, esperado):

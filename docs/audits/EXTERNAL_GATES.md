@@ -42,8 +42,6 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.4 | INSTALL-002 | VM con Node 18 | Windows + Node 18 en el PATH |
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
-| G4.3 | INSTALL-006 | `npm` real + red | Node ≥20 y salida a registry.npmjs.org |
-| G4.6 | INSTALL-009 | runner no-Windows (**la matriz de Windows ya está cerrada**) | Linux o macOS con Python ≥3.10 |
 | G4.7 | INSTALL-009 | VM sin salida real (**el bundle ya existe y se prueba aquí**) | VM desconectada o proxy corporativo |
 | G5.1–G5.4 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G5.6 | TEST-003 | Desktop (**la prueba ya existe y es local**) | Desktop con un `.pbip` de prueba |
@@ -52,9 +50,9 @@ resultado se espera y qué evidencia hay que guardar.
 | G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
 | G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**15 filas, 22 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
+**13 filas, 20 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
 `G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «15 externos» dejaría fuera cinco gates que nadie estaría vigilando.
+y decir «13 externos» dejaría fuera siete gates que nadie estaría vigilando.
 
 > **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
 > G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
@@ -107,6 +105,15 @@ relleno. G3.4: `state=ready` y `validator` en `skipped_node_too_old` con motivo.
 ---
 
 ## G3.5 — el instalador no declara éxito con el plugin deshabilitado
+
+> **Comprobado el 2026-08-15 si se podía aislar, y no se puede.** `claude
+> --help` no documenta ninguna variable ni opción para apuntar la configuración
+> y los datos a un directorio temporal; `claude plugin disable` acepta
+> `--scope user|project|local`, que elige **dónde** dentro de la instalación
+> real, no **otra** instalación. Registrar el plugin para deshabilitarlo
+> después tocaría el marketplace y la caché del usuario, y eso está prohibido.
+> `--plugin-dir` carga un plugin solo para una sesión, que no es lo que este
+> gate mide. Sigue externo, y ahora se sabe por qué y no por suposición.
 
 **Bloqueo exacto.** Hace falta una instalación real de Claude CLI sobre la que se
 pueda deshabilitar el plugin, y este ciclo tiene prohibido modificar
@@ -202,6 +209,19 @@ de inalcanzables; conviene mirarlos por separado antes de aparcar los dos.
 ---
 
 ## G5.1–G5.4 y G5.6 — Desktop real
+
+> **Intentado el 2026-08-15, y las cuatro pruebas live se omitieron solas.**
+> Había una instancia de Power BI Desktop del usuario abierta —`PBIDesktop`
+> 52900 y `msmdsrv` 11580— y las pruebas se niegan por diseño: *«no toca
+> ninguna ventana que no haya abierto ella»*. Es la decisión correcta y no se
+> forzó: cerrar el Desktop de alguien para cerrar un gate sería cambiar
+> evidencia por daño.
+>
+> Se comprobó después que **no se creó ni se destruyó ningún proceso**: los dos
+> PID de antes son los dos PID de después.
+>
+> Para cosecharlos hace falta la máquina **sin Power BI abierto**. No hace falta
+> una VM: el fixture es sintético y desechable, y las pruebas ya existen.
 
 > **G5.5 salió de esta lista el 2026-08-15**, y es el tercer caso después de
 > G3.6 y G4.7. Se había clasificado el bloque G5 entero como imposible sin mirar

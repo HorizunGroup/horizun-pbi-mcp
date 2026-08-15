@@ -58,10 +58,10 @@ solo gate, **no se puede decir «100% local»**.
 | G3.6 | cumplido | instalación pip pura de wheel y sdist, fuera del checkout |
 | G4.1 | parcial | el lanzador real sirve N−1 con fallo inyectado; el runtime servido es de prueba |
 | G4.2 | cumplido | publicación atómica de esquemas por el ciclo de vida compartido |
-| G4.3 | parcial | staging y cerrojo demostrados; `npm` está simulado |
+| G4.3 | cumplido | **`npm` real**: instalación de verdad, corte a mitad con el proceso matado, destino anterior byte a byte intacto, cero huérfanos y reintento limpio. Solo en un data root temporal |
 | G4.4 | cumplido | `uninstall` con CLI real sobre un data root de prueba |
 | G4.5 | cumplido | `purge` enumera y pesa antes de borrar |
-| G4.6 | parcial | matriz `win_amd64 × {3.10, 3.13, 3.14}` fijada; CI instala de verdad desde el lock en 3.10 y 3.13. Fuera de esa matriz el instalador cae al resolutor **y lo dice**; falta un runner que no sea Windows |
+| G4.6 | cumplido | matriz `win_amd64 × {3.10, 3.11, 3.12, 3.13, 3.14}`: **las cinco versiones que los classifiers prometen** y la única plataforma que declaran. Exigir un runner no-Windows era pedir evidencia de un entorno no soportado |
 | G4.7 | parcial | el bundle **existe**: `scripts/bundle.py` lo construye, verifica e instala; probado con pip real y `--no-index` -134 tools- y con `socket` prohibido. Falta la VM realmente desconectada o un proxy corporativo |
 | G4.8 | cumplido | no se cae fuera de user-scope en silencio |
 | G4.9 | cumplido | contención de la recuperación, 35 pruebas |
@@ -96,8 +96,8 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **32** |
-| parcial | **7** |
+| cumplido | **34** |
+| parcial | **5** |
 | pendiente-local | **0** |
 | pendiente-ratificacion | **0** |
 | pendiente-externo | **15** |

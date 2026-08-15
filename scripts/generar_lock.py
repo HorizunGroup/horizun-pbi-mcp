@@ -58,13 +58,21 @@ RAIZ = Path(__file__).resolve().parent.parent
 LOCKS = RAIZ / "scripts" / "locks"
 PYPROJECT = RAIZ / "pyproject.toml"
 
-#: Las combinaciones que el producto declara soportar. `requires-python` dice
-#: `>=3.10` y CI corre 3.10 y 3.13; 3.14 es la de desarrollo. La plataforma es
-#: `win_amd64` porque la capa en vivo solo existe en Windows —el lado `.pbip`
-#: funciona en cualquier sistema, y ahi el instalador cae al resolutor y lo
-#: dice—.
+#: Las combinaciones que el producto declara soportar, **todas**.
+#:
+#: La plataforma es una sola y no por comodidad: `pyproject` declara
+#: `Operating System :: Microsoft :: Windows` y nada mas. Exigir un runner
+#: Linux para cerrar G4.6 era pedir evidencia de un entorno que el producto no
+#: promete; lo que si promete son cinco versiones de Python, y hasta ahora la
+#: matriz cubria tres. Ese era el hueco de verdad.
+#:
+#: `test_la_matriz_cubre_lo_que_pyproject_declara_soportar` lo ata a los
+#: classifiers: anadir un `Programming Language :: Python :: 3.x` sin su lock
+#: pone la suite en rojo.
 MATRIZ: Tuple[Tuple[str, str], ...] = (
     ("3.10", "win_amd64"),
+    ("3.11", "win_amd64"),
+    ("3.12", "win_amd64"),
     ("3.13", "win_amd64"),
     ("3.14", "win_amd64"),
 )
