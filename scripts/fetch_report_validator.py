@@ -33,7 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from plugin_bootstrap import flags_sin_ventana  # noqa: E402
 
-# El ciclo de vida COMPARTIDO: la misma promocion que publica el runtime.
+# El ciclo de vida COMPARTIDO: la misma promocion y el mismo cerrojo que
+# publican el runtime.
+from horizun_pbi_mcp.lifecycle import locking as cerrojos  # noqa: E402
 from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
 
 PAQUETE = "@microsoft/powerbi-report-authoring-cli"
@@ -155,37 +157,50 @@ def instalar(destino: Path) -> dict:
     destino = Path(destino)
     raiz = destino.parent
     raiz.mkdir(parents=True, exist_ok=True)
-    promotion.recuperar(raiz)
 
-    tmp = Path(tempfile.mkdtemp(prefix="hz_validator_"))
-    staging = promotion.crear_staging(raiz, destino.name)
-    try:
-        r = _correr([npm, "pack", f"{PAQUETE}@{VERSION}"], cwd=str(tmp))
-        if r.returncode != 0:
-            raise InstalacionFallida(f"`npm pack` fallo: {r.stderr[-400:]}")
-        tarballs = list(tmp.glob("*.tgz"))
-        if not tarballs:
-            raise InstalacionFallida("`npm pack` no dejo ningun .tgz")
+    # El cerrojo de ESTA raiz, por el mismo motivo que en los esquemas:
+    # `promotion.recuperar()` exige tenerlo y este script se ejecuta tambien por
+    # su cuenta, fuera del cerrojo de la raiz de datos. Orden fijo: primero el de
+    # la raiz de DATOS -lo toma `install()`-, este despues.
+    with cerrojos.CerrojoDeCicloDeVida(raiz, etiqueta="validator") as cerrojo:
+        if not cerrojo.adquirido:
+            raise InstalacionFallida(
+                f"Hay otra publicacion del validador en curso sobre {raiz}. No "
+                "se toca nada: el destino anterior sigue intacto.")
 
-        verificar_tarball(tarballs[0])          # ANTES de instalar nada
+        promotion.recuperar(raiz)
 
-        r = _correr([npm, "install", "--prefix", str(staging), "--no-audit",
-                     "--no-fund", "--ignore-scripts", str(tarballs[0])],
-                    cwd=str(tmp))
-        if r.returncode != 0:
-            raise InstalacionFallida(f"`npm install` fallo: {r.stderr[-400:]}")
+        tmp = Path(tempfile.mkdtemp(prefix="hz_validator_"))
+        staging = promotion.crear_staging(raiz, destino.name)
+        try:
+            r = _correr([npm, "pack", f"{PAQUETE}@{VERSION}"], cwd=str(tmp))
+            if r.returncode != 0:
+                raise InstalacionFallida(f"`npm pack` fallo: {r.stderr[-400:]}")
+            tarballs = list(tmp.glob("*.tgz"))
+            if not tarballs:
+                raise InstalacionFallida("`npm pack` no dejo ningun .tgz")
 
-        cli, version = _verificar_preparado(staging)
-        relativa = cli.relative_to(staging.resolve())
-        promotion.promover(raiz, staging, destino)
-    except BaseException:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+            verificar_tarball(tarballs[0])      # ANTES de instalar nada
+
+            r = _correr([npm, "install", "--prefix", str(staging), "--no-audit",
+                         "--no-fund", "--ignore-scripts", str(tarballs[0])],
+                        cwd=str(tmp))
+            if r.returncode != 0:
+                raise InstalacionFallida(f"`npm install` fallo: {r.stderr[-400:]}")
+
+            cli, version = _verificar_preparado(staging)
+            relativa = cli.relative_to(staging.resolve())
+            promotion.promover(raiz, staging, destino)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        recogidos = promotion.limpiar_apartados_de(raiz, destino.name)
 
     return {"cli": str(destino / relativa), "version": version,
-            "dir": str(destino)}
+            "dir": str(destino), "respaldos_recogidos": len(recogidos)}
 
 
 def main() -> int:

@@ -411,6 +411,33 @@ def restaurar_anterior(root: Path, destino: Path) -> Path | None:
     return elegido
 
 
+def limpiar_apartados_de(root: Path, nombre: str) -> list[str]:
+    """Borra los `.previous-` de UN destino concreto, y solo los de ese.
+
+    Existe aparte de `limpiar()` por una razon de seguridad, no de comodidad.
+    Los publicadores de componentes -esquemas, validador- promueven dentro de
+    una raiz que puede ser la MISMA del ciclo de vida del runtime: basta que
+    alguien pase `--dest <raiz>/schemas`. Barrer ahi todos los `.previous-` se
+    llevaria por delante el que guarda el N−1, o sea la unica instalacion a la
+    que se puede volver. Filtrar por el nombre del destino es la diferencia
+    entre recoger lo propio y borrar lo ajeno.
+
+    Se llama DESPUES de publicar: la ventana en la que el apartado hacia falta
+    -entre los dos renombrados- se cerro con el `rename`. Dejarlo solo garantiza
+    que la siguiente actualizacion encuentre dos, y la siguiente tres.
+    """
+    prefijo = f"{PREFIJO_ANTERIOR}{nombre}-"
+    borrados: list[str] = []
+    try:
+        hijos = list(root.iterdir())
+    except OSError:                                          # pragma: no cover
+        return borrados
+    for d in hijos:
+        if d.is_dir() and d.name.startswith(prefijo) and _borrar_arbol(d):
+            borrados.append(str(d))
+    return borrados
+
+
 def limpiar(root: Path, *, conservar: int = CONSERVAR_ANTERIORES,
             proteger: "set[Path] | None" = None) -> list[str]:
     """Borra stagings huerfanos y los `.previous-` que sobran.

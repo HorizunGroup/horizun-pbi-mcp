@@ -43,6 +43,7 @@ sys.path.insert(0, str(RAIZ_REPO / "src"))
 # promover un runtime -preparar aparte, verificar, renombrar, poder
 # recuperarse- y resolverlo por segunda vez habria significado tener tambien
 # dos formas distintas de quedarse a medias.
+from horizun_pbi_mcp.lifecycle import locking as cerrojos  # noqa: E402
 from horizun_pbi_mcp.lifecycle import promotion  # noqa: E402
 # Ruta bajo el paquete unico. La antigua (src/services/...) sobrevivio al
 # reempaquetado porque ningun test ejecuta este script: fallaba en el bootstrap
@@ -254,39 +255,62 @@ def instalar(manifiesto: Dict, destino: Path) -> Dict:
     raiz = destino.parent
     raiz.mkdir(parents=True, exist_ok=True)
 
-    # Si una publicacion anterior se corto entre los dos renombrados, se
-    # resuelve ANTES de preparar otra. Sin esto, la siguiente instalacion
-    # trabajaria sobre un estado que no sabe describir.
-    recuperado = promotion.recuperar(raiz)
+    # El cerrojo de ESTA raiz, y antes de nada. `promotion.recuperar()` dice en
+    # su docstring que quien llama debe tenerlo, y este script no lo tenia: al
+    # ejecutarse desde `install()` quedaba cubierto por el cerrojo de la raiz de
+    # datos, pero es un script que se lanza tambien por su cuenta -asi lo
+    # documenta el README y asi lo invoca el instalador- y ahi no habia ninguno.
+    # Dos procesos podian leer y escribir el mismo journal y promover sobre el
+    # mismo destino.
+    #
+    # Orden entre cerrojos, que hay que decirlo para que nadie lo invierta: el
+    # de la raiz de DATOS se toma siempre primero (lo toma `install()`), y este
+    # despues. Son raices distintas y la jerarquia es fija, asi que no hay ciclo.
+    with cerrojos.CerrojoDeCicloDeVida(raiz, etiqueta="schemas") as cerrojo:
+        if not cerrojo.adquirido:
+            raise SchemaFetchError(
+                f"Hay otra publicacion de esquemas en curso sobre {raiz}. No se "
+                "toca nada: el destino anterior sigue intacto.")
 
-    esperado = {e["url"]: e for e in manifiesto["documents"]}
-    staging = promotion.crear_staging(raiz, destino.name)
-    try:
-        for url, entrada in esperado.items():
-            datos = descargar(url)
-            real = hashlib.sha256(datos).hexdigest()
-            if real != entrada["sha256"]:
-                raise SchemaFetchError(
-                    f"HASH DISTINTO para {url}\n"
-                    f"  esperado: {entrada['sha256']}\n"
-                    f"  obtenido: {real}\n"
-                    "No se instala nada. Si el cambio es legitimo, revisa el "
-                    "contenido y regenera el manifiesto con --update.")
-            (staging / entrada["file"]).write_bytes(datos)
+        # Si una publicacion anterior se corto entre los dos renombrados, se
+        # resuelve ANTES de preparar otra. Sin esto, la siguiente instalacion
+        # trabajaria sobre un estado que no sabe describir.
+        recuperado = promotion.recuperar(raiz)
 
-        (staging / "_manifest.json").write_text(
-            json.dumps(manifiesto, indent=2, ensure_ascii=False), encoding="utf-8")
-        _verificar_preparado(staging, manifiesto)
-        promotion.promover(raiz, staging, destino)
-    except BaseException:
-        # Tambien en KeyboardInterrupt: dejar el staging seria dejar basura con
-        # un prefijo que la limpieza del ciclo de vida reconoce, pero no hay
-        # motivo para esperar a que alguien pase por ahi.
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
+        esperado = {e["url"]: e for e in manifiesto["documents"]}
+        staging = promotion.crear_staging(raiz, destino.name)
+        try:
+            for url, entrada in esperado.items():
+                datos = descargar(url)
+                real = hashlib.sha256(datos).hexdigest()
+                if real != entrada["sha256"]:
+                    raise SchemaFetchError(
+                        f"HASH DISTINTO para {url}\n"
+                        f"  esperado: {entrada['sha256']}\n"
+                        f"  obtenido: {real}\n"
+                        "No se instala nada. Si el cambio es legitimo, revisa "
+                        "el contenido y regenera el manifiesto con --update.")
+                (staging / entrada["file"]).write_bytes(datos)
+
+            (staging / "_manifest.json").write_text(
+                json.dumps(manifiesto, indent=2, ensure_ascii=False),
+                encoding="utf-8")
+            _verificar_preparado(staging, manifiesto)
+            promotion.promover(raiz, staging, destino)
+        except BaseException:
+            # Tambien en KeyboardInterrupt: dejar el staging seria dejar basura
+            # con un prefijo que la limpieza del ciclo de vida reconoce, pero no
+            # hay motivo para esperar a que alguien pase por ahi.
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
+        # Publicado y verificado: el apartado ya no sirve. Solo los de ESTE
+        # destino, no todos los de la raiz: ahi puede vivir el N−1 del runtime.
+        recogidos = promotion.limpiar_apartados_de(raiz, destino.name)
 
     return {"installed": len(esperado), "dir": str(destino),
-            "recuperacion_previa": recuperado.get("accion")}
+            "recuperacion_previa": recuperado.get("accion"),
+            "respaldos_recogidos": len(recogidos)}
 
 
 def main() -> int:
