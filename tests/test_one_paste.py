@@ -37,8 +37,7 @@ INSTALADOR = RAIZ / "scripts" / "instalar.ps1"
 MANIFEST = RAIZ / "scripts" / "downloads_manifest.json"
 
 #: Documentos VIVOS que ofrecen el bloque. Los historicos quedan como estan.
-DOCUMENTOS = ("README.md", "docs/INSTALL.md",
-              "skills/horizun-pbi-setup/SKILL.md")
+DOCUMENTOS = ("docs/INSTALL.md", "skills/horizun-pbi-setup/SKILL.md")
 
 requiere_windows = pytest.mark.skipif(
     sys.platform != "win32",
@@ -532,13 +531,7 @@ def test_cada_documento_incrusta_el_bloque_canonico_palabra_por_palabra(rel):
 
 
 def test_ninguna_copia_del_bloque_diverge_del_canonico():
-    """`in texto` solo mira UNA aparicion, y el README lleva DOS.
-
-    Comprobar que el canonico aparece "en algun sitio" deja pasar justo la
-    regresion que importa: un documento con dos bloques, uno al dia y otro
-    viejo. Quien pegue el segundo instalara otra cosa. Aqui se compara TODA
-    aparicion del bloque, reconocida por su User-Agent.
-    """
+    """Cada documento que ofrece el bloque debe copiar el canonico completo."""
     sys.path.insert(0, str(RAIZ / "scripts"))
     import sync_one_paste
 

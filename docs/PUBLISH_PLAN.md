@@ -89,7 +89,7 @@ git tag -a v1.0.0 -m "Horizun PBI MCP v1.0.0"
 gh repo create horizun-pbi-mcp --public --source=. --remote=origin
 git push -u origin main
 git push origin v1.0.0
-gh release create v1.0.0 --notes-file RELEASE_NOTES_1.0.0.md --verify-tag
+gh release create v1.0.0 --notes-file docs/releases/RELEASE_NOTES_1.0.0.md --verify-tag
 ```
 
 ### 5. Wait for CI

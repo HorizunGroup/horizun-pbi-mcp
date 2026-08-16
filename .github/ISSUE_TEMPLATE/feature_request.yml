@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a Power BI or MCP capability with a concrete use case.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the user outcome that is currently blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Describe the behavior, not only a new tool name.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Power BI surface
+      options:
+        - Live model (DAX/TOM)
+        - PBIP semantic model (TMDL)
+        - PBIP report (PBIR)
+        - Installation or plugin lifecycle
+        - Export or integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and compatibility considerations
+      description: Note writes, destructive effects, contract changes or data exposure.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the tool catalog and existing issues for this capability.
+          required: true
+        - label: This request contains no real project data or credentials.
+          required: true

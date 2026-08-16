@@ -31,7 +31,6 @@
       "status_note": "El tag v2.0.1 y su release NO existen todavia en el remoto. La ultima publicada de verdad sigue siendo v1.5.4. El tag v2.0.0 SI existe en el remoto -apunta a 1f0405b- pero NO tiene release ni llego a PyPI ni al MCP Registry: fue un intento de publicacion fallido y su tag queda inmutable y sin reutilizar; la correccion del pipeline se entrega en v2.0.1. El SHA-256 es el de los bytes locales congelados de scripts/instalar.ps1, que no cambian con la version porque el instalador no fija ninguna; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende. Quien lo publica es el job publicar-github-release, que ademas relee el asset y compara este hash y esta URL despues de subirlo.",
       "used_by": [
         "scripts/one_paste.ps1",
-        "README.md",
         "docs/INSTALL.md",
         "skills/horizun-pbi-setup/SKILL.md"
       ]

@@ -1,6 +1,6 @@
 """Carga del runtime .NET (pythonnet) y de las librerias de Analysis Services.
 
-Decision tecnica (documentada en PLAN.md): en vez de depender de que ADOMD.NET
+Decision tecnica (documentada en docs/archive/PLAN_INICIAL.md): en vez de depender de que ADOMD.NET
 este instalado en el GAC o de invocar Tabular Editor CLI, **vendorizamos** las
 DLLs de Microsoft.AnalysisServices.* en `libs/` y las cargamos por ruta absoluta
 con pythonnet. Es lo mas estable y no requiere permisos de administrador.

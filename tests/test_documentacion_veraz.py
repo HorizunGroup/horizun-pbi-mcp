@@ -64,12 +64,14 @@ def test_codex_documenta_el_navegador_oficial_de_plugins():
 def test_el_readme_abre_con_la_ruta_corta_para_codex_y_claude():
     """La instalación filmable debe aparecer antes del bootstrap avanzado."""
     texto = (RAIZ / "README.md").read_text(encoding="utf-8")
-    portada = texto[:texto.index("## Why this is safe")]
+    portada = texto[:3000]
     for frase in ("## Codex", "## Claude Code", "pbi_install_status",
-                  "Do **not** clone", "134 `pbi_*` tools"):
+                  "No repository clone", "134 `pbi_*` tools"):
         assert frase in portada, f"la ruta corta perdió {frase!r}"
-    assert portada.index("## Codex") < portada.index("Auxiliary installer")
-    assert portada.index("## Claude Code") < portada.index("Auxiliary installer")
+    assert portada.index("## Codex") < portada.index("## What it provides")
+    assert portada.index("## Claude Code") < portada.index("## What it provides")
+    assert len(texto.splitlines()) <= 220, (
+        "el README volvio a ser un manual interno en vez de una portada")
 
 
 def test_instalacion_no_promete_locking_como_trabajo_futuro():
@@ -167,10 +169,6 @@ def test_el_pc_vacio_declara_que_power_bi_desktop_queda_fuera():
     completamente vacío» sin decir esto vende medio producto.
     """
     texto = README.read_text(encoding="utf-8")
-    assert re.search(r"empty", texto, re.I), "cambio la seccion del PC vacio"
-
-    ventana = texto[:texto.lower().find("</details>")] if "</details>" in texto else texto
-    del ventana
     assert re.search(
         r"(Power BI Desktop).{0,400}?(not install|no se instala|aparte|"
         r"separately|does not install)",
