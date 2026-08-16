@@ -10,6 +10,14 @@ Dos hallazgos distintos, y el segundo es el que asusta:
   tag que el CI, sin `needs` que los atara a el. Corrian **en paralelo**: un CI
   en rojo no impedia publicar. Y `workflow_dispatch` sin ningun input publicaba
   con solo pulsar un boton, tambien desde una rama.
+* **RELEASE-004**, y este es de omision, que es la clase que ninguna revision
+  del YAML ve: el workflow publicaba en PyPI y en el MCP Registry y **no creaba
+  ninguna GitHub Release**, mientras el bloque de un pegado del README, de
+  `docs/INSTALL.md` y de la skill descargaba el instalador de
+  `releases/download/v<version>/...`. El camino de instalacion que se ofrece a
+  la gente apuntaba a un asset que ningun job creaba jamas. Nada de lo que se
+  comprobaba aqui podia detectarlo: todas las guardas miraban lo que los jobs
+  existentes hacian mal, y ninguna preguntaba si faltaba un job.
 
 Las guardas de este archivo estan escritas como funciones que reciben el YAML
 ya cargado, y no como aserciones sueltas dentro de cada prueba. Es a proposito:
@@ -32,11 +40,31 @@ RAIZ = Path(__file__).resolve().parent.parent
 WORKFLOWS = RAIZ / ".github" / "workflows"
 RELEASE = WORKFLOWS / "release.yml"
 
-#: Los jobs que efectivamente publican algo fuera de este repositorio.
-JOBS_DE_PUBLICACION = ("publicar-pypi", "publicar-mcp")
+#: El job que crea la GitHub Release. Va aparte porque sus permisos son de otra
+#: naturaleza: escribe EN ESTE repositorio y no se autentica contra nadie.
+JOB_RELEASE = "publicar-github-release"
 
-#: Lo que un job de publicacion tiene que haber esperado, sin excepcion.
-REQUERIDOS = ("build", "test")
+#: Los jobs que efectivamente publican algo donde alguien lo puede descargar.
+JOBS_DE_PUBLICACION = ("publicar-pypi", "publicar-mcp", JOB_RELEASE)
+
+#: Los que salen de GitHub y necesitan un token OIDC para identificarse.
+JOBS_OIDC = ("publicar-pypi", "publicar-mcp")
+
+#: Lo que cada publicador tiene que haber esperado, sin excepcion. La release
+#: va la ultima de las cuatro: publicarla antes que PyPI es peor que no
+#: publicarla, porque la gente descarga el instalador y el `pip install` de
+#: dentro no encuentra el paquete.
+NEEDS_MINIMOS = {
+    "publicar-pypi": ("build", "test"),
+    "publicar-mcp": ("build", "test", "publicar-pypi"),
+    JOB_RELEASE: ("build", "test", "publicar-pypi", "publicar-mcp"),
+}
+
+#: Como se puede crear una release desde un workflow. `release_publish.py` es
+#: la nuestra; las otras tres son las formas habituales de hacerlo a mano, y
+#: estan aqui para que una de ellas colada en otro job se vea.
+CREAN_RELEASE = ("release_publish.py", "gh release create",
+                 "softprops/action-gh-release", "actions/create-release")
 
 
 def cargar(ruta: Path) -> dict:
@@ -62,13 +90,31 @@ def _texto_de_pasos(job: dict) -> str:
 
 
 # ===================== LAS GUARDAS (se reutilizan en las mutaciones) =========
+def _needs(job: dict) -> list:
+    needs = job.get("needs") or []
+    return [needs] if isinstance(needs, str) else list(needs)
+
+
+def guarda_existe_el_job_de_github_release(datos: dict) -> None:
+    """RELEASE-004. La guarda que faltaba, y por eso el defecto duro tanto.
+
+    Todas las demas preguntan si los jobs que hay hacen algo mal. Ninguna
+    preguntaba si faltaba uno, asi que el workflow que no creaba ninguna
+    release pasaba la suite entera en verde mientras el one-paste que se ofrece
+    en el README apuntaba a un asset inexistente.
+    """
+    assert JOB_RELEASE in datos["jobs"], (
+        f"no hay job {JOB_RELEASE}: nadie crea la GitHub Release y el bloque "
+        "de un pegado descarga de releases/download/, o sea, de un 404")
+
+
 def guarda_publicacion_depende_de_todo(datos: dict) -> None:
     for nombre in JOBS_DE_PUBLICACION:
-        job = datos["jobs"][nombre]
-        needs = job.get("needs") or []
-        if isinstance(needs, str):
-            needs = [needs]
-        faltan = [r for r in REQUERIDOS if r not in needs]
+        job = datos["jobs"].get(nombre)
+        if job is None:            # su ausencia la denuncia la guarda de arriba
+            continue
+        needs = _needs(job)
+        faltan = [r for r in NEEDS_MINIMOS[nombre] if r not in needs]
         assert not faltan, (
             f"{nombre} publica sin esperar a {faltan}: un fallo ahi no lo "
             "detendria")
@@ -76,7 +122,10 @@ def guarda_publicacion_depende_de_todo(datos: dict) -> None:
 
 def guarda_publicacion_solo_desde_un_tag(datos: dict) -> None:
     for nombre in JOBS_DE_PUBLICACION:
-        condicion = str(datos["jobs"][nombre].get("if", ""))
+        job = datos["jobs"].get(nombre)
+        if job is None:
+            continue
+        condicion = str(job.get("if", ""))
         assert "refs/tags/v" in condicion and "startsWith(github.ref" in condicion, (
             f"{nombre} no exige un tag: se podria publicar desde una rama")
 
@@ -91,7 +140,10 @@ def guarda_dispatch_no_publica_por_defecto(datos: dict) -> None:
             f"el input {nombre} viene con default {por_defecto!r}")
 
     for nombre in JOBS_DE_PUBLICACION:
-        condicion = str(datos["jobs"][nombre].get("if", ""))
+        job = datos["jobs"].get(nombre)
+        if job is None:
+            continue
+        condicion = str(job.get("if", ""))
         assert "github.event.inputs" in condicion, (
             f"{nombre} no mira el input: un dispatch lo publicaria")
         # No vale un 'yes' generico: hay que escribir el tag exacto, asi que un
@@ -109,23 +161,93 @@ def guarda_solo_publicacion_pide_id_token(datos: dict) -> None:
 
     for nombre, job in datos["jobs"].items():
         permisos = job.get("permissions") or {}
-        if nombre in JOBS_DE_PUBLICACION:
+        if nombre in JOBS_OIDC:
             assert permisos.get("id-token") == "write", (
                 f"{nombre} necesita id-token: write para OIDC")
         else:
+            # Incluido el job de la release: escribe AQUI y no se autentica
+            # contra nadie de fuera, asi que un token OIDC en sus manos solo
+            # amplia lo que un paso comprometido podria hacer.
             assert permisos.get("id-token") is None, (
-                f"{nombre} no publica y sin embargo pide id-token")
+                f"{nombre} no publica fuera y sin embargo pide id-token")
+
+
+def guarda_solo_el_job_de_release_escribe_contenidos(datos: dict) -> None:
+    """`contents: write` es el permiso para crear tags y releases EN ESTE repo.
+
+    Concederselo a `build` o a `test` significaria que un paso comprometido de
+    la construccion puede reescribir el repositorio. Lo tiene uno solo, y es el
+    unico que lo necesita.
+    """
+    escriben = sorted(n for n, job in datos["jobs"].items()
+                      if (job.get("permissions") or {}).get("contents") == "write")
+    if JOB_RELEASE not in datos["jobs"]:
+        assert not escriben, f"escriben contenidos sin crear release: {escriben}"
+        return
+    assert escriben == [JOB_RELEASE], (
+        f"jobs con contents: write = {escriben}; solo puede tenerlo "
+        f"{JOB_RELEASE}")
 
 
 def guarda_publicacion_en_entorno_protegido(datos: dict) -> None:
     for nombre in JOBS_DE_PUBLICACION:
-        assert datos["jobs"][nombre].get("environment"), (
+        job = datos["jobs"].get(nombre)
+        if job is None:
+            continue
+        assert job.get("environment"), (
             f"{nombre} publica sin environment: no hay puerta humana posible")
+
+
+def guarda_nadie_crea_una_release_antes_de_las_pruebas(datos: dict) -> None:
+    """Ningun camino llega a publicar sin haber pasado por `build` y `test`.
+
+    No basta con que el job correcto tenga sus `needs`: lo que hay que impedir
+    es que APAREZCA un segundo camino —un paso `gh release create` colado en
+    `build`, por ejemplo— que publique saltandoselos.
+    """
+    for nombre, job in datos["jobs"].items():
+        texto = _texto_de_pasos(job)
+        if not any(marca in texto for marca in CREAN_RELEASE):
+            continue
+        needs = _needs(job)
+        faltan = [r for r in ("build", "test") if r not in needs and r != nombre]
+        assert not faltan, (
+            f"{nombre} crea una GitHub Release sin esperar a {faltan}: "
+            "publicaria bytes que nadie construyo ni probo")
+
+
+def guarda_una_sola_descarga_del_artifact(datos: dict) -> None:
+    """Descargar dos veces es tener dos copias y verificar una."""
+    for nombre, job in datos["jobs"].items():
+        cuantas = sum(1 for p in _pasos(job)
+                      if "download-artifact" in str(p.get("uses", "")))
+        assert cuantas <= 1, (
+            f"{nombre} descarga el artifact {cuantas} veces; se verifica una y "
+            "se usa la otra")
+
+
+def guarda_la_release_publica_lo_verificado(datos: dict) -> None:
+    """El job no improvisa la lista de assets: la deriva de lo firmado."""
+    job = datos["jobs"].get(JOB_RELEASE)
+    if job is None:
+        return
+    texto = _texto_de_pasos(job)
+    assert "scripts/release_publish.py" in texto, (
+        f"{JOB_RELEASE} no usa scripts/release_publish.py: la lista de assets, "
+        "la idempotencia y la comprobacion posterior quedarian escritas en YAML, "
+        "donde no se pueden probar en local")
+    assert "--dir artefactos" in texto, (
+        "se publica desde otro sitio que no es el artifact verificado")
+    assert "--expect-version" in texto, (
+        f"{JOB_RELEASE} no ata el tag a la version que declaran los manifiestos")
 
 
 def guarda_nadie_reconstruye_al_publicar(datos: dict) -> None:
     for nombre in JOBS_DE_PUBLICACION:
-        texto = _texto_de_pasos(datos["jobs"][nombre])
+        job = datos["jobs"].get(nombre)
+        if job is None:
+            continue
+        texto = _texto_de_pasos(job)
         for reconstruir in ("python -m build", "pip wheel", "setup.py"):
             assert reconstruir not in texto, (
                 f"{nombre} reconstruye con '{reconstruir}': publicaria bytes "
@@ -181,11 +303,16 @@ def guarda_acciones_pineadas_por_sha(datos: dict) -> None:
 
 
 GUARDAS = (
+    guarda_existe_el_job_de_github_release,
     guarda_publicacion_depende_de_todo,
     guarda_publicacion_solo_desde_un_tag,
     guarda_dispatch_no_publica_por_defecto,
     guarda_solo_publicacion_pide_id_token,
+    guarda_solo_el_job_de_release_escribe_contenidos,
     guarda_publicacion_en_entorno_protegido,
+    guarda_nadie_crea_una_release_antes_de_las_pruebas,
+    guarda_una_sola_descarga_del_artifact,
+    guarda_la_release_publica_lo_verificado,
     guarda_nadie_reconstruye_al_publicar,
     guarda_todo_consumidor_verifica_antes_de_usar,
     guarda_publicacion_sube_el_directorio_verificado,
@@ -260,7 +387,73 @@ def _tag_flotante(d):
     return d
 
 
+def _sin_job_de_release(d):
+    """El defecto tal y como estaba: el workflow entero, sin ese job."""
+    d["jobs"].pop(JOB_RELEASE)
+    return d
+
+
+def _release_sin_pypi(d):
+    """Publicar la release aunque PyPI falle: el instalador sin paquete detras."""
+    d["jobs"][JOB_RELEASE]["needs"] = ["build", "test", "publicar-mcp"]
+    return d
+
+
+def _release_sin_mcp(d):
+    d["jobs"][JOB_RELEASE]["needs"] = ["build", "test", "publicar-pypi"]
+    return d
+
+
+def _contents_write_en_build(d):
+    d["jobs"]["build"]["permissions"]["contents"] = "write"
+    return d
+
+
+def _release_con_id_token(d):
+    d["jobs"][JOB_RELEASE]["permissions"]["id-token"] = "write"
+    return d
+
+
+def _release_a_mano_en_el_build(d):
+    """Un segundo camino que publica sin pasar por las pruebas."""
+    d["jobs"]["build"]["steps"].append(
+        {"name": "atajo", "run": "gh release create v0.0.0 dist/*"})
+    return d
+
+
+def _release_descarga_dos_veces(d):
+    pasos = d["jobs"][JOB_RELEASE]["steps"]
+    descarga = next(p for p in pasos if "download-artifact" in str(p.get("uses", "")))
+    pasos.append(dict(descarga))
+    return d
+
+
+def _release_improvisa_los_assets(d):
+    """Subir «lo que haya» en vez de lo firmado en SHA256SUMS."""
+    pasos = d["jobs"][JOB_RELEASE]["steps"]
+    for p in pasos:
+        if "release_publish.py" in str(p.get("run", "")):
+            p["run"] = "gh release create ${{ github.ref_name }} artefactos/dist/*"
+    return d
+
+
 MUTACIONES = [
+    ("borrar el job de la GitHub Release", _sin_job_de_release,
+     guarda_existe_el_job_de_github_release),
+    ("publicar la release sin esperar a PyPI", _release_sin_pypi,
+     guarda_publicacion_depende_de_todo),
+    ("publicar la release sin esperar al MCP Registry", _release_sin_mcp,
+     guarda_publicacion_depende_de_todo),
+    ("dar contents: write al job de construccion", _contents_write_en_build,
+     guarda_solo_el_job_de_release_escribe_contenidos),
+    ("pedir id-token en el job de la release", _release_con_id_token,
+     guarda_solo_publicacion_pide_id_token),
+    ("crear una release a mano dentro de build", _release_a_mano_en_el_build,
+     guarda_nadie_crea_una_release_antes_de_las_pruebas),
+    ("descargar el artifact dos veces", _release_descarga_dos_veces,
+     guarda_una_sola_descarga_del_artifact),
+    ("subir un glob en vez de lo firmado", _release_improvisa_los_assets,
+     guarda_la_release_publica_lo_verificado),
     ("quitar `needs: test` de publicar-pypi", _sin_needs,
      guarda_publicacion_depende_de_todo),
     ("permitir publicar desde una rama", _sin_tag,

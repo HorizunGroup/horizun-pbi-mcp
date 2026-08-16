@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible defect in the MCP, plugin or installer.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not upload real `.pbix`/`.pbip` projects, credentials, DAX containing private data or customer files. Use a synthetic reproduction whenever possible.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "2.0.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client
+      options:
+        - Codex
+        - Claude Code
+        - Claude Desktop
+        - Other stdio client
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows, Python and Power BI Desktop versions when relevant.
+      placeholder: "Windows 11, Python 3.13, Power BI Desktop 2.x"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the tool name, sanitized inputs and the exact sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized evidence
+      description: Redact paths, queries, result rows, secrets and project names.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed real project data, credentials and customer information.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

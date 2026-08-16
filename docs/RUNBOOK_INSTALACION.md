@@ -90,7 +90,7 @@ directorios hermanos bajo el data root:
 dir %LOCALAPPDATA%\HorizunPbiMcp\plugin
 ```
 
-Verás `1.5.4`, `2.0.0`, y quizá `.previous-<version>-<ts>-<uuid>`. Para forzar
+Verás `1.5.4`, `2.0.1`, y quizá `.previous-<version>-<ts>-<uuid>`. Para forzar
 que se sirva una de ellas, borra el estado y deja que se readopte:
 
 ```bash
@@ -243,7 +243,7 @@ python scripts/bundle.py construir --salida C:\entrega --componentes wheelhouse 
 ### 7.2 Verificarlo antes de moverlo
 
 ```bash
-python scripts/bundle.py verificar C:\entrega\horizun-pbi-mcp-2.0.0-bundle.zip
+python scripts/bundle.py verificar C:\entrega\horizun-pbi-mcp-2.0.1-bundle.zip
 ```
 
 Comprueba tamaño, manifiesto contra su hash, que no haya archivos sin declarar
@@ -252,7 +252,7 @@ ni declarados que falten, y el SHA-256 de cada miembro. **No extrae nada.**
 ### 7.3 Instalarlo (en la máquina SIN red)
 
 ```bash
-python scripts/bundle.py instalar C:\entrega\horizun-pbi-mcp-2.0.0-bundle.zip --destino %LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.0
+python scripts/bundle.py instalar C:\entrega\horizun-pbi-mcp-2.0.1-bundle.zip --destino %LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.1
 ```
 
 Verifica **entero antes de escribir un solo byte**, extrae a un staging, relee
@@ -271,7 +271,7 @@ desconectada: eso es lo único que queda de G4.7 y sigue en
 ### 7.5 La alternativa de antes, por si acaso
 
 Copiar el directorio de versión entero
-(`%LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.0\`) sigue funcionando, **pero solo si
+(`%LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.1\`) sigue funcionando, **pero solo si
 el data root es idéntico en las dos máquinas**: un venv de Python no es
 relocalizable. El bundle no tiene esa limitación.
 
@@ -297,8 +297,9 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restricted
 Después de revertirla, Claude Code puede dejar de funcionar. Es una decisión
 tuya, no un descuido del instalador.
 
-**Paquetes instalados por `winget`.** Python, Node y Claude Code se instalan a
-nivel de usuario. Cuando un paquete no publica un instalador etiquetado como
+**Paquetes instalados por `winget`.** Python, Git y Node opcional se instalan a
+nivel de usuario. Claude Code y Codex son clientes externos: este script no los
+instala. Cuando un paquete no publica un instalador etiquetado como
 *user*, winget responde `0x8A150044` y el instalador **lo anuncia y reintenta**
 con el instalador por defecto, que normalmente instala en tu perfil igual — y
 después **comprueba dónde aterrizó** y te lo dice. En ningún caso se pide

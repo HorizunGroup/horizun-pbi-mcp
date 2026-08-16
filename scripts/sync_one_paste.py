@@ -1,6 +1,6 @@
 """Propaga `scripts/one_paste.ps1` a los documentos que lo ofrecen.
 
-El bloque de un pegado vive en CUATRO sitios: el canonico y las tres copias que
+El bloque de un pegado vive en TRES sitios: el canonico y las dos copias que
 lee una persona. Mantenerlas a mano garantiza que un dia diverjan, y la que se
 quede atras sera precisamente la que alguien copie -nadie pega desde
 `scripts/`-. `tests/test_one_paste.py` prohibe la divergencia; este script es
@@ -24,7 +24,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 CANONICO = RAIZ / "scripts" / "one_paste.ps1"
 
 #: Los mismos que vigila tests/test_one_paste.py. Los historicos no se tocan.
-DOCUMENTOS = ("README.md", "docs/INSTALL.md", "skills/horizun-pbi-setup/SKILL.md")
+DOCUMENTOS = ("docs/INSTALL.md", "skills/horizun-pbi-setup/SKILL.md")
 
 #: Marca inequivoca del bloque: solo aparece dentro de el.
 HUELLA = "horizun-pbi-mcp-one-paste"

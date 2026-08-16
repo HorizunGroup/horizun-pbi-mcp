@@ -117,7 +117,9 @@ def test_hay_licencia_y_coincide_con_pyproject():
     assert "https://www.apache.org/licenses/" in texto
 
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'text = "Apache-2.0"' in pyproject
+    assert 'license = "Apache-2.0"' in pyproject
+    assert "License :: OSI Approved" not in pyproject, (
+        "el classifier de licencia esta obsoleto; SPDX es la fuente canonica")
 
 
 def test_la_licencia_aclara_que_las_dll_no_se_redistribuyen():

@@ -33,8 +33,8 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
-$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
+$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una
@@ -157,9 +157,10 @@ This is the recommended path for end users. It doesn't require a dedicated
 executable installer or hand-editing MCP files:
 
 ```bash
-# Codex
+# Codex CLI
 codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
-codex plugin add horizun-pbi-mcp@horizun
+# Then open `/plugins`, select the Horizun marketplace and install
+# `horizun-pbi-mcp`.
 
 # Claude Code
 claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
@@ -409,4 +410,7 @@ Official references: [Microsoft Graph app-only authentication](https://learn.mic
 
 Prefixes don't clash (`pbi_*` vs `pbir_*`), so several servers can be registered at once.
 
-**Caution:** two servers writing to the same `.pbip` don't coordinate with each other. Until Phase 1 adds locking and external-change detection, use only one per project at a time. See [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).
+**Caution:** this server coordinates its own writers with project locks and
+external-change detection, but a different MCP product does not participate in
+those locks. Use only one writer product per project at a time. See
+[CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).

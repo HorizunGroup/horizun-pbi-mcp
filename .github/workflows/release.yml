@@ -12,7 +12,8 @@ name: release
 #
 # El DAG de ahora, de arriba abajo y sin atajos:
 #
-#   tag v*  ->  build (una construccion, hashes, SBOM, twine check, asset)
+#   tag v*  ->  build (una construccion, hashes, SBOM, twine check, asset,
+#                 |      notas de release y migracion, todo firmado)
 #                 |
 #                 +-> test  (windows x {3.10, 3.13}) sobre ESOS bytes:
 #                 |         se verifica SHA256SUMS, se instala el wheel
@@ -22,12 +23,28 @@ name: release
 #                 +--------> publicar-pypi   (needs: build + test)
 #                                |
 #                                +----------> publicar-mcp (needs: + pypi)
+#                                                  |
+#                                                  +-> publicar-github-release
+#                                                      (needs: + mcp)
+#
+# RELEASE-004 — el ultimo eslabon faltaba y no se veia. Hasta v2.0.0 este
+# workflow publicaba en PyPI y en el MCP Registry y NO creaba ninguna GitHub
+# Release, mientras el bloque de un pegado del README, de docs/INSTALL.md y de
+# la skill descargaba `horizun-pbi-mcp-instalar.ps1` de
+# `releases/download/v<version>/...`. Es decir: el camino de instalacion que se
+# ofrece a la gente apuntaba a un asset que ningun job creaba jamas. El pipeline
+# habria terminado en verde con el one-paste en 404.
+#
+# La release va la ULTIMA a proposito. Publicarla antes que PyPI seria peor que
+# no publicarla: la gente descarga el instalador, y el `pip install` de dentro
+# no encuentra el paquete. Por eso `needs` la ata a los cuatro anteriores; si
+# PyPI o el registro fallan o se saltan, este job no corre.
 #
 # Cada job consumidor descarga el MISMO artifact y llama a
 # scripts/release_verify.py antes de tocarlo. La logica vive en esos scripts y
 # no en pasos `run:` porque un workflow no se puede ejecutar en una maquina de
 # desarrollo: escrito asi, el flujo entero se prueba en local y con pruebas
-# normales (tests/test_release_pipeline.py).
+# normales (tests/test_release_pipeline.py y tests/test_release_github.py).
 #
 # ACCIONES PINEADAS POR SHA COMPLETO. Un tag de action es movil: quien controle
 # el repositorio de la action puede reapuntarlo y ejecutar codigo nuevo en este
@@ -51,8 +68,11 @@ on:
         default: "no"
         type: string
 
-# Minimo por defecto. Solo los dos jobs de publicacion suben de aqui, y solo
-# para pedir el token OIDC que necesitan.
+# Minimo por defecto. Solo los jobs de publicacion suben de aqui: los dos
+# externos para pedir el token OIDC que necesitan, y el de la GitHub Release
+# para `contents: write`. Ninguno de los tres pide lo del otro: PyPI y el
+# registro NO pueden escribir en este repositorio, y el que crea la release NO
+# puede pedir un token OIDC con el que autenticarse fuera.
 permissions:
   contents: read
 
@@ -255,3 +275,51 @@ jobs:
 
       - name: Publish Horizun PBI MCP metadata
         run: ./mcp-publisher publish .mcp/server.json
+
+  # ---------------------------------------------- publicar GitHub Release ---
+  publicar-github-release:
+    name: Publicar la GitHub Release con los bytes firmados
+    # RELEASE-004. Los CUATRO anteriores. Con `needs` basta: si alguno falla o
+    # se salta, este no corre —es lo que paso en el intento de v2.0.0, donde
+    # publicar-pypi fallo y publicar-mcp quedo omitido—. La release es lo
+    # ultimo que se publica porque es lo primero que la gente descarga.
+    needs: [build, test, publicar-pypi, publicar-mcp]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
+    runs-on: ubuntu-latest
+    environment: github-release
+    # El UNICO job del workflow con escritura de contenidos, y solo con eso:
+    # sin `id-token`, porque no se autentica contra nada de fuera.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      # UNA sola descarga, del mismo artifact que probo `test` y que subieron
+      # los dos publicadores anteriores. No se reconstruye nada.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ${{ env.ARTEFACTO }}
+          path: artefactos
+
+      - name: Verificar digests y que el tag y los manifiestos coincidan
+        run: >-
+          python scripts/release_verify.py --dir artefactos
+          --expect-version ${{ github.ref_name }}
+
+      # Crea la release NO borrador y sube exactamente los archivos firmados en
+      # SHA256SUMS. Si alguno ya existe con otros bytes, para; si la release ya
+      # esta completa, la re-verifica descargandola y termina en verde. Al
+      # final comprueba que el instalador remoto tiene el SHA-256 y la URL que
+      # publica scripts/downloads_manifest.json.
+      - name: Crear la release y publicar exactamente esos bytes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          python scripts/release_publish.py --dir artefactos
+          --tag ${{ github.ref_name }} --repo ${{ github.repository }}

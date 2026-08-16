@@ -67,8 +67,8 @@ release. There is no long-term-support branch.
 
 | Version | Supported |
 |---|---|
-| `1.5.x` | ✅ Yes |
-| `1.4.x` and older | ❌ No — upgrade |
+| `2.0.x` | ✅ Yes |
+| `1.5.x` and older | ❌ No — upgrade |
 
 Upgrading is `claude plugin install horizun-pbi-mcp@horizun` again, or the
 one-paste installer, which is idempotent.
@@ -145,7 +145,19 @@ claim they are active. They are tracked as **RELEASE-003**, which stays
 | Push protection | Blocks the credential *before* it lands | same |
 | Dependabot **security updates** | The config file schedules updates; enabling security updates is a setting | same |
 | Private vulnerability reporting | Channel 1 of this document | `gh api repos/:owner/:repo/private-vulnerability-reporting` |
-| Protected `pypi` and `mcp-registry` environments with required reviewers | The human gate before anything is published | `gh api repos/:owner/:repo/environments` |
+| Protected `pypi`, `mcp-registry` and `github-release` environments with required reviewers | The human gate before anything is published | `gh api repos/:owner/:repo/environments` |
 
 Until those are configured and evidenced, treat this section — not the section
 above it — as the current state of the remote.
+
+**Read on 2026-08-15, so the gap is a measurement and not a guess:** `main` is
+**not protected** and has no rulesets, Dependabot security updates are
+**disabled**, secret scanning and push protection are **disabled**, and private
+vulnerability reporting is **disabled**. CodeQL is the one that *is* running —
+green on `main`/`1f0405b`, run 31913970370.
+
+The commands to change each of those, with the exact check names read from the
+real check-runs of `1f0405b`, plus a verification and a rollback for each, are
+written out and **deliberately not executed** in
+[`docs/PLAN_SEGURIDAD_GITHUB.md`](docs/PLAN_SEGURIDAD_GITHUB.md). A written plan
+is not evidence: these close when someone runs them and saves the JSON.

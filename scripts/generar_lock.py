@@ -19,11 +19,10 @@ instalador cae al resolutor **sin hashes**: justo en las versiones que mas gente
 usa se perdia la garantia que INSTALL-009 venia a dar, y el estado lo decia en
 una linea que nadie lee.
 
-Ahora hay un lock por combinacion soportada, resuelto con `--python-version` y
-`--platform`, y el instalador **elige por coincidencia exacta**. Si no hay lock
-para su combinacion no se inventa uno parecido: cae al resolutor y lo dice, que
-es honesto, pero entonces esa instalacion no es reproducible y G4.6 no esta
-cumplido para ella.
+Ahora hay un lock por combinacion soportada, cada uno resuelto con su **propio
+interprete real**, y el instalador elige por coincidencia exacta. Si no hay lock
+para su combinacion no se inventa uno parecido: cae al resolutor y lo dice. Ese
+fallback es honesto, pero no reproducible.
 
 ## Por que `--check` no habla con PyPI
 
@@ -74,8 +73,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 LOCKS = RAIZ / "scripts" / "locks"
 PYPROJECT = RAIZ / "pyproject.toml"
 
-#: Las combinaciones para las que HAY un lock fiel. Una sola, y el motivo es el
-#: nucleo de este archivo.
+#: Las combinaciones para las que HAY un lock fiel. Cada archivo se genera con
+#: su propio interprete y solo entra aqui despues de instalar correctamente con
+#: `--require-hashes` bajo esa misma version.
 #:
 #: La version anterior generaba los cinco desde un solo interprete con
 #: `pip --python-version`, y **eso no produce un lock fiel**: pip evalua los
@@ -90,22 +90,21 @@ PYPROJECT = RAIZ / "pyproject.toml"
 #: sin fijar, y lo dijo CI: *«In --require-hashes mode, all requirements must
 #: have their versions pinned with ==. These do not: exceptiongroup>=1.0.2»*.
 #:
-#: Asi que un lock se genera **en su propio interprete** o no se genera. Para
-#: anadir 3.10, 3.11, 3.12 o 3.13 hay que ejecutar este script con esa version;
-#: `PENDIENTES` dice cuales faltan y ninguna prueba finge que estan.
+#: Asi que un lock se genera **en su propio interprete** o no se genera. Los
+#: cinco declarados se construyen y se prueban por separado; la prueba de
+#: instalacion real es la evidencia, no esta lista.
 MATRIZ: Tuple[Tuple[str, str], ...] = (
-    ("3.14", "win_amd64"),
-)
-
-#: Declaradas en los classifiers y **sin lock todavia**, porque generarlas exige
-#: ese interprete. Mientras esto no este vacio, G4.6 no esta cumplido: en esas
-#: versiones el instalador cae al resolutor y lo dice en el estado.
-PENDIENTES: Tuple[Tuple[str, str], ...] = (
     ("3.10", "win_amd64"),
     ("3.11", "win_amd64"),
     ("3.12", "win_amd64"),
     ("3.13", "win_amd64"),
+    ("3.14", "win_amd64"),
 )
+
+#: Classifiers todavia sin lock fiel. Vacia solo porque cada entrada de MATRIZ
+#: fue generada y probada con su interprete exacto. Los tests exigen que
+#: classifiers == MATRIZ | PENDIENTES.
+PENDIENTES: Tuple[Tuple[str, str], ...] = ()
 
 
 def version_en_curso() -> str:

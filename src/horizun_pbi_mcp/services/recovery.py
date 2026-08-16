@@ -46,7 +46,7 @@ import shutil
 import stat
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PathSecurityError, PowerBIMCPError
@@ -82,7 +82,7 @@ class UnsafePurgeRoot(PowerBIMCPError):
 
 
 # ============================================================ recuperacion ====
-def _corrupto(mensaje: str, **details: Any) -> "NoReturn":  # type: ignore[valid-type]
+def _corrupto(mensaje: str, **details: Any) -> NoReturn:
     raise RecoveryError(
         mensaje, details={"state": CORRUPTED, **details})
 
@@ -371,6 +371,7 @@ def recover(active, journal_dir: Path, *, confirm: bool = False,
     fallidos: List[Dict[str, str]] = []
     estado = RECOVERED
     _anotar_recuperacion(jdir, estado, restaurados, fallidos)
+    assert cm.result is not None, "la transaccion confirmada debe tener resultado"
 
     resultado = {
         "journal": str(jdir), "state": estado, "recovered": True,

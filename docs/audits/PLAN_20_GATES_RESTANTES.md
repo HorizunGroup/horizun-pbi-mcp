@@ -1,20 +1,33 @@
-# Los 20 gates que faltan, y qué hace falta exactamente para cada uno
+# Los 18 gates que faltan, y qué hace falta exactamente para cada uno
 
-Ninguno pide más trabajo en esta máquina. Los 20 esperan **un entorno** o **una
+> **El nombre del archivo dice 20 y es histórico.** Se conserva para no romper
+> enlaces; el número que vale es el de la partición, y hoy son **18**. Si vuelve
+> a moverse, se mueve aquí y en
+> [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md), que es de donde sale.
+
+Ninguno pide más trabajo en esta máquina. Los 18 esperan **un entorno** o **una
 autorización**, y este documento existe para que quien los tenga no tenga que
 reconstruir el contexto: preparación, comando, la mutación que hay que inyectar
 para que el verde signifique algo, el resultado esperado, qué evidencia guardar,
 cómo limpiar después, el riesgo y quién tiene que autorizarlo.
 
-Reparto: **5 parciales** —el mecanismo ya está demostrado aquí— y **15 externos
+Reparto: **5 parciales** —el mecanismo ya está demostrado aquí— y **13 externos
 puros**. La partición está en
 [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md).
 
-Antes de leer nada de esto conviene saber que **dos de los que estaban en esta
-lista se cayeron el 2026-08-15 al comprobar qué había en la máquina**: G4.3 solo
-necesitaba Node ≥20 y G4.6 pedía un runner Linux para un producto que declara
-Windows y nada más. Es el tercer y cuarto caso, después de G3.6 y G4.7. Antes de
-aceptar cualquiera de los 20 de abajo, conviene repetir la comprobación.
+Antes de leer nada de esto conviene saber que **cinco de los que estaban en
+esta lista se cayeron al comprobar qué había de verdad**. El 2026-08-15, por
+inventario de la máquina: G4.3 solo necesitaba Node ≥20; G4.6 se cerró generando
+y probando los cinco locks con sus intérpretes reales, sin simular marcadores
+con `pip --python-version`. Y el mismo día, por lectura del remoto
+tras el intento fallido de `v2.0.0`: **G6.2 y G7.2**, que estaban archivados por
+arrastre de bloque y ya tenían su evidencia en el remoto sin que nadie hubiera
+ido a mirarla (ver
+[`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md)).
+
+Son el tercer, cuarto, quinto y sexto caso después de G3.6, G4.7 y G5.5. **Antes
+de aceptar cualquiera de los 18 de abajo, repite la comprobación**: la etiqueta
+«externo» se pega a bloques enteros y sobrevive a que el bloqueo desaparezca.
 
 ---
 
@@ -159,15 +172,16 @@ que abortar **antes de escribir nada**.
 
 ---
 
-## Grupo 4 · Release publicada — G6.1, G6.2, G6.4
+## Grupo 4 · Release publicada — G6.1, G6.4
 
 | | |
 |---|---|
-| Entorno | una release real de **v2.0.0** en el remoto |
+| Entorno | una release real de **v2.0.1** en el remoto |
 | Autorización | **permiso explícito de publicación**, que este ciclo no tiene |
+| Prerrequisito | el *trusted publisher* de PyPI, configurado a mano: es lo que falló en `v2.0.0` con `invalid-publisher`. Procedimiento en [`PYPI_TRUSTED_PUBLISHER.md`](PYPI_TRUSTED_PUBLISHER.md) |
 | Riesgo | alto: publicar es irreversible en la práctica |
 
-Los tres dependen de lo mismo. `scripts/downloads_manifest.json` declara
+Los dos dependen de lo mismo. `scripts/downloads_manifest.json` declara
 `pending_remote_release` precisamente para no fingir lo contrario, y hay una
 prueba que lo vigila.
 
@@ -175,21 +189,28 @@ prueba que lo vigila.
 del wheel y del sdist publicados con los de `SHA256SUMS` del build que pasó CI.
 *Esperado:* idénticos.
 
-**G6.2 — publicar exige CI verde del mismo commit.** Intentar publicar desde un
-commit con CI en rojo. *Esperado:* el workflow **no publica**. Es la mutación que
-hace que el verde signifique algo.
-
 **G6.4 — el script remoto se verifica antes de ejecutarse.** Descargar el asset
 `horizun-pbi-mcp-instalar.ps1` de la release y comprobar que su SHA-256 coincide
-con el del manifiesto: `d78f9989…`. *Esperado:* coincide, y si se publica
+con el del manifiesto —el valor canónico está en
+`scripts/downloads_manifest.json` y **no se copia aquí**, porque una segunda
+copia en prosa envejece en silencio—. *Esperado:* coincide, y si se publica
 cualquier otro contenido bajo ese nombre, el one-paste **no ejecuta nada**.
 
 > G6.4 está **parcial**: la lógica está probada contra un servidor local en once
-> escenarios de fallo. Lo único que falta es el asset real.
+> escenarios de fallo. Lo único que falta es el asset real. Desde v2.0.1 ya
+> existe **quién lo publica** —el job `publicar-github-release`, que además
+> relee el asset y compara digest y URL contra el manifest—; antes no lo creaba
+> nadie, que es RELEASE-004.
+
+> **G6.2 salió de este grupo el 2026-08-15**, sin publicar nada: lo que pedía se
+> observó en el run 31914746886, donde `publicar-mcp` quedó omitido porque
+> `publicar-pypi` falló. Ver
+> [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md), que
+> también acota qué **no** demuestra.
 
 ---
 
-## Grupo 5 · Configuración del remoto de GitHub — G7.1 … G7.5
+## Grupo 5 · Configuración del remoto de GitHub — G7.1, G7.3, G7.4, G7.5
 
 | | |
 |---|---|
@@ -197,18 +218,29 @@ cualquier otro contenido bajo ese nombre, el one-paste **no ejecuta nada**.
 | Autorización | **admin del repositorio** |
 | Riesgo | bajo, pero son cambios de configuración de la organización |
 
-| Gate | Qué hay que activar | Cómo se comprueba |
-|---|---|---|
-| G7.1 | `main` protegida, sin push directo | intentar un push directo: rechazado |
-| G7.2 | CodeQL activo | una ejecución en verde en Actions |
-| G7.3 | Dependabot *security updates* | la pestaña Security lo muestra activo |
-| G7.4 | *Secret scanning* y *push protection* | empujar un secreto de prueba: bloqueado |
-| G7.5 | *Private vulnerability reporting* | la opción activa en Security |
+| Gate | Qué hay que activar | Estado leído el 2026-08-15 | Cómo se comprueba |
+|---|---|---|---|
+| G7.1 | `main` protegida, sin push directo | **sin protección** | intentar un push directo: rechazado |
+| G7.3 | Dependabot *security updates* | **deshabilitado** | la pestaña Security lo muestra activo |
+| G7.4 | *Secret scanning* y *push protection* | **deshabilitados** | empujar un secreto de prueba: bloqueado |
+| G7.5 | *Private vulnerability reporting* | **no habilitado** | la opción activa en Security |
+
+Los comandos `gh api` de los cuatro están **escritos y sin ejecutar** en
+[`../PLAN_SEGURIDAD_GITHUB.md`](../PLAN_SEGURIDAD_GITHUB.md), cada uno con su
+verificación y su *rollback*. Los nombres de los checks obligatorios están
+**leídos de los check-runs reales de `1f0405b`**, no inventados: un nombre
+inventado en `required_status_checks` bloquea `main` para siempre esperando un
+check que nadie va a publicar.
 
 El repositorio ya trae lo que sí es local: los workflows de CodeQL y Dependabot
 están escritos y las Actions pineadas por SHA (G7.6, cumplido). Lo que falta es
 **encenderlo en el remoto**, y eso no se puede hacer desde aquí ni se debe hacer
 sin permiso.
+
+> **G7.2 salió de este grupo el 2026-08-15**: CodeQL llevaba en verde desde el
+> push de `1f0405b` —run 31913970370, check-run `Analizar (python)`— y nadie
+> había ido a mirarlo. El gate pedía una ejecución verde en Actions, no un
+> ajuste de configuración; estaba en el grupo equivocado.
 
 ---
 

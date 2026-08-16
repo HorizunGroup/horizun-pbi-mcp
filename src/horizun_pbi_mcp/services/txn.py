@@ -794,7 +794,7 @@ class transaction:
         # de seguridad: protege tambien de lo que el cerrojo no ve -alguien
         # editando el informe en Power BI Desktop mientras tanto-, y las dos
         # juntas cubren mas que cualquiera sola.
-        self._cerrojo = _cerrojo.exclusion(
+        cerrojo = _cerrojo.exclusion(
             self.txn.backup_root / ".project.lock",
             timeout=LOCK_PROYECTO_SEGUNDOS,
             al_agotarse=lambda t: TransactionError(
@@ -802,14 +802,15 @@ class transaction:
                 "proyecto y no se ha podido tomar el turno. No se toco nada.",
                 details={"project_dir": str(self.txn.project_dir),
                          "lock_timeout_seconds": t}))
-        self._cerrojo.__enter__()
+        self._cerrojo = cerrojo
+        cerrojo.__enter__()
         try:
             # El baseline se toma ANTES de tocar nada: sin el, los defectos que
             # ya traia el informe se atribuirian a esta operacion.
             self._baseline = self._diagnosticar()
             self.txn.plan(self._targets)
         except BaseException:
-            self._cerrojo.__exit__(*sys.exc_info())
+            cerrojo.__exit__(*sys.exc_info())
             self._cerrojo = None
             raise
         return self.txn

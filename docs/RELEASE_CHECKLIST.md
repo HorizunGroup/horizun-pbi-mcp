@@ -106,8 +106,16 @@ On a **copy** outside OneDrive, never on the original:
 
 ## Tagging
 
-The release candidate version is **`v2.0.0`**. The exceptions below are documented
+The release candidate version is **`v2.0.1`**. The exceptions below are documented
 product limits, not hidden bugs or skipped criteria.
+
+> **`v2.0.0` is burned.** That tag exists on the remote — it points at
+> `1f0405b` — but it was created during a **failed publication attempt**: the
+> release run built and tested correctly, `publicar-pypi` failed with
+> `invalid-publisher`, `publicar-mcp` was skipped, and nothing was ever
+> published to GitHub Releases, PyPI or the MCP Registry. A public tag may have
+> been fetched by third parties during that window, so **the tag is immutable
+> and is not reused, moved or deleted**. The pipeline fix ships as `v2.0.1`.
 
 The version declared in `branding.VERSION` / `pyproject.toml` must match the tag **before** tagging. Installing from a tag and getting a package that reports a different version is exactly what these checks exist to prevent.
 
@@ -135,6 +143,12 @@ MCP Registry — the two standalone publish workflows are gone.
 
     tag v*  ->  build  ->  test (windows x 3.10/3.13)  ->  publicar-pypi
                                                               -> publicar-mcp
+                                                                 -> publicar-github-release
+
+The last link was **missing until v2.0.1** (RELEASE-004): nothing created a
+GitHub Release, while the one-paste block in this repository downloads
+`horizun-pbi-mcp-instalar.ps1` from `releases/download/v<version>/`. The
+installation path offered to users pointed at an asset no job ever created.
 
 What that means in practice, and what to check before tagging:
 
@@ -148,25 +162,41 @@ What that means in practice, and what to check before tagging:
    otherwise. Check it locally first:
 
    ```bash
-   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 2.0.0
+   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 2.0.1
    ```
 
 4. **The release asset `horizun-pbi-mcp-instalar.ps1` must be the frozen bytes**
-   of `scripts/instalar.ps1` — currently 21 016 bytes,
-   `33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5`.
-   Publishing anything else under that name breaks the one-paste installer for
-   everyone, which is exactly what the hash is there to guarantee. The build
-   emits the asset already verified against `scripts/downloads_manifest.json`.
-5. **`SHA256SUMS` and the CycloneDX SBOM** ship with the release.
-6. **Right after publishing**: download the asset from the release URL, compare
-   its SHA-256 with the value above, and only then flip
-   `status: pending_remote_release` in `scripts/downloads_manifest.json`. Until
-   that comparison exists, INSTALL-003, RELEASE-001 and RELEASE-002 stay
-   *partially closed* in `docs/MATRIZ_REMEDIACION.md`.
+   of `scripts/instalar.ps1`. The size and SHA-256 are **not repeated here on
+   purpose** — the one canonical copy lives in
+   `scripts/downloads_manifest.json`, and a second copy in prose is a number
+   that goes stale silently. (It did: this checklist claimed 21 016 bytes and a
+   `33fa1058…` digest long after the installer had changed.) The build emits
+   the asset already verified against the manifest, and `release_publish.py`
+   re-reads it **from the published release** and compares both the digest and
+   the download URL.
+5. **The release publishes exactly what `SHA256SUMS` covers**: wheel, sdist,
+   installer, CycloneDX SBOM, release notes and migration notes — plus
+   `SHA256SUMS` itself, which is the only one that cannot sign itself. The list
+   is derived from the signed manifest, never from a glob.
+6. **The post-publication check is part of the job, not a manual step.**
+   `publicar-github-release` downloads every asset back, compares each digest
+   with the signed one, and fails if the installer's SHA-256 or its
+   `browser_download_url` is not exactly what the manifest declares. Flip
+   `status: pending_remote_release` to `published` in
+   `scripts/downloads_manifest.json` only **after** that job has finished
+   green, and record the run id.
 
-The `pypi` and `mcp-registry` environments need required reviewers configured on
-GitHub; that, and the other remote controls, are listed in
-[`../SECURITY.md`](../SECURITY.md#pending-remote-controls).
+The `pypi`, `mcp-registry` and `github-release` environments need required
+reviewers configured on GitHub; that, and the other remote controls, are listed
+in [`../SECURITY.md`](../SECURITY.md#pending-remote-controls). `github-release`
+is new in v2.0.1 and GitHub creates it on first use with **no** protection
+rules — declaring it in the workflow is what makes a human gate *possible*, not
+what configures it.
+
+PyPI additionally needs its **trusted publisher** configured before `v2.0.1` is
+tagged: that is what failed on the `v2.0.0` attempt, with `invalid-publisher`.
+The exact claims observed in that run and the manual procedure are in
+[`audits/PYPI_TRUSTED_PUBLISHER.md`](audits/PYPI_TRUSTED_PUBLISHER.md).
 
 For this release, an isolated reproducible environment plus the CI matrix
 on clean GitHub machines is accepted; a second physical machine isn't needed:

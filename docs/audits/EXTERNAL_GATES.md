@@ -42,18 +42,35 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.4 | INSTALL-002 | VM con Node 18 | Windows + Node 18 en el PATH |
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
-| G4.6 | INSTALL-009 | intérpretes 3.10, 3.11, 3.12 y 3.13 (**un lock se genera en su propio intérprete**) | esas cuatro versiones de Python en Windows |
 | G4.7 | INSTALL-009 | VM sin salida real (**el bundle ya existe y se prueba aquí**) | VM desconectada o proxy corporativo |
 | G5.1–G5.4 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G5.6 | TEST-003 | Desktop (**la prueba ya existe y es local**) | Desktop con un `.pbip` de prueba |
-| G6.1 | RELEASE-001 | Release publicada | Permiso de publicación |
-| G6.2 | RELEASE-002 | Release publicada | Permiso de publicación |
-| G6.4 | INSTALL-003 | Asset de v1.5.5 | Permiso de publicación |
-| G7.1–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
+| G6.1 | RELEASE-001 | 2.x publicada en PyPI | Permiso de publicación |
+| G6.4 | INSTALL-003 | Asset de v2.0.1 | Permiso de publicación |
+| G7.1 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
+| G7.3–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**14 filas, 21 gates** —dos filas agrupan un rango entero, `G5.1–G5.6` y
-`G7.1–G7.5`, porque los seis y los cinco comparten el mismo bloqueo. Contar filas
-y decir «14 externos» dejaría fuera siete gates que nadie estaría vigilando.
+**14 filas, 18 gates** —dos filas agrupan un rango entero, `G5.1–G5.4` y
+`G7.3–G7.5`, porque comparten el mismo bloqueo. Contar filas y decir «14
+externos» dejaría fuera gates que nadie estaría vigilando. De los 18, **5 son
+parciales** —G3.3, G4.1, G4.7, G5.6 y G6.4, con el mecanismo ya demostrado
+aquí— y **13 son externos puros**.
+
+> **G6.2 y G7.2 salieron de esta lista el 2026-08-15**, y son el cuarto y el
+> quinto caso después de G3.6, G4.7 y G5.5. Los dos estaban aquí por
+> arrastre de bloque: G6.2 archivado junto a G6.1 y G6.4 bajo «hace falta una
+> release publicada», y G7.2 dentro del rango `G7.1–G7.5` de «configuración del
+> remoto». Ninguno de los dos lo necesitaba. **G6.2** pedía comprobar que un
+> fallo aguas arriba impide publicar, y eso se ve en un run que **falló**, no en
+> uno que publicó: el 31914746886 dejó `publicar-mcp` omitido porque
+> `publicar-pypi` falló. **G7.2** pedía CodeQL en verde en el remoto, y estaba
+> en verde desde el push de `1f0405b`; nadie había ido a mirarlo. Comandos de
+> lectura y salida capturada en
+> [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md).
+>
+> G7.2 obliga además a partir el rango: `G7.1–G7.5` incluía un gate cumplido, y
+> una fila así hace decir al documento que sigue haciendo falta un admin para
+> algo que ya está hecho.
 
 > **G4.7 salió de esta tabla el 2026-08-15**, y es el segundo caso después de
 > G3.6. Su propia ficha decía «la parte *construir el bundle* sí es trabajo local
@@ -62,9 +79,11 @@ y decir «14 externos» dejaría fuera siete gates que nadie estaría vigilando.
 > partición y su procedimiento se conserva abajo para cuando vuelva: lo que
 > quedará entonces —ejecutarlo en una VM realmente desconectada— sí es externo.
 
-Los cuatro de release y los cinco del remoto comparten
-una sola dependencia: que exista una release real de v1.5.5, que **no existe**, y
-que este ciclo tiene prohibido crear.
+Los dos de release comparten una sola dependencia: que exista una release real
+de **v2.0.1**, que **no existe**, y que este ciclo tiene prohibido crear. El tag
+`v2.0.0` sí existe en el remoto, pero es el de un intento fallido: sin release,
+sin PyPI y sin registro. **Un tag no es una release publicada**, y no cierra ni
+G6.1 ni G6.4.
 
 ---
 
@@ -166,46 +185,6 @@ journal huérfano; la siguiente instalación termina limpia.
 
 ---
 
-## G4.6 — reproducibilidad fuera de Windows
-
-**Bloqueo exacto.** La matriz `win_amd64 × {3.10, 3.13, 3.14}` está fijada por
-versión y SHA-256, y CI la instala de verdad en 3.10 y 3.13. Lo que falta es una
-plataforma que no sea Windows: ahí no hay lock, el instalador cae al resolutor
-—y lo declara— y esa instalación no es reproducible.
-
-**Infraestructura.** Un runner Linux o macOS con Python ≥3.10.
-
-**Procedimiento.** Añadir la plataforma a `MATRIZ` en `scripts/generar_lock.py`,
-regenerar, y correr la suite completa allí: `test_dos_instalaciones_reales_...`
-instala dos veces desde el lock y compara `pip freeze`.
-
-**Resultado esperado.** Los dos `pip freeze` idénticos entre sí e iguales a lo
-fijado, y `dependencias.source == "lock"` en el estado de instalación.
-
----
-
-## G4.6 — un lock por intérprete, y faltan cuatro
-
-**Se dio por cumplido el 2026-08-15 y CI lo desmintió el mismo día.** La matriz
-se generaba desde un solo intérprete con `pip --python-version`, y eso **no
-produce un lock fiel**: pip cambia las etiquetas de rueda compatibles pero
-evalúa los **marcadores de entorno** contra el intérprete que corre. Los locks
-de 3.10–3.13 salían sin `exceptiongroup` —que `anyio` solo pide en
-`python_version < "3.11"`— y `--require-hashes` se negaba a instalarlos.
-
-**Bloqueo exacto.** Hace falta ejecutar `python scripts/generar_lock.py` **con
-cada intérprete**: 3.10, 3.11, 3.12 y 3.13, en Windows. No es una VM ni un
-permiso: son cuatro instalaciones de Python.
-
-**Resultado esperado.** Cuatro locks más, cada uno con su cabecera declarando su
-versión, y `test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones`
-en verde en cada uno.
-
-**Mutación que da sentido al verde.** Pedirle al generador un lock de otra
-versión: tiene que **negarse**, no producirlo.
-
----
-
 ## G4.7 — bundle offline y runbook de proxy
 
 **Ya no está aquí por lo que faltaba antes.** El bundle **existe**:
@@ -225,9 +204,9 @@ sin salida, `verificar` y `instalar`, y hablar MCP por stdio con lo instalado.
 en el registro del proxy.
 
 **Ojo con el hermano.** G4.6 —el lock con hashes— compartía hallazgo con este y
-**no** era externo: se cerró el 2026-08-15 instalando el lock en dos venv limpios y
-comparando `pip freeze`. Que dos gates citen el mismo hallazgo no los hace igual
-de inalcanzables; conviene mirarlos por separado antes de aparcar los dos.
+**no** era externo: se cerró el 2026-08-15 con cinco intérpretes reales, dos venv
+limpios por versión y comparación de `pip freeze`. Que dos gates citen el mismo
+hallazgo no los hace igual de inalcanzables.
 
 ---
 
@@ -275,35 +254,63 @@ y la salida de `pbi_session_info`.
 
 ---
 
-## G6.1 · G6.2 · G6.4 — la release que no existe
+## G6.1 · G6.4 — la release que no existe
 
-**Bloqueo exacto.** Los tres necesitan una release publicada de v1.5.5.
+**Bloqueo exacto.** Los dos necesitan una release publicada de **v2.0.1**.
 `scripts/downloads_manifest.json` declara `status: pending_remote_release`
 precisamente para no fingir lo contrario, y una prueba lo vigila.
 
 **Autorización.** Permiso explícito para publicar, que este ciclo **no tiene**.
+Y antes de intentarlo otra vez, el *trusted publisher* de PyPI: es lo que falló
+en `v2.0.0` con `invalid-publisher`, y el procedimiento manual está en
+[`PYPI_TRUSTED_PUBLISHER.md`](PYPI_TRUSTED_PUBLISHER.md).
 
 **Procedimiento.** Publicar la release; descargar el asset publicado; comparar su
 SHA-256 con el congelado en el manifiesto y en el bloque de un pegado (G6.4);
-comparar el digest publicado en PyPI con el que pasó la suite (G6.1); empujar un
-tag con la suite en rojo y comprobar que no publica (G6.2).
+comparar el digest publicado en PyPI con el que pasó la suite (G6.1).
 
-**Evidencia.** Los digests de las dos partes, la URL del asset y el run de CI que
-no publicó.
+**Lo que v2.0.1 ya aporta.** Hasta ahora faltaba **quién** publicaba el asset:
+ningún job creaba la GitHub Release (RELEASE-004). El job
+`publicar-github-release` la crea, sube exactamente lo firmado en `SHA256SUMS` y
+**relee el instalador publicado** para comparar su SHA-256 y su
+`browser_download_url` con el manifest. O sea: la comprobación que G6.4 pide a
+mano ya es parte del pipeline. Lo que sigue faltando es que ese pipeline llegue
+a ejecutarse con permiso de publicación.
+
+**Evidencia.** Los digests de las dos partes, la URL del asset, y el run del job
+`publicar-github-release` en verde.
+
+> **G6.2 salió de aquí el 2026-08-15**, con evidencia del remoto y sin publicar
+> nada: ver el aviso del resumen y
+> [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md).
 
 ---
 
-## G7.1–G7.5 — controles del remoto
+## G7.1 · G7.3–G7.5 — controles del remoto
 
 **Bloqueo exacto.** Son ajustes de configuración del repositorio en GitHub:
-protección de `main`, CodeQL, Dependabot, *secret scanning* y *private
-vulnerability reporting*. Este ciclo tiene prohibido cambiar configuración remota.
+protección de `main` (G7.1), Dependabot *security updates* (G7.3), *secret
+scanning* con *push protection* (G7.4) y *private vulnerability reporting*
+(G7.5). Este ciclo tiene prohibido cambiar configuración remota.
+
+**Estado comprobado el 2026-08-15**, por lectura: `main` **no está protegida**,
+Dependabot *security updates* **deshabilitado**, *secret scanning* y *push
+protection* **deshabilitados**, *private vulnerability reporting* **no
+habilitado**.
 
 **Autorización.** Permisos de administración sobre el repositorio.
 
-**Procedimiento.** Aplicarlos y capturar la salida de `gh api` de cada uno.
+**Procedimiento.** Los comandos `gh api` de cada ajuste están **escritos y sin
+ejecutar** en [`../PLAN_SEGURIDAD_GITHUB.md`](../PLAN_SEGURIDAD_GITHUB.md), con
+su verificación y su *rollback*, y con los nombres de check **leídos de los
+check-runs reales de `1f0405b`** en vez de inventados.
 
 **Evidencia.** La respuesta JSON de `gh api` por gate, fechada.
+
+> **G7.2 —CodeQL— salió de aquí el 2026-08-15**: estaba en verde en el remoto
+> desde el push de `1f0405b` y nadie había ido a mirarlo. Por eso el rango se
+> parte: dejarlo escrito como `G7.1–G7.5` haría decir a este documento que
+> sigue haciendo falta un admin para algo que ya está hecho.
 
 > G7.6 —actions pineadas por SHA— **ya está cumplido** y no es externo: se
 > decide leyendo los workflows, y `tests/test_repo_security.py` lo vigila.

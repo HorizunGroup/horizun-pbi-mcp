@@ -5,7 +5,47 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [2.0.0] — unreleased
+## [2.0.1] — unreleased
+
+**The first public release of the 2.x line.** Everything listed under `2.0.0`
+below ships here; what `2.0.1` adds is the piece of the pipeline that was
+missing, and without which none of it reached anyone.
+
+### Fixed
+
+- **The release pipeline never created a GitHub Release** (RELEASE-004). It
+  built once, tested those bytes, published to PyPI and published to the MCP
+  Registry — and stopped. Meanwhile the one-paste block offered in `README.md`,
+  `docs/INSTALL.md` and `skills/horizun-pbi-setup/SKILL.md` downloads
+  `horizun-pbi-mcp-instalar.ps1` from `releases/download/v<version>/`: **the
+  installation path we hand people pointed at an asset no job ever created.**
+  It was a defect of omission — every guard in `tests/test_release_pipeline.py`
+  asked whether the existing jobs did something wrong, and none asked whether a
+  job was missing.
+  There is now a `publicar-github-release` job that depends on `build`, `test`,
+  `publicar-pypi` **and** `publicar-mcp`; is the only job in the workflow with
+  `contents: write` and has no OIDC token; publishes exactly the files signed in
+  `SHA256SUMS`; refuses to replace an asset that already exists with different
+  bytes; is idempotent on a rerun; and, **after** uploading, downloads every
+  asset back to compare digests and checks that the installer's SHA-256 and
+  `browser_download_url` are exactly what `scripts/downloads_manifest.json`
+  declares.
+- **The release and migration notes are now part of the signed artifact.**
+  Published from the checkout they would have been the only bytes of the release
+  nobody verified.
+
+### Note on the `2.0.0` tag
+
+The tag `v2.0.0` exists on the remote and points at `1f0405b`, but it was
+created during a **failed publication attempt**: build and tests passed,
+`publicar-pypi` failed with `invalid-publisher`, `publicar-mcp` was skipped, and
+nothing was published to GitHub Releases, PyPI or the MCP Registry. A public tag
+may have been fetched by third parties during that window, so **it is immutable
+and is not reused, moved or deleted.** The correction is delivered as `2.0.1`.
+
+---
+
+## [2.0.0] — never published (failed release attempt; superseded by 2.0.1)
 
 **Breaking.** Three contract changes, ratified in writing before being applied —
 the dossier is [`docs/audits/CONTRACT_003_RATIFICATION.md`](docs/audits/CONTRACT_003_RATIFICATION.md)

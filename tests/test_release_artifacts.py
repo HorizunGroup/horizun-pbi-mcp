@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,18 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 CONSTRUIR = RAIZ / "scripts" / "release_build.py"
 VERIFICAR = RAIZ / "scripts" / "release_verify.py"
+
+
+def _version_declarada() -> str:
+    """La version se LEE, no se escribe aqui.
+
+    Estaba puesta a mano —`2.0.0`— y esta prueba se volvio roja en el primer
+    cambio de version, acusando al pipeline de un defecto que no tenia. Un
+    numero copiado a una prueba es la misma clase de duplicado que el hash del
+    instalador copiado a la documentacion.
+    """
+    texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    return re.search(r'^version = "([^"]+)"', texto, re.M).group(1)
 
 pytestmark = pytest.mark.packaging
 
@@ -116,7 +129,7 @@ def test_sha256sums_cubre_todo_lo_publicable(artefacto):
 
 
 def test_el_artefacto_recien_construido_se_verifica(artefacto):
-    res = _verificar(artefacto, "2.0.0")
+    res = _verificar(artefacto, _version_declarada())
     assert res.returncode == 0, f"{res.stdout}\n{res.stderr}"
     assert "digests OK" in res.stdout
 

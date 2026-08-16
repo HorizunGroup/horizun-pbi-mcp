@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/HorizunGroup/horizun-pbi-mcp/security/advisories/new
+    about: Report vulnerabilities privately instead of opening a public issue.
+  - name: Installation guide
+    url: https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/INSTALL.md
+    about: Review setup, repair and offline installation instructions.

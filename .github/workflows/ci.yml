@@ -61,14 +61,18 @@ jobs:
       # INSTALL-009. Determinista y OFFLINE: no le pregunta a PyPI si hay
       # versiones nuevas -para eso esta `--updates`, que es informativo-, sino
       # si los locks que probamos siguen siendo coherentes: formato, hashes,
-      # duplicados, cabecera y toda dependencia declarada fijada. Corre en las
-      # DOS versiones de la matriz, que es donde importa: el lock de 3.10 no lo
-      # verifica nadie mas.
+      # duplicados, cabecera y toda dependencia declarada fijada. La instalación
+      # real de cada lock vive en el job ligero `lock-reproducibility`.
       #
       # DESPUES de instalar y no antes: en 3.10 hace falta `tomli` para leer
       # pyproject, y viene en el extra de test.
       - name: Integridad de los locks de dependencias
         run: python scripts/generar_lock.py --check
+
+      - name: Calidad estatica
+        run: |
+          python -m ruff check src scripts tests
+          python -m mypy
 
       # Esquemas oficiales del PBIR. Se descargan con hash verificado; sin
       # ellos, las pruebas que escriben PBIR fallarian con schema_unavailable.
@@ -85,8 +89,16 @@ jobs:
       - name: DLLs de Analysis Services (verificadas por SHA-256)
         run: python scripts/fetch_libs.py
 
+      # Cobertura una sola vez: la suite funcional ya corre en ambos extremos
+      # del rango; instrumentarla dos veces solo duplica minutos de CI.
       - name: Pruebas
-        run: python -m pytest -q
+        shell: pwsh
+        run: |
+          if ("${{ matrix.python-version }}" -eq "3.13") {
+            python -m pytest -q --cov=horizun_pbi_mcp --cov-report=term
+          } else {
+            python -m pytest -q
+          }
 
       - name: Diagnostico de la instalacion
         run: python scripts/doctor.py
@@ -94,9 +106,30 @@ jobs:
       - name: Contrato MCP congelado
         run: python -m tests.contract_utils
 
+  # G4.6: cada lock se prueba con SU intérprete real. Este job es deliberadamente
+  # pequeño: crear dos venv, instalar con --require-hashes y comparar versiones
+  # no exige descargar esquemas, DLLs ni repetir cinco veces toda la suite.
+  lock-reproducibility:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Instalar el ejecutor de la prueba
+        run: python -m pip install "pytest>=8" tomli
+      - name: Verificar e instalar dos veces el lock de este intérprete
+        run: |
+          python scripts/generar_lock.py --check
+          python -m pytest -q tests/test_lock_de_dependencias.py::test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones
+
   build:
     runs-on: windows-latest
-    needs: test
+    needs: [test, lock-reproducibility]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
