@@ -1,32 +1,32 @@
-# Los 19 gates que faltan, y qué hace falta exactamente para cada uno
+# Los 18 gates que faltan, y qué hace falta exactamente para cada uno
 
 > **El nombre del archivo dice 20 y es histórico.** Se conserva para no romper
-> enlaces; el número que vale es el de la partición, y hoy son **19**. Si vuelve
+> enlaces; el número que vale es el de la partición, y hoy son **18**. Si vuelve
 > a moverse, se mueve aquí y en
 > [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md), que es de donde sale.
 
-Ninguno pide más trabajo en esta máquina. Los 19 esperan **un entorno** o **una
+Ninguno pide más trabajo en esta máquina. Los 18 esperan **un entorno** o **una
 autorización**, y este documento existe para que quien los tenga no tenga que
 reconstruir el contexto: preparación, comando, la mutación que hay que inyectar
 para que el verde signifique algo, el resultado esperado, qué evidencia guardar,
 cómo limpiar después, el riesgo y quién tiene que autorizarlo.
 
-Reparto: **6 parciales** —el mecanismo ya está demostrado aquí— y **13 externos
+Reparto: **5 parciales** —el mecanismo ya está demostrado aquí— y **13 externos
 puros**. La partición está en
 [`CLASIFICACION_GATES.md`](CLASIFICACION_GATES.md).
 
-Antes de leer nada de esto conviene saber que **cuatro de los que estaban en
+Antes de leer nada de esto conviene saber que **cinco de los que estaban en
 esta lista se cayeron al comprobar qué había de verdad**. El 2026-08-15, por
-inventario de la máquina: G4.3 solo necesitaba Node ≥20, y G4.6 pedía un runner
-Linux para un producto que declara Windows y nada más —lo que le queda es otra
-cosa, y está abajo en su propio grupo—. Y el mismo día, por lectura del remoto
+inventario de la máquina: G4.3 solo necesitaba Node ≥20; G4.6 se cerró generando
+y probando los cinco locks con sus intérpretes reales, sin simular marcadores
+con `pip --python-version`. Y el mismo día, por lectura del remoto
 tras el intento fallido de `v2.0.0`: **G6.2 y G7.2**, que estaban archivados por
 arrastre de bloque y ya tenían su evidencia en el remoto sin que nadie hubiera
 ido a mirarla (ver
 [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md)).
 
 Son el tercer, cuarto, quinto y sexto caso después de G3.6, G4.7 y G5.5. **Antes
-de aceptar cualquiera de los 19 de abajo, repite la comprobación**: la etiqueta
+de aceptar cualquiera de los 18 de abajo, repite la comprobación**: la etiqueta
 «externo» se pega a bloques enteros y sobrevive a que el bloqueo desaparezca.
 
 ---
@@ -207,34 +207,6 @@ cualquier otro contenido bajo ese nombre, el one-paste **no ejecuta nada**.
 > `publicar-pypi` falló. Ver
 > [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md), que
 > también acota qué **no** demuestra.
-
----
-
-## Grupo 7 · Cuatro intérpretes de Python en Windows — G4.6
-
-| | |
-|---|---|
-| Entorno | Python **3.10, 3.11, 3.12 y 3.13** instalados en Windows |
-| Autorización | ninguna: no es un permiso, son cuatro instalaciones |
-| Riesgo | ninguno fuera de esta máquina |
-
-Este grupo faltaba en el documento y por eso las cuentas no cuadraban: el plan
-decía cubrir «los 20» y G4.6 no aparecía en ningún grupo.
-
-**Por qué sigue abierto.** La matriz se generaba desde **un solo intérprete** con
-`pip --python-version`, y eso no produce un lock fiel: pip cambia las etiquetas
-de rueda compatibles pero evalúa los **marcadores de entorno** contra el
-intérprete que corre. Los locks de 3.10–3.13 salían sin `exceptiongroup` —que
-`anyio` solo pide en `python_version < "3.11"`— y `--require-hashes` se negaba a
-instalarlos. Hoy hay **un** lock fiel, el de 3.14, generado en su intérprete.
-
-**Procedimiento.** Con cada intérprete, y no con uno solo:
-`python scripts/generar_lock.py`. Después, la suite completa en esa versión.
-
-*Esperado:* cuatro locks más, cada uno con su cabecera declarando su versión, y
-`test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones` en verde en
-cada uno. *Mutación:* pedirle al generador un lock de **otra** versión: tiene
-que **negarse**, no producirlo.
 
 ---
 

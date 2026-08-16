@@ -196,12 +196,12 @@ confusión es la que permitió afirmar «no queda trabajo local».
 | G1 Seguridad funcional | 8 | 8 | 0 |
 | G2 Contrato y payloads | 5 | 5 | 0 |
 | G3 Instalación limpia | 6 | 1 | 5 (VM limpia) |
-| G4 Update y uninstall | 10 | 7 | 3 (VM limpia, VM sin red, intérpretes 3.10–3.13) |
+| G4 Update y uninstall | 10 | 8 | 2 (VM limpia, VM sin red) |
 | G5 Desktop real | 6 | 1 | 5 (Desktop) |
 | G6 Supply chain | 5 | 3 | 2 (publicación real) |
 | G7 Controles GitHub | 6 | 2 | 4 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **54** | **35** | **19** |
+| **Total** | **54** | **36** | **18** |
 
 **10 de 10 = los 54 gates cumplidos, con evidencia fechada.**
 
@@ -303,8 +303,8 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **35** (G1.1, G1.2, G1.3, G1.4, G1.5, G1.6, G1.7, G1.8, G2.1, G2.2, G2.3, G2.4, G2.5, G3.6, G4.2, G4.3, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.2, G6.3, G6.5, G7.2, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
-| Parciales | **6** (G3.3, G4.1, G4.6, G4.7, G5.6, G6.4) |
+| Cumplidos con evidencia | **36** (G1.1, G1.2, G1.3, G1.4, G1.5, G1.6, G1.7, G1.8, G2.1, G2.2, G2.3, G2.4, G2.5, G3.6, G4.2, G4.3, G4.4, G4.5, G4.6, G4.8, G4.9, G4.10, G5.5, G6.2, G6.3, G6.5, G7.2, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Parciales | **5** (G3.3, G4.1, G4.7, G5.6, G6.4) |
 | Pendientes | **13** — **ninguno es trabajo local ni espera una firma**: los 13 son externos |
 | **Total** | **54** |
 
@@ -327,10 +327,9 @@ hasta la VM.
 | G2.5 | CONTRACT-001 ratificada y registrada; **CONTRACT-003** repite el mecanismo en vivo: tres cambios incompatibles que CORE-004 pedía se registraron en vez de aplicarse. `python -m tests.contract_utils` falla ante una diferencia incompatible | ✅ **2026-08-15** |
 | G2.2 | `tests/test_contrato_de_payload.py` —seis mutaciones y tres compatibles— sobre un golden de **174 muestras / 134 tools**, capturadas por `call_tool` en tres escenarios, con red y procesos **prohibidos** en el tercero | ✅ **2026-08-15** — de 2 tools a **134**: 44 con payload de éxito y 90 de error de dominio. Cero exclusiones sin dependencia medida |
 | G2.3 · G2.4 | `docs/INVENTARIO_TOOLS.md`, generado por `python -m tests.inventario_tools`, y `tests/test_inventario_tools.py`: las 134 ejecutadas por `call_tool` contra su caso negativo, con el recuento sacado de las llamadas **observadas** | ✅ **2026-08-15** — 134/134 ejecutadas, **cero declaradas**: 114 rechazadas en validación, 11 con sobre `ok: false` y código, 1 con el adaptador roto, 8 sin modo de fallo verificadas |
-| G4.6 | `tests/test_lock_de_dependencias.py`: 34 pruebas sobre la **matriz** de locks, la selección exacta y el fallback; más dos venv limpios instalados desde el lock y `pip freeze` comparado | 🟡 **2026-08-15** — matriz `win_amd64 × {3.10, 3.13, 3.14}`, verificada de verdad en las tres (CI corre 3.10 y 3.13). Fuera de la matriz cae al resolutor y **declara que no es reproducible**; falta un runner no-Windows |
+| G4.6 | `tests/test_lock_de_dependencias.py`: matriz completa de locks, selección exacta y dos venv limpios instalados desde cada lock con `pip freeze` comparado | ✅ **2026-08-15** — `win_amd64 × {3.10, 3.11, 3.12, 3.13, 3.14}`; los cinco locks se generaron y probaron con su intérprete real. CI repite el oráculo en las cinco versiones |
 | G4.7 | `tests/test_bundle_offline.py`: 23 pruebas sobre formato, manifiesto hasheado aparte, manipulación de un byte, límites de tamaño, promoción atómica y **instalación con `socket` prohibido**; más un bundle real instalado con `pip --no-index` | 🟡 **2026-08-15** — el bundle existe y sirve: 134 tools desde el wheelhouse sin índice. Falta la VM realmente desconectada |
 | G4.3 | `tests/test_g43_npm_real.py`: `npm install` **de verdad**, matado a mitad, y el destino anterior comparado byte a byte | ✅ **2026-08-15** — cero huérfanos y el reintento termina limpio. Solo hacía falta Node ≥20, no una VM |
-| G4.6 | `tests/test_lock_de_dependencias.py`: el generador **se niega** a resolver para otro intérprete, y las versiones sin lock están declaradas en `PENDIENTES` | 🟡 **2026-08-15** — se dio por cumplido y **CI lo desmintió**: `pip --python-version` evalúa los marcadores contra el intérprete que corre, así que los locks de 3.10–3.13 omitían `exceptiongroup` y no instalaban. Queda uno fiel, el de 3.14 |
 | G4.4 · G4.5 | `tests/test_desinstalacion.py`: 12 pruebas, incluida la CLI real sobre un data root de prueba | ✅ **2026-08-15** — el seco es el DEFECTO, no una opción; `residual_bytes` tras desinstalar es exactamente el peso de los datos del usuario |
 | G4.8 | `tests/test_instalador_dryrun.py`: el reintento sin `--scope` se anuncia ANTES —se comprueba el orden en el código—, se verifica dónde aterrizó, y `-SoloUserScope` lo prohíbe | ✅ **2026-08-15** — el reintento se conserva a propósito: quitarlo rompe el PC vacío |
 | G8.8 | `docs/RUNBOOK_INSTALACION.md`, seis procedimientos con comandos ejecutables, comprobados contra la instalación real en solo lectura | ✅ **2026-08-15** — declara lo que NO existe en vez de ofrecer comandos que fallarían |

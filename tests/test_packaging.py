@@ -52,6 +52,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 import horizun_pbi_mcp.branding as _branding
 from tests import test_tool_contract as _contrato
@@ -608,14 +609,25 @@ def test_el_venv_de_packaging_es_limpio_y_resuelve_de_verdad():
             f"volvio {trampa}: el venv deja de ser limpio o deja de resolver")
 
 
-def test_ci_prueba_las_dos_versiones_de_python_declaradas():
-    """G8.2/G8.3 se cumplen en CI o no se cumplen."""
-    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+def test_ci_prueba_el_rango_y_cada_lock_con_su_interprete():
+    """G8.2/G8.3 y G4.6 se cumplen en CI o no se cumplen."""
+    ruta = REPO / ".github" / "workflows" / "ci.yml"
+    ci = ruta.read_text(encoding="utf-8")
     for version in ('"3.10"', '"3.13"'):
         assert version in ci, f"la matriz de CI no cubre Python {version}"
     assert "PBI_MCP_PACKAGING_OFFLINE" not in ci, (
         "CI no puede declararse offline: eso reintroduce el skip que TEST-001 "
         "vino a quitar")
+
+    jobs = yaml.safe_load(ci)["jobs"]
+    lock_job = jobs.get("lock-reproducibility")
+    assert lock_job, "G4.6 necesita un job dedicado a los locks"
+    matriz = lock_job["strategy"]["matrix"]["python-version"]
+    assert set(matriz) == {"3.10", "3.11", "3.12", "3.13", "3.14"}, (
+        f"la matriz real de locks no cubre todas las versiones: {matriz}")
+    comandos = "\n".join(
+        paso.get("run", "") for paso in lock_job["steps"])
+    assert "test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones" in comandos
 
 
 # --------------------------------------------------- dependencias declaradas --

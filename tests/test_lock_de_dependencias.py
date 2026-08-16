@@ -112,25 +112,20 @@ def test_un_lock_solo_se_genera_en_SU_PROPIO_interprete(generar):
         "el mensaje tiene que decir cual es el suyo y cual se le pidio")
 
 
-def test_las_versiones_sin_lock_estan_declaradas(generar):
-    """Lo que falta se dice, no se disimula.
-
-    Los classifiers prometen cinco versiones de Python. Hay lock para las que
-    se han podido generar; el resto vive en `PENDIENTES`, y mientras esa lista
-    no este vacia **G4.6 no esta cumplido**: en esas versiones el instalador cae
-    al resolutor, y el estado lo dice.
-    """
+def test_todas_las_versiones_declaradas_tienen_lock(generar):
+    """G4.6 no vuelve a cerrarse si una version soportada queda sin lock."""
     pyproject = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
     declaradas = set(re.findall(
         r'"Programming Language :: Python :: (\d+\.\d+)"', pyproject))
     con_lock = {v for v, _ in generar.MATRIZ}
     pendientes = {v for v, _ in generar.PENDIENTES}
 
-    assert declaradas == con_lock | pendientes, (
-        f"los classifiers prometen {sorted(declaradas)}; hay lock para "
-        f"{sorted(con_lock)} y declaradas pendientes {sorted(pendientes)}. "
-        "Toda version prometida tiene que estar en una de las dos listas")
-    assert not (con_lock & pendientes), "una version no puede estar en las dos"
+    assert not pendientes, (
+        f"G4.6 exige un lock fiel para cada version soportada; pendientes: "
+        f"{sorted(pendientes)}")
+    assert declaradas == con_lock, (
+        f"los classifiers prometen {sorted(declaradas)} pero la matriz de "
+        f"locks cubre {sorted(con_lock)}")
 
 
 def test_cada_lock_dice_con_que_interprete_se_genero(generar):
@@ -474,10 +469,9 @@ def test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones(
         tmp_path_factory):
     """G4.6 contra el oraculo real: pip, dos veces, y se comparan los conjuntos.
 
-    Se usa el lock de ESTE interprete, que es el unico que se puede instalar
-    aqui. Los otros dos de la matriz se verifican por integridad —formato,
-    hashes, cabecera, dependencias— y su instalacion real ocurre en CI, que si
-    corre 3.10 y 3.13.
+    Se usa el lock de ESTE interprete. CI ejecuta esta misma prueba por separado
+    con cada version soportada (3.10–3.14), sin fingir marcadores de entorno
+    mediante `pip --python-version`.
     """
     if OFFLINE:
         pytest.skip("PBI_MCP_PACKAGING_OFFLINE=1 declarado a mano: sin indice "

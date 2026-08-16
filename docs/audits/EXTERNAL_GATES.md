@@ -42,7 +42,6 @@ resultado se espera y qué evidencia hay que guardar.
 | G3.4 | INSTALL-002 | VM con Node 18 | Windows + Node 18 en el PATH |
 | G3.5 | INSTALL-004 | Claude CLI real | Instalación de Claude que se pueda deshabilitar |
 | G4.1 | INSTALL-001 | VM limpia (mecanismo ya demostrado) | La misma VM |
-| G4.6 | INSTALL-009 | intérpretes 3.10, 3.11, 3.12 y 3.13 (**un lock se genera en su propio intérprete**) | esas cuatro versiones de Python en Windows |
 | G4.7 | INSTALL-009 | VM sin salida real (**el bundle ya existe y se prueba aquí**) | VM desconectada o proxy corporativo |
 | G5.1–G5.4 | TEST-003 | Power BI Desktop real | Desktop con un `.pbip` de prueba |
 | G5.6 | TEST-003 | Desktop (**la prueba ya existe y es local**) | Desktop con un `.pbip` de prueba |
@@ -51,11 +50,11 @@ resultado se espera y qué evidencia hay que guardar.
 | G7.1 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 | G7.3–G7.5 | RELEASE-003 | Configuración del remoto | Admin del repositorio GitHub |
 
-**15 filas, 19 gates** —dos filas agrupan un rango entero, `G5.1–G5.4` y
-`G7.3–G7.5`, porque comparten el mismo bloqueo. Contar filas y decir «15
-externos» dejaría fuera gates que nadie estaría vigilando. De los 19, **6 son
-parciales** —G3.3, G4.1, G4.6, G4.7, G5.6 y G6.4, con el mecanismo ya
-demostrado aquí— y **13 son externos puros**.
+**14 filas, 18 gates** —dos filas agrupan un rango entero, `G5.1–G5.4` y
+`G7.3–G7.5`, porque comparten el mismo bloqueo. Contar filas y decir «14
+externos» dejaría fuera gates que nadie estaría vigilando. De los 18, **5 son
+parciales** —G3.3, G4.1, G4.7, G5.6 y G6.4, con el mecanismo ya demostrado
+aquí— y **13 son externos puros**.
 
 > **G6.2 y G7.2 salieron de esta lista el 2026-08-15**, y son el cuarto y el
 > quinto caso después de G3.6, G4.7 y G5.5. Los dos estaban aquí por
@@ -186,46 +185,6 @@ journal huérfano; la siguiente instalación termina limpia.
 
 ---
 
-## G4.6 — reproducibilidad fuera de Windows
-
-**Bloqueo exacto.** La matriz `win_amd64 × {3.10, 3.13, 3.14}` está fijada por
-versión y SHA-256, y CI la instala de verdad en 3.10 y 3.13. Lo que falta es una
-plataforma que no sea Windows: ahí no hay lock, el instalador cae al resolutor
-—y lo declara— y esa instalación no es reproducible.
-
-**Infraestructura.** Un runner Linux o macOS con Python ≥3.10.
-
-**Procedimiento.** Añadir la plataforma a `MATRIZ` en `scripts/generar_lock.py`,
-regenerar, y correr la suite completa allí: `test_dos_instalaciones_reales_...`
-instala dos veces desde el lock y compara `pip freeze`.
-
-**Resultado esperado.** Los dos `pip freeze` idénticos entre sí e iguales a lo
-fijado, y `dependencias.source == "lock"` en el estado de instalación.
-
----
-
-## G4.6 — un lock por intérprete, y faltan cuatro
-
-**Se dio por cumplido el 2026-08-15 y CI lo desmintió el mismo día.** La matriz
-se generaba desde un solo intérprete con `pip --python-version`, y eso **no
-produce un lock fiel**: pip cambia las etiquetas de rueda compatibles pero
-evalúa los **marcadores de entorno** contra el intérprete que corre. Los locks
-de 3.10–3.13 salían sin `exceptiongroup` —que `anyio` solo pide en
-`python_version < "3.11"`— y `--require-hashes` se negaba a instalarlos.
-
-**Bloqueo exacto.** Hace falta ejecutar `python scripts/generar_lock.py` **con
-cada intérprete**: 3.10, 3.11, 3.12 y 3.13, en Windows. No es una VM ni un
-permiso: son cuatro instalaciones de Python.
-
-**Resultado esperado.** Cuatro locks más, cada uno con su cabecera declarando su
-versión, y `test_dos_instalaciones_reales_dan_exactamente_las_mismas_versiones`
-en verde en cada uno.
-
-**Mutación que da sentido al verde.** Pedirle al generador un lock de otra
-versión: tiene que **negarse**, no producirlo.
-
----
-
 ## G4.7 — bundle offline y runbook de proxy
 
 **Ya no está aquí por lo que faltaba antes.** El bundle **existe**:
@@ -245,9 +204,9 @@ sin salida, `verificar` y `instalar`, y hablar MCP por stdio con lo instalado.
 en el registro del proxy.
 
 **Ojo con el hermano.** G4.6 —el lock con hashes— compartía hallazgo con este y
-**no** era externo: se cerró el 2026-08-15 instalando el lock en dos venv limpios y
-comparando `pip freeze`. Que dos gates citen el mismo hallazgo no los hace igual
-de inalcanzables; conviene mirarlos por separado antes de aparcar los dos.
+**no** era externo: se cerró el 2026-08-15 con cinco intérpretes reales, dos venv
+limpios por versión y comparación de `pip freeze`. Que dos gates citen el mismo
+hallazgo no los hace igual de inalcanzables.
 
 ---
 
