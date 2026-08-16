@@ -183,3 +183,17 @@ def test_el_manifiesto_del_registro_mcp_declara_esta_version():
     assert datos["version"] == branding.VERSION, (
         f".mcp/server.json dice {datos['version']!r} y branding "
         f"{branding.VERSION!r}")
+
+    # El bloque `packages` es lo que le dice al registro DE DONDE se instala.
+    # Lleva su propia version, y una version anidada que nadie vigile se queda
+    # atras en silencio: el registro anunciaria la 2.0.1 apuntando al paquete
+    # de PyPI de una version anterior, que es peor que no anunciar nada.
+    paquetes = datos.get("packages") or []
+    assert paquetes, ".mcp/server.json sin `packages`: el registro no diria como instalarlo"
+    pypi = [p for p in paquetes if p.get("registryType") == "pypi"]
+    assert len(pypi) == 1, f"se espera exactamente un paquete pypi, hay {len(pypi)}"
+    assert pypi[0]["identifier"] == "horizun-pbi-mcp", pypi[0]
+    assert pypi[0]["version"] == branding.VERSION, (
+        f"packages[pypi].version dice {pypi[0]['version']!r} y branding "
+        f"{branding.VERSION!r}")
+    assert pypi[0]["transport"]["type"] == "stdio", pypi[0]

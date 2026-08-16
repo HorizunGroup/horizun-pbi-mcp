@@ -549,7 +549,11 @@ def test_readme_e_install_no_mienten_ni_numero_ni_version():
     patron = re.compile(
         r"(?:[Tt]he |the |tools \(|contract \(the )?(\d{3})(?:\s*`?pbi_\*`?)?"
         r"\s*(?:tools|`pbi_\*` tools)|tools \((\d{3})\)")
-    for nombre in ("README.md", "docs/INSTALL.md"):
+    # `llms.txt` entra en la lista porque es el archivo que existe PARA que lo
+    # lean agentes, y era el que peor estaba: anunciaba 127 tools y "v1.2.0"
+    # con 134 publicadas y la 2.x fuera. Un conteo viejo en README lo ve una
+    # persona y desconfia; en `llms.txt` se lo cree una maquina.
+    for nombre in ("README.md", "docs/INSTALL.md", "llms.txt"):
         texto = (raiz / nombre).read_text(encoding="utf-8")
         numeros = {int(n) for tupla in patron.findall(texto)
                    for n in tupla if n}

@@ -8,5 +8,13 @@
     "url": "https://github.com/HorizunGroup/horizun-pbi-mcp",
     "source": "github"
   },
-  "websiteUrl": "https://horizunhub.com"
+  "websiteUrl": "https://horizunhub.com",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "horizun-pbi-mcp",
+      "version": "2.0.1",
+      "transport": {"type": "stdio"}
+    }
+  ]
 }

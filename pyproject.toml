@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "horizun-pbi-mcp"
-# PEP 440. Debe coincidir con branding.VERSION y con el tag de Git.
+# PEP 440. Must match branding.VERSION and the Git tag.
 version = "2.0.1"
 description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
@@ -22,25 +22,26 @@ classifiers = [
 ]
 
 dependencies = [
-    # Acotada por arriba a proposito: el servidor fija la version del producto
-    # con `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`
-    # (comprobado en 1.28.1). Es API privada, asi que un salto mayor de `mcp`
-    # podria retirarla y dejar el servidor anunciando la version de la libreria
-    # en vez de la suya. tests/test_mcp_compat.py lo vigila.
+    # Upper-bounded on purpose: the server sets the product version through
+    # `mcp._mcp_server.version` because FastMCP.__init__ does NOT accept
+    # `version` (checked against 1.28.1). That is private API, so a major bump
+    # of `mcp` could withdraw it and leave the server announcing the library's
+    # version instead of its own. tests/test_mcp_compat.py guards this.
     "mcp>=1.28.1,<2",
     "pythonnet>=3.0.5,<4",
     "psutil>=5.9,<8",
     "python-dotenv>=1.0,<2",
-    # Fase E3.1: validacion PBIR contra los esquemas OFICIALES. Un validador
-    # casero solo cubria type/required/properties/items/enum e ignoraba $ref,
-    # anyOf, const y additionalProperties, que es lo que el PBIR usa de verdad.
+    # Phase E3.1: PBIR validation against the OFFICIAL schemas. A home-grown
+    # validator only covered type/required/properties/items/enum and ignored
+    # $ref, anyOf, const and additionalProperties -- which is what PBIR
+    # actually uses.
     "jsonschema>=4.20,<5",
     "referencing>=0.30,<1",
-    # Exportaciones de datos y reportes verificables.
+    # Verifiable data and report exports.
     "openpyxl>=3.1,<4",
     "reportlab>=4.2,<6",
     "pypdf>=5,<7",
-    # Autenticacion oficial de Microsoft para SharePoint/Graph app-only.
+    # Microsoft's official app-only authentication for SharePoint/Graph.
     "msal>=1.31,<2",
 ]
 
@@ -51,11 +52,11 @@ Documentation = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/
 Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# pyyaml: tests/test_release_pipeline.py analiza el DAG de los workflows.
-# Sin el, esas guardas no se ejecutarian en CI, que es justo donde importan.
-# tomli: `scripts/generar_lock.py --check` lee pyproject y corre en CI
-# tambien en 3.10, donde `tomllib` todavia no existe. Ruff, mypy y pytest-cov
-# son gates del repositorio; no se instalan en el runtime de los usuarios.
+# pyyaml: tests/test_release_pipeline.py parses the workflow DAG. Without it
+# those guards would not run in CI, which is exactly where they matter.
+# tomli: `scripts/generar_lock.py --check` reads pyproject and also runs in CI
+# on 3.10, where `tomllib` does not exist yet. Ruff, mypy and pytest-cov are
+# repository gates; they are not installed into users' runtime.
 test = [
     "pytest>=8.0",
     "pyyaml>=6,<7",
@@ -67,41 +68,42 @@ test = [
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
-# Alias legacy: se conserva para no romper instalaciones existentes.
+# Legacy alias: kept so existing installations do not break.
 powerbi-mcp = "horizun_pbi_mcp.server:main"
-# INSTALL-005. El wheel no puede traer las DLL de Microsoft ni los esquemas
-# PBIR, asi que una instalacion por `pip` arranca pero no puede trabajar.
-# `pbi_health_check` ya lo decia; lo que faltaba era que el comando que
-# recomienda EXISTA en esa misma instalacion, y no en un `scripts/` que el
-# wheel no lleva.
+# INSTALL-005. The wheel cannot ship Microsoft's DLLs or the PBIR schemas, so
+# a `pip` install starts but cannot do any work. `pbi_health_check` already
+# said so; what was missing is that the command it recommends should EXIST in
+# that same installation, rather than in a `scripts/` the wheel does not
+# carry.
 horizun-pbi-completar = "horizun_pbi_mcp.completado:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-# Los esquemas PBIR son DATOS, no codigo: sin esto el wheel se instala y
-# services/pbir_schema.py lanza schema_unavailable en la primera escritura.
-# El manifiesto (URLs + SHA-256) SI va en el paquete; los esquemas NO,
-# porque no declaran permiso de redistribucion.
+# The PBIR schemas are DATA, not code: without this the wheel installs and
+# services/pbir_schema.py raises schema_unavailable on the first write. The
+# manifest (URLs + SHA-256) DOES ship in the package; the schemas do NOT,
+# because they declare no redistribution permission.
 "horizun_pbi_mcp.services" = ["schemas/*.json"]
-# El contrato MCP que el healthcheck exige antes de dar una instalacion por
-# buena. Tiene que viajar en el wheel: el golden equivalente vive en `tests/`,
-# y una instalacion por `pip` no tiene `tests/`. Sin este archivo el oraculo
-# falla cerrado -no da nada por bueno- en vez de comprobar de menos.
+# The MCP contract the healthcheck requires before calling an installation
+# good. It has to ship in the wheel: the equivalent golden lives in `tests/`,
+# and a `pip` install has no `tests/`. Without this file the oracle fails
+# closed -- it passes nothing -- instead of checking less than it should.
 "horizun_pbi_mcp.lifecycle" = ["contract_baseline.json"]
-# Versiones y SHA-256 de las DLL de Analysis Services. El manifiesto SI viaja
-# -es una lista, no un binario-; las DLL no, que son de Microsoft. Sin el,
-# `horizun-pbi-completar` no sabria que descargar ni contra que verificarlo.
+# Versions and SHA-256 of the Analysis Services DLLs. The manifest DOES ship
+# -- it is a list, not a binary -- the DLLs do not, being Microsoft's. Without
+# it, `horizun-pbi-completar` would not know what to download nor what to
+# verify it against.
 "horizun_pbi_mcp.completado" = ["libs_manifest.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# UN solo nombre de primer nivel. Antes se instalaban diez -`config`, `server`,
+# ONE top-level name only. Ten used to be installed -- `config`, `server`,
 # `services`, `tools`, `utils`, `pbip`, `powerbi`, `reporting`,
-# `logging_config`, `branding`- y cuatro de ellos estan entre los mas comunes
-# de Python: en cualquier entorno donde otro paquete hiciera `import config`,
-# uno de los dos ganaba. Publicado en PyPI, eso lo sufre quien lo instale.
+# `logging_config`, `branding` -- and four of those are among the most common
+# names in Python: in any environment where another package did `import
+# config`, one of the two won. Published on PyPI, whoever installs it pays.
 include = ["horizun_pbi_mcp*"]
 
 [tool.pytest.ini_options]
@@ -113,8 +115,8 @@ target-version = "py310"
 line-length = 100
 
 [tool.ruff.lint]
-# Gate inicial deliberadamente estricto en errores, no en preferencias de
-# formato: sintaxis inválida, nombres inexistentes y fallos de flujo evidentes.
+# An initial gate deliberately strict about errors, not formatting taste:
+# invalid syntax, undefined names and obvious control-flow faults.
 select = ["E9", "F63", "F7", "F82"]
 
 [tool.mypy]
@@ -122,8 +124,9 @@ python_version = "3.10"
 ignore_missing_imports = true
 follow_imports = "skip"
 show_error_codes = true
-# Alcance inicial: bordes de seguridad, transacciones, locks y generación de
-# dependencias. Se amplía por módulos; no se silencian miles de errores de golpe.
+# Initial scope: safety boundaries, transactions, locks and dependency
+# generation. Widened module by module; thousands of errors are not silenced
+# in one go.
 files = [
     "src/horizun_pbi_mcp/branding.py",
     "src/horizun_pbi_mcp/tools/risk.py",
@@ -141,7 +144,8 @@ files = [
 source = ["horizun_pbi_mcp"]
 
 [tool.coverage.report]
-# Medido el 2026-08-15: 86% sobre 18.780 sentencias. Un punto de margen evita
-# ruido entre 3.13 y 3.14, pero convierte una caída material en fallo de CI.
+# Measured on 2026-08-15: 86% over 18,780 statements. One point of slack
+# absorbs noise between 3.13 and 3.14, while still turning a material drop
+# into a CI failure.
 fail_under = 85
 show_missing = true

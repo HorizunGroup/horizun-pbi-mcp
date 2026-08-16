@@ -1,8 +1,8 @@
 # Horizun PBI MCP
 
 [![CI](https://github.com/HorizunGroup/horizun-pbi-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HorizunGroup/horizun-pbi-mcp/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/horizun-pbi-mcp)](https://pypi.org/project/horizun-pbi-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/horizun-pbi-mcp)](https://pypi.org/project/horizun-pbi-mcp/)
+[![PyPI](https://img.shields.io/pypi/v/horizun-pbi-mcp?cacheSeconds=3600)](https://pypi.org/project/horizun-pbi-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/horizun-pbi-mcp?cacheSeconds=3600)](https://pypi.org/project/horizun-pbi-mcp/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 **Build and fix Power BI reports by describing what you want.**
