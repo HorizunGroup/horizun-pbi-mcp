@@ -61,6 +61,17 @@ def test_codex_documenta_el_navegador_oficial_de_plugins():
         assert "codex plugin add horizun-pbi-mcp@horizun" not in texto
 
 
+def test_el_readme_abre_con_la_ruta_corta_para_codex_y_claude():
+    """La instalación filmable debe aparecer antes del bootstrap avanzado."""
+    texto = (RAIZ / "README.md").read_text(encoding="utf-8")
+    portada = texto[:texto.index("## Why this is safe")]
+    for frase in ("## Codex", "## Claude Code", "pbi_install_status",
+                  "Do **not** clone", "134 `pbi_*` tools"):
+        assert frase in portada, f"la ruta corta perdió {frase!r}"
+    assert portada.index("## Codex") < portada.index("Auxiliary installer")
+    assert portada.index("## Claude Code") < portada.index("Auxiliary installer")
+
+
 def test_instalacion_no_promete_locking_como_trabajo_futuro():
     texto = (RAIZ / "docs" / "INSTALL.md").read_text(encoding="utf-8")
     assert "Until Phase 1 adds locking" not in texto

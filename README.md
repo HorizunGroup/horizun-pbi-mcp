@@ -1,20 +1,69 @@
 # Horizun PBI MCP
 
-**MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
+**MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Codex or Claude Code.
 
 **v2.0.1** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion. **Breaking:** three tools now require `confirm` or changed their annotations — see [the migration guide](docs/MIGRACION_1x_A_2.0.md).
 
 ---
 
-# Install: one command, any Windows PC
+# Install
+
+Do **not** clone this repository and do **not** create an MCP config by hand.
+Choose your client, install the plugin, wait for `pbi_install_status` to say
+`ready`, and restart the client once.
+
+## Codex
+
+Paste this prompt into Codex:
+
+> Install Horizun PBI MCP from the `HorizunGroup/horizun-pbi-mcp` plugin marketplace. Finish the runtime setup, monitor `pbi_install_status` until it says `ready`, then verify that the 134 `pbi_*` tools are available. Do not stop at a partial or degraded installation.
+
+If Codex asks you to add the marketplace first, run:
+
+```text
+codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
+```
+
+Then open `/plugins`, select the **Horizun** marketplace and install
+`horizun-pbi-mcp`.
+
+## Claude Code
+
+Paste these two commands into Claude Code:
+
+```text
+claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
+claude plugin install horizun-pbi-mcp@horizun
+```
+
+Open a new Claude session, ask it to run `pbi_install_status`, wait for
+`ready`, and restart Claude once. That is the complete installation.
+
+## What you need
+
+- Windows and Python 3.10 or newer.
+- Power BI Desktop only for the LIVE tools. The `.pbip` tools work without it.
+- No administrator rights, manual DLL download, `.mcp.json` or repository clone.
+
+For a video, the complete happy path is: **install plugin → wait for `ready` →
+restart → run `pbi_list_desktop_models`**.
+
+Need a guided repair, an empty-PC bootstrap or the security details? See
+[`docs/INSTALL.md`](docs/INSTALL.md), or expand the verified auxiliary installer
+below.
+
+<details>
+<summary><b>Auxiliary installer for missing prerequisites</b></summary>
+
+## One command, any Windows PC
 
 Open **PowerShell** — a normal window, *not* "as administrator" — and paste
 this. It works whether the machine is fully set up or completely empty.
 
 > **What "completely empty" does and does not cover.** The installer brings
 > Python, Git and optional Node. Claude Code, Codex and Power BI Desktop are
-> external clients and are **not installed by this script**. Power BI Desktop
-> Microsoft does not allow redistributing it. Without Desktop you still get the
+> external clients and are **not installed by this script**. Microsoft does not
+> allow redistributing Power BI Desktop. Without Desktop you still get the
 > whole `.pbip` side — read, author, validate and back up projects on disk — and
 > you do **not** get the LIVE layer: no DAX against a running model, no refresh,
 > no visual capture and no render validation. Install it separately from the
@@ -146,7 +195,10 @@ actually published.
 
 *Any language works — an LLM is reading that, not a parser. English is simply
 the version kept up to date.* If you want the agent to narrate the whole thing
-with a plan and ETAs, use the [guided install prompt](#installation).
+with a plan and ETAs, use the
+[guided install prompt](#advanced-installation-and-recovery).
+
+</details>
 
 ---
 
@@ -252,7 +304,14 @@ repository, not a promise:
 
 ---
 
-## Installation
+## Advanced installation and recovery
+
+The normal installation is the short Codex or Claude flow at the top. Expand
+this only when an agent must repair missing prerequisites or narrate every
+step.
+
+<details>
+<summary><b>Guided installation prompt and verified bootstrap</b></summary>
 
 ### The guided prompt — watch it install itself
 
@@ -431,6 +490,8 @@ try {
     if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
 }
 ```
+
+</details>
 
 ### What the agent runs underneath
 
