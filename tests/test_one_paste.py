@@ -548,6 +548,31 @@ def test_ninguna_copia_del_bloque_diverge_del_canonico():
         "Reparalo con: python scripts/sync_one_paste.py")
 
 
+def test_la_prosa_de_la_skill_solo_cita_documentos_que_llevan_el_bloque():
+    """La skill manda a copiar el bloque; si nombra un archivo que ya no lo
+    lleva, el agente que la sigue al pie de la letra no lo encuentra y acaba
+    reconstruyendolo de memoria -exactamente lo que la frase quiere evitar-.
+
+    Paso: la frase cito `README.md` durante meses despues de que el README
+    dejara de incrustar el bloque y pasara a solo enlazar a `docs/INSTALL.md`.
+    Los bloques se vigilan por hash; la prosa que los anuncia, no lo estaba.
+    """
+    rel = "skills/horizun-pbi-setup/SKILL.md"
+    texto = (RAIZ / rel).read_text(encoding="utf-8")
+    # El punto que cierra la frase es el que va seguido de espacio o fin: un
+    # `\.` a secas corta dentro de `one_paste.ps1` y deja fuera precisamente
+    # los documentos que hay que revisar (con lo que el test pasaria solo).
+    frase = re.search(r"El bloque exacto esta en.*?\.(?=\s|$)", texto, re.S)
+    assert frase, f"{rel} ya no dice donde esta el bloque exacto"
+
+    citados = [c for c in re.findall(r"`([^`]+)`", frase.group(0))
+               if c.endswith(".md")]
+    intrusos = [c for c in citados if c not in DOCUMENTOS]
+    assert not intrusos, (
+        f"{rel} anuncia el bloque en {intrusos}, que no lo incrustan. "
+        f"Los documentos que lo llevan son {list(DOCUMENTOS)}")
+
+
 def test_el_manifest_y_el_bloque_declaran_la_misma_descarga():
     entrada = _entrada_manifest()
     bloque = _snippet_canonico()
