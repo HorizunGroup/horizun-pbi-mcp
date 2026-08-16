@@ -127,10 +127,11 @@ y G6.4 bajo «hace falta una release publicada», y resultó que **no la
 necesitaba**: lo que pedía —que un fallo aguas arriba impida publicar— se ve en
 un run que falló, no en uno que publicó.
 
-**Lo que ese movimiento NO autoriza a decir.** El tag `v2.0.0` existe en el
-remoto y **no es una release publicada**: no hay GitHub Release, no hay 2.x en
-PyPI y no hay 2.x en el MCP Registry. G6.1 y G6.4 siguen exactamente donde
-estaban, y el tag no cuenta como evidencia de ninguno de los dos.
+**Lo que ese movimiento NO autoriza a decir.** El tag `v2.0.0` —que existió en
+el remoto hasta que se borró el 2026-08-16— **no era una release publicada**: no
+hubo GitHub Release, no hubo 2.x en PyPI y no hubo 2.x en el MCP Registry. G6.1
+y G6.4 siguen exactamente donde estaban, y el tag no contaba como evidencia de
+ninguno de los dos.
 
 La firma que faltaba llegó: CONTRACT-003 se ratificó el 2026-08-15 y sus tres
 cambios están aplicados en 2.0.0. El dossier

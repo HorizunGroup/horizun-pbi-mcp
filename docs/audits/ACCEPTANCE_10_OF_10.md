@@ -314,8 +314,9 @@ hasta la VM.
 > el run 31913970370 dejó CodeQL en verde sobre `main`/`1f0405b`. Los comandos
 > de lectura y la salida capturada están en
 > [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md), que
-> también dice con precisión qué **no** demuestran. El tag `v2.0.0` **es solo un
-> tag** —no hay release, ni PyPI, ni registro— y no cierra G6.1 ni G6.4.
+> también dice con precisión qué **no** demuestran. El tag `v2.0.0` **era solo
+> un tag** —sin release, sin PyPI y sin registro— y no cerraba G6.1 ni G6.4; se
+> borró del remoto el 2026-08-16.
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
 

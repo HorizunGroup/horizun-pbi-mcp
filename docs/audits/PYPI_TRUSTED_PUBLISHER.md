@@ -1,4 +1,16 @@
-# PyPI *trusted publisher* — lo que falta configurar, y cómo comprobarlo
+# PyPI *trusted publisher* — configurado el 2026-08-16, y cómo comprobarlo
+
+> **YA ESTÁ HECHO — verificado el 2026-08-16 en `pypi.org`.** El proyecto
+> `horizun-pbi-mcp` tiene registrado un *trusted publisher* de GitHub con
+> exactamente los cuatro valores de la tabla de abajo: `HorizunGroup`,
+> `horizun-pbi-mcp`, `release.yml` y environment `pypi`. Lo que sigue se
+> conserva como el procedimiento y el criterio de comprobación, no como trabajo
+> pendiente.
+>
+> Este documento se escribió como **plan** y durante un tiempo siguió diciendo
+> que nada se había ejecutado, cuando ya se había ejecutado. Eso confundió a
+> quien vino después a decidir si se podía publicar. De ahí que el estado vaya
+> ahora en la primera línea.
 
 El intento de publicar `v2.0.0` falló aquí. El job `publicar-pypi` construyó y
 verificó bien, llegó a `pypa/gh-action-pypi-publish` y PyPI lo rechazó con
@@ -7,10 +19,11 @@ que coincidiera con quien pedía publicar.
 
 Este documento existe para que quien tenga la cuenta lo configure **una vez y
 bien**, y para que se pueda comprobar después que lo configuró para el sitio
-correcto y no para otro parecido. Nada de aquí se ha ejecutado.
+correcto y no para otro parecido.
 
-> **Este ciclo no configura PyPI y no relanza nada.** Los pasos de abajo son
-> manuales y los da una persona con acceso al proyecto en PyPI.
+> **La configuración de PyPI es manual.** Los pasos de abajo los da una persona
+> con acceso al proyecto en PyPI; ningún workflow de este repositorio los puede
+> aplicar por su cuenta.
 
 ---
 
