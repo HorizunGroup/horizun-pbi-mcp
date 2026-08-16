@@ -1,7 +1,7 @@
 {
   "name": "horizun-pbi-mcp",
   "version": "2.0.1",
-  "description": "Power BI Desktop y PBIP desde Codex: DAX, TOM, TMDL, PBIR, visuales, auditoría y flujos seguros.",
+  "description": "Power BI Desktop and PBIP from Codex: DAX, TOM, TMDL, PBIR, visuals, auditing and safe workflows.",
   "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
   "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",
   "repository": "https://github.com/HorizunGroup/horizun-pbi-mcp",
@@ -16,13 +16,13 @@
   },
   "interface": {
     "displayName": "Horizun PBI MCP",
-    "shortDescription": "Modela, audita y crea informes Power BI",
-    "longDescription": "Conecta Codex con Power BI Desktop local y proyectos PBIP para consultar DAX, editar modelos y crear páginas y visuales PBIR con backups y validación.",
+    "shortDescription": "Model, audit and build Power BI reports",
+    "longDescription": "Connects Codex to local Power BI Desktop and to PBIP projects: query with DAX, edit semantic models, and author PBIR report pages and visuals, with backups and validation on every write.",
     "developerName": "HorizunGroup",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write", "Local MCP"],
     "websiteURL": "https://github.com/HorizunGroup/horizun-pbi-mcp",
-    "defaultPrompt": ["Instala y verifica Horizun PBI MCP.", "Audita el modelo de Power BI que tengo abierto.", "Crea una página PBIR a partir de esta especificación."],
+    "defaultPrompt": ["Install and verify Horizun PBI MCP.", "Audit the Power BI model I have open.", "Create a PBIR report page from this specification."],
     "brandColor": "#F2C811"
   }
 }
