@@ -28,6 +28,43 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+
+def test_la_arquitectura_describe_el_producto_actual():
+    """La arquitectura vieja sobrevivio de 34 a 134 tools sin que nadie fallara."""
+    texto = (RAIZ / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    golden = __import__("json").loads(
+        (RAIZ / "tests" / "golden" / "tools_v1.json").read_text(encoding="utf-8"))
+    assert str(golden["tool_count"]) in texto
+    assert "services/" in texto
+    assert "No service layer exists" not in texto
+    assert "Detecting and blocking this is Phase 1 work" not in texto
+
+
+def test_la_politica_de_seguridad_soporta_la_version_mayor_actual():
+    try:
+        import tomllib
+    except ModuleNotFoundError:                         # Python 3.10
+        import tomli as tomllib                         # type: ignore[no-redef]
+
+    version = tomllib.loads(
+        (RAIZ / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    texto = (RAIZ / "SECURITY.md").read_text(encoding="utf-8")
+    assert f"`{version.split('.')[0]}.{version.split('.')[1]}.x`" in texto
+
+
+def test_codex_documenta_el_navegador_oficial_de_plugins():
+    for ruta in (RAIZ / "README.md", RAIZ / "docs" / "INSTALL.md"):
+        texto = ruta.read_text(encoding="utf-8")
+        assert "codex plugin marketplace add" in texto
+        assert "`/plugins`" in texto
+        assert "codex plugin add horizun-pbi-mcp@horizun" not in texto
+
+
+def test_instalacion_no_promete_locking_como_trabajo_futuro():
+    texto = (RAIZ / "docs" / "INSTALL.md").read_text(encoding="utf-8")
+    assert "Until Phase 1 adds locking" not in texto
+    assert "project locks" in texto
 README = RAIZ / "README.md"
 AGENTS = RAIZ / "AGENTS.md"
 

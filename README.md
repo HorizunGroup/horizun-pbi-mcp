@@ -440,8 +440,11 @@ the client's data folder and verifies every download.
 
 ```bash
 codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
-codex plugin add horizun-pbi-mcp@horizun
 ```
+
+Then open `/plugins`, choose the Horizun marketplace and install
+`horizun-pbi-mcp`. This is the installation flow documented by Codex; restart
+the session after the plugin runtime reaches `ready`.
 
 **Claude Code:**
 

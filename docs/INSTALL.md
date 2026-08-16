@@ -157,9 +157,10 @@ This is the recommended path for end users. It doesn't require a dedicated
 executable installer or hand-editing MCP files:
 
 ```bash
-# Codex
+# Codex CLI
 codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
-codex plugin add horizun-pbi-mcp@horizun
+# Then open `/plugins`, select the Horizun marketplace and install
+# `horizun-pbi-mcp`.
 
 # Claude Code
 claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
@@ -409,4 +410,7 @@ Official references: [Microsoft Graph app-only authentication](https://learn.mic
 
 Prefixes don't clash (`pbi_*` vs `pbir_*`), so several servers can be registered at once.
 
-**Caution:** two servers writing to the same `.pbip` don't coordinate with each other. Until Phase 1 adds locking and external-change detection, use only one per project at a time. See [CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).
+**Caution:** this server coordinates its own writers with project locks and
+external-change detection, but a different MCP product does not participate in
+those locks. Use only one writer product per project at a time. See
+[CAPABILITY_MATRIX.md](CAPABILITY_MATRIX.md).
