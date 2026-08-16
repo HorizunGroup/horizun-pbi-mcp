@@ -21,6 +21,13 @@ Salida (todo bajo --outdir):
     meta/horizun-pbi-mcp-instalar.ps1
                            copia byte a byte de scripts/instalar.ps1, con su
                            SHA-256 comprobado contra downloads_manifest.json
+    meta/RELEASE_NOTES_<version>.md
+    meta/MIGRACION_1x_A_2.0.md
+                           las notas que acompanan a la release, COPIADAS AQUI
+                           y firmadas en SHA256SUMS. Publicarlas desde el
+                           checkout las dejaria fuera de la cadena de digests:
+                           serian los unicos bytes de la release que nadie
+                           verifico
     meta/build.json        resumen legible de la construccion
 
 Uso:
@@ -43,6 +50,13 @@ INSTALADOR = REPO / "scripts" / "instalar.ps1"
 
 #: Nombre del asset en la release. Debe coincidir con el del manifest.
 NOMBRE_ASSET = "horizun-pbi-mcp-instalar.ps1"
+
+#: Las notas que viajan CON la release. `{version}` se sustituye por la que
+#: declara pyproject. Se copian al artefacto en vez de publicarse desde el
+#: checkout a proposito: lo que no esta en SHA256SUMS no lo verifica nadie, y
+#: unas notas de migracion son exactamente el archivo que alguien lee para
+#: decidir como adaptar su codigo.
+NOTAS = ("RELEASE_NOTES_{version}.md", "docs/MIGRACION_1x_A_2.0.md")
 
 #: Herramientas de construccion, acotadas. Un salto mayor de cualquiera de
 #: ellas puede cambiar el artefacto resultante sin que nadie lo pida.
@@ -168,9 +182,24 @@ def construir(outdir: Path) -> dict:
         raise SystemExit(f"[release_build] el manifest llama al asset "
                          f"{entrada['name']!r} y aqui se publica {NOMBRE_ASSET!r}")
 
-    # 5. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
+    # 5. Las notas. Se copian con el nombre con el que se publican y entran en
+    #    SHA256SUMS como cualquier otro publicable. Si falta una, se para aqui:
+    #    una release sin notas de migracion en una MAYOR es la que obliga a
+    #    leerse el diff para saber que se rompio.
+    notas = []
+    for plantilla in NOTAS:
+        origen = REPO / plantilla.format(version=version)
+        if not origen.is_file():
+            raise SystemExit(
+                f"[release_build] falta {origen.relative_to(REPO).as_posix()}, "
+                "que se publica como asset de la release")
+        destino = meta / origen.name
+        shutil.copyfile(origen, destino)
+        notas.append(destino)
+
+    # 6. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
     #    comprueba antes de usar nada.
-    publicables = [wheels[0], sdists[0], asset, sbom]
+    publicables = [wheels[0], sdists[0], asset, sbom, *notas]
     lineas = []
     for p in publicables:
         rel = p.relative_to(outdir).as_posix()
@@ -183,6 +212,7 @@ def construir(outdir: Path) -> dict:
         "wheel": wheels[0].name,
         "sdist": sdists[0].name,
         "asset_instalador": NOMBRE_ASSET,
+        "notas": [n.name for n in notas],
         "sbom_componentes": len(componentes),
         "digests": {p.relative_to(outdir).as_posix(): _sha256(p)
                     for p in publicables},

@@ -22,6 +22,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+#: Lo unico que puede vivir en `meta/` sin estar firmado en SHA256SUMS. El
+#: propio archivo de sumas no se puede declarar a si mismo, y `build.json` es
+#: un resumen legible que NO se publica. Cualquier otra cosa ahi es un archivo
+#: publicable que nadie firmo.
+META_NO_FIRMADOS = {"meta/SHA256SUMS", "meta/build.json"}
+
 #: Los sitios que declaran la version del producto. Si uno se queda atras, el
 #: marketplace instala una cosa, PyPI otra y el registro MCP una tercera.
 SITIOS_DE_VERSION = {
@@ -75,16 +81,49 @@ def verificar_digests(raiz: Path) -> list:
                              f"esperado {esperado}, real {real}")
 
     # Un archivo publicable que NADIE declaro es tan grave como uno cambiado:
-    # es exactamente por donde entraria algo que la suite no vio.
-    for p in sorted((raiz / "dist").glob("*")):
-        rel = p.relative_to(raiz).as_posix()
-        if rel not in declarados:
-            problemas.append(f"en dist/ y sin declarar en SHA256SUMS: {rel}")
+    # es exactamente por donde entraria algo que la suite no vio. Se mira
+    # `dist/` -lo que sube a PyPI- y tambien `meta/` -lo que sube como asset de
+    # la GitHub Release-, porque los dos son destinos publicos.
+    for carpeta in ("dist", "meta"):
+        for p in sorted((raiz / carpeta).glob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(raiz).as_posix()
+            if rel not in declarados and rel not in META_NO_FIRMADOS:
+                problemas.append(
+                    f"en {carpeta}/ y sin declarar en SHA256SUMS: {rel}")
 
     if problemas:
         raise SystemExit("[release_verify] artefacto NO verificado:\n  - "
                          + "\n  - ".join(problemas))
     return sorted(declarados)
+
+
+def assets_publicables(raiz: Path) -> dict:
+    """`{nombre del asset: ruta}` — la lista EXACTA que sube a la release.
+
+    Se deriva de `SHA256SUMS` en vez de escribirse a mano: asi «lo que se
+    publica» y «lo que esta firmado» no son dos listas que puedan divergir,
+    sino la misma. `SHA256SUMS` se publica ademas de firmar, porque quien
+    descargue un asset suelto necesita con que compararlo; es el unico que no
+    puede declararse a si mismo.
+    """
+    sumas = raiz / "meta" / "SHA256SUMS"
+    salida: dict[str, Path] = {}
+    for linea in sumas.read_text(encoding="ascii").splitlines():
+        if not linea.strip():
+            continue
+        _, _, rel = linea.partition("  ")
+        ruta = raiz / rel
+        nombre = ruta.name
+        if nombre in salida:
+            raise SystemExit(
+                f"[release_verify] dos publicables se llamarian igual como "
+                f"asset: {nombre}. Una release no admite nombres repetidos y "
+                "uno taparia al otro")
+        salida[nombre] = ruta
+    salida[sumas.name] = sumas
+    return salida
 
 
 def verificar_instalador(raiz: Path) -> str:
