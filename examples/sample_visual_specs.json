@@ -1,70 +1,70 @@
 {
-  "_comment": "Ejemplos de entrada para pbi_create_visual y pbi_arrange_visuals. Requiere un .pbip activo con PBIR (pbi_open_pbip_project).",
+  "_comment": "Input examples for pbi_create_visual and pbi_arrange_visuals. Requires an active .pbip project with PBIR (pbi_open_pbip_project). Page, table and measure names are placeholders from a sample model: replace them with your own.",
 
   "card": {
-    "page": "Resumen Ejecutivo",
+    "page": "Executive Summary",
     "visual_type": "card",
-    "title": "Ventas Totales",
-    "fields": { "values": ["[Total Ventas]"] },
+    "title": "Total Sales",
+    "fields": { "values": ["[Total Sales]"] },
     "position": { "x": 24, "y": 88, "width": 300, "height": 140 }
   },
 
   "clusteredColumnChart": {
-    "page": "Resumen Ejecutivo",
+    "page": "Executive Summary",
     "visual_type": "clusteredColumnChart",
-    "title": "Ventas por Mes",
+    "title": "Sales by Month",
     "fields": {
-      "category": "Calendario[Mes]",
-      "values": ["[Total Ventas]"],
-      "legend": "Producto[Categoria]"
+      "category": "Calendar[Month]",
+      "values": ["[Total Sales]"],
+      "legend": "Product[Category]"
     },
     "position": { "x": 24, "y": 240, "width": 640, "height": 360 }
   },
 
   "lineChart": {
-    "page": "Tendencias",
+    "page": "Trends",
     "visual_type": "lineChart",
-    "title": "Evolución de Margen",
+    "title": "Margin Over Time",
     "fields": {
-      "category": "Calendario[Fecha]",
-      "values": ["[Margen]"]
+      "category": "Calendar[Date]",
+      "values": ["[Margin]"]
     },
     "position": { "x": 700, "y": 240, "width": 560, "height": 360 }
   },
 
   "table": {
-    "page": "Detalle",
+    "page": "Detail",
     "visual_type": "table",
-    "title": "Detalle por Cliente",
+    "title": "Detail by Customer",
     "fields": {
-      "values": ["Cliente[Nombre]", "[Total Ventas]", "[Margen]"]
+      "values": ["Customer[Name]", "[Total Sales]", "[Margin]"]
     },
     "position": { "x": 24, "y": 88, "width": 800, "height": 500 }
   },
 
   "matrix": {
-    "page": "Detalle",
+    "page": "Detail",
     "visual_type": "matrix",
-    "title": "Ventas por Categoría y Mes",
+    "title": "Sales by Category and Month",
     "fields": {
-      "rows": "Producto[Categoria]",
-      "columns": "Calendario[Mes]",
-      "values": ["[Total Ventas]"]
+      "rows": "Product[Category]",
+      "columns": "Calendar[Month]",
+      "values": ["[Total Sales]"]
     },
     "position": { "x": 24, "y": 88, "width": 900, "height": 480 }
   },
 
   "slicer": {
-    "page": "Resumen Ejecutivo",
+    "page": "Executive Summary",
     "visual_type": "slicer",
-    "title": "Año",
-    "fields": { "values": ["Calendario[Anio]"] },
+    "title": "Year",
+    "fields": { "values": ["Calendar[Year]"] },
     "position": { "x": 1000, "y": 88, "width": 220, "height": 300 }
   },
 
   "arrange_example": {
-    "_comment": "Entrada para pbi_arrange_visuals",
-    "page": "Resumen Ejecutivo",
+    "_comment": "Input for pbi_arrange_visuals",
+    "page": "Executive Summary",
     "layout": "executive_summary",
     "canvas": { "width": 1280, "height": 720 },
     "spacing": 16

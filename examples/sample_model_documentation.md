@@ -1,70 +1,70 @@
-# Documentacion del modelo — Ventas (ejemplo)
+# Model documentation — Sales (example)
 
-_Este es un ejemplo del tipo de salida que genera `pbi_document_model`._
+_This is an example of the output `pbi_document_model` produces._
 
-## Resumen
+## Summary
 
-- **Modelo:** Ventas
-- **Cultura:** es-ES
-- **Tablas:** 4
-- **Medidas:** 6
-- **Relaciones:** 3
-- **Jerarquias:** 1
+- **Model:** Sales
+- **Culture:** en-US
+- **Tables:** 4
+- **Measures:** 6
+- **Relationships:** 3
+- **Hierarchies:** 1
 - **Roles (RLS):** 1
 
-## Tablas
+## Tables
 
-| Tabla | Oculta | Columnas | Medidas | Fecha |
+| Table | Hidden | Columns | Measures | Date |
 |---|---|---|---|---|
-| Ventas | no | 8 | 6 | |
-| Producto | no | 5 | 0 | |
-| Cliente | no | 6 | 0 | |
-| Calendario | no | 7 | 0 | si |
+| Sales | no | 8 | 6 | |
+| Product | no | 5 | 0 | |
+| Customer | no | 6 | 0 | |
+| Calendar | no | 7 | 0 | yes |
 
-### Ventas
+### Sales
 
-| Columna | Tipo dato | Tipo | Oculta | SummarizeBy |
+| Column | Data type | Type | Hidden | SummarizeBy |
 |---|---|---|---|---|
-| VentaID | Int64 | Data | si | none |
-| Monto | Decimal | Data | no | sum |
-| Fecha | DateTime | Data | no | none |
+| SaleID | Int64 | Data | yes | none |
+| Amount | Decimal | Data | no | sum |
+| Date | DateTime | Data | no | none |
 
-## Medidas
+## Measures
 
-### Ventas[Total Ventas] _(carpeta: KPIs)_
-- Formato: `#,0`
+### Sales[Total Sales] _(folder: KPIs)_
+- Format: `#,0`
 
 ```dax
-SUM(Ventas[Monto])
+SUM(Sales[Amount])
 ```
 
-### Ventas[Margen] _(carpeta: KPIs)_
-- Formato: `0.0%`
+### Sales[Margin] _(folder: KPIs)_
+- Format: `0.0%`
 
 ```dax
-DIVIDE([Utilidad], [Total Ventas])
+DIVIDE([Profit], [Total Sales])
 ```
 
-## Relaciones
+## Relationships
 
-| Desde | Hacia | Cardinalidad | Filtro cruzado | Activa |
+| From | To | Cardinality | Cross filter | Active |
 |---|---|---|---|---|
-| Ventas[ProductoID] | Producto[ProductoID] | Many-One | OneDirection | si |
-| Ventas[ClienteID] | Cliente[ClienteID] | Many-One | OneDirection | si |
-| Ventas[Fecha] | Calendario[Fecha] | Many-One | OneDirection | si |
+| Sales[ProductID] | Product[ProductID] | Many-One | OneDirection | yes |
+| Sales[CustomerID] | Customer[CustomerID] | Many-One | OneDirection | yes |
+| Sales[Date] | Calendar[Date] | Many-One | OneDirection | yes |
 
-## Jerarquias
+## Hierarchies
 
-- **Calendario[Calendario]**: Anio > Trimestre > Mes
+- **Calendar[Calendar]**: Year > Quarter > Month
 
-## Roles / Seguridad a nivel de fila (RLS)
+## Roles / Row-level security (RLS)
 
-### Vendedor
-- `Ventas`: `Ventas[Vendedor] = USERPRINCIPALNAME()`
+### Salesperson
+- `Sales`: `Sales[Salesperson] = USERPRINCIPALNAME()`
 
-## Advertencias de calidad del modelo
+## Model quality warnings
 
 Total: 2 ({'info': 1, 'warning': 1})
 
-- **[warning] relacion_bidireccional** — Relacion bidireccional Ventas <-> Producto ...
-- **[info] id_visible** — Columna de ID visible 'Cliente[ClienteID]' ...
+- **[warning] bidirectional_relationship** — Bidirectional relationship Sales <-> Product ...
+- **[info] visible_id** — Visible ID column 'Customer[CustomerID]' ...

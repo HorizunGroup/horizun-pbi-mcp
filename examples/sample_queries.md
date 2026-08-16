@@ -1,30 +1,35 @@
-# Ejemplos de consultas DAX (`pbi_run_dax`)
+# DAX query examples (`pbi_run_dax`)
 
-> Requiere un modelo activo: primero `pbi_list_desktop_models` y `pbi_select_model`.
+> Requires an active model: run `pbi_list_desktop_models` and
+> `pbi_select_model` first.
 
-## 1. Prueba mínima
+Table and column names below (`Sales`, `Product[Category]`, …) are placeholders
+from a sample model. Replace them with the ones in your own.
+
+## 1. Minimal check
 ```dax
 EVALUATE ROW("ok", 1)
 ```
 
-## 2. Ver todas las filas de una tabla (con límite)
+## 2. Read a table, with a limit
 ```dax
-EVALUATE TOPN(50, Ventas)
+EVALUATE TOPN(50, Sales)
 ```
-`max_rows` en el tool también limita; usa TOPN para acotar en el motor.
+The tool's `max_rows` also caps the result, but `TOPN` bounds it in the engine,
+which is cheaper.
 
-## 3. Una medida evaluada
+## 3. Evaluate one measure
 ```dax
-EVALUATE ROW("Total Ventas", [Total Ventas])
+EVALUATE ROW("Total Sales", [Total Sales])
 ```
 
-## 4. Medida por categoría
+## 4. A measure broken down by category
 ```dax
 EVALUATE
 SUMMARIZECOLUMNS(
-    Producto[Categoria],
-    "Ventas", [Total Ventas],
-    "Margen", [Margen]
+    Product[Category],
+    "Sales", [Total Sales],
+    "Margin", [Margin]
 )
 ```
 
@@ -33,13 +38,13 @@ SUMMARIZECOLUMNS(
 EVALUATE
 TOPN(
     10,
-    SUMMARIZECOLUMNS(Cliente[Nombre], "Ventas", [Total Ventas]),
-    [Ventas], DESC
+    SUMMARIZECOLUMNS(Customer[Name], "Sales", [Total Sales]),
+    [Sales], DESC
 )
-ORDER BY [Ventas] DESC
+ORDER BY [Sales] DESC
 ```
 
-## 6. Inspección de metadatos con DMVs
+## 6. Metadata inspection with DMVs
 ```dax
 SELECT [Name] FROM $SYSTEM.TMSCHEMA_TABLES
 ```
@@ -47,13 +52,14 @@ SELECT [Name] FROM $SYSTEM.TMSCHEMA_TABLES
 SELECT [Name], [Expression] FROM $SYSTEM.TMSCHEMA_MEASURES
 ```
 
-## 7. Filtro con CALCULATE
+## 7. Filtering with CALCULATE
 ```dax
 EVALUATE
-ROW("Ventas 2024", CALCULATE([Total Ventas], Calendario[Anio] = 2024))
+ROW("Sales 2024", CALCULATE([Total Sales], Calendar[Year] = 2024))
 ```
 
-## Notas
-- Los errores del motor DAX se devuelven tal cual (no se ocultan).
-- `elapsed_ms` reporta el tiempo de ejecución.
-- Si `truncated=true`, aumenta `max_rows` o acota con TOPN/filtros.
+## Notes
+- DAX engine errors are returned verbatim; they are never swallowed.
+- `elapsed_ms` reports execution time.
+- If `truncated=true`, raise `max_rows` or narrow the query with `TOPN` or
+  filters.
