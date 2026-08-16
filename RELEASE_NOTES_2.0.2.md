@@ -100,7 +100,10 @@ places and fails if either names a file that does not embed the block.
   `e3ed562`; the one that already passed is the one pinning that pythonnet's
   already-loaded path raises nothing — the assumption the second defect grew
   from, now held by a test instead of a comment.
-- Full suite: **2988 passed, 3 skipped** (the three need Desktop open).
+- Full suite on the tagged tree: **2990 passed, 3 skipped** (the three need
+  Desktop open). The two extra tests over the fix branch are the ones added
+  while preparing the release: the ninth version site, and the prose that
+  announces where the one-paste block lives.
 - No contract change, no golden change.
 
 ## Upgrading
