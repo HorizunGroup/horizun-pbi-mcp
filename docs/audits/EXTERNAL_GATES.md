@@ -81,9 +81,9 @@ aquí— y **13 son externos puros**.
 
 Los dos de release comparten una sola dependencia: que exista una release real
 de **v2.0.1**, que **no existe**, y que este ciclo tiene prohibido crear. El tag
-`v2.0.0` sí existe en el remoto, pero es el de un intento fallido: sin release,
-sin PyPI y sin registro. **Un tag no es una release publicada**, y no cierra ni
-G6.1 ni G6.4.
+`v2.0.0` existió en el remoto hasta el 2026-08-16 —se borró entonces—, pero era
+el de un intento fallido: sin release, sin PyPI y sin registro. **Un tag no es
+una release publicada**, y no cerraba ni G6.1 ni G6.4.
 
 ---
 

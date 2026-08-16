@@ -8,6 +8,17 @@ exactamente la observación que pedían.
 Todo lo de aquí es **lectura**. Ni un comando de este documento muta el remoto,
 y todos son reproducibles por cualquiera con acceso de lectura al repositorio.
 
+> **NOTA POSTERIOR — 2026-08-16: el tag `v2.0.0` fue BORRADO del remoto.** Lo
+> que sigue en este documento se capturó el 2026-08-15, cuando el tag existía, y
+> se conserva tal cual porque es el registro de esa observación. La regla que se
+> escribió aquí abajo —que un tag público no se mueve ni se borra— se revocó a
+> conciencia para este tag concreto, no se incumplió por descuido: vivió unas
+> dieciocho horas, nunca se publicó nada bajo él, y el commit al que apuntaba
+> (`1f0405b`) sigue alcanzable desde `main`, así que nadie puede encontrar bytes
+> distintos bajo un nombre que ya se hubiera traído. El motivo del borrado fue
+> de presentación: un tag sin release al que no lleva ningún camino. El razonado
+> completo está en el `CHANGELOG`, entrada `2.0.1`.
+
 > **El tag `v2.0.0` es inmutable.** Existe en el remoto y apunta a `1f0405b`,
 > pero se creó durante un intento de publicación fallido y **no se publicó nada**
 > bajo él: ni GitHub Release, ni PyPI, ni MCP Registry. Que PyPI no llegara a
@@ -22,12 +33,14 @@ y todos son reproducibles por cualquiera con acceso de lectura al repositorio.
 | Hecho | Valor |
 |---|---|
 | `main` | `1f0405b4db9d132c1b7d994163b82f70c19a6b3a` |
-| Tag `v2.0.0` | existe, apunta a `1f0405b` |
+| Tag `v2.0.0` | existía, apuntaba a `1f0405b` — borrado el 2026-08-16 |
 | GitHub Releases | la última sigue siendo **v1.5.4** |
 | PyPI | la última sigue siendo **1.5.4** |
 | MCP Registry | la última sigue siendo **1.5.4** |
 
-Reproducible con:
+Reproducible el 2026-08-15 con el comando de abajo. **Desde el borrado del
+2026-08-16 ya no reproduce**: devuelve `Not Found`, que es la respuesta correcta
+y no una contradicción de lo que este documento registró.
 
 ```bash
 gh api repos/HorizunGroup/horizun-pbi-mcp/git/ref/tags/v2.0.0 -q .object.sha
