@@ -10,11 +10,14 @@ The full operating rules are in [`AGENTS.md`](AGENTS.md) and take priority.
 
 ```bash
 python -m pytest -q
+python -m ruff check src scripts tests
+python -m mypy
 python scripts/doctor.py
 python -m tests.contract_utils
 ```
 
-All three green. **Don't build on red.**
+All five green. CI also measures the full suite with coverage and rejects totals
+below 85%; the current measured baseline is 86%.
 
 ## The MCP contract is untouchable
 

@@ -92,9 +92,10 @@ def creacion_de_proceso(pid: int) -> float | None:
             return None
         try:
             creacion = wintypes.FILETIME()
-            resto = [wintypes.FILETIME() for _ in range(3)]
-            if not kernel32.GetProcessTimes(handle, ctypes.byref(creacion),
-                                            *[ctypes.byref(f) for f in resto]):
+            otros_tiempos = [wintypes.FILETIME() for _ in range(3)]
+            if not kernel32.GetProcessTimes(
+                    handle, ctypes.byref(creacion),
+                    *[ctypes.byref(f) for f in otros_tiempos]):
                 return None
             ticks = (creacion.dwHighDateTime << 32) | creacion.dwLowDateTime
             # FILETIME cuenta en unidades de 100 ns desde 1601-01-01.
@@ -103,19 +104,20 @@ def creacion_de_proceso(pid: int) -> float | None:
             kernel32.CloseHandle(handle)
 
     try:
-        campos = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8")
+        campos_proc = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8")
     except OSError:
         return None
     try:
         # El nombre del ejecutable va entre parentesis y puede llevar espacios:
         # se corta por el ULTIMO ')' o un proceso llamado "a b)" desalinearia
         # todos los campos siguientes.
-        resto = campos[campos.rindex(")") + 1:].split()
-        arranque_en_ticks = float(resto[19])
+        campos_restantes = campos_proc[campos_proc.rindex(")") + 1:].split()
+        arranque_en_ticks = float(campos_restantes[19])
     except (ValueError, IndexError):
         return None
     try:
-        hz = os.sysconf("SC_CLK_TCK")
+        sysconf = getattr(os, "sysconf")
+        hz = sysconf("SC_CLK_TCK")
     except (AttributeError, ValueError, OSError):
         hz = 100
     try:
@@ -213,7 +215,7 @@ class CerrojoDeCicloDeVida:
 
     def es_mio(self) -> bool:
         datos = self.duenno()
-        return bool(datos) and datos.get("token") == self.token
+        return datos is not None and datos.get("token") == self.token
 
     def duenno(self) -> dict | None:
         try:

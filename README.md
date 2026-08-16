@@ -728,12 +728,15 @@ horizun-pbi-mcp/
 python -m pytest -q
 ```
 
-**2039 tests, 3 skipped.** The skips are environmental and say how to run them:
+The 2026-08-15 validation passed **2972 tests with 5 environmental skips**.
+The exact count grows with the product; the invariant is a green suite, not a
+hard-coded total.
 
-| Skipped | Condition |
+| Skip category | Condition |
 |---|---|
-| `test_run_dax_live` | Requires a Power BI Desktop instance serving a model. `python -m pytest -m live` |
-| `test_no_llega_a_cero_por_acumular_infos` | Requires the synthetic model to trigger only informational rules |
+| Live Desktop | Requires Power BI Desktop serving a model. `python -m pytest -m live` |
+| Local fixture / official validator | Requires an ignored local model or Microsoft's CLI |
+| Synthetic precondition | A fixture intentionally lacks the data needed by that scenario |
 
 Available markers:
 
@@ -742,6 +745,18 @@ python -m pytest -m "not packaging"     # fast: skips wheel and sdist
 python -m pytest -m live                # against an open Power BI Desktop
 python -m pytest -m live_validator      # against Microsoft's official CLI
 ```
+
+Repository quality gates (development only; end users do not install them):
+
+```bash
+python -m ruff check src scripts tests
+python -m mypy
+python -m pytest -q --cov=horizun_pbi_mcp --cov-report=term
+```
+
+The coverage floor is **85%**; the measured baseline is **86%** over 18,780
+statements. Type checking starts at the safety and transaction boundaries and
+expands module by module rather than hiding a repository-wide backlog.
 
 Verify the MCP contract (the 134 tools are frozen):
 

@@ -24,12 +24,13 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_DIR = PROJECT_ROOT / "tests" / "fixtures" / "local"
 
 
-def _fail(msg: str) -> "NoReturn":  # type: ignore[valid-type]
+def _fail(msg: str) -> NoReturn:
     print(f"ERROR: {msg}", file=sys.stderr)
     raise SystemExit(2)
 

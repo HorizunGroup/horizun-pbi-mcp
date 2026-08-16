@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path, PurePath
-from typing import Iterable, Union
+from typing import Iterable, NoReturn, Union
 
 from horizun_pbi_mcp.powerbi.errors import PathSecurityError, ValidationError
 
@@ -53,7 +53,7 @@ _DEVICE_PREFIX = "\\\\.\\"
 _DRIVE_SYNTAX = re.compile(r"^[A-Za-z]:")
 
 
-def _reject(reason: str, value: str, kind: str) -> "NoReturn":  # type: ignore[valid-type]
+def _reject(reason: str, value: str, kind: str) -> NoReturn:
     raise PathSecurityError(
         f"{kind} invalido: {reason}",
         details={"value": value, "kind": kind, "reason": reason},

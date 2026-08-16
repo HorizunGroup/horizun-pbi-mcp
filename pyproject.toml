@@ -55,8 +55,16 @@ Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG
 # pyyaml: tests/test_release_pipeline.py analiza el DAG de los workflows.
 # Sin el, esas guardas no se ejecutarian en CI, que es justo donde importan.
 # tomli: `scripts/generar_lock.py --check` lee pyproject y corre en CI
-# tambien en 3.10, donde `tomllib` todavia no existe.
-test = ["pytest>=8.0", "pyyaml>=6,<7", "tomli>=2; python_version < '3.11'"]
+# tambien en 3.10, donde `tomllib` todavia no existe. Ruff, mypy y pytest-cov
+# son gates del repositorio; no se instalan en el runtime de los usuarios.
+test = [
+    "pytest>=8.0",
+    "pyyaml>=6,<7",
+    "tomli>=2; python_version < '3.11'",
+    "ruff>=0.16,<0.17",
+    "mypy>=2.3,<2.4",
+    "pytest-cov>=7.1,<8",
+]
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"
@@ -100,3 +108,41 @@ include = ["horizun_pbi_mcp*"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Gate inicial deliberadamente estricto en errores, no en preferencias de
+# formato: sintaxis inválida, nombres inexistentes y fallos de flujo evidentes.
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+follow_imports = "skip"
+show_error_codes = true
+# Alcance inicial: bordes de seguridad, transacciones, locks y generación de
+# dependencias. Se amplía por módulos; no se silencian miles de errores de golpe.
+files = [
+    "src/horizun_pbi_mcp/branding.py",
+    "src/horizun_pbi_mcp/tools/risk.py",
+    "src/horizun_pbi_mcp/services/paths.py",
+    "src/horizun_pbi_mcp/services/recovery.py",
+    "src/horizun_pbi_mcp/services/txn.py",
+    "src/horizun_pbi_mcp/services/idempotency.py",
+    "src/horizun_pbi_mcp/lifecycle/locking.py",
+    "src/horizun_pbi_mcp/lifecycle/promotion.py",
+    "scripts/generar_lock.py",
+    "scripts/setup_local_fixture.py",
+]
+
+[tool.coverage.run]
+source = ["horizun_pbi_mcp"]
+
+[tool.coverage.report]
+# Medido el 2026-08-15: 86% sobre 18.780 sentencias. Un punto de margen evita
+# ruido entre 3.13 y 3.14, pero convierte una caída material en fallo de CI.
+fail_under = 85
+show_missing = true

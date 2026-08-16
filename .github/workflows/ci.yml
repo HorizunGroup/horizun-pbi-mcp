@@ -69,6 +69,11 @@ jobs:
       - name: Integridad de los locks de dependencias
         run: python scripts/generar_lock.py --check
 
+      - name: Calidad estatica
+        run: |
+          python -m ruff check src scripts tests
+          python -m mypy
+
       # Esquemas oficiales del PBIR. Se descargan con hash verificado; sin
       # ellos, las pruebas que escriben PBIR fallarian con schema_unavailable.
       - name: Esquemas PBIR (verificados por SHA-256)
@@ -84,8 +89,16 @@ jobs:
       - name: DLLs de Analysis Services (verificadas por SHA-256)
         run: python scripts/fetch_libs.py
 
+      # Cobertura una sola vez: la suite funcional ya corre en ambos extremos
+      # del rango; instrumentarla dos veces solo duplica minutos de CI.
       - name: Pruebas
-        run: python -m pytest -q
+        shell: pwsh
+        run: |
+          if ("${{ matrix.python-version }}" -eq "3.13") {
+            python -m pytest -q --cov=horizun_pbi_mcp --cov-report=term
+          } else {
+            python -m pytest -q
+          }
 
       - name: Diagnostico de la instalacion
         run: python scripts/doctor.py
