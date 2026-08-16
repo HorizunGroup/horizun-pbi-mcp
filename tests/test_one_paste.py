@@ -548,28 +548,40 @@ def test_ninguna_copia_del_bloque_diverge_del_canonico():
         "Reparalo con: python scripts/sync_one_paste.py")
 
 
-def test_la_prosa_de_la_skill_solo_cita_documentos_que_llevan_el_bloque():
-    """La skill manda a copiar el bloque; si nombra un archivo que ya no lo
-    lleva, el agente que la sigue al pie de la letra no lo encuentra y acaba
-    reconstruyendolo de memoria -exactamente lo que la frase quiere evitar-.
+def test_la_prosa_solo_cita_documentos_que_llevan_el_bloque():
+    """Quien anuncia donde esta el bloque no puede nombrar un archivo que no lo
+    lleva: el agente que sigue la instruccion al pie de la letra no lo encuentra
+    y acaba reconstruyendolo de memoria, que es lo que la instruccion evita.
 
-    Paso: la frase cito `README.md` durante meses despues de que el README
-    dejara de incrustar el bloque y pasara a solo enlazar a `docs/INSTALL.md`.
-    Los bloques se vigilan por hash; la prosa que los anuncia, no lo estaba.
+    Paso en DOS sitios a la vez -la frase de la skill y la cabecera del propio
+    archivo canonico-, lo que descarta el despiste: ambos citaban `README.md`
+    mucho despues de que el README dejara de incrustarlo y pasara a solo
+    enlazar a `docs/INSTALL.md`. Los bloques se vigilan por hash; la prosa que
+    los anuncia no la vigilaba nadie.
+
+    Se miran los dos textos que dicen DONDE esta el bloque, no cualquier
+    mencion del README: en otras partes se le nombra por motivos que no tienen
+    que ver con incrustarlo.
     """
-    rel = "skills/horizun-pbi-setup/SKILL.md"
-    texto = (RAIZ / rel).read_text(encoding="utf-8")
-    # El punto que cierra la frase es el que va seguido de espacio o fin: un
-    # `\.` a secas corta dentro de `one_paste.ps1` y deja fuera precisamente
-    # los documentos que hay que revisar (con lo que el test pasaria solo).
-    frase = re.search(r"El bloque exacto esta en.*?\.(?=\s|$)", texto, re.S)
-    assert frase, f"{rel} ya no dice donde esta el bloque exacto"
+    # El punto que cierra la frase de la skill es el que va seguido de espacio
+    # o fin: un `\.` a secas corta dentro de `one_paste.ps1` y deja fuera
+    # precisamente los documentos que hay que revisar -el test pasaria solo-.
+    skill = (RAIZ / "skills/horizun-pbi-setup/SKILL.md").read_text(encoding="utf-8")
+    frase = re.search(r"El bloque exacto esta en.*?\.(?=\s|$)", skill, re.S)
+    assert frase, "la SKILL ya no dice donde esta el bloque exacto"
 
-    citados = [c for c in re.findall(r"`([^`]+)`", frase.group(0))
-               if c.endswith(".md")]
-    intrusos = [c for c in citados if c not in DOCUMENTOS]
+    cabecera = "\n".join(
+        l for l in CANONICO.read_text(encoding="ascii").splitlines()
+        if l.startswith("#"))
+    assert "incrustan ESTE archivo" in cabecera, (
+        "la cabecera del canonico ya no enumera quien lo incrusta; si se "
+        "reescribio, actualiza este test en vez de borrarlo")
+
+    citados = set(re.findall(r"`([^`]+\.md)`", frase.group(0)))
+    citados |= set(re.findall(r"\b([\w/\-]+\.md)\b", cabecera))
+    intrusos = sorted(c for c in citados if c not in DOCUMENTOS)
     assert not intrusos, (
-        f"{rel} anuncia el bloque en {intrusos}, que no lo incrustan. "
+        f"se anuncia el bloque en {intrusos}, que no lo incrustan. "
         f"Los documentos que lo llevan son {list(DOCUMENTOS)}")
 
 

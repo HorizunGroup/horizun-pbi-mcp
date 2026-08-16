@@ -1,9 +1,10 @@
 # FUENTE CANONICA del bloque de un pegado. No lo copies a mano a ningun sitio.
 #
-# README.md, docs/INSTALL.md y skills/horizun-pbi-setup/SKILL.md incrustan ESTE
-# archivo palabra por palabra, y tests/test_one_paste.py falla si alguno se
-# desvia una coma. Un bloque que se mantiene en cuatro sitios acaba siendo
-# cuatro bloques distintos, y el que se quede atras sera el que alguien pegue.
+# docs/INSTALL.md y skills/horizun-pbi-setup/SKILL.md incrustan ESTE archivo
+# palabra por palabra, y tests/test_one_paste.py falla si alguno se desvia una
+# coma. Un bloque que se mantiene en tres sitios acaba siendo tres bloques
+# distintos, y el que se quede atras sera el que alguien pegue. El README ya no
+# lo incrusta: solo enlaza a INSTALL, y por eso no esta en esta lista.
 #
 # Que sustituye: `irm .../main/scripts/instalar.ps1 | iex`, que descargaba de
 # una RAMA -bytes que pueden cambiar bajo el mismo enlace- y ejecutaba lo que
@@ -37,7 +38,7 @@
 # tambien en scripts/downloads_manifest.json; una prueba comprueba los tres
 # contra los bytes reales del archivo.
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.2/horizun-pbi-mcp-instalar.ps1'
 $sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')

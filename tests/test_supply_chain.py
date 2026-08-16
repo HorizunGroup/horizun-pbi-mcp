@@ -54,6 +54,33 @@ def test_marketplace_declara_la_version_del_proyecto(ruta):
         f"{ruta} apunta a {refs} y el proyecto es {esperado}")
 
 
+def test_todos_los_sitios_de_version_coinciden_con_branding():
+    """El gate del release comprueba esto AL TAGUEAR; aqui se comprueba antes.
+
+    La lista vivia solo en `scripts/release_verify.py`, asi que una divergencia
+    se descubria al publicar -o no se descubria-. Y estaba incompleta: le
+    faltaba `scripts/plugin_bootstrap.py`, que es con SU version con la que el
+    launcher decide si el runtime instalado sirve o hay que reinstalar. Un
+    plugin actualizado a 2.0.2 seguiria dando por buena la 2.0.1 en disco. Se
+    colaba porque solo lo miraba una prueba de empaquetado, por el handshake.
+    """
+    import sys
+
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    import release_verify
+
+    from horizun_pbi_mcp import branding
+
+    desfasados = {}
+    for rel, extraer in release_verify.SITIOS_DE_VERSION.items():
+        declarada = extraer((RAIZ / rel).read_text(encoding="utf-8"))
+        if declarada != branding.VERSION:
+            desfasados[rel] = declarada
+    assert not desfasados, (
+        f"declaran una version distinta de branding ({branding.VERSION}): "
+        f"{desfasados}")
+
+
 # ---------------------------------------------------------------- manifest ---
 def test_el_manifest_no_admite_url_mutable_ni_hash_vacio():
     datos = json.loads(MANIFEST.read_text(encoding="utf-8"))
