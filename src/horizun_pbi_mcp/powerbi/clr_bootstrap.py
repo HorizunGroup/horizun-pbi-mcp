@@ -25,6 +25,10 @@ log = get_logger("clr")
 
 _lock = threading.Lock()
 _runtime_loaded = False
+#: Causa del ultimo intento fallido de cargar el runtime, para que el
+#: diagnostico distinga "todavia no se intento" de "se intento y no se pudo".
+#: Sin esto, un health check de solo lectura no puede decir mas que "algo pasa".
+_runtime_error: Optional[str] = None
 _adomd_ns: Optional[Any] = None
 _tom_ns: Optional[Any] = None
 
@@ -39,32 +43,42 @@ _TOM_DEPS = (
 
 
 def _ensure_runtime(runtime: str = "netfx") -> None:
-    """Selecciona el runtime .NET de pythonnet (una sola vez)."""
-    global _runtime_loaded
+    """Selecciona el runtime .NET de pythonnet (una sola vez).
+
+    `RuntimeError` NO significa "ya habia un runtime cargado", aunque durante
+    mucho tiempo este codigo lo dio por hecho. En pythonnet 3.x el caso
+    ya-cargado sale por `if _LOADED: return`, sin excepcion; el `RuntimeError`
+    queda para los fallos de verdad ("Failed to create a .NET runtime (netfx)",
+    "No valid runtime selected", "Failed to initialize Python.Runtime.dll").
+    Tratarlo como exito marcaba el runtime como cargado sin runtime -el error
+    reaparecia despues en `clr.AddReference`, culpando a la DLL- y, por hacerlo
+    con un `return` dentro del bucle, dejaba el respaldo a `coreclr` en codigo
+    muerto: una maquina sin .NET Framework nunca llegaba a intentar el otro.
+    """
+    global _runtime_loaded, _runtime_error
     if _runtime_loaded:
         return
     from pythonnet import load
 
     order = [runtime] + [r for r in ("netfx", "coreclr") if r != runtime]
-    last_exc: Optional[Exception] = None
+    fallos: list[str] = []
     for rt in order:
         try:
             load(rt)
-            log.info("Runtime .NET cargado: %s", rt)
-            _runtime_loaded = True
-            return
-        except RuntimeError:
-            # Ya habia un runtime cargado en el proceso: lo aceptamos.
-            log.debug("Runtime .NET ya estaba cargado; se reutiliza.")
-            _runtime_loaded = True
-            return
         except Exception as exc:  # pragma: no cover - depende del entorno
-            last_exc = exc
+            fallos.append(f"{rt}: {type(exc).__name__}: {exc}")
             log.warning("No se pudo cargar el runtime .NET '%s': %s", rt, exc)
+            continue
+        log.info("Runtime .NET cargado: %s", rt)
+        _runtime_loaded = True
+        _runtime_error = None
+        return
+
+    _runtime_error = "; ".join(fallos)
     raise ClrNotAvailableError(
         "No se pudo inicializar el runtime .NET (pythonnet). Verifica que .NET "
         "Framework 4.x o .NET Core este disponible.",
-        details={"cause": str(last_exc) if last_exc else None},
+        details={"cause": _runtime_error or None},
     )
 
 
@@ -139,11 +153,41 @@ def load_tom() -> Any:
         return TOM
 
 
+#: Los tres estados posibles del interop. Son TRES, no dos: el runtime se carga
+#: perezosamente -solo `load_adomd()` / `load_tom()` lo piden-, asi que un
+#: servidor recien arrancado esta legitimamente sin cargar, y eso no es un
+#: fallo. Colapsar `not_attempted` con `failed` es lo que convertia el check en
+#: un aviso permanente.
+CLR_LOADED = "loaded"
+CLR_NOT_ATTEMPTED = "not_attempted"
+CLR_FAILED = "failed"
+
+
+def clr_state() -> tuple[str, str]:
+    """Estado del interop y su explicacion en texto. El detalle nunca va vacio.
+
+    No se sondea el runtime aqui a proposito: `pbi_health_check` se anuncia
+    como solo lectura y cargar .NET dentro de el seria un efecto secundario
+    justo en la tool que se llama para mirar sin tocar.
+    """
+    preferencia = get_settings().dotnet_runtime
+    if _runtime_loaded:
+        return CLR_LOADED, f"runtime .NET '{preferencia}' cargado"
+    if _runtime_error:
+        return CLR_FAILED, f"no se pudo cargar el runtime .NET: {_runtime_error}"
+    return CLR_NOT_ATTEMPTED, (
+        f"runtime .NET '{preferencia}' aun sin cargar; se carga en la primera "
+        "operacion contra un modelo (usa pbi_test_connection para comprobarlo)")
+
+
 def diagnostics() -> dict:
     """Estado del interop para pbi_test_connection / troubleshooting."""
     settings = get_settings()
     libs = settings.libs_dir
+    estado, detalle = clr_state()
     return {
+        "clr_state": estado,
+        "clr_detail": detalle,
         "libs_dir": str(libs),
         "libs_dir_exists": libs.exists(),
         "adomd_dll_present": (libs / _ADOMD_DLL).exists(),

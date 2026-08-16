@@ -194,7 +194,7 @@ def register(mcp) -> None:
         atencion (sesion obsoleta, journals pendientes).
         """
         def _impl():
-            from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
+            from horizun_pbi_mcp.powerbi.clr_bootstrap import CLR_FAILED, diagnostics
 
             session = get_session()
             settings = get_settings()
@@ -214,8 +214,12 @@ def register(mcp) -> None:
             dlls = sorted(p.name for p in libs.glob("*.dll")) if libs.exists() else []
             add("analysis_services_dlls", len(dlls) >= 3, f"{len(dlls)} DLL")
 
+            # Solo un fallo REAL avisa. Que el runtime aun no este cargado es
+            # el estado normal de un servidor recien arrancado -se carga en la
+            # primera operacion contra un modelo-, y contarlo como aviso dejaba
+            # el health check en 'warning' permanente.
             diag = diagnostics()
-            add("clr", bool(diag.get("clr_available")), diag.get("runtime"),
+            add("clr", diag["clr_state"] != CLR_FAILED, diag["clr_detail"],
                 requerido=False)
 
             modelo = session.active_model

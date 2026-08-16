@@ -286,6 +286,39 @@ def test_health_check(proyecto, tools):
     assert {"python", "analysis_services_dlls", "active_pbip"} <= ids
 
 
+@pytest.mark.parametrize("cargado,error,ok_esperado", [
+    (True, None, True),        # interop vivo
+    (False, None, True),       # todavia no se intento: no es un problema
+    (False, "ClrNotAvailableError: no hay .NET 4.x", False),
+])
+def test_el_check_clr_dice_la_verdad_y_nunca_calla_el_motivo(
+        proyecto, tools, monkeypatch, cargado, error, ok_esperado):
+    """El check leia dos claves inexistentes y salia rojo SIEMPRE.
+
+    `bool(None)` es `False`, asi que toda instalacion sana arrancaba con
+    `warnings: ["clr"]` y `detail: null`: un aviso permanente que mandaba a
+    diagnosticar un problema que no existia, sin decir cual. Visto desde una
+    instalacion externa el 2026-08-16, con ADOMD y TOM cargando bien.
+
+    Que un servidor recien arrancado no tenga el runtime cargado NO es un
+    fallo: se carga en la primera operacion contra un modelo. Solo el fallo
+    real avisa, y entonces el detalle tiene que llevar la causa.
+    """
+    from horizun_pbi_mcp.powerbi import clr_bootstrap
+
+    monkeypatch.setattr(clr_bootstrap, "_runtime_loaded", cargado)
+    monkeypatch.setattr(clr_bootstrap, "_runtime_error", error, raising=False)
+
+    r = llamar(tools, "pbi_health_check")
+    clr = next(c for c in r["checks"] if c["check"] == "clr")
+
+    assert clr["ok"] is ok_esperado
+    assert clr["detail"], "un check sin explicacion es peor que no tenerlo"
+    assert ("clr" in r["warnings"]) is not ok_esperado
+    if not ok_esperado:
+        assert "no hay .NET 4.x" in clr["detail"]
+
+
 def test_capabilities_declara_both_como_no_soportado(proyecto, tools):
     r = llamar(tools, "pbi_capabilities")
     assert r["ok"] is True
