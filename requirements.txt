@@ -14,7 +14,7 @@
 # Acotado por arriba a proposito: el servidor fija la version del producto con
 # `mcp._mcp_server.version` porque FastMCP.__init__ NO acepta `version`. Es API
 # privada, asi que un salto mayor podria retirarla.
-mcp>=1.28.1,<2
+mcp>=1.28.1,<3
 
 # Interop .NET para cargar ADOMD.NET (DAX) y TOM (modelo).
 pythonnet>=3.0.5,<4

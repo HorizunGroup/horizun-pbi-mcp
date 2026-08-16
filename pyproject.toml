@@ -27,7 +27,7 @@ dependencies = [
     # (comprobado en 1.28.1). Es API privada, asi que un salto mayor de `mcp`
     # podria retirarla y dejar el servidor anunciando la version de la libreria
     # en vez de la suya. tests/test_mcp_compat.py lo vigila.
-    "mcp>=1.28.1,<2",
+    "mcp>=1.28.1,<3",
     "pythonnet>=3.0.5,<4",
     "psutil>=5.9,<8",
     "python-dotenv>=1.0,<2",
