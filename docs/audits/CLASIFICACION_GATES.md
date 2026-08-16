@@ -78,13 +78,13 @@ solo gate, **no se puede decir «100% local»**.
 | G5.4 | pendiente-externo | Desktop, y cambio de página con captura |
 | G5.5 | cumplido | mismo hallazgo y misma evidencia **live fechada el 2026-08-14** que G1.1: `test_live_la_ventana_real_delata_un_pbip_sin_handles`, sobre un `.pbip` sintético y desechable |
 | G5.6 | parcial | la prueba **existe y es local**: `test_live_captura_real_deja_el_proyecto_byte_a_byte_igual`, sobre proyecto sintético. Se ejecutó el 2026-08-14 para CORE-002; falta repetirla con la matriz de escenarios de TEST-003 |
-| G6.1 | pendiente-externo | release publicada de v1.5.5 |
-| G6.2 | pendiente-externo | release publicada, con CI verde del mismo commit |
+| G6.1 | pendiente-externo | no existe ninguna 2.x en PyPI: el intento de v2.0.0 falló con `invalid-publisher` antes de subir nada |
+| G6.2 | cumplido | **observado en el remoto el 2026-08-15**: en el run 31914746886 `publicar-pypi` falló y `publicar-mcp` quedó **omitido** sin ejecutar un paso, por `needs`. Evidencia y su alcance exacto en [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md); la variante «suite en rojo» está cubierta por mutación en `tests/test_release_pipeline.py` |
 | G6.3 | cumplido | ningún camino publicado ejecuta desde `main` |
-| G6.4 | parcial | lógica probada contra servidor local en 11 escenarios; falta el asset real |
+| G6.4 | parcial | lógica probada contra servidor local en 11 escenarios; el asset sigue sin existir en ninguna release. **v2.0.1 añade quien lo publica**: `publicar-github-release` lo sube y relee su SHA-256 y su URL contra el manifest |
 | G6.5 | cumplido | una sola construcción |
 | G7.1 | pendiente-externo | admin del remoto de GitHub |
-| G7.2 | pendiente-externo | CodeQL en verde en el remoto |
+| G7.2 | cumplido | **CodeQL verde sobre `main`/`1f0405b`**: run 31913970370, check-run `Analizar (python)` con `conclusion: success` el 2026-08-15. Comandos de lectura y salida capturada en [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md) |
 | G7.3 | pendiente-externo | Dependabot *security updates* en el remoto |
 | G7.4 | pendiente-externo | *secret scanning* y *push protection* en el remoto |
 | G7.5 | pendiente-externo | *private vulnerability reporting* en el remoto |
@@ -102,16 +102,35 @@ solo gate, **no se puede decir «100% local»**.
 
 | Categoría | Gates |
 |---|---|
-| cumplido | **33** |
+| cumplido | **35** |
 | parcial | **6** |
 | pendiente-local | **0** |
 | pendiente-ratificacion | **0** |
-| pendiente-externo | **15** |
+| pendiente-externo | **13** |
 | **Total** | **54** |
 
 **Trabajo local pendiente: ninguno. Pendiente de ratificación: ninguno.**
-Los 22 gates que no están cumplidos esperan **un entorno**: 7 parciales con el
-mecanismo ya demostrado aquí y 15 externos puros.
+Los 19 gates que no están cumplidos esperan **un entorno**: 6 parciales con el
+mecanismo ya demostrado aquí y 13 externos puros.
+
+### Los dos que se movieron el 2026-08-15, y por qué no fue por cansancio
+
+**G6.2 y G7.2 pasaron de `pendiente-externo` a `cumplido`** después del intento
+fallido de publicar `v2.0.0`. No se cerraron porque el ciclo terminara: se
+cerraron porque ese intento produjo, **en el remoto de verdad**, la observación
+que los dos pedían, y está capturada con sus comandos de lectura en
+[`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md).
+
+Es el cuarto caso de la misma lección que ya dejaron G3.6, G4.7 y G5.5: la
+etiqueta «externo» se pega a bloques enteros. G6.2 estaba archivado junto a G6.1
+y G6.4 bajo «hace falta una release publicada», y resultó que **no la
+necesitaba**: lo que pedía —que un fallo aguas arriba impida publicar— se ve en
+un run que falló, no en uno que publicó.
+
+**Lo que ese movimiento NO autoriza a decir.** El tag `v2.0.0` existe en el
+remoto y **no es una release publicada**: no hay GitHub Release, no hay 2.x en
+PyPI y no hay 2.x en el MCP Registry. G6.1 y G6.4 siguen exactamente donde
+estaban, y el tag no cuenta como evidencia de ninguno de los dos.
 
 La firma que faltaba llegó: CONTRACT-003 se ratificó el 2026-08-15 y sus tres
 cambios están aplicados en 2.0.0. El dossier

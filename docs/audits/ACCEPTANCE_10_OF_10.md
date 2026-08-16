@@ -198,10 +198,10 @@ confusión es la que permitió afirmar «no queda trabajo local».
 | G3 Instalación limpia | 6 | 1 | 5 (VM limpia) |
 | G4 Update y uninstall | 10 | 7 | 3 (VM limpia, VM sin red, intérpretes 3.10–3.13) |
 | G5 Desktop real | 6 | 1 | 5 (Desktop) |
-| G6 Supply chain | 5 | 2 | 3 (publicación real) |
-| G7 Controles GitHub | 6 | 1 | 5 (remoto) |
+| G6 Supply chain | 5 | 3 | 2 (publicación real) |
+| G7 Controles GitHub | 6 | 2 | 4 (remoto) |
 | G8 Suite y documentación | 8 | 8 | 0 |
-| **Total** | **54** | **33** | **21** |
+| **Total** | **54** | **35** | **19** |
 
 **10 de 10 = los 54 gates cumplidos, con evidencia fechada.**
 
@@ -303,10 +303,19 @@ hasta la VM.
 
 | | Gates |
 |---|---|
-| Cumplidos con evidencia | **33** (G1.1, G1.2, G1.3, G1.4, G1.5, G1.6, G1.7, G1.8, G2.1, G2.2, G2.3, G2.4, G2.5, G3.6, G4.2, G4.3, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.3, G6.5, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
+| Cumplidos con evidencia | **35** (G1.1, G1.2, G1.3, G1.4, G1.5, G1.6, G1.7, G1.8, G2.1, G2.2, G2.3, G2.4, G2.5, G3.6, G4.2, G4.3, G4.4, G4.5, G4.8, G4.9, G4.10, G5.5, G6.2, G6.3, G6.5, G7.2, G7.6, G8.1, G8.2, G8.3, G8.4, G8.5, G8.6, G8.7, G8.8) |
 | Parciales | **6** (G3.3, G4.1, G4.6, G4.7, G5.6, G6.4) |
-| Pendientes | **15** — **ninguno es trabajo local ni espera una firma**: los 15 son externos |
+| Pendientes | **13** — **ninguno es trabajo local ni espera una firma**: los 13 son externos |
 | **Total** | **54** |
+
+> **G6.2 y G7.2 se cerraron el 2026-08-15** con evidencia del remoto producida
+> por el intento fallido de `v2.0.0`: el run 31914746886 dejó `publicar-mcp`
+> **omitido** porque `publicar-pypi` falló —el `needs` haciendo su trabajo—, y
+> el run 31913970370 dejó CodeQL en verde sobre `main`/`1f0405b`. Los comandos
+> de lectura y la salida capturada están en
+> [`EVIDENCIA_REMOTA_2026-08-15.md`](EVIDENCIA_REMOTA_2026-08-15.md), que
+> también dice con precisión qué **no** demuestran. El tag `v2.0.0` **es solo un
+> tag** —no hay release, ni PyPI, ni registro— y no cierra G6.1 ni G6.4.
 
 ### Quinta pasada — seguridad del core, el 2026-08-15
 

@@ -130,8 +130,9 @@ del proyecto, que **no se tocan** sin una prueba que falle antes y pase después
 | Id | Asunto | Severidad | Gate | Estado |
 |---|---|---|---|---|
 | RELEASE-001 | CI prueba en Windows; `publish-pypi` reconstruye en Ubuntu y publica eso | Crítica | G6.1, G6.5 | **Parcialmente cerrada** — 2026-08-14. Una sola construcción, `SHA256SUMS`, SBOM y verificación en cada consumidor; G6.5 cumplido. G6.1 exige una release real |
-| RELEASE-002 | Los workflows de publicación no dependen de un CI verde | Crítica | G6.2 | **Parcialmente cerrada** — 2026-08-14. Publicación con `needs` sobre build y test, solo desde tag, dispatch inerte por defecto y nueve guardas demostradas por mutación. G6.2 exige una release real |
-| RELEASE-003 | Sin CodeQL ni Dependabot; actions con tags flotantes; controles del remoto sin comprobar | Alta | G7.1–G7.6 | **Parcialmente cerrada** — 2026-08-14. G7.6 cumplido (cero tags flotantes), CodeQL y Dependabot añadidos, `SECURITY.md` creado. G7.1–G7.5 son ajustes del remoto |
+| RELEASE-002 | Los workflows de publicación no dependen de un CI verde | Crítica | G6.2 | **Cerrada** — 2026-08-15. Publicación con `needs` sobre build y test, solo desde tag, dispatch inerte por defecto y catorce guardas demostradas por mutación. **G6.2 cumplido con evidencia del remoto**: en el run 31914746886 `publicar-pypi` falló y `publicar-mcp` quedó omitido sin ejecutar un paso. Alcance exacto en [`audits/EVIDENCIA_REMOTA_2026-08-15.md`](audits/EVIDENCIA_REMOTA_2026-08-15.md) |
+| RELEASE-003 | Sin CodeQL ni Dependabot; actions con tags flotantes; controles del remoto sin comprobar | Alta | G7.1–G7.6 | **Parcialmente cerrada** — 2026-08-15. G7.6 cumplido (cero tags flotantes) y **G7.2 cumplido**: CodeQL en verde sobre `main`/`1f0405b`, run 31913970370. G7.1, G7.3, G7.4 y G7.5 son ajustes del remoto, **comprobados como deshabilitados** el 2026-08-15; los comandos están preparados y sin ejecutar en [`PLAN_SEGURIDAD_GITHUB.md`](PLAN_SEGURIDAD_GITHUB.md) |
+| RELEASE-004 | **Ningún job creaba la GitHub Release**, mientras el one-paste del README, de `docs/INSTALL.md` y de la skill descarga el instalador de `releases/download/v<version>/…`: el camino de instalación que se ofrece apuntaba a un asset inexistente | Crítica | G6.4 | **Parcialmente cerrada** — 2026-08-15. Defecto de **omisión**, descubierto por el intento fallido de `v2.0.0`: configurar PyPI y relanzar habría publicado paquete y registro con el one-paste en 404. Se añade `publicar-github-release` —`needs` de los cuatro anteriores, único job con `contents: write` y sin OIDC, assets derivados de `SHA256SUMS`, sin reemplazar nada, idempotente, y relectura de cada asset tras subirlo, incluida la URL del instalador contra el manifest—. Guardas y mutaciones en `tests/test_release_pipeline.py`; el flujo entero contra una API simulada en `tests/test_release_github.py`. **Falta ejecutarlo**: mientras no exista la release en el remoto, G6.4 sigue parcial |
 
 ## Pruebas y contrato
 
@@ -169,14 +170,14 @@ Node ≥20— y otra que se cerró de más y **CI reabrió el mismo día**: G4.6
 
 ## Cuentas
 
-33 entradas: **22 cerradas**
+34 entradas: **23 cerradas**
 (CONTRACT-001, CONTRACT-002, CONTRACT-003, CORE-001, CORE-002, CORE-003,
 CORE-004, CORE-005, CORE-006, DOC-001, DOC-002, DOC-003, DOC-004, INSTALL-005,
-INSTALL-006, INSTALL-007, INSTALL-008, INSTALL-011, INSTALL-012, TEST-001,
-TEST-002, TEST-004),
+INSTALL-006, INSTALL-007, INSTALL-008, INSTALL-011, INSTALL-012, RELEASE-002,
+TEST-001, TEST-002, TEST-004),
 **10 parcialmente cerradas**
 (INSTALL-001, INSTALL-002, INSTALL-003, INSTALL-004, INSTALL-009,
-INSTALL-010, RELEASE-001, RELEASE-002, RELEASE-003, CLI-001),
+INSTALL-010, RELEASE-001, RELEASE-003, RELEASE-004, CLI-001),
 **1 abierta**.
 
 **Este conteo no se escribe a mano.** `tests/test_documentacion_coherente.py`
@@ -546,32 +547,52 @@ como ya hacía `launch.cmd`, y el diagnóstico no empeora.
 |---|---|
 | Archivo | `scripts/instalar.ps1` |
 | Nombre del asset | `horizun-pbi-mcp-instalar.ps1` |
-| Tamaño | **21 016 bytes** |
-| SHA-256 | `33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5` |
+| Tamaño (**el 2026-08-14**) | 21 016 bytes |
+| SHA-256 (**el 2026-08-14**) | `33fa1058d95445b97b7118d1c1a0fff9392d464f9bafdfdfc11dd069f970dad5` |
 | Codificación | ASCII, sin BOM, LF, cero CRLF |
 | Blob de git | byte a byte idéntico al árbol de trabajo |
 | Estado del asset remoto | `pending_remote_release` |
 
-`git ls-remote --tags origin` el 2026-08-14: el último tag publicado es
-**v1.5.4**. **v1.5.5 no existe en el remoto**, y ni el manifest ni esta matriz
-afirman lo contrario. Ese es exactamente el motivo de que INSTALL-003 quede
-parcial: la lógica del one-paste está probada contra un servidor HTTP local en
-los once escenarios, pero el asset que descargaría hoy devuelve 404.
+> **Los dos valores de arriba son de aquella pasada y ya no son los vigentes.**
+> El instalador cambió después, y los números se quedaron aquí escritos. Se
+> conservan porque esta sección es el registro fechado de lo que se congeló ese
+> día, no el estado de hoy. **El valor canónico, y el único, vive en
+> `scripts/downloads_manifest.json`**, que es de donde lo leen el build, el
+> `release_verify`, el `release_publish` y el bloque de un pegado. Copiarlo a
+> prosa es como envejeció este.
+
+`git ls-remote --tags origin` el 2026-08-14: el último tag publicado era
+**v1.5.4**, y **v1.5.5 nunca existió**. Al 2026-08-15 el último *release
+publicado* sigue siendo **v1.5.4**: el tag `v2.0.0` sí existe en el remoto, pero
+es el de un intento fallido —sin GitHub Release, sin PyPI y sin MCP Registry—.
+Ni el manifest ni esta matriz afirman lo contrario. Ese es exactamente el motivo
+de que INSTALL-003 quede parcial: la lógica del one-paste está probada contra un
+servidor HTTP local en los once escenarios, pero el asset que descargaría hoy
+devuelve 404.
 
 ### Lo que sigue faltando, y por qué
 
-Cuatro entradas quedan parciales por la **misma** razón, y conviene decirlo una
-vez en vez de cuatro: **hace falta una release real de v1.5.5**.
+Tres entradas quedan parciales por la **misma** razón, y conviene decirlo una
+vez en vez de tres: **hace falta una release real de v2.0.1**.
 
 | Entrada | Lo que falta | Gate |
 |---|---|---|
 | INSTALL-003 | Descargar el asset publicado y comprobar que sus bytes son los congelados | G6.4 |
 | RELEASE-001 | Comparar el digest publicado con el que pasó la suite | G6.1 |
-| RELEASE-002 | Un tag con la suite en rojo que no llegue a publicar | G6.2 |
-| RELEASE-003 | Los seis ajustes del remoto, con salida de `gh api` guardada | G7.1–G7.5 |
+| RELEASE-004 | Ejecutar el job que crea la release y publica el asset | G6.4 |
+| RELEASE-003 | Los **cuatro** ajustes del remoto que faltan, con salida de `gh api` guardada | G7.1, G7.3, G7.4, G7.5 |
 
-Ninguna de las cuatro se puede cerrar leyendo código, y ninguna se va a marcar
-cerrada por haber terminado el ciclo.
+Ninguna se puede cerrar leyendo código, y ninguna se va a marcar cerrada por
+haber terminado el ciclo.
+
+**Dos que sí se cerraron, y no por cansancio.** RELEASE-002 (G6.2) y la parte
+CodeQL de RELEASE-003 (G7.2) se cerraron el 2026-08-15 con evidencia **del
+remoto**, producida por el intento fallido de `v2.0.0` y capturada con sus
+comandos de lectura en
+[`audits/EVIDENCIA_REMOTA_2026-08-15.md`](audits/EVIDENCIA_REMOTA_2026-08-15.md).
+Ese documento también dice qué **no** demuestran: en particular, que el tag
+`v2.0.0` **es solo un tag** —no hay release, ni PyPI, ni registro— y no cierra
+G6.1 ni G6.4.
 
 ### Acciones humanas necesarias
 
