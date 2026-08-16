@@ -5,51 +5,80 @@
 [![Python](https://img.shields.io/pypi/pyversions/horizun-pbi-mcp)](https://pypi.org/project/horizun-pbi-mcp/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-Local Power BI automation for Codex, Claude Code and other MCP clients.
-Horizun PBI MCP connects to Power BI Desktop for live DAX/TOM operations and
-works directly with `.pbip` projects for durable TMDL/PBIR editing.
+**Build and fix Power BI reports by describing what you want.**
+Ask in plain language; the server runs the DAX, edits the model, writes the
+report pages — and checks its own work afterwards.
 
-**v2.0.1** · 134 tools · Windows · Python 3.10+
+![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
+
+**v2.0.1** · 134 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
 
 ## Install
 
-No repository clone, manual DLL download or `.mcp.json` is required.
-
-### Codex
-
-Add the marketplace:
-
-```text
-codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
-```
-
-Open `/plugins`, select the **Horizun** marketplace and install
-`horizun-pbi-mcp`.
-
-You can also paste this prompt into Codex:
-
-> Install Horizun PBI MCP from `HorizunGroup/horizun-pbi-mcp`. Complete the runtime setup, monitor `pbi_install_status` until it reports `ready`, restart the session, and verify that the 134 `pbi_*` tools are available.
+No repository clone, manual DLL download or `.mcp.json` editing is required.
+Pick the line that matches you.
 
 ### Claude Code
 
-```text
+```powershell
 claude plugin marketplace add HorizunGroup/horizun-pbi-mcp
 claude plugin install horizun-pbi-mcp@horizun
 ```
 
-Open a new session and run `pbi_install_status`. When it reports `ready`,
-restart Claude once so the `pbi_*` tools are loaded.
+### Codex
 
-### Verify
+```powershell
+codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
+```
 
-1. Open Power BI Desktop with a report.
-2. Run `pbi_list_desktop_models`.
-3. Select a model with `pbi_select_model` if more than one is open.
-4. Test the connection with `pbi_test_connection`.
+Then open `/plugins`, pick the **Horizun** marketplace and install
+`horizun-pbi-mcp`.
 
-The first runtime setup normally takes a few minutes. If Python or another
-prerequisite is missing, use the verified Windows bootstrap in
-[`docs/INSTALL.md`](docs/INSTALL.md).
+### Or just ask the agent — easiest of all
+
+Paste this into Claude Code or Codex and let it install itself:
+
+> Install Horizun PBI MCP from `HorizunGroup/horizun-pbi-mcp`. Complete the runtime
+> setup, watch `pbi_install_status` until it reports `ready`, restart the session,
+> and confirm the 134 `pbi_*` tools are available.
+
+### A brand-new Windows PC
+
+One paste in PowerShell installs the prerequisites first — version-pinned and
+SHA-256 verified, no administrator rights. See [`docs/INSTALL.md`](docs/INSTALL.md).
+
+### Finishing up
+
+The first setup downloads the runtime and takes a few minutes. Run
+`pbi_install_status` until it says `ready`, then restart your client once so the
+tools load. If anything looks stuck, [`docs/INSTALL.md`](docs/INSTALL.md) covers
+repair and offline installs.
+
+## Your first minute
+
+1. Open Power BI Desktop with any report.
+2. Ask: *"List the Power BI models that are open and connect to the first one."*
+3. Ask: *"Run a read-only DAX query that returns revenue by month for this year."*
+
+If step 2 answers, everything works.
+
+## Things worth asking for
+
+```text
+Audit this PBIP project and explain the highest-risk issues before changing anything.
+```
+
+```text
+This measure returns blank for December. Find out why.
+```
+
+```text
+Create a report page from this specification, validate it, and show me the layout.
+```
+
+```text
+Document every measure in the model and export it to Excel.
+```
 
 ## What it provides
 
@@ -62,63 +91,45 @@ prerequisite is missing, use the verified Windows bootstrap in
 | Quality | Audit models and reports, document schemas, detect broken references and normalize report structures |
 | Delivery | Export verified PDF, Word, Excel and PowerPoint artifacts; ingest SharePoint data read-only |
 
-See the complete [tool catalog](docs/TOOL_CATALOG.md) for all 134 tools and
-their risk classifications.
+See the [tool catalog](docs/TOOL_CATALOG.md) for all 134 tools and their risk
+classifications.
 
-## Example requests
-
-```text
-List the Power BI models currently open and select the sales model.
-```
-
-```text
-Run a read-only DAX query that returns revenue by month for the current year.
-```
-
-```text
-Audit this PBIP project and explain the highest-risk issues before changing anything.
-```
-
-```text
-Create a report page from this specification, validate it and show me the resulting layout.
-```
-
-## Safety model
+## Why it is safe to point at real work
 
 - Local-first: Power BI Desktop communication stays on `localhost`.
-- No telemetry or account is required by the MCP server.
-- Project writes are restricted to the active project directory.
-- Every project write creates a backup and is verified after completion.
+- No telemetry, and the MCP server needs no account.
+- Project writes stay inside the active project directory.
+- Every project write makes a backup and is re-read to confirm it landed.
 - Destructive tools require `confirm=true`.
-- JSON writes are atomic and invalid JSON is never overwritten.
+- JSON writes are atomic; invalid JSON is never written over good JSON.
 - Downloaded runtime components are version-pinned and SHA-256 verified.
-- Logs go to stderr or files; stdout remains the JSON-RPC channel.
+- Logs go to stderr or files, so stdout stays a clean JSON-RPC channel.
 
-Read the [security model](docs/SECURITY.md) and [recovery guide](docs/RECOVERY.md)
-for the full guarantees and failure behavior. Vulnerabilities can be reported
-privately as described in [SECURITY.md](SECURITY.md).
+Full guarantees and failure behavior: [security model](docs/SECURITY.md) and
+[recovery guide](docs/RECOVERY.md). Report vulnerabilities privately as described
+in [SECURITY.md](SECURITY.md).
 
 ## Requirements
 
 - Windows 10 or 11.
 - Python 3.10 or newer.
-- Power BI Desktop for live DAX/TOM, refresh, capture and render validation.
-- A `.pbip` project with PBIR enabled for report-file authoring.
+- Power BI Desktop — only for the live layer (DAX, refresh, capture, render checks).
+- A `.pbip` project with PBIR enabled, for report-file authoring.
 - Node.js 20+ only for the optional Microsoft PBIR validator.
 
-Codex and Claude Code are external clients. Power BI Desktop is not installed
-by this project.
-Without Desktop, the `.pbip` tools still work; the live tools do not.
+Claude Code, Codex and Power BI Desktop are external programs; this project does
+not install them. Without Desktop the `.pbip` tools still work — the live tools
+do not.
 
-## Important limitations
+## Known limits
 
-- Power BI does not expose pages or visuals through its live local endpoint;
+- Power BI does not expose pages or visuals through its live local endpoint, so
   those are edited in PBIR files while Desktop is safely closed.
-- `mode="both"` is disabled for dual live/disk writes because Desktop being
-  open and a PBIP project being safe to edit are mutually incompatible states.
+- `mode="both"` is disabled for dual live/disk writes: Desktop being open and a
+  PBIP project being safe to edit are mutually exclusive states.
 - The server does not publish to or refresh the Power BI Service.
-- Three PBIR schemas referenced by Power BI are not currently published by
-  Microsoft; affected writes fail closed instead of guessing.
+- Three PBIR schemas referenced by Power BI are not published by Microsoft;
+  affected writes fail closed instead of guessing.
 
 ## Documentation
 

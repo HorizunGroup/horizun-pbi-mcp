@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" role="img" aria-label="You type in plain language to Claude Code or Codex. Horizun PBI MCP translates that into 134 tools. With Power BI Desktop open it works on the live model with DAX and TOM. With Desktop closed it edits the .pbip project files, TMDL model and PBIR report pages.">
+  <rect width="900" height="400" rx="14" fill="#0D1117"/>
+
+  <text x="40" y="52" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#F2C811">Horizun PBI MCP</text>
+  <text x="40" y="76" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" fill="#8B949E">You describe the outcome. It picks the safe path, and verifies what it changed.</text>
+
+  <!-- You -->
+  <rect x="40" y="150" width="180" height="104" rx="10" fill="none" stroke="#30363D" stroke-width="1.5"/>
+  <text x="130" y="188" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#E6EDF3">Claude Code</text>
+  <text x="130" y="209" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#E6EDF3">or Codex</text>
+  <text x="130" y="233" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">plain language</text>
+
+  <!-- arrow 1 -->
+  <line x1="228" y1="202" x2="292" y2="202" stroke="#484F58" stroke-width="1.5"/>
+  <path d="M292 202 l-9 -4.5 v9 z" fill="#484F58"/>
+
+  <!-- MCP -->
+  <rect x="300" y="150" width="188" height="104" rx="10" fill="none" stroke="#F2C811" stroke-width="1.8"/>
+  <text x="394" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#F2C811">Horizun PBI MCP</text>
+  <text x="394" y="214" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">134 tools · backups</text>
+  <text x="394" y="233" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">verified after writing</text>
+
+  <!-- branch arrows -->
+  <path d="M496 190 C 540 190, 540 130, 578 130" fill="none" stroke="#484F58" stroke-width="1.5"/>
+  <path d="M578 130 l-9 -4.5 v9 z" fill="#484F58"/>
+  <path d="M496 214 C 540 214, 540 292, 578 292" fill="none" stroke="#484F58" stroke-width="1.5"/>
+  <path d="M578 292 l-9 -4.5 v9 z" fill="#484F58"/>
+
+  <!-- Live layer -->
+  <rect x="586" y="86" width="278" height="92" rx="10" fill="none" stroke="#30363D" stroke-width="1.5"/>
+  <text x="606" y="115" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#E6EDF3">Power BI Desktop is OPEN</text>
+  <text x="606" y="139" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">Live model: run DAX, inspect and edit</text>
+  <text x="606" y="157" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">measures via TOM, refresh, capture views</text>
+
+  <!-- File layer -->
+  <rect x="586" y="248" width="278" height="92" rx="10" fill="none" stroke="#30363D" stroke-width="1.5"/>
+  <text x="606" y="277" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#E6EDF3">Power BI Desktop is CLOSED</text>
+  <text x="606" y="301" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">.pbip project on disk: TMDL model and</text>
+  <text x="606" y="319" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8B949E">PBIR report pages, visuals and themes</text>
+
+  <text x="40" y="372" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6E7681">Pages and visuals only exist in the files — Power BI does not expose them while Desktop is running. The server knows which layer applies and says so.</text>
+</svg>
