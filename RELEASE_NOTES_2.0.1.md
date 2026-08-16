@@ -55,15 +55,23 @@ nothing.
 
 ## The `v2.0.0` tag
 
-The tag `v2.0.0` exists on the remote and points at `1f0405b`, but it was
-created during a **failed publication attempt**. The run built and tested
-correctly, `publicar-pypi` failed with `invalid-publisher`, `publicar-mcp` was
-skipped, and nothing reached GitHub Releases, PyPI or the MCP Registry.
+The tag `v2.0.0` was created during a **failed publication attempt**. The run
+built and tested correctly, `publicar-pypi` failed with `invalid-publisher`,
+`publicar-mcp` was skipped, and nothing reached GitHub Releases, PyPI or the MCP
+Registry. The correction ships as `v2.0.1`.
 
-That PyPI never published is **not** a reason to treat the tag as free: a public
-tag may have been fetched by third parties during that window. **`v2.0.0` is
-immutable — it is not moved, deleted or reused.** The correction ships as
-`v2.0.1`.
+**The tag was deleted from the remote on 2026-08-16.** This file, as published
+with the release, said instead that it was immutable and would never be deleted
+— the rule that a public tag may already have been fetched by third parties, so
+it is not moved or removed. That rule is a sound default and it is recorded
+here rather than quietly dropped; it was revoked deliberately for this one tag,
+on these grounds: it existed for roughly eighteen hours, nothing was ever
+published under it, and the commit it pointed at (`1f0405b`) is still reachable
+from `main`. Nobody can find different bytes under a name they already fetched;
+the most anyone loses is a dangling reference.
+
+The released asset keeps the original wording, since a published release is not
+rewritten. The `CHANGELOG` entry for `2.0.1` carries the same account.
 
 ## Verification
 
