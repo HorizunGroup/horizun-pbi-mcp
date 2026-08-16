@@ -32,6 +32,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,57 @@ def entorno(tmp_path):
     return tmp_path
 
 
+def _matar_arbol(proceso: subprocess.Popen) -> None:
+    """Mata el proceso **y a sus hijos**.
+
+    `Popen.kill()` en Windows es un `TerminateProcess` sobre UN pid: muere
+    `npm` y los `node` que habia lanzado siguen vivos, escribiendo dentro del
+    staging. Contra un escritor VIVO no hay reintento de borrado que sirva, asi
+    que `descartar_staging` fallaba y quedaba un `.staging-` huerfano: verde en
+    local, roja en el runner, y sin que el producto tuviera nada que ver.
+
+    Un corte de verdad -un apagon, un OOM, un Ctrl-C sobre el grupo- se lleva
+    el arbol entero. Esto reproduce eso, que es lo que el gate dice medir.
+    """
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proceso.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=60, check=False)
+    else:
+        proceso.kill()
+    try:
+        proceso.wait(timeout=60)
+    except subprocess.TimeoutExpired:                        # pragma: no cover
+        proceso.kill()
+        proceso.wait(timeout=60)
+
+
+def _esperar_a_que_npm_escriba(staging: Path, proceso: subprocess.Popen,
+                               limite: float = 180.0) -> bool:
+    """Espera a que `npm` haya empezado a escribir. Por EVENTO, no por reloj.
+
+    Antes se esperaban 8 segundos fijos y se cortaba. Un margen de reloj miente
+    en las dos direcciones segun la maquina: en un runner cargado corta antes
+    de que npm haya tocado el disco -y entonces no hay nada a medio escribir,
+    o sea que la prueba no prueba lo que dice- y en una rapida espera de mas
+    sin motivo.
+
+    Lo que el gate necesita no es tiempo, es un HECHO observable: que ya existan
+    bytes dentro del staging. Eso se puede mirar, asi que se mira. El limite
+    solo esta para que un npm que nunca arranca falle acusando a la
+    sincronizacion en vez de colgar la suite.
+    """
+    fin = time.monotonic() + limite
+    while time.monotonic() < fin:
+        if any(staging.rglob("*")):
+            return True
+        if proceso.poll() is not None:
+            # npm termino sin llegar a escribir nada observable.
+            return any(staging.rglob("*"))
+        time.sleep(0.05)
+    return False
+
+
 def _destino_previo(base: Path) -> Path:
     """Una «versión anterior» creíble: el CLI donde el código lo busca."""
     destino = base / "validator"
@@ -125,19 +177,21 @@ def test_un_corte_a_mitad_de_npm_deja_el_destino_ANTERIOR_intacto(entorno,
     matados = []
 
     def _correr_y_matar(args, cwd=None, timeout=900):
-        texto = " ".join(str(a) for a in args)
+        lista = [str(a) for a in args]
+        texto = " ".join(lista)
         if "install" in texto and "--prefix" in texto:
             # Se lanza de verdad y se mata a mitad: es la unica forma de
-            # reproducir un corte real -Ctrl-C, apagon, OOM- sobre npm.
+            # reproducir un corte real -Ctrl-C, apagon, OOM- sobre npm. El
+            # staging es justo lo que `--prefix` senala.
+            staging = Path(lista[lista.index("--prefix") + 1])
             proceso = subprocess.Popen(args, cwd=cwd,
                                        stdout=subprocess.DEVNULL,
                                        stderr=subprocess.DEVNULL)
             try:
-                proceso.wait(timeout=8)
-            except subprocess.TimeoutExpired:
-                proceso.kill()
-                proceso.wait(timeout=60)
-            matados.append(texto)
+                escribio = _esperar_a_que_npm_escriba(staging, proceso)
+            finally:
+                _matar_arbol(proceso)
+            matados.append((texto, escribio))
             raise validador.InstalacionFallida(
                 "corte inyectado a mitad del npm install")
         return correr_real(args, cwd=cwd, timeout=timeout)
@@ -148,6 +202,9 @@ def test_un_corte_a_mitad_de_npm_deja_el_destino_ANTERIOR_intacto(entorno,
         validador.instalar(destino)
 
     assert matados, "no se llego a lanzar ningun `npm install`"
+    assert matados[0][1], (
+        "npm nunca llego a escribir dentro del staging: el corte no cayo a "
+        "mitad de nada, asi que esta prueba no estaria midiendo el gate")
     assert _hashes(destino) == antes, (
         "el destino anterior cambio tras un corte: eso es exactamente lo que "
         "G4.3 prohibe")
