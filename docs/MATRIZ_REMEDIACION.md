@@ -563,8 +563,9 @@ como ya hacía `launch.cmd`, y el diagnóstico no empeora.
 
 `git ls-remote --tags origin` el 2026-08-14: el último tag publicado era
 **v1.5.4**, y **v1.5.5 nunca existió**. Al 2026-08-15 el último *release
-publicado* sigue siendo **v1.5.4**: el tag `v2.0.0` sí existe en el remoto, pero
-es el de un intento fallido —sin GitHub Release, sin PyPI y sin MCP Registry—.
+publicado* sigue siendo **v1.5.4**: el tag `v2.0.0` existía entonces en el
+remoto —se borró el 2026-08-16—, pero era el de un intento fallido —sin GitHub
+Release, sin PyPI y sin MCP Registry—.
 Ni el manifest ni esta matriz afirman lo contrario. Ese es exactamente el motivo
 de que INSTALL-003 quede parcial: la lógica del one-paste está probada contra un
 servidor HTTP local en los once escenarios, pero el asset que descargaría hoy

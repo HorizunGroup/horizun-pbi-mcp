@@ -36,12 +36,19 @@ missing, and without which none of it reached anyone.
 
 ### Note on the `2.0.0` tag
 
-The tag `v2.0.0` exists on the remote and points at `1f0405b`, but it was
-created during a **failed publication attempt**: build and tests passed,
-`publicar-pypi` failed with `invalid-publisher`, `publicar-mcp` was skipped, and
-nothing was published to GitHub Releases, PyPI or the MCP Registry. A public tag
-may have been fetched by third parties during that window, so **it is immutable
-and is not reused, moved or deleted.** The correction is delivered as `2.0.1`.
+The tag `v2.0.0` was created during a **failed publication attempt**: build and
+tests passed, `publicar-pypi` failed with `invalid-publisher`, `publicar-mcp`
+was skipped, and nothing was published to GitHub Releases, PyPI or the MCP
+Registry. The correction is delivered as `2.0.1`.
+
+**The tag was deleted from the remote on 2026-08-16, reversing the earlier
+decision to keep it.** The original rule — a public tag may have been fetched by
+third parties, so it is never moved or deleted — is a sound default, and it is
+recorded here rather than quietly dropped. It was revoked deliberately, for this
+one tag, on these grounds: it existed for roughly eighteen hours, nothing was
+ever published under it, and the commit it pointed at (`1f0405b`) is still
+reachable from `main`. Nobody can therefore find different bytes under a name
+they already fetched; the most anyone loses is a dangling reference.
 
 ---
 
