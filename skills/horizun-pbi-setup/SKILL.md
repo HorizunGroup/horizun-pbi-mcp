@@ -18,7 +18,7 @@ administrador.
 
 1. **Corre el instalador de un pegado** en PowerShell:
    El bloque exacto esta en `scripts/one_paste.ps1` y se reproduce
-   integro en `README.md` y `docs/INSTALL.md`. **No lo escribas de
+   integro en `docs/INSTALL.md`. **No lo escribas de
    memoria ni lo acortes**: descarga desde una release fija,
    comprueba el SHA-256 y solo entonces ejecuta.
 
