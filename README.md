@@ -12,7 +12,8 @@ Open **PowerShell** — a normal window, *not* "as administrator" — and paste
 this. It works whether the machine is fully set up or completely empty.
 
 > **What "completely empty" does and does not cover.** The installer brings
-> Python, Node and Claude Code. It does **not install Power BI Desktop**, and
+> Python, Git and optional Node. Claude Code, Codex and Power BI Desktop are
+> external clients and are **not installed by this script**. Power BI Desktop
 > Microsoft does not allow redistributing it. Without Desktop you still get the
 > whole `.pbip` side — read, author, validate and back up projects on disk — and
 > you do **not** get the LIVE layer: no DAX against a running model, no refresh,
@@ -29,7 +30,7 @@ then runs the script — with `&`, never `iex`. If the hash doesn't match,
 ```powershell
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
-$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una
@@ -112,8 +113,9 @@ Then **restart Claude once**, and the 134 `pbi_*` tools are there. That's the
 whole install: nothing to download by hand, no `.exe` to trust, no config file
 to edit.
 
-It installs only what is missing — Python, Git, Claude Code itself — for **your
-user account**, and it tells you what it did at every step. It is idempotent:
+It installs only the prerequisites it can verify — Python, Git and optional
+Node — for **your user account**, then registers the plugin when Claude Code is
+already present. It tells you what it did at every step. It is idempotent:
 if something is left pending (say your IT department blocks an install), fix it
 and paste the same block again; nothing is repeated or broken.
 
@@ -351,7 +353,7 @@ SHA-256 checked before anything runs):
 ```powershell
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
-$sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
+$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una

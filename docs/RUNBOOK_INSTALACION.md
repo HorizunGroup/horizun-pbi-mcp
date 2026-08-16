@@ -297,8 +297,9 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Restricted
 Después de revertirla, Claude Code puede dejar de funcionar. Es una decisión
 tuya, no un descuido del instalador.
 
-**Paquetes instalados por `winget`.** Python, Node y Claude Code se instalan a
-nivel de usuario. Cuando un paquete no publica un instalador etiquetado como
+**Paquetes instalados por `winget`.** Python, Git y Node opcional se instalan a
+nivel de usuario. Claude Code y Codex son clientes externos: este script no los
+instala. Cuando un paquete no publica un instalador etiquetado como
 *user*, winget responde `0x8A150044` y el instalador **lo anuncia y reintenta**
 con el instalador por defecto, que normalmente instala en tu perfil igual — y
 después **comprueba dónde aterrizó** y te lo dice. En ningún caso se pide

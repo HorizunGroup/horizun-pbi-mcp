@@ -421,6 +421,63 @@ def test_la_verificacion_reconoce_los_estados_que_no_sirven(marca):
         f"la verificacion no reconoce «{marca}» como un plugin que no sirve")
 
 
+def test_los_limites_regex_son_texto_y_no_bytes_de_control():
+    """Un `\b` escrito como backspace vuelve inocua toda la deteccion."""
+    crudo = INSTALADOR.read_bytes()
+    assert b"\x08" not in crudo, (
+        "instalar.ps1 contiene backspace ASCII donde esperaba un limite regex")
+    texto = crudo.decode("ascii")
+    assert r"\b(disabled|deshabilitad|inactive|desactivad)\b" in texto
+
+
+def test_la_verificacion_juzga_el_registro_completo_y_falla_en_rojo():
+    """Claude pone `Status: disabled` debajo de la linea con el nombre."""
+    texto = INSTALADOR.read_text(encoding="ascii")
+    assert "$lineas[$indice..$fin]" in texto, (
+        "solo se sigue mirando la linea del nombre, no el bloque con Status")
+    assert "FalloVerificacion" in texto
+    assert "if ($script:FallosVerificacion.Count -gt 0)" in texto
+    assert "exit 1" in texto
+
+
+def test_plugin_realmente_deshabilitado_hace_fallar_el_instalador(sandbox):
+    """G3.5: reproduce el formato multilinea real sin tocar Claude del usuario."""
+    claude = sandbox["home"] / ".local" / "bin" / "claude.cmd"
+    claude.write_text(
+        "@echo off\r\n"
+        ">>\"%HORIZUN_LOG_EFECTOS%\" echo claude %*\r\n"
+        "if \"%1\"==\"--version\" echo 9.9.9 (Claude Code)\r\n"
+        "if \"%1 %2\"==\"plugin list\" (\r\n"
+        "  echo Installed plugins:\r\n"
+        "  echo   ^> horizun-pbi-mcp@horizun\r\n"
+        "  echo     Version: 2.0.1\r\n"
+        "  echo     Scope: user\r\n"
+        "  echo     Status: x disabled\r\n"
+        ")\r\n"
+        "exit /b 0\r\n",
+        encoding="ascii",
+    )
+
+    entorno = os.environ.copy()
+    entorno.update({
+        "HORIZUN_LOG_EFECTOS": str(sandbox["log"]),
+        "USERPROFILE": str(sandbox["home"]),
+        "APPDATA": str(sandbox["home"] / "AppData" / "Roaming"),
+        "LOCALAPPDATA": str(sandbox["home"] / "AppData" / "Local"),
+        "HOME": str(sandbox["home"]),
+    })
+    res = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+         "-File", str(INSTALADOR)],
+        capture_output=True, text=True, timeout=300, env=entorno,
+    )
+
+    assert res.returncode == 1, res.stdout[-2500:]
+    assert "DESHABILITADO" in res.stdout
+    assert "Status: x disabled" in res.stdout
+    assert "Plugin registrado y habilitado" not in res.stdout
+
+
 def test_un_formato_no_reconocido_no_se_da_por_bueno():
     """No reconocer no es aprobar: si Claude cambia el formato, se avisa."""
     texto = INSTALADOR.read_text(encoding="ascii")

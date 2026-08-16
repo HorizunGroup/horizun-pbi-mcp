@@ -47,6 +47,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 
 $script:Seco       = [bool]$DryRun
 $script:Pendientes = @()
+$script:FallosVerificacion = @()
 $script:Plan       = @()
 $script:Detectado  = @()
 $script:Faltante   = @()
@@ -56,6 +57,10 @@ function Paso($m)  { Write-Host ""; Write-Host ("== " + $m) -ForegroundColor Cya
 function Ok($m)    { Write-Host ("  [OK] " + $m) -ForegroundColor Green; $script:Detectado += $m }
 function Aviso($m) { Write-Host ("  [PENDIENTE] " + $m) -ForegroundColor Yellow; $script:Pendientes += $m }
 function Fallo($m) { Write-Host ("  [ERROR] " + $m) -ForegroundColor Red }
+function FalloVerificacion($m) {
+    Fallo $m
+    $script:FallosVerificacion += $m
+}
 function Falta($m) { $script:Faltante += $m }
 
 function Efecto {
@@ -435,23 +440,36 @@ if (Tiene 'claude') {
         # el nombre satisfacian el match igual que un plugin sano, y el
         # instalador se despedia en verde sobre una configuracion muerta.
         #
-        # Ahora se busca la LINEA del plugin y se mira su estado. Se acepta lo
-        # que Claude Code imprime hoy para "activo" -`enabled`, o la linea sin
-        # marca de desactivado- y se rechaza explicitamente lo que marca
-        # apagado. Si el formato cambia y no se reconoce, se avisa en vez de
-        # dar por bueno: no reconocer no es aprobar.
-        $linea = ($lista -split "`r?`n" | Where-Object { $_ -match 'horizun-pbi-mcp' } |
-                  Select-Object -First 1)
-        if (-not $linea) {
-            Aviso "El plugin NO aparece en 'claude plugin list'. Reintenta con: claude plugin marketplace add HorizunGroup/horizun-pbi-mcp ; claude plugin install horizun-pbi-mcp@horizun"
-        } elseif ($linea -match '(?i)(disabled|deshabilitad|inactive|desactivad)') {
-            Aviso ("El plugin aparece DESHABILITADO en 'claude plugin list': " +
-                   $linea.Trim() + ". Habilitalo con: claude plugin enable horizun-pbi-mcp")
-        } elseif ($linea -match '(?i)error') {
-            Aviso ("La linea del plugin en 'claude plugin list' reporta un error: " +
-                   $linea.Trim())
+        # Claude imprime el estado en las lineas SIGUIENTES al nombre. Juzgar
+        # solo la linea que contiene `horizun-pbi-mcp` aprueba por accidente un
+        # bloque cuyo `Status:` dice `disabled`. Se aisla el registro completo,
+        # hasta el siguiente plugin, y solo se acepta un estado enabled
+        # explicito. Si el formato cambia, no reconocer no es aprobar.
+        $lineas = @($lista -split "`r?`n")
+        $indice = -1
+        for ($i = 0; $i -lt $lineas.Count; $i++) {
+            if ($lineas[$i] -match 'horizun-pbi-mcp') { $indice = $i; break }
+        }
+        if ($indice -lt 0) {
+            FalloVerificacion "El plugin NO aparece en 'claude plugin list'. Reintenta con: claude plugin marketplace add HorizunGroup/horizun-pbi-mcp ; claude plugin install horizun-pbi-mcp@horizun"
         } else {
-            Ok ("Plugin registrado y habilitado: " + $linea.Trim())
+            $fin = $lineas.Count - 1
+            for ($j = $indice + 1; $j -lt $lineas.Count; $j++) {
+                if ($lineas[$j] -match '^\s*>\s+\S') { $fin = $j - 1; break }
+            }
+            $registro = (($lineas[$indice..$fin] | ForEach-Object { $_.Trim() }) -join ' ')
+            if ($registro -match '(?i)\b(disabled|deshabilitad|inactive|desactivad)\b') {
+                FalloVerificacion ("El plugin aparece DESHABILITADO en 'claude plugin list': " +
+                                   $registro + ". Habilitalo con: claude plugin enable horizun-pbi-mcp@horizun")
+            } elseif ($registro -match '(?i)\berror\b') {
+                FalloVerificacion ("El registro del plugin en 'claude plugin list' reporta un error: " +
+                                   $registro)
+            } elseif ($registro -match '(?i)\benabled\b') {
+                Ok ("Plugin registrado y habilitado: " + $registro)
+            } else {
+                FalloVerificacion ("No se pudo confirmar un estado enabled para el plugin: " +
+                                   $registro + ". No reconocer no es aprobar.")
+            }
         }
     }
 } else {
@@ -465,6 +483,9 @@ if (Tiene 'claude') {
 # --- 7. Veredicto ------------------------------------------------------------
 Write-Host ""
 Write-Host "-------------------------------------------------------------"
+if ($script:FallosVerificacion.Count -gt 0) {
+    exit 1
+}
 
 if ($script:Seco) {
     Write-Host "PLAN (ejecucion en seco). Cero efectos: nada se instalo ni se registro." -ForegroundColor Cyan
