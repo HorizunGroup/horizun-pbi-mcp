@@ -1,14 +1,24 @@
-# Migración 1.x → 2.0.0
+# Migración 1.x → 2.x
+
+**La primera versión pública de la línea 2.x es `2.0.1`.** Si vienes de 1.x, esa
+es la que instalas y esta es tu guía.
 
 Tres llamadas cambian. Nada más: siguen siendo **134 tools** y ninguna se retira,
 se renombra ni cambia de tipo.
+
+> **`2.0.0` no existe como release.** El tag está en el remoto —apunta a
+> `1f0405b`— pero se creó durante un intento de publicación fallido: no llegó a
+> GitHub Releases, ni a PyPI, ni al MCP Registry. El tag queda inmutable y no se
+> reutiliza. Los tres cambios de contrato que se describen aquí son los mismos
+> que se prepararon para `2.0.0` y se entregan, por primera vez de verdad, en
+> `2.0.1`.
 
 Los tres cambios vienen de CORE-004 y se ratificaron por escrito **antes** de
 tocar el código —el dossier es
 [`audits/CONTRACT_003_RATIFICATION.md`](audits/CONTRACT_003_RATIFICATION.md)—.
 Esa es la regla del proyecto: el contrato congelado no se rompe sin una firma.
 
-## Por qué 2.0.0 y no 1.5.5
+## Por qué una MAYOR y no 1.5.5
 
 Porque **1.5.5 nunca se publicó**. La última que existe de verdad es la 1.5.4.
 Expresar una ruptura de contrato como un parche sobre algo que nadie tiene sería

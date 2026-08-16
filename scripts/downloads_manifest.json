@@ -14,9 +14,9 @@
   "downloads": {
     "instalar.ps1": {
       "name": "horizun-pbi-mcp-instalar.ps1",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "platform": "windows",
-      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1",
+      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1",
       "sha256": "d78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5",
       "max_bytes": 131072,
       "actual_bytes": 25971,
@@ -24,11 +24,11 @@
       "eol": "lf",
       "bom": false,
       "source_path": "scripts/instalar.ps1",
-      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v2.0.0",
+      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v2.0.1",
       "purpose": "Instalador de un pegado para Windows sin administrador. El asset de la release es una copia byte a byte de scripts/instalar.ps1.",
-      "verified_at": "2026-08-14",
+      "verified_at": "2026-08-15",
       "status": "pending_remote_release",
-      "status_note": "El tag v2.0.0 y su release NO existen todavia en el remoto. La ultima publicada de verdad sigue siendo v1.5.4: v1.5.5 nunca llego a publicarse, y por eso la ruptura de contrato de CONTRACT-003 se expresa como 2.0.0 y no como un parche sobre algo que nadie tiene. El SHA-256 es el de los bytes locales congelados; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende.",
+      "status_note": "El tag v2.0.1 y su release NO existen todavia en el remoto. La ultima publicada de verdad sigue siendo v1.5.4. El tag v2.0.0 SI existe en el remoto -apunta a 1f0405b- pero NO tiene release ni llego a PyPI ni al MCP Registry: fue un intento de publicacion fallido y su tag queda inmutable y sin reutilizar; la correccion del pipeline se entrega en v2.0.1. El SHA-256 es el de los bytes locales congelados de scripts/instalar.ps1, que no cambian con la version porque el instalador no fija ninguna; publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende. Quien lo publica es el job publicar-github-release, que ademas relee el asset y compara este hash y esta URL despues de subirlo.",
       "used_by": [
         "scripts/one_paste.ps1",
         "README.md",
@@ -48,7 +48,7 @@
       "verified_at": "2026-08-14",
       "status": "published",
       "used_by": [
-        ".github/workflows/publish-mcp.yml"
+        ".github/workflows/release.yml"
       ]
     }
   }

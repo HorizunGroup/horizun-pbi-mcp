@@ -90,7 +90,7 @@ directorios hermanos bajo el data root:
 dir %LOCALAPPDATA%\HorizunPbiMcp\plugin
 ```
 
-Verás `1.5.4`, `2.0.0`, y quizá `.previous-<version>-<ts>-<uuid>`. Para forzar
+Verás `1.5.4`, `2.0.1`, y quizá `.previous-<version>-<ts>-<uuid>`. Para forzar
 que se sirva una de ellas, borra el estado y deja que se readopte:
 
 ```bash
@@ -243,7 +243,7 @@ python scripts/bundle.py construir --salida C:\entrega --componentes wheelhouse 
 ### 7.2 Verificarlo antes de moverlo
 
 ```bash
-python scripts/bundle.py verificar C:\entrega\horizun-pbi-mcp-2.0.0-bundle.zip
+python scripts/bundle.py verificar C:\entrega\horizun-pbi-mcp-2.0.1-bundle.zip
 ```
 
 Comprueba tamaño, manifiesto contra su hash, que no haya archivos sin declarar
@@ -252,7 +252,7 @@ ni declarados que falten, y el SHA-256 de cada miembro. **No extrae nada.**
 ### 7.3 Instalarlo (en la máquina SIN red)
 
 ```bash
-python scripts/bundle.py instalar C:\entrega\horizun-pbi-mcp-2.0.0-bundle.zip --destino %LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.0
+python scripts/bundle.py instalar C:\entrega\horizun-pbi-mcp-2.0.1-bundle.zip --destino %LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.1
 ```
 
 Verifica **entero antes de escribir un solo byte**, extrae a un staging, relee
@@ -271,7 +271,7 @@ desconectada: eso es lo único que queda de G4.7 y sigue en
 ### 7.5 La alternativa de antes, por si acaso
 
 Copiar el directorio de versión entero
-(`%LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.0\`) sigue funcionando, **pero solo si
+(`%LOCALAPPDATA%\HorizunPbiMcp\plugin\2.0.1\`) sigue funcionando, **pero solo si
 el data root es idéntico en las dos máquinas**: un venv de Python no es
 relocalizable. El bundle no tiene esa limitación.
 

@@ -2,7 +2,7 @@
 
 **MCP** (Model Context Protocol) server for working with **local Power BI Desktop** and **`.pbip`** projects from Claude Code.
 
-**v2.0.0** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion. **Breaking:** three tools now require `confirm` or changed their annotations — see [the migration guide](docs/MIGRACION_1x_A_2.0.md).
+**v2.0.1** — 134 tools. Two complementary Power BI layers, plus verified document exports, report **content** export and read-only SharePoint ingestion. **Breaking:** three tools now require `confirm` or changed their annotations — see [the migration guide](docs/MIGRACION_1x_A_2.0.md).
 
 ---
 
@@ -28,7 +28,7 @@ then runs the script — with `&`, never `iex`. If the hash doesn't match,
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
 $sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
@@ -350,7 +350,7 @@ SHA-256 checked before anything runs):
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.0/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.1/horizun-pbi-mcp-instalar.ps1'
 $sha = 'd78f998941943a11c5c9cf889cf07fc06a006b3b304b0ad1f9716240a04f4dd5'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
