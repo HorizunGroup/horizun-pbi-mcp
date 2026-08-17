@@ -1,6 +1,6 @@
 {
   "name": "horizun-pbi-mcp",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Power BI Desktop and PBIP from Claude: DAX, TOM, TMDL, PBIR, visuals, auditing and safe workflows.",
   "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
   "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",

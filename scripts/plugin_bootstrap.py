@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 

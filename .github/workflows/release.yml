@@ -201,7 +201,7 @@ jobs:
           name: ${{ env.ARTEFACTO }}
           path: artefactos
 
-      # Ultima puerta: digests otra vez, y el tag contra los ocho sitios que
+      # Ultima puerta: digests otra vez, y el tag contra los nueve sitios que
       # declaran la version. Publicar 1.5.5 desde un arbol que dice 1.5.4 en
       # tres archivos es como se rompe un marketplace en silencio.
       - name: Verificar digests y que el tag y los manifiestos coincidan

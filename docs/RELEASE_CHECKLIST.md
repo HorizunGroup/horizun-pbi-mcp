@@ -106,16 +106,20 @@ On a **copy** outside OneDrive, never on the original:
 
 ## Tagging
 
-The release candidate version is **`v2.0.1`**. The exceptions below are documented
+The release candidate version is **`v2.0.2`**. The exceptions below are documented
 product limits, not hidden bugs or skipped criteria.
 
-> **`v2.0.0` is burned.** That tag exists on the remote — it points at
-> `1f0405b` — but it was created during a **failed publication attempt**: the
-> release run built and tested correctly, `publicar-pypi` failed with
-> `invalid-publisher`, `publicar-mcp` was skipped, and nothing was ever
-> published to GitHub Releases, PyPI or the MCP Registry. A public tag may have
-> been fetched by third parties during that window, so **the tag is immutable
-> and is not reused, moved or deleted**. The pipeline fix ships as `v2.0.1`.
+> **`v2.0.0` is burned, and no longer exists.** It was created during a **failed
+> publication attempt**: the release run built and tested correctly,
+> `publicar-pypi` failed with `invalid-publisher`, `publicar-mcp` was skipped,
+> and nothing was ever published to GitHub Releases, PyPI or the MCP Registry.
+> The default rule — a public tag may already have been fetched, so it is not
+> moved, reused or deleted — is recorded here rather than quietly dropped; it
+> was **revoked deliberately for that one tag** and it was deleted from the
+> remote on 2026-08-16, on the grounds that it lived roughly eighteen hours,
+> published nothing, and pointed at a commit (`1f0405b`) still reachable from
+> `main`. The pipeline fix shipped as `v2.0.1`. The full account is in the
+> `CHANGELOG` entry for `2.0.1`.
 
 The version declared in `branding.VERSION` / `pyproject.toml` must match the tag **before** tagging. Installing from a tag and getting a package that reports a different version is exactly what these checks exist to prevent.
 
@@ -157,12 +161,12 @@ What that means in practice, and what to check before tagging:
    `scripts/release_verify.py` before touching it.
 2. **The test job installs the built wheel**, not the checkout, and runs the
    suite with `-o pythonpath=` so `src/` cannot shadow it.
-3. **The tag must match all eight places that declare the version.**
+3. **The tag must match all nine places that declare the version.**
    `release_verify.py --expect-version` enforces it and stops the publish job
    otherwise. Check it locally first:
 
    ```bash
-   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 2.0.1
+   python scripts/release_build.py --outdir artefactos && python scripts/release_verify.py --dir artefactos --expect-version 2.0.2
    ```
 
 4. **The release asset `horizun-pbi-mcp-instalar.ps1` must be the frozen bytes**

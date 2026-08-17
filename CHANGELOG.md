@@ -5,7 +5,56 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [2.0.1] — unreleased
+## [2.0.2] — unreleased
+
+Two defects reported from an outside installation on 2026-08-16, hours after
+`2.0.1` shipped. Neither breaks anything in use; both are cases of the server
+**saying something that is not true**, which is worse than staying quiet.
+
+### Fixed
+
+- **`pbi_health_check` reported the CLR interop as down in every healthy
+  installation.** The check read `clr_available` and `runtime` from
+  `diagnostics()`; those keys have never existed — the real ones are
+  `runtime_loaded` and `runtime_preference`. `bool(None)` is `False`, so the
+  server started with `"warnings": ["clr"]`, `status: warning` and
+  `detail: null`: a permanent alarm pointing at a problem that was not there,
+  and not saying which. In the same process `pbi_list_desktop_models` reported
+  `runtime_loaded: true`. Two tools contradicting each other about one state.
+
+  Renaming the key was not enough: the runtime loads **lazily**, only from
+  `load_adomd()` / `load_tom()`, so a freshly started server is legitimately
+  unloaded and the check would have gone from "always red" to "red until you do
+  something else". There are now three states — `loaded`, `not_attempted`,
+  `failed` — and only the last one warns. The runtime is **not** probed inside
+  the check: `pbi_health_check` is advertised as read-only, and loading .NET
+  there would be a side effect in the one tool you call to look without
+  touching. The detail is never `null` again.
+
+- **The fallback to `coreclr` never ran.** Found while reading pythonnet 3.1.0
+  to fix the above. `_ensure_runtime` treated every `RuntimeError` from
+  `load()` as "a runtime was already loaded". It is the other way around:
+  `load()` opens with `if _LOADED: return`, so the already-loaded case never
+  raises, and `RuntimeError` is what genuine failures look like (`Failed to
+  create a .NET runtime (netfx)`, `No valid runtime selected`, `Failed to
+  initialize Python.Runtime.dll`). The `except` turned each of those into a
+  fake success — the real error resurfaced later in `clr.AddReference`, blaming
+  the DLL — and, because it returned from **inside the loop**, a machine
+  without .NET Framework never got to try the other runtime: it gave up
+  pretending it had worked. The cause of every failed attempt is now recorded,
+  which is what lets the health check tell "not attempted" from "could not".
+
+- **The setup skill sent people to copy the one-paste block from
+  `README.md`**, which stopped embedding it when it became a link to
+  `docs/INSTALL.md`. The same claim lived in the canonical file's own header.
+  The instruction exists to say "do not write it from memory"; an agent
+  following it does not find the block and concludes it must rebuild it. The
+  blocks were guarded by hash; the prose announcing them was guarded by nobody,
+  and now is.
+
+---
+
+## [2.0.1] — 2026-08-16
 
 **The first public release of the 2.x line.** Everything listed under `2.0.0`
 below ships here; what `2.0.1` adds is the piece of the pipeline that was

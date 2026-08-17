@@ -11,7 +11,7 @@ report pages — and checks its own work afterwards.
 
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
-**v2.0.1** · 134 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
+**v2.0.2** · 134 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
 
 ## Install
 
