@@ -54,6 +54,27 @@ def test_marketplace_declara_la_version_del_proyecto(ruta):
         f"{ruta} apunta a {refs} y el proyecto es {esperado}")
 
 
+def test_el_readme_declara_el_nombre_del_servidor_para_el_registro():
+    """Sin esta linea, `publicar-mcp` falla con 400 y arrastra a la release.
+
+    El registro MCP comprueba la propiedad del paquete leyendo `mcp-name:` en
+    el README **del paquete publicado en PyPI**, no en el repositorio. Cuando
+    rechazo la 2.0.2 el dano no fue quedarse sin entrada en el registro: como
+    `publicar-github-release` depende de `publicar-mcp`, la release no se creo,
+    y el bloque de un pegado -que ya apuntaba a /v2.0.2/- quedo en 404 con la
+    version ya publicada en PyPI e irreemplazable.
+
+    Se valida contra `.mcp/server.json` en vez de contra una constante para que
+    renombrar el servidor rompa aqui y no en mitad de una publicacion.
+    """
+    nombre = json.loads((RAIZ / ".mcp/server.json").read_text(encoding="utf-8"))["name"]
+    readme = (RAIZ / "README.md").read_text(encoding="utf-8")
+    assert f"mcp-name: {nombre}" in readme, (
+        f"README.md no declara 'mcp-name: {nombre}'. El registro MCP la exige "
+        "para validar la propiedad del paquete de PyPI, y sin ella la release "
+        "de GitHub ni siquiera llega a crearse")
+
+
 def test_todos_los_sitios_de_version_coinciden_con_branding():
     """El gate del release comprueba esto AL TAGUEAR; aqui se comprueba antes.
 
