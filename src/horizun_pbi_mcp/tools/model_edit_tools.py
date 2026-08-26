@@ -532,3 +532,60 @@ def register(mcp) -> None:
             source_table=source_table, url=url, native_query=native_query,
             json_path=json_path, description=description or None,
             overwrite=overwrite, dry_run=dry_run))
+
+    @mcp.tool()
+    def pbi_get_power_query(table: str = "", name: str = "",
+                            kind: str = "") -> Dict[str, Any]:
+        """Lee la consulta Power Query (M) de una particion o expresion.
+
+        En un .pbip el M no tiene archivo propio: vive dentro del TMDL, en la
+        `partition` de cada tabla y en `expressions.tmdl`. Esta tool lo saca
+        tal cual, con su SHA-256, que es lo que despues acepta
+        `pbi_update_power_query` como `expected_sha256` para no escribir sobre
+        una version que ya cambio.
+
+        `table` + `name` seleccionan una particion; `name` con
+        `kind='expression'`, una expresion con nombre. Si la seleccion queda
+        ambigua o no existe, el error trae la lista de candidatos.
+
+        Solo lectura, y solo lectura de TEXTO: nadie ha ejecutado esta
+        consulta. No hay motor M fuera de Power BI Desktop.
+        """
+        from horizun_pbi_mcp.services import power_query
+
+        return guard(lambda: power_query.get_power_query(
+            _proyecto_activo(), table=table or None, name=name or None,
+            kind=kind or None))
+
+    @mcp.tool()
+    def pbi_update_power_query(m: str, table: str = "", name: str = "",
+                               kind: str = "", expected_sha256: str = "",
+                               dry_run: bool = True,
+                               request_id: str = "") -> Dict[str, Any]:
+        """Reemplaza ENTERA la consulta M de una particion o expresion.
+
+        No hay edicion parcial ni sustitucion por expresion regular: se
+        localiza el bloque por su estructura y se cambia completo. `dry_run`
+        viene ACTIVADO: la primera llamada enseña lo que se escribiria sin
+        tocar el disco, sin backup y sin journal.
+
+        `expected_sha256` (el que devuelve `pbi_get_power_query`) rechaza la
+        escritura si el texto cambio desde que lo leiste, en vez de pisar el
+        trabajo de otro.
+
+        Escribe TMDL: exige proyecto .pbip y Power BI Desktop CERRADO. Va con
+        backup, journal, transaccion, relectura y rollback; si el modelo queda
+        con errores TMDL que antes no tenia, se revierte entero.
+
+        La respuesta distingue lo comprobado de lo no comprobado:
+        `parse_checked` y `tmdl_load_checked` dicen que el TMDL se lee y que
+        el serializador oficial lo acepta; `m_engine_checked` y
+        `refresh_checked` son SIEMPRE false. Que el archivo parsee no
+        significa que la consulta cargue: eso solo lo dice un refresh.
+        """
+        from horizun_pbi_mcp.services import power_query
+
+        return guard_mutation(lambda: power_query.update_power_query(
+            _proyecto_activo(), m, table=table or None, name=name or None,
+            kind=kind or None, expected_sha256=expected_sha256 or None,
+            dry_run=dry_run, request_id=request_id or None))
