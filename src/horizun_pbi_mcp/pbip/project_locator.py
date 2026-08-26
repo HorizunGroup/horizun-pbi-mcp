@@ -29,12 +29,24 @@ def _safe_candidate(base: Path, candidate: Path) -> Optional[Path]:
 
 
 def _find_pbip_file(path: str) -> Path:
+    """El .pbip exacto. Una carpeta con dos proyectos NO se resuelve sola.
+
+    Antes se devolvia `sorted(matches)[0]`: con `Antiguo.pbip` y `Nuevo.pbip`
+    en la misma carpeta se abria el primero por orden alfabetico y no se decia.
+    Todo lo que viniera despues -medidas, paginas, publicacion- caia en el
+    proyecto equivocado con la respuesta en verde.
+    """
+    from horizun_pbi_mcp.services import project_resolver
+
     p = Path(path).expanduser()
     if p.is_dir():
-        matches = sorted(p.glob("*.pbip"))
-        if not matches:
-            raise PbipNotFoundError(f"No se encontro ningun .pbip en la carpeta {p}.")
-        return matches[0]
+        elegido = project_resolver.unico(
+            p, "*.pbip", kind="proyecto .pbip", obligatorio=False)
+        if elegido is None:
+            raise PbipNotFoundError(
+                f"No se encontro ningun .pbip en la carpeta {p}.",
+                details={"folder": str(p)})
+        return elegido
     if p.suffix.lower() != ".pbip":
         raise PbipNotFoundError(f"La ruta no es un archivo .pbip: {p}")
     if not p.exists():
@@ -53,9 +65,13 @@ def _resolve_report_dir(pbip_file: Path, project_dir: Path) -> Optional[Path]:
                     return cand
     except Exception as exc:  # noqa: BLE001
         log.debug("No se pudo leer artifacts del .pbip: %s", exc)
-    # Respaldo: buscar una carpeta *.Report hermana
-    reports = sorted(project_dir.glob("*.Report"))
-    return reports[0] if reports else None
+    # Respaldo: una carpeta *.Report hermana, pero SOLO si hay una. Con dos,
+    # elegir la primera es exactamente el defecto que se arreglo arriba.
+    from horizun_pbi_mcp.services import project_resolver
+
+    return project_resolver.unico(
+        project_dir, "*.Report", kind="carpeta .Report",
+        solo_directorios=True, obligatorio=False)
 
 
 def _resolve_semantic_model_dir(project_dir: Path, report_dir: Optional[Path]) -> Optional[Path]:
@@ -73,9 +89,12 @@ def _resolve_semantic_model_dir(project_dir: Path, report_dir: Optional[Path]) -
                         return cand
             except Exception:  # noqa: BLE001
                 pass
-    # 2) respaldo: carpeta *.SemanticModel hermana
-    sms = sorted(project_dir.glob("*.SemanticModel"))
-    return sms[0] if sms else None
+    # 2) respaldo: una carpeta *.SemanticModel hermana, y solo si hay UNA.
+    from horizun_pbi_mcp.services import project_resolver
+
+    return project_resolver.unico(
+        project_dir, "*.SemanticModel", kind="carpeta .SemanticModel",
+        solo_directorios=True, obligatorio=False)
 
 
 def _build_active_pbip(pbip_file: Path) -> ActivePbip:

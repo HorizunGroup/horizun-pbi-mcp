@@ -22,6 +22,42 @@ def register(mcp) -> None:
         return guard(lambda: project_locator.open_project(get_session(), path))
 
     @mcp.tool()
+    def pbi_prepare_project(path: str, out_dir: str = "",
+                            project_name: str = "", overwrite: bool = False,
+                            open_result: bool = False,
+                            request_id: str = "") -> Dict[str, Any]:
+        """Deja listo EXACTAMENTE el proyecto que le pasas, y dice cual es.
+
+        Es el punto de entrada de una sesion de trabajo. Acepta las tres cosas
+        que una persona tiene a mano y las resuelve con una sola politica:
+
+        - un `.pbip`: se valida y se activa esa ruta, tal cual;
+        - un `.pbix`: se convierte ESE archivo y se activa el `.pbip` que
+          produjo la conversion (no uno que se le parezca en la carpeta);
+        - una carpeta: solo se resuelve si contiene UN candidato. Con dos
+          `.pbip` falla con `ambiguous_pbip_project` y te los enumera, porque
+          elegir el primero por orden alfabetico es como se acaba editando el
+          proyecto equivocado con la respuesta en verde.
+
+        La ruta que pasas gana siempre: sobre el proyecto activo, sobre la
+        sesion restaurada y sobre lo que tenga abierto Power BI Desktop. Si
+        algo falla, el proyecto activo se queda como estaba.
+
+        La respuesta trae `requested_path`, `resolved_path`,
+        `selection_reason`, `path_match`, `previous_active_project` y
+        `active_project`, para que la decision sea auditable sin repetirla.
+
+        `open_result=true` abre el resultado en Desktop y comprueba que la
+        ventana sirve ese archivo.
+        """
+        from horizun_pbi_mcp.services import project_prepare
+
+        return guard_mutation(lambda: project_prepare.prepare(
+            get_session(), path, out_dir=out_dir or None,
+            project_name=project_name or None, overwrite=overwrite,
+            open_result=open_result))
+
+    @mcp.tool()
     def pbi_validate_pbip_project() -> Dict[str, Any]:
         """Valida a fondo el proyecto .pbip activo (estructura, PBIR, TMDL).
 
