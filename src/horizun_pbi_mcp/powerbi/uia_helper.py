@@ -546,10 +546,16 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str) -> Dict[str, Any]:
 def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
     """Invoke -> DoDefaultAction -> clic real calculado. En ese orden.
 
-    Los dos primeros no reproducen el clic humano en este cuadro -se
-    comprobo: el archivo no aparece-, asi que existe el tercero. El punto se
-    calcula del propio elemento en el momento; no hay coordenadas escritas ni
-    supuestos sobre DPI, monitor o escala.
+    Contra Power BI Desktop real **el primero basta**: el cuadro se cierra y el
+    archivo aparece, y eso es lo que devuelve `commit_method`. Los otros dos
+    siguen ahi porque cual funciona depende de la version y del tema visual de
+    Windows, y descubrirlo en la maquina de otra persona -con el guardado a
+    medias- sale caro.
+
+    Que el cuadro se cierre es evidencia fuerte, no prueba: la prueba es el
+    archivo, y de eso se encarga quien llama. El punto del clic se calcula del
+    propio elemento en el momento; no hay coordenadas escritas ni supuestos
+    sobre DPI, monitor o escala.
     """
     elemento = uia.desde_hwnd(dialogo_hwnd)
     boton = uia.por_id(elemento, AUTOMATION_ID_GUARDAR, UIA_TIPO_BUTTON)
