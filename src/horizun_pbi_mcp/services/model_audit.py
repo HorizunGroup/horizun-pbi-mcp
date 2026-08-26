@@ -125,12 +125,14 @@ def _no_usada(md, idx):
     out = []
     for m in md.get("measures", []):
         usada = False
+        objetivo = str(m["name"]).casefold()
         for otra in md.get("measures", []):
             if otra["name"] == m["name"]:
                 continue
             refs = model_explorer.extract_references(otra.get("expression"))
-            if m["name"] in refs["unqualified"] or \
-                    any(r.endswith(f"[{m['name']}]") for r in refs["columns"]):
+            if objetivo in {r.casefold() for r in refs["unqualified"]} or \
+                    any(r.casefold().endswith(f"[{objetivo}]")
+                        for r in refs["columns"]):
                 usada = True
                 break
         if not usada:
@@ -147,17 +149,29 @@ def _no_usada(md, idx):
 @regla("measure_broken_reference", ERROR, "measures",
        "La expresion referencia un objeto que no existe.")
 def _referencia_rota(md, idx):
+    """Solo lo que NO existe.
+
+    La resolucion ignora mayusculas y minusculas, como DAX: escribir
+    `Cronograma[Fecha]` cuando la tabla se llama `CRONOGRAMA` no rompe nada y
+    durante un tiempo se reportaba aqui como error. Una referencia AMBIGUA
+    tampoco entra: no falta el objeto, sobran candidatos, y decirle a alguien
+    que "no existe" lo manda a crear un duplicado.
+    """
     out = []
     for m in md.get("measures", []):
         refs = model_explorer.extract_references(m.get("expression"))
         for r in refs["columns"] + refs["unqualified"]:
-            if not model_explorer.resolve_reference(r, idx, m.get("table"))["exists"]:
-                out.append(_hallazgo(
-                    "measure_broken_reference", {"kind": "measure", "name": m["name"],
-                                 "table": m.get("table")},
-                    {"missing_reference": r},
-                    f"'{r}' no existe en el modelo. La medida fallara al "
-                    "evaluarse. Corrige la referencia o crea el objeto."))
+            resuelta = model_explorer.resolve_reference(r, idx, m.get("table"))
+            if resuelta["kind"] != "unknown":
+                continue
+            out.append(_hallazgo(
+                "measure_broken_reference", {"kind": "measure", "name": m["name"],
+                             "table": m.get("table")},
+                {"missing_reference": r,
+                 "reason": resuelta.get("reason"),
+                 "case_insensitive": True},
+                f"'{r}' no existe en el modelo. La medida fallara al "
+                "evaluarse. Corrige la referencia o crea el objeto."))
     return out
 
 

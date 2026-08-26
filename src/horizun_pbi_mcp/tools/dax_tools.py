@@ -53,9 +53,19 @@ def register(mcp) -> None:
 
         Detecta el motor de Analysis Services (localhost:<puerto>) de cada informe
         abierto y devuelve puerto, connection string, catalogo y nº de tablas.
+
+        Cada instancia trae ademas su IDENTIDAD: `engine_pid` es el proceso
+        del motor (msmdsrv.exe) y `desktop_pid` el de la ventana
+        (PBIDesktop.exe) —son distintos—, mas el titulo de la ventana, la ruta
+        del documento cuando puede demostrarse, `identity_confidence` y la
+        `identity_evidence` que la sostiene. Un .pbip no deja descriptor
+        abierto sobre su carpeta: ahi la ruta sale `null` en vez de adivinada.
         """
         def _impl():
-            instances = desktop_discovery.discover_instances()
+            from horizun_pbi_mcp.powerbi import desktop_identity
+
+            instances = desktop_identity.annotate(
+                desktop_discovery.discover_instances())
             return {"count": len(instances), "instances": instances,
                     "diagnostics": diagnostics()}
         return guard(_impl)
@@ -104,15 +114,29 @@ def register(mcp) -> None:
         con pbi_refresh_model si vas a comprobar valores.
         """
         def _impl():
-            from horizun_pbi_mcp.powerbi import desktop_launcher
+            from horizun_pbi_mcp.powerbi import desktop_identity, desktop_launcher
 
+            objetivo = str(_ruta_de_proyecto(path, pbip_path))
             abierto = desktop_launcher.open_pbix(
-                str(_ruta_de_proyecto(path, pbip_path)),
-                timeout=timeout, reuse_open=reuse_open)
+                objetivo, timeout=timeout, reuse_open=reuse_open)
+            # La MISMA identidad que publica pbi_list_desktop_models, ahora
+            # contrastada contra la ruta que se pidio abrir.
+            identidad = desktop_identity.identify(abierto.instance,
+                                                  target=objetivo)
             salida: Dict[str, Any] = {
                 "path": abierto.pbix_path,
-                "instance": abierto.instance,
+                "instance": {**abierto.instance, **identidad},
+                # Se conserva el campo historico, y se declara si coincide con
+                # el que la identificacion pudo demostrar.
                 "desktop_pid": abierto.desktop_pid,
+                "identity": identidad,
+                # El lanzador y la identificacion llegan al proceso por
+                # caminos distintos. Que coincidan es informacion; que no,
+                # tambien -y callarlo seria elegir uno sin decirlo-.
+                "desktop_pid_matches_identity": (
+                    None if identidad["desktop_pid"] is None
+                    or abierto.desktop_pid is None
+                    else identidad["desktop_pid"] == abierto.desktop_pid),
                 "launched_by_us": abierto.launched_by_us,
                 "reused_open_session": not abierto.launched_by_us,
                 "waited_seconds": abierto.waited_seconds,
