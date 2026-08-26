@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import Session
 from horizun_pbi_mcp.logging_config import get_logger
+from horizun_pbi_mcp.services import model_explorer
 
 log = get_logger("data_profile")
 
@@ -124,6 +125,83 @@ def _hallazgos(perfil: Dict[str, Any]) -> List[Dict[str, Any]]:
     return salida
 
 
+#: Cuanto pesa cada estado de uso al ordenar. Lo USADO va primero: un defecto
+#: en una columna que alimenta cuatro medidas se arregla antes que el mismo
+#: defecto en una columna que no cita nadie.
+_ORDEN_USO = {"used": 0, "unknown": 1, "not_found_in_model_dependencies": 2}
+
+
+def _uso_de_columna(clave: str,
+                    uso_modelo: Dict[str, Dict[str, Any]],
+                    uso_informe: Dict[str, Any]) -> Dict[str, Any]:
+    """Contexto de uso de una columna, sin convertir la heuristica en certeza.
+
+    `usage_scope` dice QUE clases se comprobaron de verdad. Sin ese campo, un
+    `dependency_count: 0` se lee como "no se usa en ninguna parte", que es
+    justo lo que no se puede afirmar mirando solo las expresiones del modelo.
+    """
+    entrada = uso_modelo.get(clave) or {}
+    medidas = [m["measure"] for m in entrada.get("measures", [])]
+    calculadas = [c["column"] for c in entrada.get("calculated_columns", [])]
+    relaciones = [
+        f"{r.get('from_table')}[{r.get('from_column')}] -> "
+        f"{r.get('to_table')}[{r.get('to_column')}]"
+        for r in entrada.get("relationships", [])]
+    jerarquias = [h["hierarchy"] for h in entrada.get("hierarchies", [])]
+
+    alcance = list(model_explorer.CLASES_DE_USO)
+    total = len(medidas) + len(calculadas) + len(relaciones) + len(jerarquias)
+    salida: Dict[str, Any] = {
+        "used_by_measures": medidas,
+        "used_by_calculated_columns": calculadas,
+        "used_by_relationships": relaciones,
+        "used_by_hierarchies": jerarquias,
+    }
+
+    if uso_informe.get("checked"):
+        visuales = uso_informe.get("by_column", {}).get(clave.casefold(), [])
+        salida["used_by_visuals"] = visuales
+        alcance.append("visuals")
+        total += len(visuales)
+        completo = bool(uso_informe.get("complete", True))
+    else:
+        # No hay PBIR legible: se DECLARA, no se asume que no se usa.
+        salida["used_by_visuals"] = "not_checked"
+        completo = False
+
+    if clave not in uso_modelo:
+        estado = "unknown"          # la columna no esta en el indice del modelo
+    elif total:
+        estado = "used"
+    elif completo:
+        estado = "not_found_in_model_dependencies"
+    else:
+        estado = "unknown"
+
+    salida.update({
+        "dependency_count": total,
+        "usage_status": estado,
+        "usage_scope": alcance,
+        "usage_scope_complete": completo,
+    })
+    if estado == "used":
+        salida["usage_priority"] = "elevated"
+        salida["usage_note"] = (
+            f"La usan {total} objeto(s) del modelo o del informe: un defecto "
+            "aqui se propaga.")
+    elif estado == "not_found_in_model_dependencies":
+        salida["usage_priority"] = "lower_observed_impact"
+        salida["usage_note"] = (
+            "No se le conoce uso en " + ", ".join(alcance) + ". Impacto "
+            "OBSERVADO menor; no es prueba de que no se use en ninguna parte.")
+    else:
+        salida["usage_priority"] = "unchanged"
+        salida["usage_note"] = (
+            "El analisis de dependencias quedo incompleto: la severidad no se "
+            "rebaja por falta de datos.")
+    return salida
+
+
 def profile_model(session: Session, *, tables: Optional[List[str]] = None,
                   max_columns: int = _MAX_COLUMNAS) -> Dict[str, Any]:
     """Perfila las columnas del modelo en vivo y devuelve lo que no cuadra.
@@ -131,17 +209,22 @@ def profile_model(session: Session, *, tables: Optional[List[str]] = None,
     Solo lectura. `tables` acota el trabajo; sin acotar se recorre el modelo
     hasta `max_columns` columnas, porque perfilar cientos de columnas tarda mas
     que el timeout y un perfil a medias no vale.
+
+    Cada hallazgo se contextualiza con el USO conocido de la columna. Eso
+    cambia el orden y la explicacion, nunca la severidad: una heuristica sobre
+    valores no se vuelve certeza porque ademas sepamos quien la referencia.
     """
     from horizun_pbi_mcp.powerbi import model_reader
 
     modelo = model_reader.read_model(session)
-    pedidas = set(tables or [])
+    pedidas = {t.casefold() for t in (tables or [])}
     perfiles: List[Dict[str, Any]] = []
     omitidas = 0
+    motivos_omision: List[str] = []
 
     for tabla in modelo.get("tables", []):
         nombre = tabla["name"]
-        if pedidas and nombre not in pedidas:
+        if pedidas and nombre.casefold() not in pedidas:
             continue
         if nombre.startswith(("LocalDateTable_", "DateTableTemplate_")):
             continue
@@ -154,29 +237,72 @@ def profile_model(session: Session, *, tables: Optional[List[str]] = None,
             perfiles.append(_perfil_de_columna(
                 session, nombre, col["name"], str(col.get("data_type"))))
 
+    uso_modelo = model_explorer.column_usage_index(modelo)
+    uso_informe = _uso_en_el_informe(session)
+
     hallazgos: List[Dict[str, Any]] = []
     for p in perfiles:
-        hallazgos.extend(_hallazgos(p))
+        contexto = _uso_de_columna(f"{p['table']}[{p['column']}]",
+                                   uso_modelo, uso_informe)
+        for h in _hallazgos(p):
+            hallazgos.append({**h, **contexto})
 
     orden = {"error": 0, "warning": 1, "info": 2}
-    hallazgos.sort(key=lambda h: (orden.get(h["severity"], 3), h["table"], h["column"]))
+    hallazgos.sort(key=lambda h: (orden.get(h["severity"], 3),
+                                  _ORDEN_USO.get(h.get("usage_status"), 1),
+                                  -int(h.get("dependency_count") or 0),
+                                  h["table"], h["column"]))
     ilegibles = [p for p in perfiles if p.get("error")]
+    if omitidas:
+        motivos_omision.append(
+            f"{omitidas} columna(s) se omitieron por max_columns={max_columns}.")
 
     log.info("Perfiladas %s columnas; %s hallazgos", len(perfiles), len(hallazgos))
     return {
         "profiled_columns": len(perfiles),
         "skipped_columns": omitidas,
+        "checked_columns": len(perfiles),
+        "omitted_columns": omitidas,
+        "omission_reason": ("max_columns" if omitidas else None),
+        "complete": not omitidas and not ilegibles,
         "findings": hallazgos,
         "by_severity": {s: sum(1 for h in hallazgos if h["severity"] == s)
                         for s in ("error", "warning", "info")},
         "unreadable": ilegibles,
         "profiles": perfiles,
+        "dependency_context": {
+            "checked": True,
+            "scope": list(model_explorer.CLASES_DE_USO)
+                     + (["visuals"] if uso_informe.get("checked") else []),
+            "visuals_checked": bool(uso_informe.get("checked")),
+            "visuals_reason": uso_informe.get("reason"),
+            "note": ("El uso cambia la prioridad y la explicacion, no la "
+                     "severidad: un defecto de datos sigue siendo el mismo "
+                     "defecto lo use quien lo use."),
+        },
         "warnings": (
             ([f"{len(ilegibles)} columna(s) no se pudieron perfilar."]
              if ilegibles else [])
-            + ([f"{omitidas} columna(s) se omitieron por max_columns."]
-               if omitidas else [])),
+            + motivos_omision
+            + ([] if uso_informe.get("checked") else
+               ["Los visuales del informe NO se comprobaron: 'no se usa en el "
+                "modelo' no significa 'no se usa en el tablero'."])),
         "note": ("Perfilado de VALORES, complementario a pbi_audit_model, que "
                  "revisa la estructura. Un porcentaje negativo no es un defecto "
                  "del modelo sino de los datos, y solo se ve consultandolos."),
     }
+
+
+def _uso_en_el_informe(session: Session) -> Dict[str, Any]:
+    """Uso en visuales del PBIR activo, si lo hay. Nunca lanza."""
+    from horizun_pbi_mcp.services import reference_audit
+
+    activo = getattr(session, "active_pbip", None)
+    if activo is None or not getattr(activo, "has_pbir", False):
+        return {"checked": False,
+                "reason": "no hay un proyecto PBIP con informe PBIR activo"}
+    try:
+        return reference_audit.column_usage_in_report(activo)
+    except Exception as exc:                              # noqa: BLE001
+        return {"checked": False,
+                "reason": f"{type(exc).__name__}: {exc}"[:200]}

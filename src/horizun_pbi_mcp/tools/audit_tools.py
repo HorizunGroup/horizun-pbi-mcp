@@ -88,7 +88,8 @@ def register(mcp) -> None:
     @mcp.tool()
     def pbi_audit_project(rules: Optional[List[str]] = None,
                           min_severity: str = "info",
-                          formats: Optional[List[str]] = None) -> Dict[str, Any]:
+                          formats: Optional[List[str]] = None,
+                          compact: bool = False) -> Dict[str, Any]:
         """Auditoria integral: modelo semantico + informe + layout.
 
         Devuelve puntaje global y por dominio, resumen ejecutivo, hallazgos
@@ -97,14 +98,24 @@ def register(mcp) -> None:
 
         `formats`: ['markdown','html'] escribe tambien esos informes en
         outputs/ y devuelve sus rutas. `rules` y `min_severity` acotan.
+
+        `compact=true` devuelve la MISMA auditoria sin repetir texto: cada
+        hallazgo lleva un `finding_id`, `priority` pasa a ser la lista de esos
+        identificadores en orden en vez de copias completas, y `groups` agrupa
+        las repeticiones por regla con su recuento y una muestra. Los puntajes
+        y recuentos por dominio no cambian. Los informes de `formats` se
+        escriben siempre completos.
         """
         def _impl():
             active = _active()
             resultado = report_audit.audit_project(
                 active, _model_data(), rules=rules, min_severity=min_severity)
 
+            # Los artefactos se generan del resultado COMPLETO: la vista
+            # compacta ahorra contexto en la respuesta, no en el informe que
+            # alguien va a leer despues.
             _guardar_formatos(resultado, list(formats or []))
-            return resultado
+            return report_audit.compactar(resultado) if compact else resultado
         return guard(_impl)
 
     @mcp.tool()

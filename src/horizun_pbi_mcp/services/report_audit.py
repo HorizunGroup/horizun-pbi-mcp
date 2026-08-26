@@ -366,6 +366,94 @@ def audit_project(active: ActivePbip, model_data: Optional[Dict[str, Any]],
     }
 
 
+# ------------------------------------------------------------- vista compacta -
+#: Hallazgos completos que devuelve la vista compacta. El resto se resume en
+#: sus grupos: el recuento por regla no se pierde, solo el detalle repetido.
+COMPACT_MAX_FINDINGS = 50
+#: Objetos de muestra por grupo.
+COMPACT_MUESTRAS = 3
+
+
+def _etiqueta_de_objeto(objeto: Dict[str, Any]) -> str:
+    """Como se nombra un objeto en una muestra, sin volcarlo entero."""
+    if not isinstance(objeto, dict):
+        return str(objeto)
+    for clave in ("name", "id", "page", "kind"):
+        if objeto.get(clave):
+            return str(objeto[clave])
+    return "?"
+
+
+def compactar(resultado: Dict[str, Any], *,
+              max_findings: int = COMPACT_MAX_FINDINGS) -> Dict[str, Any]:
+    """Vista compacta ADITIVA de una auditoria ya calculada.
+
+    El problema que resuelve es de coste, no de estetica: `priority` repetia
+    los quince hallazgos mas graves COMPLETOS, con su evidencia y su
+    recomendacion, cuando ya estaban en `findings`. En un informe grande eso
+    duplicaba decenas de miles de caracteres dentro de la misma respuesta.
+
+    Aqui cada hallazgo se devuelve UNA vez y con un `finding_id` estable
+    dentro de esta ejecucion; `priority` pasa a ser el ORDEN, es decir una
+    lista de identificadores. Los recuentos y puntajes por dominio no se
+    tocan: son justamente lo que no puede perderse al resumir.
+
+    No se llama sola: `pbi_audit_project` la aplica solo con `compact=true`,
+    asi que una llamada existente sigue recibiendo exactamente lo de antes.
+    """
+    orden = {INFO: 0, WARNING: 1, ERROR: 2}
+    hallazgos = [dict(h, finding_id=f"F{i:03d}")
+                 for i, h in enumerate(resultado.get("findings") or [], start=1)]
+    por_id = {(h["rule"], _etiqueta_de_objeto(h.get("object", {})),
+               h["severity"]): h["finding_id"] for h in hallazgos}
+
+    grupos: Dict[str, Dict[str, Any]] = {}
+    for h in hallazgos:
+        g = grupos.setdefault(h["rule"], {
+            "rule": h["rule"], "domain": h["domain"], "count": 0,
+            "max_severity": INFO, "sample_objects": [],
+            "auto_fix_available": bool(h.get("auto_fix_available")),
+            "finding_ids": []})
+        g["count"] += 1
+        if orden[h["severity"]] > orden[g["max_severity"]]:
+            g["max_severity"] = h["severity"]
+        if len(g["sample_objects"]) < COMPACT_MUESTRAS:
+            g["sample_objects"].append(_etiqueta_de_objeto(h.get("object", {})))
+        g["finding_ids"].append(h["finding_id"])
+    for g in grupos.values():
+        g["sample_truncated"] = g["count"] > len(g["sample_objects"])
+
+    prioridad = [
+        por_id.get((p["rule"], _etiqueta_de_objeto(p.get("object", {})),
+                    p["severity"]))
+        for p in resultado.get("priority") or []]
+
+    devueltos = hallazgos[:max_findings]
+    compacto = dict(resultado)
+    compacto.update({
+        "view": "compact",
+        "findings": devueltos,
+        "finding_count": resultado.get("finding_count", len(hallazgos)),
+        "returned_findings": len(devueltos),
+        "total_findings": len(hallazgos),
+        "truncated": len(devueltos) < len(hallazgos),
+        # IDs y orden, no copias: el detalle ya viaja una vez en `findings`.
+        "priority": [i for i in prioridad if i],
+        "priority_note": ("Identificadores de `findings` en orden de "
+                          "prioridad. El detalle no se repite."),
+        "groups": sorted(grupos.values(),
+                         key=lambda g: (-orden[g["max_severity"]], -g["count"],
+                                        g["rule"])),
+    })
+    if compacto["truncated"]:
+        compacto.setdefault("warnings", [])
+        compacto["warnings"] = list(compacto["warnings"]) + [
+            f"Se devuelven {len(devueltos)} de {len(hallazgos)} hallazgos; "
+            "`groups` conserva el recuento completo por regla. Pide la vista "
+            "completa con compact=false."]
+    return compacto
+
+
 def _resumen(sev: Dict[str, int], dominios: Dict[str, Any],
              prioritarios: List[Dict[str, Any]]) -> str:
     partes = []
