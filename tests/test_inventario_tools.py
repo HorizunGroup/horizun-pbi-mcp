@@ -187,9 +187,11 @@ def test_cada_tool_rechaza_su_caso_negativo(nombre, servidor, filas,
         f"puede distinguir de qué falló: {str(resultado)[:200]}")
 
 
-def test_el_inventario_cubre_las_134_sin_huecos(filas):
-    assert len(filas) == 134
-    assert len({f["tool"] for f in filas}) == 134
+def test_el_inventario_cubre_todas_sin_huecos(filas):
+    from tests.test_tool_contract import EXPECTED_COUNT
+
+    assert len(filas) == EXPECTED_COUNT
+    assert len({f["tool"] for f in filas}) == EXPECTED_COUNT
     sin_caso = [f["tool"] for f in filas if not f["negativo"].get("clase")]
     assert not sin_caso, sin_caso
 
@@ -277,7 +279,7 @@ def test_una_tool_nueva_sin_parametros_y_destructiva_se_declara_sola():
     assert "destructiva" in caso["motivo"]
 
 
-def test_se_observaron_las_134_llamadas(llamadas_observadas, filas):
+def test_se_observaron_todas_las_llamadas(llamadas_observadas, filas):
     """El recuento sale de la EJECUCION, no del inventario.
 
     Va al final del archivo a proposito: pytest ejecuta los tests en orden, asi
@@ -285,10 +287,13 @@ def test_se_observaron_las_134_llamadas(llamadas_observadas, filas):
     lista esta llena. Si alguna se salta -un skip, un error de recoleccion-,
     esto lo dice con el nombre.
     """
+    from tests.test_tool_contract import EXPECTED_COUNT
+
     faltan = sorted({f["tool"] for f in filas} - set(llamadas_observadas))
     assert not faltan, f"no se llamo a: {faltan}"
-    assert len(llamadas_observadas) == 134, (
-        f"se observaron {len(llamadas_observadas)} llamadas por MCP, no 134")
+    assert len(llamadas_observadas) == EXPECTED_COUNT, (
+        f"se observaron {len(llamadas_observadas)} llamadas por MCP, no "
+        f"{EXPECTED_COUNT}")
 
 
 def test_ninguna_tool_queda_declarada_sin_ejecutar(filas):

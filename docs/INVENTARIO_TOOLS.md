@@ -51,14 +51,14 @@ dar por hecho al ver 134 filas en verde:
 
 | | |
 |---|---|
-| Tools | **134** |
-| Ejecutadas por MCP en cada corrida | **134** |
-| Con caso negativo que las hace fallar | **126** |
+| Tools | **139** |
+| Ejecutadas por MCP en cada corrida | **139** |
+| Con caso negativo que las hace fallar | **131** |
 | Sin modo de fallo (ejecutadas, se exige `ok: true`) | **8** |
 | Excepciones declaradas con motivo | **0** |
-| De solo lectura | **53** |
+| De solo lectura | **54** |
 | Con `confirm` | **11** |
-| Con payload congelado | **134** |
+| Con payload congelado | **139** |
 
 ## Las tools, una por una
 
@@ -77,7 +77,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_apply_theme` | escritura | 7 | 0 | — | sí | tipo invalido | `preset` |
 | `pbi_arrange_visuals` | escritura | 7 | 1 | — | sí | falta un requerido | `page` |
 | `pbi_audit_model` | solo lectura | 3 | 0 | — | sí | tipo invalido | `source` |
-| `pbi_audit_project` | escritura | 3 | 0 | — | sí | tipo invalido | `rules` |
+| `pbi_audit_project` | escritura | 4 | 0 | — | sí | tipo invalido | `rules` |
 | `pbi_audit_report_only` | solo lectura | 0 | 0 | — | sí | sin proyecto activo | — |
 | `pbi_backup_pbip_project` | escritura | 3 | 0 | — | sí | tipo invalido | `mode` |
 | `pbi_build_dashboard` | escritura | 7 | 2 | — | sí | falta un requerido | `measures, name` |
@@ -118,13 +118,16 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_duplicate_visual` | escritura | 7 | 2 | — | sí | falta un requerido | `page, visual_id` |
 | `pbi_export_excel` | escritura | 6 | 0 | — | sí | tipo invalido | `source` |
 | `pbi_export_page_html` | escritura | 1 | 1 | — | sí | falta un requerido | `page` |
+| `pbi_export_pbix` | escritura | 8 | 0 | — | sí | tipo invalido | `pbip_path` |
 | `pbi_export_report_content` | escritura | 8 | 1 | — | sí | falta un requerido | `select` |
+| `pbi_finalize_delivery` | escritura | 7 | 0 | — | sí | tipo invalido | `path` |
 | `pbi_generate_page_spec` | solo lectura | 6 | 1 | — | sí | falta un requerido | `page_name` |
 | `pbi_generate_pdf_report` | escritura | 7 | 0 | — | sí | tipo invalido | `report_type` |
 | `pbi_generate_report_page` | escritura | 6 | 1 | — | sí | falta un requerido | `page_name` |
 | `pbi_generate_technical_documentation` | escritura | 0 | 0 | — | sí | sin proyecto activo | — |
 | `pbi_get_brief` | solo lectura | 1 | 0 | — | sí | tipo invalido | `request_id` |
 | `pbi_get_object` | solo lectura | 3 | 2 | — | sí | falta un requerido | `kind, name` |
+| `pbi_get_power_query` | solo lectura | 3 | 0 | — | sí | tipo invalido | `table` |
 | `pbi_get_visual` | solo lectura | 2 | 2 | — | sí | falta un requerido | `page, visual_id` |
 | `pbi_health_check` | solo lectura | 0 | 0 | — | sí | sin modo de fallo | — |
 | `pbi_hide_columns` | escritura | 4 | 1 | — | sí | falta un requerido | `columns` |
@@ -160,6 +163,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_plan_audit_fixes` | solo lectura | 2 | 1 | — | sí | falta un requerido | `rules` |
 | `pbi_plan_change` | solo lectura | 2 | 2 | — | sí | falta un requerido | `arguments, operation` |
 | `pbi_prepare_delivery` | escritura | 2 | 0 | — | sí | tipo invalido | `dry_run` |
+| `pbi_prepare_project` | escritura | 6 | 1 | — | sí | falta un requerido | `path` |
 | `pbi_preview_page_spec` | escritura | 2 | 1 | — | sí | falta un requerido | `spec` |
 | `pbi_preview_spec_html` | escritura | 1 | 1 | — | sí | falta un requerido | `spec` |
 | `pbi_profile_data` | escritura | 2 | 0 | — | sí | tipo invalido | `tables` |
@@ -191,6 +195,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_start_here` | solo lectura | 1 | 0 | — | sí | tipo invalido | `request_id` |
 | `pbi_test_connection` | solo lectura | 0 | 0 | — | sí | sin proyecto activo | — |
 | `pbi_update_measure` | escritura | 8 | 2 | — | sí | falta un requerido | `name, table` |
+| `pbi_update_power_query` | escritura | 7 | 1 | — | sí | falta un requerido | `m` |
 | `pbi_update_visual_position` | escritura | 8 | 6 | — | sí | falta un requerido | `height, page, visual_id, width, x, y` |
 | `pbi_validate_desktop_render` | escritura | 9 | 0 | — | sí | tipo invalido | `path` |
 | `pbi_validate_generated_page` | solo lectura | 1 | 1 | — | sí | falta un requerido | `page` |

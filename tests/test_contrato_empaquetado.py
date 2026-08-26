@@ -90,10 +90,12 @@ def test_el_baseline_viaja_dentro_del_paquete_y_no_en_tests():
         "instalaria sin el y el healthcheck fallaria cerrado en cada equipo")
 
 
-def test_el_contrato_declara_las_134_tools_y_el_servidor():
+def test_el_contrato_declara_todas_las_tools_y_el_servidor():
+    from tests.test_tool_contract import EXPECTED_COUNT
+
     c = healthcheck.contrato()
     assert c["server"] == "horizun-pbi-mcp"
-    assert len(c["tools"]) == len(CONTRATO) == 134
+    assert len(c["tools"]) == len(CONTRATO) == EXPECTED_COUNT
     assert set(c["tools"]) == set(CONTRATO)
 
 
@@ -104,7 +106,7 @@ def test_un_runtime_que_sirve_el_contrato_entero_pasa(runtime):
     py = runtime(version="2.0.0")
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is True, veredicto
-    assert veredicto["tools"] == 134
+    assert veredicto["tools"] == len(CONTRATO)
     assert veredicto["servidor"] == "horizun-pbi-mcp"
 
 
@@ -120,25 +122,25 @@ def test_las_tools_de_MAS_no_rompen_nada(runtime):
 # Lo que tiene que RECHAZAR
 # ============================================================================
 def test_cien_tools_ya_no_bastan(runtime):
-    """El umbral viejo era 100 con el contrato en 134."""
+    """El umbral viejo era 100, y el contrato ya iba por 134."""
     py = runtime(version="2.0.0", nombres=CONTRATO[:100])
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
     assert veredicto["tools"] == 100
-    assert "faltan 34" in veredicto["error"], veredicto
+    assert f"faltan {len(CONTRATO) - 100}" in veredicto["error"], veredicto
 
 
-def test_133_tools_con_una_del_contrato_ausente_se_rechaza(runtime):
+def test_una_tool_del_contrato_ausente_se_rechaza(runtime):
     """Una sola tool de menos ya rompe a quien la tuviera configurada."""
     py = runtime(version="2.0.0",
                  nombres=[n for n in CONTRATO if n != "pbi_run_dax"])
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
-    assert veredicto["tools"] == 133
+    assert veredicto["tools"] == len(CONTRATO) - 1
     assert veredicto["faltan"] == ["pbi_run_dax"], veredicto
 
 
-def test_134_tools_con_una_del_contrato_sustituida_se_rechaza(runtime):
+def test_una_tool_del_contrato_sustituida_se_rechaza(runtime):
     """El caso mas dificil, y el que un recuento nunca vera: el numero CUADRA.
 
     Cualquier oraculo basado en "¿cuantas hay?" da esto por bueno. Solo mirar
@@ -149,18 +151,18 @@ def test_134_tools_con_una_del_contrato_sustituida_se_rechaza(runtime):
                  + ["pbi_relleno"])
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
-    assert veredicto["tools"] == 134
+    assert veredicto["tools"] == len(CONTRATO)
     assert veredicto["faltan"] == ["pbi_run_dax"], veredicto
 
 
-def test_134_nombres_pbi_equivocados_se_rechazan(runtime):
+def test_los_nombres_pbi_equivocados_se_rechazan(runtime):
     """Contarlas y mirarles el prefijo no distingue el producto de un remedo."""
     py = runtime(version="2.0.0",
-                 nombres=[f"pbi_inventada_{n}" for n in range(134)])
+                 nombres=[f"pbi_inventada_{n}" for n in range(len(CONTRATO))])
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is False
-    assert veredicto["tools"] == 134, "el numero cuadraba: por eso colaba"
-    assert "faltan 134" in veredicto["error"], veredicto
+    assert veredicto["tools"] == len(CONTRATO), "el numero cuadraba: por eso colaba"
+    assert f"faltan {len(CONTRATO)}" in veredicto["error"], veredicto
 
 
 def test_otro_servidor_mcp_en_el_venv_no_cuela(runtime):
@@ -221,7 +223,7 @@ def test_responder_en_otro_orden_no_es_un_falso_negativo(runtime):
     py = runtime(version="2.0.0", invierte=True)
     veredicto = _verificar(py, version_esperada="2.0.0")
     assert veredicto["ok"] is True, veredicto
-    assert veredicto["tools"] == 134
+    assert veredicto["tools"] == len(CONTRATO)
 
 
 def test_un_runtime_que_no_arranca_se_rechaza_sin_esperar_el_timeout(runtime):
@@ -329,7 +331,7 @@ def test_un_runtime_que_no_muere_al_cerrar_stdin_se_rechaza_y_no_queda_suelto(
 
     assert veredicto["ok"] is False, "dio por bueno un runtime que no se apaga"
     assert veredicto["fase"] == "no-termina", veredicto
-    assert veredicto["tools"] == 134, "contesto bien: por eso colaba"
+    assert veredicto["tools"] == len(CONTRATO), "contesto bien: por eso colaba"
     assert _procesos_hijos_de(py) == [], (
         f"quedaron procesos sueltos: {_procesos_hijos_de(py)}")
 

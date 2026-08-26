@@ -1,6 +1,6 @@
 {
   "contract_version": 1,
-  "tool_count": 134,
+  "tool_count": 139,
   "tools": [
     {
       "name": "pbi_add_custom_visual",
@@ -630,8 +630,13 @@
     },
     {
       "name": "pbi_audit_project",
-      "description": "Auditoria integral: modelo semantico + informe + layout.\n\nDevuelve puntaje global y por dominio, resumen ejecutivo, hallazgos\npriorizados con evidencia y recomendacion, y que reglas tienen\ncorreccion automatica.\n\n`formats`: ['markdown','html'] escribe tambien esos informes en\noutputs/ y devuelve sus rutas. `rules` y `min_severity` acotan.",
+      "description": "Auditoria integral: modelo semantico + informe + layout.\n\nDevuelve puntaje global y por dominio, resumen ejecutivo, hallazgos\npriorizados con evidencia y recomendacion, y que reglas tienen\ncorreccion automatica.\n\n`formats`: ['markdown','html'] escribe tambien esos informes en\noutputs/ y devuelve sus rutas. `rules` y `min_severity` acotan.\n\n`compact=true` devuelve la MISMA auditoria sin repetir texto: cada\nhallazgo lleva un `finding_id`, `priority` pasa a ser la lista de esos\nidentificadores en orden en vez de copias completas, y `groups` agrupa\nlas repeticiones por regla con su recuento y una muestra. Los puntajes\ny recuentos por dominio no cambian. Los informes de `formats` se\nescriben siempre completos.",
       "params": {
+        "compact": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
         "formats": {
           "required": false,
           "type": "array[string]|null",
@@ -2509,6 +2514,68 @@
       }
     },
     {
+      "name": "pbi_export_pbix",
+      "description": "Exporta el proyecto .pbip a un archivo .pbix de verdad.\n\nMicrosoft no publica ninguna API para convertir el formato, asi que\nesto automatiza el flujo OFICIAL: abre el proyecto en Power BI Desktop\ny usa `Archivo > Guardar como`. No se fabrica el .pbix a mano -un zip\ncosido con TOM abre a veces y rompe otras-.\n\nAntes de tocar Desktop se resuelve la ruta exacta, se valida el TMDL,\nse comprueba que el destino cabe en Windows y, si existe y pasas\n`overwrite=true`, se respalda. Si el destino existe y no lo pasas,\nfalla ANTES de abrir ninguna ventana.\n\n`refresh`: 'auto' intenta refrescar y declara el resultado sin\nadornarlo; 'required' no exporta si no pudo refrescar -para no\nentregar un .pbix como si tuviera datos-; 'skip' guarda el estado que\nel modelo tenga ahora.\n\nQue el dialogo desaparezca NO es que se haya guardado: se comprueba\nque el archivo existe, que es .pbix y no .pbit, que pesa mas de cero,\nque su fecha es de esta ejecucion y que el lector de .pbix lo puede\nabrir con informe y modelo dentro. Si `saved_as_verified` no es true,\nla respuesta no es un exito.\n\n`leave_open=true` (por defecto) deja abierto exactamente el .pbix\ngenerado y lo selecciona como modelo activo. Nunca cierra una ventana\nque no abrio esta operacion.\n\nRequiere Windows, Power BI Desktop instalado y el extra `export`\n(`pip install \"horizun-pbi-mcp[export]\"`). El cuadro de guardado se\nconduce por UI Automation desde un proceso aparte: los mensajes Win32\ncambian lo que se LEE en el desplegable de tipo sin avisar a la\naplicacion, y Desktop sigue guardando un proyecto. `pbi_capabilities`\ndice en `pbix_export` si esta disponible aqui y ahora.",
+      "params": {
+        "confirm_reuse": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "leave_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "out_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "pbip_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "refresh": {
+          "required": false,
+          "type": "string",
+          "default": "auto"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "timeout": {
+          "required": false,
+          "type": "integer",
+          "default": 600
+        }
+      },
+      "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "pbi_export_report_content",
       "description": "Exporta el CONTENIDO del informe: los datos que muestra el tablero.\n\nA diferencia de `pbi_export_excel` y `pbi_generate_pdf_report`, que\ndocumentan el proyecto, esto exporta lo que el cliente ve. `select`\nadmite tres formas, combinables:\n\n- `pages`: [\"Matriz de Riesgos\"] -> la tabla que hay detras de CADA\n  visual de esas paginas (por nombre visible o id interno).\n- `visuals`: [\"15b0fc11e628...\"] -> solo esos visuales.\n- `queries`: [{name, rows:[\"Tabla[Columna]\"], values:[\"Medida\"],\n  filters:[{field, values, exclude?}], top_n?}] -> lo que el cliente\n  declare, sin referirse a ningun visual.\n\nCada consulta se reconstruye a partir de los campos del visual, se\nejecuta en SOLO LECTURA contra el modelo en vivo y sale como una hoja\nde Excel (`format`: `xlsx|pdf|both`).\n\nNecesita el modelo en vivo: los datos solo existen en el motor, no en\nel .pbip. Con `auto_open` abre el informe en Desktop si hace falta, y\nse NIEGA a exportar si el modelo esta abierto pero sin procesar, en\nvez de publicar un archivo en blanco. Con `dry_run` devuelve el DAX\nque ejecutaria sin tocar el motor ni escribir nada.\n\nCada hoja declara con que filtros se saco y, sobre todo, cuales no se\npudieron aplicar. Los visuales sin consulta tabular -textos, imagenes,\nformas- se listan aparte con el motivo.",
       "params": {
@@ -2555,6 +2622,63 @@
       "required": [
         "select"
       ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_finalize_delivery",
+      "description": "El ULTIMO paso de una construccion: del proyecto al entregable.\n\nHace de extremo a extremo lo que hasta ahora eran cinco llamadas y un\npar de suposiciones: resuelve el archivo exacto que le pasas, lo\nprepara -convirtiendolo si le das un .pbix-, valida el proyecto,\nexporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado\ny deja abierto justo el entregable, seleccionado como modelo activo.\n\nUna sola respuesta verificable: `output_pbix`, `output_sha256`,\n`output_size`, `saved_as_verified` y `opened_path_verified`.\n\n`path` se puede omitir para usar el proyecto activo. `format` solo\nacepta 'pbix' por ahora, y se declara asi en vez de fingir que hay\nmas. Requiere Windows con Power BI Desktop instalado.",
+      "params": {
+        "format": {
+          "required": false,
+          "type": "string",
+          "default": "pbix"
+        },
+        "leave_open": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "out_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "refresh": {
+          "required": false,
+          "type": "string",
+          "default": "auto"
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -2800,6 +2924,41 @@
         "kind",
         "name"
       ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pbi_get_power_query",
+      "description": "Lee la consulta Power Query (M) de una particion o expresion.\n\nEn un .pbip el M no tiene archivo propio: vive dentro del TMDL, en la\n`partition` de cada tabla y en `expressions.tmdl`. Esta tool lo saca\ntal cual, con su SHA-256, que es lo que despues acepta\n`pbi_update_power_query` como `expected_sha256` para no escribir sobre\nuna version que ya cambio.\n\n`table` + `name` seleccionan una particion; `name` con\n`kind='expression'`, una expresion con nombre. Si la seleccion queda\nambigua o no existe, el error trae la lista de candidatos.\n\nSolo lectura, y solo lectura de TEXTO: nadie ha ejecutado esta\nconsulta. No hay motor M fuera de Power BI Desktop.",
+      "params": {
+        "kind": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -3074,7 +3233,7 @@
     },
     {
       "name": "pbi_list_desktop_models",
-      "description": "Lista los modelos de Power BI Desktop abiertos localmente.\n\nDetecta el motor de Analysis Services (localhost:<puerto>) de cada informe\nabierto y devuelve puerto, connection string, catalogo y nº de tablas.",
+      "description": "Lista los modelos de Power BI Desktop abiertos localmente.\n\nDetecta el motor de Analysis Services (localhost:<puerto>) de cada informe\nabierto y devuelve puerto, connection string, catalogo y nº de tablas.\n\nCada instancia trae ademas su IDENTIDAD: `engine_pid` es el proceso\ndel motor (msmdsrv.exe) y `desktop_pid` el de la ventana\n(PBIDesktop.exe) —son distintos—, mas el titulo de la ventana, la ruta\ndel documento cuando puede demostrarse, `identity_confidence` y la\n`identity_evidence` que la sostiene. Un .pbip no deja descriptor\nabierto sobre su carpeta: ahi la ruta sale `null` en vez de adivinada.",
       "params": {},
       "required": [],
       "output_shape": {
@@ -3783,6 +3942,59 @@
         }
       },
       "required": [],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_prepare_project",
+      "description": "Deja listo EXACTAMENTE el proyecto que le pasas, y dice cual es.\n\nEs el punto de entrada de una sesion de trabajo. Acepta las tres cosas\nque una persona tiene a mano y las resuelve con una sola politica:\n\n- un `.pbip`: se valida y se activa esa ruta, tal cual;\n- un `.pbix`: se convierte ESE archivo y se activa el `.pbip` que\n  produjo la conversion (no uno que se le parezca en la carpeta);\n- una carpeta: solo se resuelve si contiene UN candidato. Con dos\n  `.pbip` falla con `ambiguous_pbip_project` y te los enumera, porque\n  elegir el primero por orden alfabetico es como se acaba editando el\n  proyecto equivocado con la respuesta en verde.\n\nLa ruta que pasas gana siempre: sobre el proyecto activo, sobre la\nsesion restaurada y sobre lo que tenga abierto Power BI Desktop. Si\nalgo falla, el proyecto activo se queda como estaba.\n\nLa respuesta trae `requested_path`, `resolved_path`,\n`selection_reason`, `path_match`, `previous_active_project` y\n`active_project`, para que la decision sea auditable sin repetirla.\n\n`open_result=true` abre el resultado en Desktop y comprueba que la\nventana sirve ese archivo.",
+      "params": {
+        "open_result": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "out_dir": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "overwrite": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "path": {
+          "required": true,
+          "type": "string"
+        },
+        "project_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "path"
+      ],
       "output_shape": {
         "type": "object",
         "properties": [
@@ -5057,6 +5269,64 @@
       "required": [
         "name",
         "table"
+      ],
+      "output_shape": {
+        "type": "object",
+        "properties": [
+          "result"
+        ],
+        "required": [
+          "result"
+        ]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "pbi_update_power_query",
+      "description": "Reemplaza ENTERA la consulta M de una particion o expresion.\n\nNo hay edicion parcial ni sustitucion por expresion regular: se\nlocaliza el bloque por su estructura y se cambia completo. `dry_run`\nviene ACTIVADO: la primera llamada enseña lo que se escribiria sin\ntocar el disco, sin backup y sin journal.\n\n`expected_sha256` (el que devuelve `pbi_get_power_query`) rechaza la\nescritura si el texto cambio desde que lo leiste, en vez de pisar el\ntrabajo de otro.\n\nEscribe TMDL: exige proyecto .pbip y Power BI Desktop CERRADO. Va con\nbackup, journal, transaccion, relectura y rollback; si el modelo queda\ncon errores TMDL que antes no tenia, se revierte entero.\n\nLa respuesta distingue lo comprobado de lo no comprobado:\n`parse_checked` y `tmdl_load_checked` dicen que el TMDL se lee y que\nel serializador oficial lo acepta; `m_engine_checked` y\n`refresh_checked` son SIEMPRE false. Que el archivo parsee no\nsignifica que la consulta cargue: eso solo lo dice un refresh.",
+      "params": {
+        "dry_run": {
+          "required": false,
+          "type": "boolean",
+          "default": true
+        },
+        "expected_sha256": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "kind": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "m": {
+          "required": true,
+          "type": "string"
+        },
+        "name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "table": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "m"
       ],
       "output_shape": {
         "type": "object",

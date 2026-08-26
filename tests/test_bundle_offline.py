@@ -346,7 +346,7 @@ def test_el_runbook_documenta_construir_e_instalar():
 # ==================== el oráculo real: pip sin índice ======================
 
 @pytest.mark.packaging
-def test_el_bundle_real_instala_las_134_tools_sin_indice(tmp_path_factory):
+def test_el_bundle_real_instala_todas_las_tools_sin_indice(tmp_path_factory):
     """G4.7, la mitad local, contra pip de verdad y con la red cerrada.
 
     Las pruebas de arriba usan contenido sintético: demuestran el formato, la
@@ -408,6 +408,8 @@ def test_el_bundle_real_instala_las_134_tools_sin_indice(tmp_path_factory):
         capture_output=True, text=True, timeout=600,
         env={**os.environ, "PYTHONPATH": "", "PBI_MCP_LOG_LEVEL": "CRITICAL"})
     assert r.returncode == 0, f"{r.stdout[-2000:]}\n{r.stderr[-2000:]}"
-    assert r.stdout.strip().splitlines()[-1] == "134", (
-        f"instalado desde el bundle, el servidor no anuncia 134 tools: "
-        f"{r.stdout[-500:]}")
+    from tests.test_tool_contract import EXPECTED_COUNT
+
+    assert r.stdout.strip().splitlines()[-1] == str(EXPECTED_COUNT), (
+        f"instalado desde el bundle, el servidor no anuncia "
+        f"{EXPECTED_COUNT} tools: {r.stdout[-500:]}")
