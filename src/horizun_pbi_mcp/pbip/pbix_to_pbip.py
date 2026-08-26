@@ -76,6 +76,8 @@ class ConversionResult:
     model: Optional[Dict[str, Any]] = None
     report_validation: Optional[Dict[str, Any]] = None
     publication: Optional[Dict[str, Any]] = None
+    #: Resultado del detector de secretos sobre el arbol ya construido.
+    security_scan: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -94,6 +96,7 @@ class ConversionResult:
             "model": self.model,
             "report_validation": self.report_validation,
             "publication": self.publication,
+            "security_scan": self.security_scan,
         }
 
 
@@ -520,6 +523,7 @@ def _construir_en_stage(
     desktop_timeout: int,
     close_desktop: bool,
     reuse_open_desktop: bool,
+    escaneo_origen: Optional[Dict[str, Any]] = None,
 ) -> ConversionResult:
     """Construye y valida todo sin hacer visible el destino final."""
     report_dir = stage / f"{nombre}.Report"
@@ -609,7 +613,118 @@ def _construir_en_stage(
         "settings": {"enableAutoRecovery": True},
     })
     escritos.append(f"{nombre}.pbip")
+
+    resultado.security_scan = _exigir_arbol_sin_secretos(
+        stage, resultado, escaneo_origen)
     return resultado
+
+
+def _exigir_informe_sin_secretos(contents: PbixContents) -> Dict[str, Any]:
+    """Primera pasada: el informe, en memoria, ANTES de tocar nada.
+
+    Es el punto mas temprano en que existe texto legible. Detener aqui evita
+    ademas abrir Power BI Desktop para exportar el modelo de un archivo que no
+    se va a publicar: un efecto externo, visible y lento que no tiene sentido
+    provocar si la conversion ya esta condenada.
+    """
+    import json as _json
+
+    from horizun_pbi_mcp.services import secret_scan
+
+    hallazgos: List[Dict[str, Any]] = []
+    revisados = 0
+    if contents.layout:
+        revisados += 1
+        hallazgos.extend(secret_scan.scan_text(
+            _json.dumps(contents.layout, ensure_ascii=False),
+            file="Report/Layout"))
+    for relativa, datos in sorted(contents.pbir_parts.items()):
+        try:
+            texto = pbix_reader.decode_text(datos)
+        except (UnicodeError, ValueError):
+            continue
+        revisados += 1
+        hallazgos.extend(secret_scan.scan_text(
+            texto, file=f"Report/definition/{relativa}"))
+
+    escaneo = secret_scan.build_result(hallazgos, files_scanned=revisados)
+    if escaneo["status"] == secret_scan.BLOCKED:
+        raise PbixConversionError(
+            f"El informe del .pbix lleva {escaneo['high_confidence_count']} "
+            "credencial(es) incrustada(s). No se convierte: publicarlo dejaria "
+            "el secreto en texto plano dentro de una carpeta versionable. En "
+            "'security_scan' esta la regla, el archivo y la linea; el valor NO "
+            "se devuelve a proposito.",
+            details={"security_scan": escaneo})
+    return escaneo
+
+
+def _exigir_arbol_sin_secretos(stage: Path, resultado: ConversionResult,
+                               escaneo_origen: Optional[Dict[str, Any]] = None
+                               ) -> Dict[str, Any]:
+    """Escanea el arbol construido y decide si puede publicarse.
+
+    Se ejecuta con TODO el texto ya en disco -informe y modelo- y antes de
+    publicar. Un `.pbix` es un zip: mientras el token vivia dentro, no estaba a
+    la vista de nadie; en cuanto se convierte, queda en una carpeta que casi
+    siempre acaba en un repositorio.
+
+    Se fusiona con la primera pasada sobre el informe de origen. Cada hallazgo
+    dice en que `scope` esta: `published` si acabo en el arbol que se publica,
+    `source_only` si estaba en el .pbix y la conversion no lo arrastro. Los dos
+    son ciertos y ninguno de los dos debe callarse.
+
+    La alta confianza bloquea. El staging lo retira `convert()` en su `finally`
+    con el mecanismo de siempre, asi que no queda medio proyecto publicado ni
+    una carpeta temporal huerfana.
+    """
+    from horizun_pbi_mcp.services import secret_scan
+
+    escaneo = _fusionar_escaneos(secret_scan.scan_tree(stage), escaneo_origen)
+    if escaneo["status"] == secret_scan.BLOCKED:
+        log.warning("Conversion detenida: %s hallazgo(s) de alta confianza",
+                    escaneo["high_confidence_count"])
+        raise PbixConversionError(
+            f"La conversion encontro {escaneo['high_confidence_count']} "
+            "credencial(es) incrustada(s) en el informe o en el modelo. No se "
+            "publica un proyecto que dejaria un secreto en texto plano dentro "
+            "de una carpeta versionable. Quita la credencial del .pbix "
+            "original -o parametriza la consulta- y vuelve a convertir. En "
+            "'security_scan' esta la regla, el archivo y la linea; el valor NO "
+            "se devuelve a proposito.",
+            details={"security_scan": escaneo})
+    if escaneo["status"] == secret_scan.WARNING:
+        resultado.warnings.append(
+            f"{escaneo['finding_count']} hallazgo(s) de seguridad de BAJA "
+            "confianza en el proyecto convertido; revisa 'security_scan' "
+            "antes de versionarlo o compartirlo.")
+    return escaneo
+
+
+def _fusionar_escaneos(publicado: Dict[str, Any],
+                       origen: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Une la pasada del origen y la del arbol publicado, sin duplicar."""
+    from horizun_pbi_mcp.services import secret_scan
+
+    hallazgos = [dict(h, scope="published") for h in publicado["findings"]]
+    huellas = {(h["rule"], h["fingerprint"]) for h in hallazgos}
+    solo_origen = [
+        dict(h, scope="source_only") for h in (origen or {}).get("findings", [])
+        if (h["rule"], h["fingerprint"]) not in huellas]
+
+    fusionado = secret_scan.build_result(
+        hallazgos + solo_origen,
+        files_scanned=publicado.get("files_scanned", 0),
+        skipped=publicado.get("skipped_files"),
+        truncated=publicado.get("truncated_files"))
+    fusionado["source_files_scanned"] = (origen or {}).get("files_scanned", 0)
+    fusionado["source_only_count"] = len(solo_origen)
+    if solo_origen:
+        fusionado.setdefault("warnings", []).append(
+            f"{len(solo_origen)} hallazgo(s) estaban en el .pbix de origen y "
+            "NO se arrastraron al proyecto publicado; se listan con "
+            "scope='source_only' para que consten.")
+    return fusionado
 
 
 def convert(
@@ -657,6 +772,10 @@ def convert(
             details={"remote_artifacts": contents.remote_artifacts},
         )
 
+    # Antes de traducir, de crear staging o de abrir Desktop: si el informe
+    # trae una credencial incrustada, esta conversion no llega a existir.
+    escaneo_origen = _exigir_informe_sin_secretos(contents)
+
     # El informe se traduce en memoria ANTES de tocar el disco: asi se conocen
     # todas las rutas que se van a escribir y se puede comprobar que caben.
     conversion: Optional[layout_to_pbir.LayoutConversion] = None
@@ -695,7 +814,8 @@ def convert(
             tiene_modelo=tiene_modelo, quiere_modelo=quiere_modelo,
             dataset_connection_string=dataset_connection_string,
             desktop_timeout=desktop_timeout, close_desktop=close_desktop,
-            reuse_open_desktop=reuse_open_desktop)
+            reuse_open_desktop=reuse_open_desktop,
+            escaneo_origen=escaneo_origen)
         resultado.publication = project_publish.publish_tree(
             stage, destino, overwrite=overwrite,
             tool="pbi_convert_pbix_to_pbip")
