@@ -169,6 +169,7 @@ def test_si_el_campo_no_quedo_con_la_ruta_se_para(monkeypatch):
     """Fue el sintoma del `INPUT` recreado: no se tecleaba nada."""
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
     uia = _UiaFalso(valor_nombre="")
 
     with pytest.raises(uia_helper.HelperError) as fallo:
@@ -455,3 +456,103 @@ def test_el_helper_no_reimplementa_la_redaccion(monkeypatch):
 
     assert uia_helper._redactar("cualquier cosa") == "REDACTADO"  # noqa: SLF001
     assert llamadas == ["cualquier cosa"]
+
+# =========== 11) sincronizacion por evento, no margenes fijos =============
+def test_hasta_que_sale_en_cuanto_se_cumple_y_no_agota_el_plazo():
+    """Si esperase el plazo entero seria un `sleep` con mas pasos."""
+    import time as reloj
+
+    intentos = {"n": 0}
+
+    def _condicion():
+        intentos["n"] += 1
+        return "listo" if intentos["n"] >= 3 else None
+
+    t0 = reloj.monotonic()
+    assert uia_helper._hasta_que(_condicion, plazo=30,       # noqa: SLF001
+                                 cada=0.01) == "listo"
+    assert reloj.monotonic() - t0 < 5, "espero mucho mas de lo necesario"
+    assert intentos["n"] == 3
+
+
+def test_hasta_que_agotado_devuelve_None_sin_fingir():
+    assert uia_helper._hasta_que(lambda: None, plazo=0.15,   # noqa: SLF001
+                                 cada=0.01) is None
+
+
+def test_el_nombre_se_acepta_aunque_la_aplicacion_vaya_con_retraso(monkeypatch):
+    """El fallo real: la maquina ocupada consume las teclas mas tarde.
+
+    Con un margen fijo de 0.4 s el campo se leia a medias -76 caracteres
+    pedidos, 31 leidos- y se reportaba como fallo de escritura. Lo que fallaba
+    era la sincronizacion, no el tecleo.
+    """
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    ruta = r"C:\entrega\Informe.pbix"
+
+    class _CampoLento(_UiaFalso):
+        """Devuelve la ruta a medias las primeras veces, como Desktop bajo carga."""
+
+        def __init__(self):
+            super().__init__()
+            self.lecturas = 0
+
+        def valor(self, elemento):
+            self.lecturas += 1
+            if self.lecturas < 4:
+                return ruta[: self.lecturas * 5]
+            return ruta
+
+    lento = _CampoLento()
+    paso = uia_helper._escribir_ruta(lento, 22, ruta)        # noqa: SLF001
+
+    assert paso["filename_verified"] is True
+    assert lento.lecturas >= 4, "no llego a reintentar la lectura"
+
+
+def test_si_el_campo_nunca_se_llena_se_dice_cuanto_se_espero(monkeypatch):
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper._escribir_ruta(                        # noqa: SLF001
+            _UiaFalso(valor_nombre=r"C:\a"), 22, r"C:\entrega\Informe.pbix")
+
+    assert fallo.value.detalles["waited"] == 0.2
+    assert fallo.value.detalles["actual_len"] == len(r"C:\a")
+
+
+def test_el_desplegable_se_espera_a_que_tenga_opciones(monkeypatch):
+    """Leerlo justo tras expandir devolvia lista vacia y "no ofrece .pbix"."""
+
+    class _ListaLenta(_UiaFalso):
+        def __init__(self):
+            super().__init__(valor_tipo="Archivo de Power BI (*.pbix)",
+                             estado_tras=uia_helper.ESTADO_CERRADO)
+            self.consultas = 0
+            self._todas = list(self.opciones)
+
+        def items(self, combo):
+            self.consultas += 1
+            return [] if self.consultas < 3 else self._todas
+
+    lenta = _ListaLenta()
+    paso = uia_helper._elegir_tipo(lenta, 22, ".pbix")       # noqa: SLF001
+
+    assert paso["file_type_selected"] == "Archivo de Power BI (*.pbix)"
+    assert lenta.consultas >= 3
+
+
+def test_si_el_desplegable_nunca_ofrece_nada_se_dice(monkeypatch):
+    monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
+
+    class _Vacia(_UiaFalso):
+        def items(self, combo):
+            return []
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper._elegir_tipo(_Vacia(), 22, ".pbix")       # noqa: SLF001
+
+    assert fallo.value.detalles["available"] == []

@@ -15,6 +15,8 @@ Lo que estas pruebas defienden:
 """
 from __future__ import annotations
 
+import json
+
 from horizun_pbi_mcp.services import report_audit
 
 
@@ -50,14 +52,53 @@ def _auditoria(repeticiones: int = 60) -> dict:
 
 
 # ======================================================= el contrato historico =
-def test_sin_compact_la_respuesta_no_cambia():
-    original = _auditoria()
-    copia = _auditoria()
+def test_compactar_no_muta_lo_que_recibe():
+    """Quien no pide compacto no puede notar que existe.
 
-    assert original == copia                       # el helper es determinista
-    # `compactar` no muta lo que recibe: quien no la llama no la sufre.
+    Antes esto se comprobaba repitiendo `original == copia` antes y despues,
+    y esa segunda comparacion no demostraba nada: es identica a la primera y
+    pasa igual mutase o no. Ahora se fotografia la entrada, se llama, y se
+    compara contra la foto.
+    """
+    original = _auditoria()
+    antes = json.dumps(original, sort_keys=True, default=str)
+
     report_audit.compactar(original)
-    assert original == copia
+
+    assert json.dumps(original, sort_keys=True, default=str) == antes, (
+        "compactar modifico el diccionario que recibio")
+
+
+def test_el_control_de_mutacion_puede_fallar_de_verdad():
+    """El oraculo de la prueba anterior, comprobado contra una mutacion real.
+
+    Una comprobacion que nunca puede fallar es peor que no tenerla: da verde
+    y cubre el hueco. Aqui se muta a mano lo mismo que mutaria una regresion
+    de `compactar` y se exige que la foto lo delate.
+    """
+    original = _auditoria()
+    antes = json.dumps(original, sort_keys=True, default=str)
+
+    original["findings"][0]["finding_id"] = "F001"        # la regresion tipica
+
+    assert json.dumps(original, sort_keys=True, default=str) != antes
+
+
+def test_los_hallazgos_del_llamador_no_ganan_finding_id():
+    """`finding_id` es de la vista compacta, no del hallazgo del llamador.
+
+    Se sostiene sobre `dict(h, finding_id=...)`, que crea uno nuevo. Si algun
+    dia se cambiara por `h.update(...)` -mas corto y mas rapido- el
+    identificador se colaria en la respuesta de quien pidio el formato de
+    siempre. Esto lo caza.
+    """
+    original = _auditoria()
+
+    compacto = report_audit.compactar(original)
+
+    assert compacto["findings"][0] is not original["findings"][0]
+    assert all("finding_id" not in h for h in original["findings"])
+    assert all("finding_id" in h for h in compacto["findings"])
 
 
 def test_en_compacto_no_se_tocan_puntajes_ni_dominios():

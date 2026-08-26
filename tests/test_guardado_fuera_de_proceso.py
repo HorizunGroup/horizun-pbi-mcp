@@ -47,17 +47,29 @@ def test_el_adaptador_real_ofrece_el_guardado_completo():
 
 
 def test_el_protocolo_solo_declara_y_el_adaptador_implementa():
-    """El Protocol describe la forma; los cuerpos viven en el adaptador."""
+    """El Protocol describe la forma; los cuerpos viven en el adaptador.
+
+    Se comprueba sobre el ARBOL sintactico y no buscando `...` al final del
+    texto: los cuerpos son ahora su docstring -equivalente, y ademas dice para
+    que sirve cada metodo-, asi que un `endswith("...")` daria verde para
+    cualquier cosa terminada en puntos suspensivos.
+    """
+    import ast
     import inspect
 
-    for nombre, metodo in inspect.getmembers(desktop_ui.AdaptadorUI,
-                                             inspect.isfunction):
-        if nombre.startswith("_"):
+    arbol = ast.parse(inspect.getsource(desktop_ui.AdaptadorUI))
+    clase = arbol.body[0]
+
+    for nodo in clase.body:
+        if not isinstance(nodo, ast.FunctionDef) or nodo.name.startswith("_"):
             continue
-        cuerpo = inspect.getsource(metodo)
-        assert cuerpo.rstrip().endswith("..."), (
-            f"{nombre} tiene implementacion dentro del Protocol; ahi no la "
-            "hereda nadie")
+        cuerpo = [s for s in nodo.body
+                  if not (isinstance(s, ast.Expr)
+                          and isinstance(s.value, ast.Constant)
+                          and isinstance(s.value.value, str))]
+        assert cuerpo == [], (
+            f"{nodo.name} tiene implementacion dentro del Protocol; ahi no la "
+            "hereda nadie, asi que es codigo muerto que ademas engaña al leerlo")
 
 
 # ================= 2) el servicio PREFIERE el proceso aparte =================

@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from horizun_pbi_mcp.logging_config import get_logger
@@ -222,34 +222,56 @@ LIMITE_HELPER = 120.0
 
 
 class AdaptadorUI(Protocol):
-    """Lo minimo que hace falta para conducir un `Guardar como`."""
+    """Lo minimo que hace falta para conducir un `Guardar como`.
+
+    Los cuerpos son SOLO su docstring, no `...`. Es equivalente -ambos dejan
+    la funcion devolviendo None- y ademas dice para que sirve cada uno, que es
+    lo que un Protocol deberia aportar. Un doble de pruebas implementa esto
+    entero sin abrir ninguna ventana; el adaptador real vive mas abajo.
+    """
 
     def ventana_principal(self, pid: int,
-                          started: Optional[float]) -> Ventana: ...
+                          started: Optional[float]) -> Ventana:
+        """La ventana del documento de ESE proceso, con identidad verificada."""
 
-    def enfocar(self, ventana: Ventana) -> bool: ...
+    def enfocar(self, ventana: Ventana) -> bool:
+        """La pone en primer plano. False si Windows no cedio el foco."""
 
-    def abrir_guardar_como(self, ventana: Ventana) -> None: ...
+    def abrir_guardar_como(self, ventana: Ventana) -> None:
+        """Manda el acelerador, y solo si esa ventana esta al frente."""
 
     def esperar_dialogo_guardado(self, pid: int, *,
-                                 timeout: float) -> Ventana: ...
+                                 timeout: float) -> Ventana:
+        """Espera al cuadro, reconocido por sus controles y no por su titulo."""
 
-    def tipos_de_archivo(self, dialogo: Ventana) -> List[str]: ...
+    def tipos_de_archivo(self, dialogo: Ventana) -> List[str]:
+        """Lo que el desplegable OFRECE, para no aceptar el tipo por defecto."""
 
-    def elegir_tipo(self, dialogo: Ventana, extension: str) -> str: ...
+    def elegir_tipo(self, dialogo: Ventana, extension: str) -> str:
+        """Deja el tipo en `extension` y devuelve la entrada elegida."""
 
-    def escribir_ruta(self, dialogo: Ventana, ruta: str) -> None: ...
+    def escribir_ruta(self, dialogo: Ventana, ruta: str) -> None:
+        """Pone la ruta ABSOLUTA en el campo del nombre y la relee."""
 
-    def confirmar(self, dialogo: Ventana) -> None: ...
+    def confirmar(self, dialogo: Ventana) -> None:
+        """Pulsa Guardar."""
 
     def save_as_completo(self, *, pid: int, started: Optional[float],
                          destino: str, extension: str = ".pbix",
-                         timeout: float = 180.0) -> Dict[str, Any]: ...
+                         timeout: float = 180.0) -> Dict[str, Any]:
+        """Todo el guardado de una vez, con evidencia de cada paso.
 
-    def esperar_cierre(self, dialogo: Ventana, *, timeout: float) -> bool: ...
+        Es el camino real: el adaptador de produccion lo hace desde un proceso
+        aparte. Un adaptador que no lo ofrezca hace que el servicio recorra
+        los pasos de arriba uno a uno.
+        """
+
+    def esperar_cierre(self, dialogo: Ventana, *, timeout: float) -> bool:
+        """Si el cuadro se cerro dentro del plazo. Cerrarse no es haber escrito."""
 
     def modales(self, pid: int, *,
-                excluir: Sequence[int] = ()) -> List[Modal]: ...
+                excluir: Sequence[int] = ()) -> List[Modal]:
+        """Dialogos abiertos de ese proceso, clasificados y redactados."""
 
 
 # ------------------------------------------------------------------ Win32 ----
@@ -326,8 +348,8 @@ class Win32UIAdapter:
 
     def _duenio_del_primer_plano(self) -> tuple:
         """(hwnd, pid, hilo) de la ventana que tiene el foco ahora mismo."""
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         user32.GetForegroundWindow.restype = wintypes.HWND
@@ -357,8 +379,8 @@ class Win32UIAdapter:
 
         Nada de esto mueve el raton ni depende de donde este la ventana.
         """
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -432,8 +454,8 @@ class Win32UIAdapter:
         self._ventana_para_reintento = ventana
 
     def _enviar_acelerador(self, teclas: Sequence[str]) -> None:
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         codigos = {"ctrl": 0x11, "shift": 0x10, "alt": 0x12,
                    "s": 0x53, "f12": 0x7B}
@@ -508,8 +530,8 @@ class Win32UIAdapter:
         contenedores intermedios y casi todos llevan identificador 0. Lo que
         los distingue es DONDE estan y de que clase son.
         """
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND,
@@ -591,7 +613,8 @@ class Win32UIAdapter:
 
     def _enviar(self, hwnd: int, mensaje: int, wparam: int = 0,
                 lparam: int = 0) -> int:
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
@@ -601,7 +624,8 @@ class Win32UIAdapter:
                                        wparam, lparam))
 
     def _control(self, hwnd: int, control_id: int) -> Optional[int]:
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         user32.GetDlgItem.argtypes = [wintypes.HWND, wintypes.INT]
@@ -610,8 +634,8 @@ class Win32UIAdapter:
         return int(handle) if handle else None
 
     def _texto(self, hwnd: int) -> str:
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
@@ -704,7 +728,8 @@ class Win32UIAdapter:
         }, timeout=min(timeout, LIMITE_HELPER) + 60.0)
 
     def esperar_cierre(self, dialogo: Ventana, *, timeout: float) -> bool:
-        from ctypes import wintypes
+        import ctypes.wintypes
+        wintypes = ctypes.wintypes
 
         user32 = _user32()
         user32.IsWindow.argtypes = [wintypes.HWND]

@@ -19,7 +19,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import zipfile
 from pathlib import Path
 
 import pytest

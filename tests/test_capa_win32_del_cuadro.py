@@ -374,8 +374,6 @@ def test_leer_los_tipos_ofrecidos_si_sigue_valiendo(adapter, monkeypatch):
     Es la unica de las cuatro operaciones sobre el desplegable que sigue viva,
     y el runner del baseline manual la usa para enseñar que ofrece el cuadro.
     """
-    import ctypes
-
     ofrecidos = ["Archivo de Power BI (*.pbix)",
                  "Archivos de proyecto Power BI (*.pbip)"]
 

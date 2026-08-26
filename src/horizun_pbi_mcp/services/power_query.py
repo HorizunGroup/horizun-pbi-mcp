@@ -42,9 +42,8 @@ seria exactamente el tipo de promesa que este servidor no hace.
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.logging_config import get_logger

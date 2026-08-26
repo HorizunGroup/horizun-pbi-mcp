@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import functools
 import json
-import os
 import sys
 import time
 from typing import Any, Dict, List, Optional
@@ -56,6 +55,13 @@ UIA_PAT_LEGACY = 10018
 UIA_SCOPE_DESC = 4
 #: ExpandCollapseState: 0 = cerrado. Cerrado tras activar = hubo compromiso.
 ESTADO_CERRADO = 0
+
+#: Cuanto se espera A QUE LA INTERFAZ ALCANCE un estado concreto. No es un
+#: margen: se comprueba el estado real cada 50 ms y se sale en cuanto cuadra,
+#: asi que en una maquina ociosa cuesta lo mismo que antes y en una ocupada
+#: deja de fallar. Agotarlo significa que la aplicacion no llego a procesar lo
+#: que se le mando, y eso es lo que dice el error.
+ESPERA_INTERFAZ = 6.0
 
 VK_CONTROL, VK_A, VK_RETURN = 0x11, 0x41, 0x0D
 KEYEVENTF_KEYUP = 0x0002
@@ -104,8 +110,8 @@ def _estructuras_input():
     el array de otra da `incompatible types, INPUT instance instead of INPUT
     instance`: dos nombres iguales, dos clases distintas.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     class MOUSEINPUT(ctypes.Structure):
         _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG),
@@ -136,8 +142,8 @@ def _enviar_teclas(eventos: List[Any]) -> None:
     esta bloqueado. Ignorar ese numero es como dar por escrito un nombre que
     nunca llego al cuadro: el fallo aparece mucho despues y en otro sitio.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     INPUT, _MI, _KI = _estructuras_input()
     user32 = _user32()
@@ -199,8 +205,8 @@ def seleccionar_todo() -> None:
 
 
 def _rect_ventana(hwnd: int):
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     rect = wintypes.RECT()
@@ -216,8 +222,8 @@ def clic_dinamico(punto, dialogo_hwnd: int, pid_esperado: int) -> Dict[str, Any]
     proceso verificado. Si algo no cuadra, no se pulsa: un clic en las
     coordenadas equivocadas cae en la aplicacion de otra persona.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     x, y = int(punto[0]), int(punto[1])
     rect = _rect_ventana(dialogo_hwnd)
@@ -374,8 +380,8 @@ def verificar_proceso(pid: int, arranque: Optional[float]) -> Dict[str, Any]:
 
 
 def ventanas_de(pid: int) -> List[Dict[str, Any]]:
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -413,8 +419,8 @@ def traer_al_frente(hwnd: int, pid: int) -> bool:
     el duenio del foco -un servidor lanzado desde consola nunca lo es-, y no
     falla ruidosamente: solo parpadea el boton de la barra de tareas.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -482,6 +488,29 @@ def _esperar_cuadro(uia: Uia, pid: int, plazo: float) -> Dict[str, Any]:
                       pid=pid, timeout=plazo)
 
 
+def _hasta_que(condicion, *, plazo: float, cada: float = 0.05):
+    """Espera a que algo SEA cierto, no a que pase un rato.
+
+    Un `sleep` fijo tras inyectar teclas es adivinar: en una maquina ociosa
+    sobra y en una ocupada no llega, y el sintoma es un campo leido a medias
+    -76 caracteres pedidos, 31 leidos- que parece un fallo de escritura y es
+    un fallo de sincronizacion. Aqui se pregunta por el estado real hasta que
+    cuadra, y el plazo agotado acusa a la sincronizacion, no a la aplicacion.
+
+    Devuelve el ultimo valor observado, cumpla o no: quien llama decide que
+    hacer con el y puede contarlo en el error.
+    """
+    limite = time.monotonic() + plazo
+    valor = None
+    while True:
+        valor = condicion()
+        if valor is not None:
+            return valor
+        if time.monotonic() >= limite:
+            return None
+        time.sleep(cada)
+
+
 def _elegir_tipo(uia: Uia, dialogo_hwnd: int, extension: str) -> Dict[str, Any]:
     """El tipo se ELIGE y se comprueba que la aplicacion lo proceso.
 
@@ -496,8 +525,9 @@ def _elegir_tipo(uia: Uia, dialogo_hwnd: int, extension: str) -> Dict[str, Any]:
                           automation_id=AUTOMATION_ID_TIPO)
     previo = uia.valor(combo)
     uia.expandir(combo)
-    time.sleep(0.8)
-    opciones = uia.items(combo)
+    # La lista tarda en poblarse; se espera A QUE HAYA opciones, no un rato.
+    opciones = _hasta_que(lambda: (uia.items(combo) or None),
+                          plazo=ESPERA_INTERFAZ) or []
     nombres = [o.CurrentName for o in opciones]
     objetivo = extension.casefold().lstrip("*")
     elegido = next((o for o in opciones
@@ -507,9 +537,14 @@ def _elegir_tipo(uia: Uia, dialogo_hwnd: int, extension: str) -> Dict[str, Any]:
                           available=nombres, current=previo)
     nombre = elegido.CurrentName
     via = uia.invocar(elegido)
-    time.sleep(0.8)
-
-    estado = uia.estado_expandido(combo)
+    # Que la lista se cierre es la señal de que se proceso: se espera a ESO.
+    estado = _hasta_que(
+        lambda: (uia.estado_expandido(combo)
+                 if uia.estado_expandido(combo) in (ESTADO_CERRADO, None)
+                 else None),
+        plazo=ESPERA_INTERFAZ)
+    if estado is None:
+        estado = uia.estado_expandido(combo)
     if estado not in (ESTADO_CERRADO, None):
         raise HelperError(
             "tipo", "El desplegable sigue abierto tras activar la opcion: la "
@@ -534,13 +569,22 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str) -> Dict[str, Any]:
     time.sleep(0.3)
     seleccionar_todo()
     escribir_texto_real(ruta)
-    time.sleep(0.4)
 
-    escrito = (uia.valor(campo) or "").strip('"')
-    if escrito != ruta:
+    # Las teclas sinteticas llegan a la cola del sistema al instante, pero la
+    # aplicacion las consume a su ritmo. Se espera a que el campo CONTENGA la
+    # ruta, en vez de a que pase medio segundo: con la maquina ocupada, el
+    # margen fijo leia el campo a medias y lo reportaba como fallo de
+    # escritura -76 pedidos, 31 leidos- cuando solo iba con retraso.
+    escrito = _hasta_que(
+        lambda: (v.strip('"') if (v := (uia.valor(campo) or "")).strip('"') == ruta
+                 else None),
+        plazo=ESPERA_INTERFAZ)
+    if escrito is None:
+        parcial = (uia.valor(campo) or "").strip('"')
         raise HelperError(
             "nombre", "El campo del nombre no quedo con la ruta pedida.",
-            expected_len=len(ruta), actual_len=len(escrito))
+            expected_len=len(ruta), actual_len=len(parcial),
+            waited=ESPERA_INTERFAZ)
     return {"filename_verified": True, "length": len(ruta)}
 
 
@@ -594,7 +638,8 @@ def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
 
 
 def _cuadro_sigue_abierto(hwnd: int) -> bool:
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     user32.IsWindow.argtypes = [wintypes.HWND]
