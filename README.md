@@ -170,3 +170,14 @@ committed. See [AGENTS.md](AGENTS.md) for the repository invariants.
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## MCP Registry
+
+This package is the one published under the server name below. The registry
+reads this line from the README of the **PyPI package** to confirm that whoever
+publishes the metadata also owns the package, so it has to live here rather
+than in `.mcp/server.json` alone.
+
+```
+mcp-name: io.github.HorizunGroup/horizun-pbi-mcp
+```
