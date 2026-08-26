@@ -122,6 +122,16 @@ with `report_format='pbir'` and a data model inside, through the public
   does in seconds. If the file landed in the project's folder instead of the
   requested one, that is said explicitly — searching only those two folders by
   exact basename, never the disk.
+- **The Win32 route was kept "just in case" and read as if it worked.** The
+  real adapter still carried `elegir_tipo`, `escribir_ruta` and `confirmar`
+  written with window messages — the exact three steps that were measured NOT
+  to commit anything: `CB_SETCURSEL` changes what the dropdown reads without
+  notifying the application, and `BM_CLICK` on Save closes the box without
+  writing a file. Nothing called them any more, and leaving them there is part
+  of why the real fix took three attempts to find: the code looked functional.
+  They now refuse with `win32_does_not_commit` and point at
+  `save_as_completo`. Reading the offered file types still works, because
+  reading is not committing.
 - **A folder with two projects picked one alphabetically, in silence.**
   `_find_pbip_file` ended in `sorted(matches)[0]`, and the fallbacks for
   `*.Report` and `*.SemanticModel` did the same. With `Antiguo.pbip` and

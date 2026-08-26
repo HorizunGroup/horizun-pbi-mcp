@@ -160,8 +160,15 @@ files = [
 source = ["horizun_pbi_mcp"]
 
 [tool.coverage.report]
-# Measured on 2026-08-15: 86% over 18,780 statements. One point of slack
-# absorbs noise between 3.13 and 3.14, while still turning a material drop
-# into a CI failure.
+# Medido el 2026-08-26: 86.29% sobre 20,924 sentencias. Un punto de holgura
+# absorbe el ruido entre 3.13 y 3.14 y sigue convirtiendo una caida material
+# en un fallo de CI.
+#
+# La 2.1.0 lo puso a prueba: anadio ~2,100 sentencias, buena parte de ellas la
+# capa que conduce ventanas, que solo ejercitan las pruebas `live` y que CI no
+# puede correr porque no hay Power BI Desktop en un runner. La cobertura cayo
+# al 83.30% y el gate lo caso. Se arreglo probando de verdad lo que si es
+# probable -con dobles de user32 y de UI Automation- y borrando el camino
+# Win32 que estaba medido que no funcionaba; NO bajando este numero.
 fail_under = 85
 show_missing = true

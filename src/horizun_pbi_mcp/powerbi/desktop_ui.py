@@ -197,6 +197,20 @@ class Modal:
 #: -que incluye abrir Desktop y refrescar el modelo- puede ser de minutos, pero
 #: mover un desplegable y pulsar un boton no. Darle al helper el presupuesto
 #: entero convertia un fallo de dos segundos en una espera de un cuarto de hora.
+#: Por que los tres pasos granulares del adaptador real se niegan a correr.
+#: Se midieron contra Power BI Desktop: `CB_SETCURSEL` cambia lo que se LEE en
+#: el desplegable sin avisar a la aplicacion, y Desktop siguio guardando con el
+#: filtro anterior -se pedia .pbix y salia un proyecto .pbip-; `BM_CLICK` sobre
+#: Guardar cierra el cuadro SIN escribir nada. Conservar el codigo "por si
+#: acaso" era peor que no tenerlo: se leia como si funcionara, y fue justo lo
+#: que hizo que el arreglo de verdad tardara tres intentos en encontrarse.
+_POR_QUE_NO_WIN32 = (
+    "Los mensajes Win32 no sirven para {paso} en este cuadro: cambian lo que "
+    "se ve sin avisar a Power BI Desktop, que sigue guardando con el formato "
+    "anterior. Se comprobo contra la aplicacion real. Usa `save_as_completo`, "
+    "que conduce el cuadro por UI Automation desde un proceso aparte."
+)
+
 LIMITE_HELPER = 120.0
 
 #: COM ya no se toca en ESTE proceso. Conducir el cuadro es cosa de
@@ -631,74 +645,31 @@ class Win32UIAdapter:
         return salida
 
     def elegir_tipo(self, dialogo: Ventana, extension: str) -> str:
-        """Selecciona la entrada de `extension`. NUNCA la que venga puesta.
+        """Se NIEGA: por mensajes Win32 el tipo no se puede comprometer.
 
-        Esto no es una precaucion teorica: contra Power BI Desktop real el
-        desplegable venia seleccionado en `.pbip`, no en `.pbix`. Aceptar el
-        valor por defecto habria guardado otra carpeta de proyecto y la habria
-        entregado como si fuera el informe.
+        Elegir el tipo importa y no es una precaucion teorica -contra Power BI
+        Desktop real el desplegable venia en `.pbip`, y aceptarlo habria
+        entregado una carpeta de proyecto como si fuera el informe-. Lo que no
+        sirve es esta via: se hace en `save_as_completo`.
         """
-        arbol = self._descendientes(dialogo.hwnd)
-        combo = self._combo_de_tipo_en(arbol)
-        opciones = self.tipos_de_archivo(dialogo)
-        objetivo = extension.casefold().lstrip("*")
-        indices = [i for i, texto in enumerate(opciones)
-                   if objetivo in texto.casefold()]
-        if not indices:
-            raise DesktopUIError(
-                f"El cuadro de guardado no ofrece '{extension}'. No se acepta "
-                "otro tipo: guardar como .pbit produciria una PLANTILLA sin "
-                "datos con aspecto de entregable.",
-                details={"requested": extension, "available": opciones,
-                         "reason": "file_type_not_offered"})
-
-        previo = self._enviar(combo, CB_GETCURSEL)
-        self._enviar(combo, CB_SETCURSEL, indices[0], 0)
-        elegido = self._enviar(combo, CB_GETCURSEL)
-        if elegido != indices[0]:
-            raise DesktopUIError(
-                "El desplegable de tipo no acepto la seleccion; se aborta "
-                "antes de guardar con el tipo equivocado.",
-                details={"expected_index": indices[0], "actual_index": elegido,
-                         "available": opciones,
-                         "reason": "file_type_not_applied"})
-        if previo != indices[0]:
-            log.info("El cuadro venia en '%s'; se cambio a '%s'",
-                     opciones[previo] if 0 <= previo < len(opciones) else previo,
-                     opciones[indices[0]])
-        return opciones[indices[0]]
-
-    def _edicion_de_nombre(self, dialogo: Ventana) -> int:
-        edicion = self._edicion_de_nombre_en(self._descendientes(dialogo.hwnd))
-        if edicion:
-            return edicion
         raise DesktopUIError(
-            "El cuadro de guardado no expone el campo del nombre de archivo. "
-            "No se escribe a ciegas ni se hace clic por coordenadas.",
-            details={"hwnd": dialogo.hwnd, "reason": "filename_field_missing"})
+            _POR_QUE_NO_WIN32.format(paso="elegir el tipo de archivo"),
+            details={"reason": "win32_does_not_commit",
+                     "use_instead": "save_as_completo",
+                     "requested": extension})
 
     def escribir_ruta(self, dialogo: Ventana, ruta: str) -> None:
-        import ctypes
-
-        edicion = self._edicion_de_nombre(dialogo)
-        buffer = ctypes.create_unicode_buffer(str(ruta))
-        self._enviar(edicion, WM_SETTEXT, 0,
-                     ctypes.cast(buffer, ctypes.c_void_p).value)
-        escrito = self._texto(edicion)
-        if escrito.strip('"') != str(ruta):
-            raise DesktopUIError(
-                "El campo del nombre no quedo con la ruta pedida; se aborta "
-                "antes de guardar en un sitio que no es el que se pidio.",
-                details={"reason": "filename_not_applied"})
+        raise DesktopUIError(
+            _POR_QUE_NO_WIN32.format(paso="escribir la ruta"),
+            details={"reason": "win32_does_not_commit",
+                     "use_instead": "save_as_completo"})
 
     def confirmar(self, dialogo: Ventana) -> None:
-        boton = self._boton_guardar_en(self._descendientes(dialogo.hwnd),
-                                       dialogo.hwnd)
-        if not boton:
-            raise DesktopUIError(
-                "El cuadro de guardado no expone su boton de confirmacion.",
-                details={"hwnd": dialogo.hwnd, "reason": "ok_button_missing"})
-        self._enviar(boton, BM_CLICK, 0, 0)
+        raise DesktopUIError(
+            _POR_QUE_NO_WIN32.format(paso="confirmar el guardado"),
+            details={"reason": "win32_does_not_commit",
+                     "use_instead": "save_as_completo"})
+
 
     def save_as_completo(self, *, pid: int, started: Optional[float],
                          destino: str, extension: str = ".pbix",

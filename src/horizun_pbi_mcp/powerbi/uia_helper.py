@@ -76,15 +76,16 @@ class HelperError(Exception):
 
 
 def _redactar(valor: Any, maximo: int = 300) -> str:
-    """Quita el directorio personal. El helper no exporta rutas de nadie."""
-    import re
+    """Quita el directorio personal, con la MISMA regla que el resto del repo.
 
-    texto = str(valor)
-    casa = os.path.expanduser("~")
-    for variante in {casa, casa.replace("\\", "/"), casa.replace("/", "\\")}:
-        if variante and len(variante) > 3:
-            texto = re.sub(re.escape(variante), "~", texto, flags=re.IGNORECASE)
-    return texto[:maximo]
+    Habia una copia de la regla escrita aqui. Dos implementaciones de "que se
+    considera una ruta personal" acaban divergiendo, y la que diverge es
+    siempre la que nadie mira. Se importa la del paquete: es un modulo de texto
+    plano, no toca COM y por tanto no altera el apartamento de este proceso.
+    """
+    from horizun_pbi_mcp.services import redaction
+
+    return redaction.rutas(str(valor))[:maximo]
 
 
 # ------------------------------------------------------------------ Win32 ----
