@@ -1,6 +1,6 @@
 # Horizun PBI MCP architecture
 
-_Verified for 2.0.2. Volatile counts are derived from the frozen MCP contract
+_Verified for 2.1.0. Volatile counts are derived from the frozen MCP contract
 and the code instead of being copied into this document._
 
 ---
@@ -32,7 +32,7 @@ ADOMD.NET / TOM     TMDL / PBIR / resources
 Power BI Desktop    project files
 ```
 
-The public surface is frozen in `tests/golden/tools_v1.json`: 134 tools in
+The public surface is frozen in `tests/golden/tools_v1.json`: 139 tools in
 2.0.1. Runtime diagnostics derive that count from the contract and verify the
 registered set against it. A documentation regression test forces this page to
 be updated when the golden changes.

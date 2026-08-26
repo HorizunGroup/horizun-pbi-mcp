@@ -14,9 +14,9 @@
   "downloads": {
     "instalar.ps1": {
       "name": "horizun-pbi-mcp-instalar.ps1",
-      "version": "2.0.2",
+      "version": "2.1.0",
       "platform": "windows",
-      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.2/horizun-pbi-mcp-instalar.ps1",
+      "url": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1",
       "sha256": "00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d",
       "max_bytes": 131072,
       "actual_bytes": 26889,
@@ -24,11 +24,11 @@
       "eol": "lf",
       "bom": false,
       "source_path": "scripts/instalar.ps1",
-      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v2.0.2",
+      "official_source": "https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/v2.1.0",
       "purpose": "Instalador de un pegado para Windows sin administrador. El asset de la release es una copia byte a byte de scripts/instalar.ps1.",
       "verified_at": "2026-08-16",
       "status": "pending_remote_release",
-      "status_note": "El tag v2.0.2 y su release NO existen todavia en el remoto: la referencia queda PENDIENTE DE ACTIVACION hasta que el tag se cree. La ultima publicada de verdad es v2.0.1, el 2026-08-16 a las 19:49 UTC, con su asset descargado y comprobado desde fuera. El SHA-256 de aqui NO cambia con la version porque scripts/instalar.ps1 no fija ninguna: son los mismos bytes que ya sirve v2.0.1, y publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende. Quien lo publica es el job publicar-github-release, que ademas relee el asset y compara este hash y esta URL despues de subirlo.",
+      "status_note": "El tag v2.1.0 y su release NO existen todavia en el remoto: la referencia queda PENDIENTE DE ACTIVACION hasta que el tag se cree. La ultima publicada de verdad es v2.0.1, el 2026-08-16 a las 19:49 UTC, con su asset descargado y comprobado desde fuera. El SHA-256 de aqui NO cambia con la version porque scripts/instalar.ps1 no fija ninguna: son los mismos bytes que ya sirve v2.0.1, y publicar cualquier otro contenido bajo ese nombre rompe el one-paste, que es exactamente lo que se pretende. Quien lo publica es el job publicar-github-release, que ademas relee el asset y compara este hash y esta URL despues de subirlo.",
       "used_by": [
         "scripts/one_paste.ps1",
         "docs/INSTALL.md",

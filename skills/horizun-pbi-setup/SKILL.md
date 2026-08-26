@@ -24,7 +24,7 @@ administrador.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.2/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
 $sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')

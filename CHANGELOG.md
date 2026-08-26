@@ -5,6 +5,156 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Nothing pending.
+
+---
+
+## [2.1.0] — 2026-08-25
+
+A minor bump: this batch adds five tools, and the frozen contract of the
+original 34 is intact — every change below is additive.
+
+It also carries what `2.0.2` documented. That version was prepared but its tag
+and release were never created, so its two fixes ship here rather than under a
+number nobody can install. Its entry is kept below as written.
+
+`pbi_export_pbix` was verified against a real Power BI Desktop, not only
+against the test double: a synthetic `.pbip` came out as a 13,939-byte `.pbix`
+with `report_format='pbir'` and a data model inside, through the public
+`pbi_finalize_delivery` tool, in about 17 seconds.
+
+### Added
+
+- **`pbi_prepare_project`, `pbi_export_pbix` and `pbi_finalize_delivery`.** A
+  `.pbip` is not a deliverable: whoever receives it needs Power BI Desktop and
+  the whole folder. There was no way to produce the `.pbix` from here.
+  Microsoft publishes no API for that conversion, so `pbi_export_pbix`
+  automates the **supported** flow — Desktop's own `File > Save As` — instead
+  of stitching a zip by hand. Controls are resolved by dialog id and window
+  class, never by screen coordinates; the file type is *chosen* rather than
+  inherited (the default offer can be `.pbit`, a template with no data); a
+  visible dialog is reported as a classified modal with a suggested action,
+  never as a timeout; and the saved file is verified — existence, extension,
+  size, mtime within this run, and openable by the repository's own `.pbix`
+  reader — because a dialog disappearing is not a file being written. Windows
+  UI automation sits behind an injectable adapter: CI uses a double, and the
+  real path is a `live` test that is skipped unless `PBI_MCP_LIVE_EXPORT=1`.
+
+  The dialog is driven **from a separate process** (`powerbi/uia_helper.py`,
+  launched by `powerbi/desktop_helper.py`). Two measured reasons, not taste.
+  Win32 messages do not commit the file type: `CB_SETCURSEL` changes what the
+  dropdown *reads* without notifying the application, so Desktop kept saving a
+  `.pbip` project under a `.pbix` name — the combo said one thing and the disk
+  said another. Committing it needs UI Automation, which is COM; and importing
+  COM in the server pins the thread's apartment, which is what breaks
+  `pythonnet` with *«Cannot change thread mode after it is set»*. A blocked COM
+  call also cannot be cancelled from the inside: the previous attempt ran it in
+  a daemon thread and called `join(timeout)` a timeout, when it was only
+  looking away — the thread stayed inside COM for the life of the server. Now
+  the deadline is enforced by the operating system terminating the helper.
+  `comtypes` ships as the optional `export` extra; without it the server works
+  exactly as before and `pbi_capabilities` says so under `pbix_export`.
+- **`pbi_get_power_query` and `pbi_update_power_query`.** In a `.pbip` the M
+  code has no file of its own: it lives inside the TMDL, in each table's
+  `partition` and in `expressions.tmdl`. There was no way to read or change it
+  without hand-editing TMDL. The block is located by structure and replaced
+  whole — never by regex, which breaks on the first query with an `in` inside
+  a string. `dry_run` defaults to true, `expected_sha256` rejects a stale
+  write, and the response separates `parse_checked` / `tmdl_load_checked` from
+  `m_engine_checked` / `refresh_checked`, which are always false: no M engine
+  runs outside Power BI Desktop, so nothing here can claim a query will load.
+- **Secret detection and containment (`services/secret_scan.py`).** Converting
+  a `.pbix` unpacks what was compressed: a token pasted into a `Web.Contents`
+  header stops being invisible and lands in a folder that usually ends up in
+  Git. `pbi_convert_pbix_to_pbip` now scans the report in memory — before
+  staging and before opening Desktop — and the built tree before publishing.
+  High-confidence findings block publication and the staging is retired
+  through the existing mechanism; low-confidence ones warn. The value never
+  leaves the process: findings carry the rule, the relative file, the
+  approximate line, a classification and a short irreversible fingerprint. The
+  same detector runs over new M before it is written.
+- **Verifiable identity for Desktop instances.** `pbi_list_desktop_models` and
+  `pbi_open_in_desktop` now distinguish `engine_pid` (`msmdsrv.exe`) from
+  `desktop_pid` (`PBIDesktop.exe`) — they were being conflated — and add the
+  window title, the document path when it can be proven, `path_match`,
+  `identity_confidence` and the `identity_evidence` behind it. A `.pbip`
+  leaves no file handle, so its path stays `null` instead of guessed, and an
+  instance serving a different document is no longer accepted for a requested
+  path just because it appeared during the launch window.
+- **`pbi_audit_project(compact=true)`.** `priority` used to repeat the fifteen
+  worst findings in full when they were already in `findings`. In compact mode
+  each finding carries a `finding_id`, `priority` is the order as a list of
+  those ids, and `groups` folds repetitions by rule with counts and a sample.
+  Scores and per-domain counts are untouched, and a call without the parameter
+  gets exactly what it got before.
+- **`pbi_profile_data` findings now carry the column's known usage**:
+  `dependency_count`, who uses it, `usage_status` and `usage_scope`. It
+  changes ordering and explanation, never severity — and when the report
+  cannot be inspected it says `used_by_visuals: "not_checked"` instead of
+  concluding the column is unused.
+
+### Fixed
+
+- **The file name was never actually typed into the dialog.** The `INPUT`
+  structures for `SendInput` were rebuilt on every call, so ctypes saw two
+  distinct classes with the same name and refused the array with
+  `incompatible types, INPUT instance instead of INPUT instance` — a message
+  that names the same type twice and explains nothing. They are defined once
+  now, and `SendInput`'s return value is checked: it accepts fewer events than
+  it was given, without raising, when the session is locked or another process
+  holds the input. Ignoring that number is how a name that never reached the
+  box gets reported as typed.
+- **A whole save path existed that nobody could reach.** `save_as_completo`
+  had been written inside the `AdaptadorUI` `Protocol`, which nothing
+  inherits, so the real adapter did not have it; the service checked
+  `hasattr(...)`, found nothing, and fell back to the Win32 route that does
+  not commit the type. Reading the source suggested the opposite. The Protocol
+  now declares and the adapter implements, and a regression asserts the
+  Protocol holds no bodies.
+- **A save that was never going to happen consumed the whole operation's
+  budget.** The wait for the file shared the global timeout — 900 s in the live
+  test — so an empty folder was watched for a quarter of an hour before
+  anything was reported. The two deadlines are now separate: `timeout` covers a
+  file that appeared and is still growing, which a large model legitimately
+  needs, and a shorter grace period covers it appearing at all, which Desktop
+  does in seconds. If the file landed in the project's folder instead of the
+  requested one, that is said explicitly — searching only those two folders by
+  exact basename, never the disk.
+- **A folder with two projects picked one alphabetically, in silence.**
+  `_find_pbip_file` ended in `sorted(matches)[0]`, and the fallbacks for
+  `*.Report` and `*.SemanticModel` did the same. With `Antiguo.pbip` and
+  `Nuevo.pbip` side by side, everything that followed — measures, pages,
+  publication — went to the wrong project with the response in green. A folder
+  now resolves only when it holds exactly one candidate; otherwise it fails
+  with `ambiguous_pbip_project` and lists them.
+- **Two projects with the same file name in different folders were treated as
+  the same one.** A `.pbip` leaves no open file handle, so the only
+  correlation available is the window title — and a window titled `Demo` says
+  nothing about which folder it came from. When the process command line names
+  a project, it is used to discard the impostor. The repository's own suite
+  found this: a stray `Demo` window made an unrelated preflight test fail.
+- **DAX identifiers are case-insensitive; the shared resolver was not.**
+  `Cronograma[Fecha]` against a table named `CRONOGRAMA` was reported as
+  `measure_broken_reference` — an ERROR, with a score penalty, for a measure
+  the engine resolves without blinking. `build_index` and `resolve_reference`
+  now keep normalized indexes and return the model's **canonical** name; the
+  summary, dependencies, model audit and PBIR reference check all go through
+  them. An ambiguous match is declared, never silently resolved.
+- **`None fila(s)` in `pbi_diagnose_data`.** When the row count came back
+  blank it was interpolated raw. It is not turned into zero either — zero
+  asserts there are none, and the truth was that it could not be counted:
+  `affected_rows` stays `null`, the sentence drops the number, and the check
+  is marked partial.
+- **Auto date/time tables drowned the actionable findings.** Power BI creates
+  one `LocalDateTable_*` per date column, seven calculated columns each; a
+  model with twenty dates produced 140 findings nobody can fix one by one.
+  `pbi_analyze_model_quality` now folds them into a single informational
+  finding with the counts and sorts issues by severity first.
+
+---
+
 ## [2.0.2] — unreleased
 
 Two defects reported from an outside installation on 2026-08-16, hours after

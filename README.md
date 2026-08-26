@@ -11,7 +11,7 @@ report pages — and checks its own work afterwards.
 
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
-**v2.0.2** · 134 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
+**v2.1.0** · 139 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
 
 ## Install
 
@@ -40,7 +40,7 @@ Paste this into Claude Code or Codex and let it install itself:
 
 > Install Horizun PBI MCP from `HorizunGroup/horizun-pbi-mcp`. Complete the runtime
 > setup, watch `pbi_install_status` until it reports `ready`, restart the session,
-> and confirm the 134 `pbi_*` tools are available.
+> and confirm the 139 `pbi_*` tools are available.
 
 ### A brand-new Windows PC
 
@@ -91,7 +91,7 @@ Document every measure in the model and export it to Excel.
 | Quality | Audit models and reports, document schemas, detect broken references and normalize report structures |
 | Delivery | Export verified PDF, Word, Excel and PowerPoint artifacts; ingest SharePoint data read-only |
 
-See the [tool catalog](docs/TOOL_CATALOG.md) for all 134 tools and their risk
+See the [tool catalog](docs/TOOL_CATALOG.md) for all 139 tools and their risk
 classifications.
 
 ## Why it is safe to point at real work

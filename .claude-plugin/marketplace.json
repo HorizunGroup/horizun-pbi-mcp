@@ -9,7 +9,7 @@
       "description": "Safe control of Power BI Desktop and PBIP projects via MCP.",
       "author": {"name": "HorizunGroup"},
       "category": "development",
-      "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "v2.0.2"},
+      "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "v2.1.0"},
       "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp"
     }
   ]
