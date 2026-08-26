@@ -83,6 +83,17 @@ was only looking away — the thread stayed inside COM for the life of the serve
 The dialog is now driven from a **separate process**, and the deadline is
 enforced by the operating system terminating it.
 
+**And the interface is waited on, not slept through.** The first version put
+fixed `sleep` calls after injecting keystrokes — 0.3 s, 0.4 s, 0.8 s. Synthetic
+keys reach the system queue instantly but the application consumes them at its
+own pace, so on an idle machine those margins were wasted and on a busy one they
+were not enough: the filename field got read half-written (76 characters
+requested, 31 read) and that was reported as a *typing* failure. It was a
+synchronization failure. Every margin is now a wait for a **state** — the field
+contains the path, the list has options, the dropdown has closed — polled every
+50 ms. It is both steadier and faster: a save went from 5.3 s to 3.1–4.5 s, and
+exhausting the deadline now accuses the synchronization rather than the write.
+
 `comtypes` ships as the optional `export` extra:
 
 ```
@@ -135,8 +146,15 @@ raises it as a warning, never as a failure.
   the requested `.pbix` exists, no `.pbip` substitute exists, the reader
   inspects it, `saved_as_verified` and `opened_path_verified` are both true, and
   the public tool completes the flow.
+- **Five consecutive live runs on a machine in active use: 5 of 5.** The
+  earlier version passed once and then failed twice with different partial
+  lengths, which is what exposed the fixed-margin defect. Intermittency was
+  fixed by synchronizing on state, not by widening the margin.
 - Dependency locks intact: 5 locks, 216 pinned dependencies.
 - Contract: 139 tools, one compatible change.
+- CodeQL: the 34 alerts this branch introduced are fixed in code — none
+  dismissed. They were one real defect (a test whose assertion could not fail)
+  and 33 hygiene notes.
 
 ## Upgrading
 
