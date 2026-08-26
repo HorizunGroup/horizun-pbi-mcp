@@ -203,11 +203,32 @@ def agregar_tabla_desde_fuente(
         consulta = (_m_odata(url) if fuente == "odata"
                     else _m_web_json(url, json_path, columnas))
 
+    # La consulta que se acaba de armar lleva lo que el llamante paso: una
+    # `native_query` o una URL pueden traer la credencial incrustada, y una vez
+    # escrita queda en texto plano dentro del .pbip.
+    from horizun_pbi_mcp.services import secret_scan
+
+    escaneo = secret_scan.build_result(
+        secret_scan.scan_text(consulta, file="power_query"), files_scanned=1)
+    if escaneo["status"] == secret_scan.BLOCKED:
+        raise TableFromSourceError(
+            "La consulta M generada lleva una credencial incrustada y no se "
+            "escribe: quedaria en texto plano dentro del proyecto. Las "
+            "credenciales van en el almacen de Power BI Desktop, no en el M. "
+            "En 'security_scan' esta la regla y la linea; el valor NO se "
+            "devuelve a proposito.",
+            details={"security_scan": escaneo})
+
     texto = _tmdl(nombre, columnas, consulta, description)
     resumen: Dict[str, Any] = {
         "table": nombre, "source": fuente,
         "columns": columnas, "column_count": len(columnas),
-        "warnings": [AVISO_CREDENCIALES],
+        "security_scan": escaneo,
+        "warnings": ([AVISO_CREDENCIALES]
+                     + ([f"{escaneo['finding_count']} hallazgo(s) de seguridad "
+                         "de BAJA confianza en la consulta generada; revisa "
+                         "'security_scan'."]
+                        if escaneo["status"] == secret_scan.WARNING else [])),
     }
     if dry_run:
         return {**resumen, "dry_run": True, "tmdl": texto, "m": consulta}

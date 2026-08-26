@@ -18,6 +18,18 @@ def _looks_like_id(name: str) -> bool:
 _LONG_DAX_CHARS = 1500
 _LONG_DAX_LINES = 30
 
+#: Tablas que Power BI genera solo, una por cada columna de fecha, cuando
+#: "Auto fecha y hora" esta activo. Ninguna la escribio una persona y ninguna
+#: se corrige de una en una: la unica accion posible es desactivar la opcion.
+_PREFIJOS_FECHA_AUTOMATICA = ("LocalDateTable_", "DateTableTemplate_")
+
+#: Orden de lectura de los problemas. Lo accionable primero.
+_ORDEN_SEVERIDAD = {"error": 0, "warning": 1, "info": 2}
+
+
+def es_tabla_de_fecha_automatica(nombre: str) -> bool:
+    return str(nombre or "").startswith(_PREFIJOS_FECHA_AUTOMATICA)
+
 
 # ------------------------------------------------------------------ calidad ---
 def analyze_model_quality(model_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,10 +75,19 @@ def analyze_model_quality(model_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # tablas / columnas
     has_calendar = False
+    auto_tablas: List[str] = []
+    auto_columnas = 0
     for t in tables:
         tname = t["name"]
         if t.get("is_date_table") or _CALENDAR_HINT.search(tname):
             has_calendar = True
+        if es_tabla_de_fecha_automatica(tname):
+            # Un modelo con veinte columnas de fecha trae veinte tablas
+            # automaticas de siete columnas cada una: 140 hallazgos que nadie
+            # puede arreglar uno a uno y que entierran los que si.
+            auto_tablas.append(tname)
+            auto_columnas += len(t.get("columns", []))
+            continue
         for c in t.get("columns", []):
             if c.get("column_type") == "Calculated":
                 add("info", "columna_calculada",
@@ -90,6 +111,8 @@ def analyze_model_quality(model_data: Dict[str, Any]) -> Dict[str, Any]:
         related.add(r.get("from_table"))
         related.add(r.get("to_table"))
     for t in tables:
+        if es_tabla_de_fecha_automatica(t["name"]):
+            continue
         if t["name"] not in related and not t.get("is_date_table") \
                 and not _CALENDAR_HINT.search(t["name"]):
             if t.get("measure_count", 0) == 0:
@@ -97,12 +120,33 @@ def analyze_model_quality(model_data: Dict[str, Any]) -> Dict[str, Any]:
                     f"La tabla '{t['name']}' no participa en ninguna relacion.",
                     t["name"])
 
+    if auto_tablas:
+        add("info", "tablas_de_fecha_automaticas",
+            f"Power BI genero {len(auto_tablas)} tabla(s) de fecha automatica "
+            f"con {auto_columnas} columna(s) en total. No son del modelo ni se "
+            "corrigen una a una: si no necesitas la jerarquia de fecha "
+            "automatica, desactiva 'Auto fecha y hora' en las opciones del "
+            "informe y el modelo adelgaza de golpe.")
+
+    # Lo accionable primero. Sin este orden, un modelo con muchas tablas
+    # automaticas empujaba las relaciones bidireccionales fuera de la vista.
+    issues.sort(key=lambda i: (_ORDEN_SEVERIDAD.get(i["severity"], 3),
+                               i["category"]))
+
     counts: Dict[str, int] = {}
     for it in issues:
         counts[it["severity"]] = counts.get(it["severity"], 0) + 1
 
     return {"issue_count": len(issues), "by_severity": counts, "issues": issues,
-            "has_calendar_table": has_calendar}
+            "has_calendar_table": has_calendar,
+            "auto_date_tables": {
+                "count": len(auto_tablas),
+                "columns": auto_columnas,
+                "aggregated": bool(auto_tablas),
+                "note": ("Las tablas de fecha automatica se resumen en UN "
+                         "hallazgo informativo; sus columnas no se reportan "
+                         "individualmente."),
+            }}
 
 
 # -------------------------------------------------------------- markdown ---

@@ -128,19 +128,34 @@ def _chequeo_huerfanas(session, rel: Dict[str, Any],
             max_rows=MAX_MUESTRAS)
         muestras = [f[0] for f in filas]
 
+    # `filas_afectadas` puede volver en blanco: el motor devuelve BLANK cuando
+    # el FILTER no encuentra nada o cuando la columna no admite el operador IN.
+    # Interpolarlo a secas producia "None fila(s) de 'X' caen al (Blank)", y
+    # convertirlo a cero seria peor: cero AFIRMA que no hay ninguna, y lo
+    # cierto es que no se pudo contar.
+    afectadas = datos.get("filas_afectadas")
+    afectadas = None if afectadas is None else int(afectadas)
+    cuantificador = (f"{afectadas} fila(s) de '{ft}' caen"
+                     if afectadas is not None
+                     else f"Hay filas de '{ft}' que caen")
+
     return _hallazgo(
         "claves_huerfanas", "warning",
-        (f"{datos.get('filas_afectadas')} fila(s) de '{ft}' caen al (Blank) "
-         f"de la relacion con '{tt}': los totales cuadran de menos sin que "
-         "nada falle."
+        (f"{cuantificador} al (Blank) de la relacion con '{tt}': los totales "
+         "cuadran de menos sin que nada falle."
+         + ("" if afectadas is not None else
+            " No se pudo determinar CUANTAS filas: el conteo volvio vacio.")
          + (f" Ademas {en_blanco} fila(s) tienen la clave EN BLANCO."
             if en_blanco else "")),
         consulta,
-        {"orphan_keys": huerfanas, "affected_rows": datos.get("filas_afectadas"),
-         "blank_keys": en_blanco, "sample_orphans": muestras},
+        {"orphan_keys": huerfanas, "affected_rows": afectadas,
+         "blank_keys": en_blanco, "sample_orphans": muestras,
+         "affected_rows_determined": afectadas is not None},
         _es_critico(criticos, f"{ft}[{fc}]", f"{tt}[{tc}]"),
         relationship=f"{ft}[{fc}] -> {tt}[{tc}]",
-        is_active=rel.get("is_active", True))
+        is_active=rel.get("is_active", True),
+        partial=afectadas is None,
+        undetermined=([] if afectadas is not None else ["affected_rows"]))
 
 
 def _chequeo_grano(session, rel: Dict[str, Any],
@@ -335,10 +350,14 @@ def diagnose(session, model_data: Dict[str, Any],
     for h in hallazgos:
         por_severidad[h["severity"]] = por_severidad.get(h["severity"], 0) + 1
 
+    parciales = [h for h in hallazgos if h.get("partial")]
     return {
         "findings": hallazgos,
         "by_severity": por_severidad,
         "checks_run": corridos,
+        # Un chequeo que corrio pero no pudo cuantificar algo no es un chequeo
+        # limpio ni uno saltado: es un tercer estado, y se dice.
+        "partial_checks": len(parciales),
         "skipped": saltados,
         "relationships_checked": len(relaciones),
         "brief_applied": bool(criticos),
