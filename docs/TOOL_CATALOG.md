@@ -1,4 +1,4 @@
-# Tool catalog — 134
+# Tool catalog — 139
 
 Generated from the contract frozen in `tests/golden/tools_v1.json`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
@@ -35,7 +35,9 @@ tools registered.
 | S — ecosystem port | 2 |
 | T — exports and SharePoint | 5 |
 | U — Torre Aurora field report | 1 |
-| **Total** | **134** |
+| V — Power Query (M) | 2 |
+| W — file selection and PBIX delivery | 3 |
+| **Total** | **139** |
 
 ---
 
@@ -118,6 +120,16 @@ tools registered.
 | `pbi_create_calculated_column` | DAX calculated column, declared before the partition |
 | `pbi_create_relationship` | Relationship between columns, in `relationships.tmdl` |
 | `pbi_create_hierarchy` | Hierarchy over columns of the same table |
+| `pbi_get_power_query` | Reads the M of a partition or a named expression, with its SHA-256. The M has no file of its own: it lives inside the TMDL |
+| `pbi_update_power_query` | Replaces that M in full — block located by structure, never by regex. `dry_run` defaults to true and `expected_sha256` rejects a stale write. `m_engine_checked` is always false: no M engine runs outside Desktop |
+
+## File selection and delivery
+
+| Tool | What it does |
+|---|---|
+| `pbi_prepare_project` | Resolves EXACTLY the file you pass — `.pbip`, `.pbix` (converted first) or a folder with a single candidate — and activates it. Two `.pbip` in one folder fail with `ambiguous_pbip_project` instead of picking the alphabetically first one |
+| `pbi_export_pbix` | PBIP -> PBIX through Power BI Desktop's own `File > Save As`. Preflight before opening any window, file type chosen (never inherited: `.pbit` is a template), and the saved file verified — existence, extension, size, mtime, and openable by the .pbix reader |
+| `pbi_finalize_delivery` | The normal last step of a build: resolve, prepare, validate, export, inspect and leave exactly the deliverable open and selected |
 
 ## Proposals and data quality
 
@@ -225,12 +237,12 @@ that can quietly drift.
 
 | Class | No. | Behavior | `readOnlyHint` |
 |---|---|---|---|
-| `read_only` | 54 | Doesn't modify anything of the user's and leaves no file behind | `true` |
+| `read_only` | 55 | Doesn't modify anything of the user's and leaves no file behind | `true` |
 | `read_only_emits_file` | 12 | Doesn't touch the project, but writes a report/export into `outputs/` | `false` |
 | `read_external` | 1 | Reads SharePoint through Microsoft Graph; no local or remote write | `true`, `openWorldHint: true` |
 | `read_external_emits_file` | 1 | Reads SharePoint and publishes a verified download under `outputs/` | `false`, `openWorldHint: true` |
 | `side_effect_external` | 2 | Opens — and sometimes closes — Power BI Desktop: `pbi_open_in_desktop`, `pbi_validate_desktop_render` | `false` |
-| `write_reversible` | 52 | Transaction with journal; rollback on failure | `false` |
+| `write_reversible` | 56 | Transaction with journal; rollback on failure | `false` |
 | `write_destructive` | 9 | Requires `confirm=true`, including deletes, recovery and backup purge | `false`, `destructiveHint: true` |
 | `write_irreversible` | 2 | Refresh operations whose external effect cannot be rolled back | `false`, `destructiveHint: true` |
 | `unsupported` | — | `mode="both"` and cloud/Fabric — declared with their reason in `pbi_capabilities` | — |

@@ -286,6 +286,15 @@ def resolve_references(spec: Dict[str, Any],
                 r = model_explorer.resolve_reference(limpio.strip("[]") if
                                                      limpio.startswith("[") else limpio,
                                                      indice)
+                if r["kind"] == "ambiguous":
+                    # El resolvedor compartido ya NO elige entre homonimos: los
+                    # devuelve todos. Aqui eso es un error del spec, no un
+                    # aviso: escribir el campo cualificado es trivial.
+                    errores.append(_err(
+                        path,
+                        f"'{limpio}' es ambiguo: existe en {r['candidates']}.",
+                        "Cualifica la referencia con su tabla."))
+                    continue
                 if not r["exists"]:
                     errores.append(_err(
                         path, f"'{limpio}' no existe en el modelo.",
@@ -293,13 +302,6 @@ def resolve_references(spec: Dict[str, Any],
                         "disponibles con pbi_page_building_blocks."))
                     continue
                 if r.get("note") == "resuelta por nombre de columna unico":
-                    coincidencias = [c for c in indice["columns"]
-                                     if c.endswith(f"[{limpio}]")]
-                    if len(coincidencias) > 1:
-                        errores.append(_err(
-                            path, f"'{limpio}' es ambiguo: existe en {coincidencias}.",
-                            "Cualifica la referencia con su tabla."))
-                        continue
                     avisos.append(f"{path}: '{limpio}' se resolvio como {r['ref']}.")
                 resueltos.append({"path": path, "ref": limpio, "resolved": r["ref"],
                                   "kind": r["kind"]})

@@ -255,15 +255,56 @@ def coincidencias_por_titulo(stem: str,
         error="; ".join(fallos) or None)
 
 
-def _pid_por_titulo_de_ventana(stem: str) -> Optional[int]:
+def _documentos_de_la_linea_de_comandos(pid: int) -> List[str]:
+    """Proyectos que la linea de comandos de ese proceso nombra.
+
+    Es la unica prueba de RUTA que deja un `.pbip`: no hay descriptor abierto
+    sobre la carpeta del proyecto, pero cuando la ventana se abrio con la ruta
+    como argumento -que es como la abre este servidor- ahi queda escrita.
+    """
+    import psutil
+
+    try:
+        argumentos = psutil.Process(int(pid)).cmdline() or []
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+        return []
+    return [str(a) for a in argumentos
+            if str(a).casefold().endswith((".pbip", ".pbix", ".pbit"))]
+
+
+def _sirve_otro_proyecto(pid: int, objetivo: Path) -> bool:
+    """True si la linea de comandos de ese proceso nombra OTRO proyecto.
+
+    Dos proyectos llamados `Demo.pbip` en carpetas distintas producen la misma
+    ventana `Demo`, y el titulo no puede distinguirlos. Cuando la linea de
+    comandos SI dice cual es, se usa: un `Demo` de otra carpeta no es este
+    `Demo`, por mucho que la ventana se llame igual.
+    """
+    documentos = _documentos_de_la_linea_de_comandos(pid)
+    if not documentos:
+        return False
+    from horizun_pbi_mcp.services import project_resolver
+
+    return not any(project_resolver.misma_ruta(d, objetivo)
+                   for d in documentos)
+
+
+def _pid_por_titulo_de_ventana(stem: str,
+                               objetivo: Optional[Path] = None) -> Optional[int]:
     """PID cuya ventana principal se llama exactamente como el proyecto.
 
     Se exige coincidencia exacta y una sola ventana: ante dos candidatas no se
     elige, porque reutilizar la equivocada es peor que no reutilizar. Sin
     esto, cada apertura del mismo proyecto lanzaba OTRA ventana.
+
+    Y el titulo NO basta por si solo: si la linea de comandos del candidato
+    nombra otro proyecto, se descarta. Un `Demo.pbip` de otra carpeta tiene la
+    ventana titulada igual y no es el mismo archivo.
     """
-    return coincidencias_por_titulo(
-        stem, [p.pid for p in _procesos_desktop()]).inequivoca
+    pids = [p.pid for p in _procesos_desktop()]
+    if objetivo is not None:
+        pids = [pid for pid in pids if not _sirve_otro_proyecto(pid, objetivo)]
+    return coincidencias_por_titulo(stem, pids).inequivoca
 
 
 def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
@@ -277,7 +318,8 @@ def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
     """
     import psutil
 
-    objetivo = _normalized_open_path(Path(pbix).resolve())
+    ruta = Path(pbix).resolve()
+    objetivo = _normalized_open_path(ruta)
     for proc in _procesos_desktop():
         try:
             for archivo in proc.open_files():
@@ -285,8 +327,8 @@ def proceso_con_archivo_abierto(pbix: Path) -> Optional[int]:
                     return proc.pid
         except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
             continue
-    if Path(pbix).suffix.casefold() == ".pbip":
-        return _pid_por_titulo_de_ventana(Path(pbix).stem)
+    if ruta.suffix.casefold() == ".pbip":
+        return _pid_por_titulo_de_ventana(ruta.stem, ruta)
     return None
 
 
@@ -474,6 +516,35 @@ def _estabilizar(instancia: Dict[str, Any]) -> Dict[str, Any]:
     return anterior
 
 
+def _sirve_otro_documento(instancia: Dict[str, Any],
+                          objetivo: Optional[Path]) -> bool:
+    """True si esta instancia sirve DEMOSTRABLEMENTE otro archivo.
+
+    El fallback por "apareci un puerto nuevo durante la espera" es debil por
+    naturaleza: si el usuario abre a mano otro informe justo entonces, el
+    puerto nuevo es el suyo. Cuando la ventana tiene abierto un .pbix o .pbit
+    concreto y no es el nuestro, eso no es una sospecha: es una prueba, y se
+    descarta el candidato en vez de adoptarlo.
+
+    Solo descarta con prueba. Un .pbip no deja descriptor y no se puede
+    demostrar nada por esta via: en ese caso NO se descarta.
+    """
+    if objetivo is None:
+        return False
+    from horizun_pbi_mcp.powerbi import desktop_identity
+
+    try:
+        identidad = desktop_identity.identify(instancia, target=objetivo)
+    except Exception as exc:                              # noqa: BLE001
+        log.debug("No se pudo identificar el candidato: %s", exc)
+        return False
+    if identidad.get("project_path") and identidad.get("path_match") is False:
+        log.info("Se descarta el puerto %s: su ventana sirve otro documento",
+                 instancia.get("port"))
+        return True
+    return False
+
+
 def _esperar_instancia_nueva(previas: set, timeout: int,
                              nombre: str, *,
                              pbix_path: Optional[Path] = None,
@@ -503,7 +574,7 @@ def _esperar_instancia_nueva(previas: set, timeout: int,
 
         # Si Windows impide leer handles/arbol, se conserva el fallback solo
         # cuando hay UN candidato estable. Con varios no se elige al azar.
-        if len(nuevas) == 1:
+        if len(nuevas) == 1 and not _sirve_otro_documento(nuevas[0], pbix_path):
             current = nuevas[0]
             if candidate is None or candidate.get("port") != current.get("port"):
                 candidate = current

@@ -65,8 +65,10 @@ def test_el_readme_abre_con_la_ruta_corta_para_codex_y_claude():
     """La instalación filmable debe aparecer antes del bootstrap avanzado."""
     texto = (RAIZ / "README.md").read_text(encoding="utf-8")
     portada = texto[:3000]
+    from tests.test_tool_contract import EXPECTED_COUNT
+
     for frase in ("## Codex", "## Claude Code", "pbi_install_status",
-                  "No repository clone", "134 `pbi_*` tools"):
+                  "No repository clone", f"{EXPECTED_COUNT} `pbi_*` tools"):
         assert frase in portada, f"la ruta corta perdió {frase!r}"
     assert portada.index("## Codex") < portada.index("## What it provides")
     assert portada.index("## Claude Code") < portada.index("## What it provides")

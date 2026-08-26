@@ -20,6 +20,19 @@ def _resumen_lote(resultado: Dict[str, Any]) -> Dict[str, Any]:
         {"source": c["source"], "warnings": c["warnings"], "dropped": c["dropped"]}
         for c in convertidos if c["warnings"] or c["dropped"]
     ]
+    # Los bloqueados por secreto ya estan en `failed`; aqui se cuenta lo que SI
+    # se publico y aun asi trae hallazgos de baja confianza, que es lo que se
+    # escapa de la vista en un lote grande.
+    resultado["security"] = {
+        "checked": sum(1 for c in convertidos
+                       if (c.get("security_scan") or {}).get("checked")),
+        "with_findings": [
+            {"source": c["source"],
+             "status": (c.get("security_scan") or {}).get("status"),
+             "finding_count": (c.get("security_scan") or {}).get("finding_count")}
+            for c in convertidos
+            if (c.get("security_scan") or {}).get("finding_count")],
+    }
     return resultado
 
 

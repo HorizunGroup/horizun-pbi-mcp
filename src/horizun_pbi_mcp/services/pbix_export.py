@@ -1,0 +1,882 @@
+"""Exportar un `.pbip` a `.pbix` por el unico camino soportado.
+
+Microsoft no publica ninguna API para convertir el formato. La respuesta a eso
+no es rendirse ni fabricar el zip a mano -un `.pbix` cosido con TOM abre a
+veces y rompe otras-, sino automatizar el flujo **oficial**: abrir el proyecto
+en Power BI Desktop y usar `Archivo > Guardar como`.
+
+Lo que hace que esto sea confiable no es la automatizacion, que es la parte
+mecanica, sino lo que la rodea:
+
+**Antes** (`preflight`): resolver la ruta EXACTA, validar el proyecto,
+comprobar que el destino cabe en Windows y que se puede escribir, y respaldar
+lo que se va a reemplazar. Todo eso ocurre **sin abrir Desktop**: descubrir
+que el destino existe despues de haber lanzado una ventana es tarde y caro.
+
+**Durante**: un dialogo visible NUNCA se reporta como timeout. Si Power BI
+pide credenciales, avisa de un error de carga o pregunta si reemplazar, eso se
+detecta, se clasifica y se devuelve con la accion sugerida.
+
+**Despues**: que el dialogo desaparezca no es que se haya guardado. Se
+comprueba que el archivo existe, que la extension es `.pbix` y no `.pbit`, que
+pesa mas de cero, que su fecha es de ESTA ejecucion, que el lector de `.pbix`
+del propio servidor lo puede abrir y que lleva informe y modelo. El hash se
+calcula cuando la escritura ya termino.
+
+Y si algo falla despues de haber reemplazado un destino que existia, se
+restaura el respaldo; si la restauracion tampoco puede, se dice, en vez de
+devolver un error limpio sobre un archivo que quedo destrozado.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from horizun_pbi_mcp.config import Session
+from horizun_pbi_mcp.logging_config import get_logger
+from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.services import project_resolver
+
+log = get_logger("pbix_export")
+
+#: Modos de refresco. `auto` intenta y declara; `required` no exporta sin
+#: datos; `skip` guarda lo que haya cargado ahora mismo.
+REFRESH_AUTO, REFRESH_REQUIRED, REFRESH_SKIP = "auto", "required", "skip"
+MODOS_REFRESH = (REFRESH_AUTO, REFRESH_REQUIRED, REFRESH_SKIP)
+
+#: Limite de Windows para la ruta de un archivo que Desktop debe poder abrir.
+MAX_RUTA = 250
+
+#: Espera maxima a que el cuadro de guardado aparezca, en segundos.
+ESPERA_DIALOGO = 60.0
+
+
+class PbixExportError(PowerBIMCPError):
+    code = "pbix_export_failed"
+
+
+class PbixExportNotVerified(PbixExportError):
+    """Se guardo algo, pero no se pudo demostrar que sea el entregable."""
+
+    code = "pbix_export_not_verified"
+
+
+class PbixWrongFormatError(PbixExportError):
+    """Desktop guardo otra cosa: un proyecto o una plantilla, no un .pbix."""
+
+    code = "pbix_wrong_format"
+
+
+class PbixRestoreFailed(PbixExportError):
+    """Fallo la exportacion Y fallo la restauracion del respaldo."""
+
+    code = "pbix_restore_failed"
+
+
+def sha256_de(ruta: Path) -> str:
+    h = hashlib.sha256()
+    with open(ruta, "rb") as fh:
+        for bloque in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(bloque)
+    return h.hexdigest()
+
+
+@dataclass
+class Preflight:
+    """Todo lo que se comprobo antes de tocar Power BI Desktop."""
+
+    source_pbip: Path
+    output_pbix: Path
+    existia: bool = False
+    backup: Optional[Path] = None
+    validation: Dict[str, Any] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "source_pbip": str(self.source_pbip),
+            "output_pbix": str(self.output_pbix),
+            "target_existed": self.existia,
+            "backup": str(self.backup) if self.backup else None,
+            "validation": self.validation,
+            "warnings": self.warnings,
+        }
+
+
+def _resolver_destino(pbip: Path, out_path: Optional[str]) -> Path:
+    if out_path:
+        destino = Path(str(out_path)).expanduser()
+    else:
+        destino = pbip.with_suffix(".pbix")
+    if not destino.is_absolute():
+        destino = (Path.cwd() / destino)
+    destino = Path(os.path.normpath(str(destino)))
+    if destino.suffix.casefold() != ".pbix":
+        # Sin comillas anidadas en el f-string: el repositorio soporta Python
+        # 3.10 y ahi eso es un SyntaxError, no un detalle de estilo.
+        tenia = destino.suffix or "(ninguna extension)"
+        raise ValidationError(
+            f"El destino debe terminar en .pbix y termina en '{tenia}'. "
+            "Guardar con otra extension produce una plantilla o un archivo "
+            "que Power BI no abre.",
+            details={"parameter": "out_path", "out_path": str(destino),
+                     "suffix": destino.suffix})
+    return destino
+
+
+def preflight(session: Session, *, pbip_path: Optional[str] = None,
+              out_path: Optional[str] = None,
+              overwrite: bool = False) -> Preflight:
+    """Todo lo comprobable SIN abrir Power BI Desktop."""
+    from horizun_pbi_mcp.pbip import project_locator
+    from horizun_pbi_mcp.services import tmdl_validate
+
+    if pbip_path:
+        origen, _motivo = project_resolver.resolver_entrada(pbip_path)
+        if origen.suffix.casefold() != ".pbip":
+            raise ValidationError(
+                f"Para exportar hace falta un proyecto .pbip y se recibio "
+                f"'{origen.name}'. Convierte antes con pbi_prepare_project.",
+                details={"path": str(origen)})
+    else:
+        activo = getattr(session, "active_pbip", None)
+        if activo is None:
+            raise ValidationError(
+                "No hay proyecto activo y no se indico `pbip_path`. Abre uno "
+                "con pbi_prepare_project o pasa la ruta exacta.",
+                details={"parameter": "pbip_path"})
+        origen = Path(activo.pbip_path)
+    if not origen.is_file():
+        raise ValidationError(f"El proyecto no existe: {origen}",
+                              details={"path": str(origen)})
+
+    destino = _resolver_destino(origen, out_path)
+    resultado = Preflight(source_pbip=origen, output_pbix=destino)
+
+    if len(str(destino)) >= MAX_RUTA:
+        sobra = len(str(destino)) - MAX_RUTA + 1
+        raise ValidationError(
+            f"La ruta de destino mide {len(str(destino))} caracteres y Power "
+            f"BI Desktop no guarda ahi. Elige una carpeta al menos {sobra} "
+            "caracteres mas corta (p.ej. C:\\pbix).",
+            details={"out_path": str(destino), "limit": MAX_RUTA,
+                     "length": len(str(destino))})
+
+    # El proyecto se valida ANTES: exportar un .pbip que no abre produce un
+    # .pbix que tampoco, despues de haber abierto una ventana para nada.
+    activo_para_validar = project_locator._build_active_pbip(origen)  # noqa: SLF001
+    if activo_para_validar.has_tmdl:
+        definicion = Path(activo_para_validar.semantic_model_dir) / "definition"
+        validacion = tmdl_validate.validate(definicion, use_tom=True)
+        resultado.validation = {
+            "tmdl_valid": validacion.get("valid"),
+            "parse_checked": validacion.get("parse_checked"),
+            "error_count": validacion.get("error_count"),
+        }
+        if not validacion.get("valid"):
+            raise PbixExportError(
+                f"El modelo TMDL tiene {validacion.get('error_count')} "
+                "error(es): Power BI Desktop no abriria el proyecto, asi que "
+                "no hay nada que exportar. Corrigelos y repite.",
+                details={"findings": [f for f in validacion.get("findings", [])
+                                      if f.get("severity") == "error"][:20],
+                         **resultado.to_dict()})
+    else:
+        resultado.warnings.append(
+            "El proyecto no tiene modelo TMDL propio; se exporta el informe "
+            "tal cual, sin validacion de modelo.")
+
+    resultado.existia = destino.exists()
+    if resultado.existia and not overwrite:
+        raise PbixExportError(
+            f"El destino ya existe: {destino}. Usa overwrite=true si de "
+            "verdad quieres reemplazarlo. No se abre Power BI Desktop para "
+            "descubrir esto a mitad de camino.",
+            details=resultado.to_dict())
+    if resultado.existia:
+        resultado.backup = _respaldar(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    return resultado
+
+
+def _respaldar(destino: Path) -> Path:
+    """Copia recuperable del destino que se va a reemplazar."""
+    from horizun_pbi_mcp.config import get_settings
+
+    raiz = Path(get_settings().backups_dir) / "pbix_export"
+    raiz.mkdir(parents=True, exist_ok=True)
+    copia = raiz / f"{destino.stem}_{int(time.time())}{destino.suffix}"
+    shutil.copy2(destino, copia)
+    log.info("Respaldo del destino en %s", copia)
+    return copia
+
+
+def _restaurar(preflight_: Preflight) -> Dict[str, Any]:
+    """Devuelve el destino a como estaba. Si no puede, lo DICE."""
+    if not preflight_.backup or not preflight_.backup.is_file():
+        return {"restored": False, "reason": "no habia respaldo que restaurar"}
+    try:
+        shutil.copy2(preflight_.backup, preflight_.output_pbix)
+        return {"restored": True, "from": str(preflight_.backup)}
+    except OSError as exc:
+        return {"restored": False, "from": str(preflight_.backup),
+                "error": f"{type(exc).__name__}: {exc}",
+                "action_required": (
+                    "El destino quedo reemplazado y la restauracion fallo. La "
+                    "copia original sigue en la ruta de 'from': recuperala a "
+                    "mano antes de seguir.")}
+
+
+# ------------------------------------------------------------------ refresh --
+def _refrescar(session: Session, modo: str,
+               instancia: Dict[str, Any]) -> Dict[str, Any]:
+    """Intenta refrescar y declara EXACTAMENTE lo que paso."""
+    from horizun_pbi_mcp.powerbi import refresh as refresh_mod
+
+    salida: Dict[str, Any] = {
+        "refresh_requested": modo,
+        "refresh_checked": False,
+        "refresh_succeeded": None,
+        "data_loaded": None,
+        "refresh_warnings": [],
+    }
+    estado = refresh_mod.estado_de_datos(
+        instancia.get("connection_string", ""), instancia.get("catalog"))
+    salida["data_loaded"] = estado.get("data_loaded")
+
+    if modo == REFRESH_SKIP:
+        salida["refresh_warnings"].append(
+            "refresh='skip': se guarda el estado que el modelo tenga ahora "
+            "mismo. Si no habia datos cargados, el .pbix saldra sin datos.")
+        return salida
+
+    try:
+        detalle = refresh_mod.refresh_model(session)
+        salida["refresh_checked"] = True
+        salida["refresh_succeeded"] = True
+        salida["refresh_detail"] = {k: detalle.get(k) for k in
+                                    ("duration_ms", "refresh_type", "tables")
+                                    if k in detalle}
+    except Exception as exc:                              # noqa: BLE001
+        salida["refresh_checked"] = True
+        salida["refresh_succeeded"] = False
+        salida["refresh_error"] = {
+            "code": getattr(exc, "code", "unexpected"),
+            "message": str(getattr(exc, "message", exc))[:300]}
+        if modo == REFRESH_REQUIRED:
+            raise PbixExportError(
+                "refresh='required' y el refresco fallo: no se exporta un "
+                ".pbix presentandolo como entregable con datos.",
+                details=salida) from exc
+        salida["refresh_warnings"].append(
+            "El refresco fallo y refresh='auto': se exporta el estado actual. "
+            "NO se afirma que el .pbix lleve datos actualizados.")
+        return salida
+
+    posterior = refresh_mod.estado_de_datos(
+        instancia.get("connection_string", ""), instancia.get("catalog"))
+    salida["data_loaded"] = posterior.get("data_loaded")
+    if modo == REFRESH_REQUIRED and posterior.get("data_loaded") is not True:
+        raise PbixExportError(
+            "refresh='required' y no se pudo comprobar que el modelo tenga "
+            "datos cargados. No se entrega un .pbix como si los tuviera.",
+            details=salida)
+    return salida
+
+
+# ------------------------------------------------------------- verificacion --
+def verificar_salida(destino: Path, *, desde: float,
+                     antes: Optional[Dict[str, float]] = None
+                     ) -> Dict[str, Any]:
+    """Que el archivo existe, es un .pbix de verdad y es de ESTA ejecucion."""
+    from horizun_pbi_mcp.pbip import pbix_reader
+
+    comprobaciones: Dict[str, Any] = {"exists": destino.is_file()}
+    if not comprobaciones["exists"]:
+        raise PbixExportNotVerified(
+            "El cuadro de guardado se cerro pero el archivo no esta en el "
+            "destino. Que desaparezca un dialogo no es que se haya guardado.",
+            details={"output_pbix": str(destino), "checks": comprobaciones})
+
+    comprobaciones["extension"] = destino.suffix.casefold()
+    if comprobaciones["extension"] != ".pbix":
+        raise PbixExportNotVerified(
+            f"El archivo guardado es '{destino.suffix}', no '.pbix'.",
+            details={"output_pbix": str(destino), "checks": comprobaciones})
+
+    stat = destino.stat()
+    comprobaciones["size"] = stat.st_size
+    if stat.st_size <= 0:
+        raise PbixExportNotVerified(
+            "El archivo guardado esta vacio.",
+            details={"output_pbix": str(destino), "checks": comprobaciones})
+
+    comprobaciones["mtime"] = stat.st_mtime
+    comprobaciones["mtime_in_this_run"] = stat.st_mtime >= desde - 2
+    if not comprobaciones["mtime_in_this_run"]:
+        raise PbixExportNotVerified(
+            "El archivo del destino es ANTERIOR a esta ejecucion: lo que hay "
+            "ahi no lo escribio este guardado.",
+            details={"output_pbix": str(destino), "checks": comprobaciones,
+                     "started_at": desde})
+
+    try:
+        contenido = pbix_reader.read_pbix(destino)
+    except Exception as exc:                              # noqa: BLE001
+        raise PbixExportNotVerified(
+            "El archivo existe pero el lector de .pbix no lo puede abrir; no "
+            "se declara entregable algo que no se pudo inspeccionar.",
+            details={"output_pbix": str(destino), "checks": comprobaciones,
+                     "cause": f"{type(exc).__name__}: {exc}"[:200]}) from exc
+
+    resumen = contenido.summary()
+    comprobaciones["report_format"] = resumen.get("report_format")
+    comprobaciones["has_data_model"] = resumen.get("has_data_model")
+    comprobaciones["inspected"] = True
+    if resumen.get("report_format") == "none":
+        raise PbixExportNotVerified(
+            "El .pbix guardado no contiene ningun informe.",
+            details={"output_pbix": str(destino), "checks": comprobaciones})
+
+    # El hash se calcula cuando la escritura YA termino y el archivo se pudo
+    # abrir entero: un sha256 tomado a mitad de un guardado no identifica nada.
+    return {
+        "checks": comprobaciones,
+        "output_size": stat.st_size,
+        "output_sha256": sha256_de(destino),
+        "pbix_summary": resumen,
+    }
+
+
+#: Cuanto se espera a que el archivo APAREZCA, aparte del plazo total. Power
+#: BI Desktop lo crea en segundos tras cerrar el cuadro; si en dos minutos no
+#: hay nada, no lo va a haber. Separarlo del plazo global es lo que evita que
+#: un guardado fallido se lleve el presupuesto entero de la operacion.
+GRACIA_APARICION = 120.0
+
+
+def esperar_escritura_terminada(destino: Path, *, timeout: float,
+                                adapter: Any = None, pid: Optional[int] = None,
+                                excluir: Optional[List[int]] = None,
+                                origen: Optional[Path] = None,
+                                gracia: float = GRACIA_APARICION
+                                ) -> Dict[str, Any]:
+    """Espera a que el archivo APAREZCA y termine de escribirse.
+
+    Que el cuadro de guardado se cierre no es que el archivo este. Power BI
+    Desktop cierra el dialogo y **escribe despues**, con su propia barra de
+    progreso: comprobar en ese instante encuentra la carpeta vacia y declara
+    un fallo que no lo es. Lo descubrio la primera ejecucion real, que fallo
+    con "el cuadro se cerro pero el archivo no esta en el destino".
+
+    Se espera a dos cosas, no a una: que exista y que su tamano deje de
+    cambiar. Un `.pbix` a medio escribir existe y no se puede abrir.
+
+    Mientras se espera se vigilan los modales: si Power BI abre un cuadro
+    -disco lleno, archivo bloqueado- eso es la explicacion, no un plazo
+    agotado.
+
+    Los dos plazos son distintos a proposito. `timeout` cubre un archivo que
+    ya aparecio y sigue creciendo, que en un modelo grande tarda; `gracia`
+    cubre que aparezca, y eso Desktop lo hace en segundos. Cuando eran el
+    mismo, un guardado que jamas iba a ocurrir se pasaba un cuarto de hora
+    mirando una carpeta vacia antes de contarlo.
+    """
+    limite = time.monotonic() + float(timeout)
+    inicio = time.monotonic()
+    tope_aparicion = inicio + min(float(gracia), float(timeout))
+    ultimo_tamano = -1
+    estable_desde = None
+    visto = False
+
+    while time.monotonic() < limite:
+        if adapter is not None and pid:
+            try:
+                modales = adapter.modales(pid, excluir=excluir or [])
+            except Exception:                             # noqa: BLE001
+                modales = []
+            if modales:
+                from horizun_pbi_mcp.powerbi import desktop_ui
+
+                raise desktop_ui.DesktopModalError(
+                    "Power BI Desktop abrio un dialogo mientras guardaba; el "
+                    "guardado no termino.",
+                    details={"modals": [m.to_dict() for m in modales],
+                             "phase": "esperar_escritura",
+                             "output_pbix": str(destino)})
+        if destino.is_file():
+            visto = True
+            tamano = destino.stat().st_size
+            if tamano > 0 and tamano == ultimo_tamano:
+                if estable_desde is None:
+                    estable_desde = time.monotonic()
+                elif time.monotonic() - estable_desde >= 1.5:
+                    # Ademas de estable, tiene que poder abrirse: si Desktop
+                    # aun lo tiene bloqueado, la inspeccion posterior fallaria.
+                    try:
+                        with open(destino, "rb") as fh:
+                            fh.read(4)
+                        return {"waited": True, "size": tamano,
+                                "stable": True}
+                    except OSError:
+                        estable_desde = None
+            else:
+                estable_desde = None
+            ultimo_tamano = tamano
+        elif time.monotonic() > tope_aparicion:
+            break              # no aparecio: esperar mas no lo va a traer
+        time.sleep(0.5)
+
+    # La clave es `wait_reason` y no `reason` a proposito: quien fusiona este
+    # diccionario en el error ya tiene su propio `reason`, y machacarlo
+    # cambiaba el codigo de fallo por una frase.
+    extraviado = artefacto_extraviado(destino, origen)
+    if extraviado:
+        raise PbixWrongFormatError(
+            "Power BI Desktop guardo el archivo en la carpeta del PROYECTO en "
+            f"vez de en la carpeta pedida: aparecio '{extraviado['found']}'. "
+            "Pasa cuando el cuadro recibe solo un nombre y no una ruta "
+            "completa: la carpeta que estuviera abierta manda.",
+            details={"reason": "saved_in_source_folder",
+                     "requested": str(destino), **extraviado})
+
+    otro = artefacto_de_otro_formato(destino)
+    if otro:
+        raise PbixWrongFormatError(
+            "Power BI Desktop guardo un PROYECTO en vez de un archivo .pbix: "
+            f"aparecio '{otro['kind']}' junto al destino pedido. El "
+            "desplegable de tipo del cuadro de guardado se puede leer y hasta "
+            "cambiar de aspecto, pero Desktop siguio usando su formato "
+            "anterior. Un .pbip no es un entregable, asi que esto NO se da "
+            "por bueno.",
+            details={"reason": "saved_in_wrong_format",
+                     "requested": str(destino), **otro})
+    esperado = round(time.monotonic() - inicio, 1)
+    return {"waited": True, "stable": False, "appeared": visto,
+            "timeout": timeout, "waited_seconds": esperado,
+            "wait_reason": (
+                f"el archivo aparecio pero no dejo de crecer en {esperado:.0f} s"
+                if visto else
+                f"el archivo nunca aparecio en el destino ({esperado:.0f} s)")}
+
+
+#: Lo que Power BI deja cuando guarda un PROYECTO en vez de un archivo.
+_RASTROS_DE_PROYECTO = (".pbip", ".Report", ".SemanticModel", ".pbit")
+
+
+def artefacto_de_otro_formato(destino: Path) -> Optional[Dict[str, Any]]:
+    """Detecta que se guardo OTRA cosa con el nombre que se pidio.
+
+    Al pedir `Informe.pbix` con el filtro en `.pbip`, Desktop escribe
+    `Informe.pbix.pbip` y sus carpetas `.Report` y `.SemanticModel`. Sin esta
+    comprobacion el fallo se reporta como "el archivo no esta en el destino",
+    que es cierto y no explica nada: la persona mira la carpeta, ve tres cosas
+    con su nombre y no entiende que paso.
+    """
+    encontrados = []
+    for sufijo in _RASTROS_DE_PROYECTO:
+        candidato = Path(str(destino) + sufijo)
+        if candidato.exists():
+            encontrados.append(str(candidato))
+        hermano = destino.with_suffix(sufijo)
+        if hermano != destino and hermano.exists():
+            encontrados.append(str(hermano))
+    if not encontrados:
+        return None
+    return {"kind": "proyecto .pbip" if any(p.endswith(".pbip")
+                                            for p in encontrados)
+                    else "artefacto de otro formato",
+            "found": sorted(set(encontrados))}
+
+
+def artefacto_extraviado(destino: Path,
+                         origen: Optional[Path]) -> Optional[Dict[str, Any]]:
+    """Busca el archivo pedido en la carpeta del .pbip, y SOLO alli.
+
+    No se rastrea el disco: se mira el basename exacto de esta ejecucion en
+    las dos unicas carpetas donde Desktop puede haberlo dejado -la pedida, que
+    ya se comprobo, y la del proyecto de origen-. Buscar mas ancho es como
+    aceptar cualquier archivo con nombre parecido: encontraria el de otra
+    ejecucion y lo daria por bueno.
+    """
+    if origen is None:
+        return None
+    carpeta = origen.parent if origen.suffix else origen
+    try:
+        if carpeta.resolve() == destino.parent.resolve():
+            return None                     # es la misma: ya se comprobo
+    except OSError:                                       # pragma: no cover
+        return None
+    candidato = carpeta / destino.name
+    if not candidato.is_file():
+        return None
+    return {"found": str(candidato), "source_folder": str(carpeta),
+            "size": candidato.stat().st_size}
+
+
+def _vecinos(carpeta: Path) -> Dict[str, float]:
+    try:
+        return {p.name: p.stat().st_mtime for p in carpeta.iterdir()
+                if p.is_file()}
+    except OSError:                                       # pragma: no cover
+        return {}
+
+
+def _colaterales(antes: Dict[str, float], carpeta: Path,
+                 destino: Path) -> List[str]:
+    """Otros archivos creados o pisados en la carpeta durante el guardado."""
+    despues = _vecinos(carpeta)
+    tocados = []
+    for nombre, mtime in despues.items():
+        if nombre == destino.name:
+            continue
+        if nombre not in antes or antes[nombre] != mtime:
+            tocados.append(nombre)
+    return sorted(tocados)
+
+
+# ------------------------------------------------------------ orquestacion ---
+def _abrir_o_reutilizar(objetivo: Path, *, timeout: int,
+                        confirm_reuse: bool) -> Any:
+    """Deja el proyecto servido por Desktop, exigiendo permiso si ya lo estaba.
+
+    Conducir una ventana que abrio el usuario es distinto de conducir la
+    nuestra: puede tener cambios sin guardar que este 'Guardar como'
+    escribiria. Por eso hace falta `confirm_reuse=true` explicito.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_launcher
+
+    ya_abierto = desktop_launcher.proceso_con_archivo_abierto(objetivo)
+    if ya_abierto and not confirm_reuse:
+        raise PbixExportError(
+            f"El proyecto ya esta abierto en Power BI Desktop (pid "
+            f"{ya_abierto}) y esa ventana es del usuario: puede tener cambios "
+            "sin guardar que este 'Guardar como' escribiria. Pasa "
+            "confirm_reuse=true si quieres conducir esa ventana.",
+            details={"path": str(objetivo), "desktop_pid": ya_abierto,
+                     "reason": "desktop_session_belongs_to_user"})
+    return desktop_launcher.open_pbix(str(objetivo), timeout=timeout,
+                                      reuse_open=True)
+
+
+def _identidad_verificada(abierto: Any, objetivo: Path) -> Dict[str, Any]:
+    from horizun_pbi_mcp.powerbi import desktop_identity
+
+    identidad = desktop_identity.identify(abierto.instance, target=objetivo)
+    if identidad.get("desktop_pid") is None:
+        raise PbixExportError(
+            "No se pudo identificar el proceso de Power BI Desktop que sirve "
+            "este proyecto. No se conduce una ventana sin saber cual es.",
+            details={"path": str(objetivo), "identity": identidad})
+    if identidad.get("path_match") is False:
+        raise PbixExportError(
+            "La ventana identificada esta sirviendo OTRO documento. No se "
+            "guarda desde ahi por mucho que sea la unica que aparecio durante "
+            "el intervalo de lanzamiento.",
+            details={"path": str(objetivo), "identity": identidad,
+                     "reason": "desktop_serves_other_document"})
+    return identidad
+
+
+def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
+                  destino: Path, timeout: float,
+                  origen: Optional[Path] = None) -> Dict[str, Any]:
+    """El flujo oficial, paso a paso y sin aceptar nada por defecto.
+
+    El adaptador real ofrece `save_as_completo`, que hace toda la interaccion
+    en un proceso aparte: una llamada COM bloqueada solo se puede cancelar
+    terminando el proceso que la hizo. El doble de las pruebas no la ofrece y
+    entonces se recorre paso a paso, que es lo que permite comprobar la logica
+    -tipo forzado, modal distinguido de timeout- sin abrir ninguna ventana.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_ui
+
+    if hasattr(adapter, "save_as_completo"):
+        respuesta = adapter.save_as_completo(
+            pid=pid, started=started, destino=str(destino),
+            extension=".pbix", timeout=timeout)
+        if respuesta.get("modals"):
+            raise desktop_ui.DesktopModalError(
+                "El guardado se detuvo en un dialogo. No se cierra "
+                "automaticamente: alguno de estos implica perder datos.",
+                details={"modals": respuesta["modals"]})
+        if not respuesta.get("dialog_closed"):
+            # Sin esto el fallo se degradaba a "el archivo nunca aparecio", que
+            # es cierto y manda a mirar la carpeta equivocada: lo que pasa es
+            # que el cuadro sigue en pantalla esperando algo.
+            raise PbixExportError(
+                "El cuadro de guardado sigue abierto y no hay ningun dialogo "
+                "que lo explique. No se declara guardado lo que no termino.",
+                details={"reason": "save_dialog_still_open",
+                         "phase": "guardar_como", "timeout": timeout,
+                         "helper": respuesta.get("steps")})
+
+        espera = esperar_escritura_terminada(
+            destino, timeout=timeout, adapter=adapter, pid=pid, origen=origen)
+        if not espera.get("stable"):
+            raise PbixExportError(
+                "El cuadro de guardado se cerro pero la escritura no termino: "
+                f"{espera.get('wait_reason')}. No se declara entregado lo que "
+                "no se pudo ver terminar.",
+                details={"reason": "save_did_not_finish",
+                         "phase": "guardar_como",
+                         "output_pbix": str(destino),
+                         "helper": respuesta.get("steps"), **espera})
+        return {"file_type_selected": respuesta.get("file_type_selected"),
+                "commit_method": respuesta.get("commit_method"),
+                "dialog_closed": respuesta.get("dialog_closed"),
+                "helper_steps": respuesta.get("steps"),
+                "write_wait": espera}
+
+    ventana = adapter.ventana_principal(pid, started)
+    previos = [m.hwnd for m in adapter.modales(pid)]
+    adapter.abrir_guardar_como(ventana)
+
+    try:
+        dialogo = adapter.esperar_dialogo_guardado(pid, timeout=ESPERA_DIALOGO)
+    except desktop_ui.DesktopModalError:
+        raise
+    except desktop_ui.DesktopUIError as exc:
+        # Un dialogo VISIBLE jamas se reporta como timeout: se mira antes de
+        # concluir que "no aparecio nada".
+        modales = adapter.modales(pid, excluir=previos)
+        if modales:
+            raise desktop_ui.DesktopModalError(
+                "Power BI Desktop tiene un dialogo abierto esperando una "
+                "respuesta; no es que se haya agotado el tiempo.",
+                details={"modals": [m.to_dict() for m in modales]}) from exc
+        raise
+
+    tipo = adapter.elegir_tipo(dialogo, ".pbix")
+    adapter.escribir_ruta(dialogo, str(destino))
+    adapter.confirmar(dialogo)
+
+    cerrado = adapter.esperar_cierre(dialogo, timeout=timeout)
+    modales = adapter.modales(pid, excluir=list(previos) + [dialogo.hwnd])
+    if modales:
+        raise desktop_ui.DesktopModalError(
+            "El guardado se detuvo en un dialogo. No se cierra "
+            "automaticamente: alguno de estos implica perder datos.",
+            details={"modals": [m.to_dict() for m in modales],
+                     "dialog_closed": cerrado})
+    if not cerrado:
+        raise PbixExportError(
+            "El cuadro de guardado sigue abierto y no hay ningun dialogo que "
+            "lo explique. No se declara guardado lo que no termino.",
+            details={"reason": "save_dialog_still_open", "timeout": timeout})
+
+    # El dialogo se cerro: ahora empieza la escritura de verdad.
+    espera = esperar_escritura_terminada(
+        destino, timeout=timeout, adapter=adapter, pid=pid,
+        excluir=list(previos) + [dialogo.hwnd])
+    if not espera.get("stable"):
+        raise PbixExportError(
+            "El cuadro de guardado se cerro pero la escritura no termino: "
+            f"{espera.get('wait_reason')}. No se declara entregado lo que "
+            "no se pudo ver terminar.",
+            details={"reason": "save_did_not_finish", "phase": "guardar_como",
+                     "output_pbix": str(destino), **espera})
+    return {"file_type_selected": tipo, "dialog_closed": True,
+            "write_wait": espera}
+
+
+def _estado_final(session: Session, *, abierto: Any, destino: Path,
+                  leave_open: bool, timeout: int) -> Dict[str, Any]:
+    """Deja abierto EXACTAMENTE el .pbix generado, o cierra solo lo nuestro."""
+    from horizun_pbi_mcp.powerbi import (desktop_discovery, desktop_identity,
+                                         desktop_launcher)
+
+    salida: Dict[str, Any] = {"leave_open": leave_open}
+    if not leave_open:
+        # Solo se cierra lo que abrio ESTA operacion. Una ventana del usuario
+        # no se toca ni aunque este sirviendo el mismo archivo.
+        if abierto.launched_by_us:
+            salida["closed"] = desktop_launcher.close(abierto)
+        else:
+            salida["closed"] = {
+                "closed": False,
+                "reason": "la sesion ya estaba abierta; es del usuario"}
+        salida["opened_path_verified"] = False
+        return salida
+
+    # Normalmente `Guardar como` reapunta la MISMA ventana al .pbix. Se
+    # verifica en vez de darlo por hecho.
+    pid = abierto.desktop_pid
+    abierto_ahora = desktop_launcher.proceso_con_archivo_abierto(destino)
+    salida["same_window_followed"] = bool(
+        abierto_ahora and int(abierto_ahora) == int(pid or -1))
+
+    if not abierto_ahora:
+        # No siguio: se abre explicitamente el entregable. La ventana anterior
+        # solo se cierra si la lanzamos nosotros y su identidad sigue valiendo.
+        if abierto.launched_by_us:
+            salida["closed_previous"] = desktop_launcher.close(abierto)
+        else:
+            salida["closed_previous"] = {
+                "closed": False,
+                "reason": "la ventana anterior es del usuario; no se cierra"}
+        nuevo = desktop_launcher.open_pbix(str(destino), timeout=timeout,
+                                           reuse_open=True)
+        identidad = desktop_identity.identify(nuevo.instance, target=destino)
+        salida["reopened"] = True
+        salida["desktop_pid"] = nuevo.desktop_pid
+        salida["identity"] = identidad
+        salida["opened_path_verified"] = identidad.get("path_match") is True
+        instancia = nuevo.instance
+    else:
+        identidad = desktop_identity.identify(abierto.instance, target=destino)
+        salida["reopened"] = False
+        salida["desktop_pid"] = abierto_ahora
+        salida["identity"] = identidad
+        salida["opened_path_verified"] = True
+        instancia = abierto.instance
+
+    try:
+        modelo = desktop_discovery.select_model(
+            session, port=instancia.get("port"))
+        salida["active_model"] = modelo.to_dict()
+        salida["selected"] = True
+    except Exception as exc:                              # noqa: BLE001
+        salida["selected"] = False
+        salida["select_error"] = str(getattr(exc, "message", exc))[:200]
+    return salida
+
+
+def export(session: Session, *, pbip_path: Optional[str] = None,
+           out_path: Optional[str] = None, overwrite: bool = False,
+           refresh: str = REFRESH_AUTO, leave_open: bool = True,
+           timeout: int = 600, confirm_reuse: bool = False,
+           adapter: Optional[Any] = None) -> Dict[str, Any]:
+    """PBIP -> PBIX por `Guardar como`, con todo verificado a los dos lados."""
+    from horizun_pbi_mcp.powerbi import desktop_ui
+
+    modo = str(refresh or REFRESH_AUTO).casefold()
+    if modo not in MODOS_REFRESH:
+        raise ValidationError(
+            f"refresh='{refresh}' no existe. Usa {', '.join(MODOS_REFRESH)}.",
+            details={"parameter": "refresh", "valid": list(MODOS_REFRESH)})
+
+    previo = preflight(session, pbip_path=pbip_path, out_path=out_path,
+                       overwrite=overwrite)
+    destino = previo.output_pbix
+    adapter = adapter or desktop_ui.adaptador_por_defecto()
+    inicio = time.time()
+    vecinos_antes = _vecinos(destino.parent)
+
+    salida: Dict[str, Any] = {
+        "source_pbip": str(previo.source_pbip),
+        "output_pbix": str(destino),
+        "preflight": previo.to_dict(),
+        "saved_as_verified": False,
+        "opened_path_verified": False,
+        "warnings": list(previo.warnings),
+    }
+
+    abierto = _abrir_o_reutilizar(previo.source_pbip, timeout=timeout,
+                                  confirm_reuse=confirm_reuse)
+    salida["reused_open_session"] = not abierto.launched_by_us
+    try:
+        identidad = _identidad_verificada(abierto, previo.source_pbip)
+        salida["identity"] = identidad
+
+        refresco = _refrescar(session, modo, abierto.instance)
+        salida.update(refresco)
+        salida["warnings"].extend(refresco.get("refresh_warnings") or [])
+
+        guardado = _guardar_como(
+            adapter, pid=identidad["desktop_pid"],
+            started=identidad.get("desktop_process_started"),
+            destino=destino, timeout=float(timeout),
+            origen=previo.source_pbip)
+        salida.update(guardado)
+
+        verificacion = verificar_salida(destino, desde=inicio)
+        salida.update({k: v for k, v in verificacion.items()
+                       if k != "checks"})
+        salida["verification"] = verificacion["checks"]
+        salida["saved_as_verified"] = True
+
+        tocados = _colaterales(vecinos_antes, destino.parent, destino)
+        salida["collateral_files_touched"] = tocados
+        if tocados:
+            salida["warnings"].append(
+                f"El guardado dejo cambios en {len(tocados)} archivo(s) mas "
+                "de la carpeta de destino; revisa "
+                "'collateral_files_touched'.")
+    except BaseException as fallo:
+        restauracion = _restaurar(previo)
+        salida["restore"] = restauracion
+        if previo.existia and not restauracion.get("restored"):
+            raise PbixRestoreFailed(
+                "La exportacion fallo y el destino que existia NO se pudo "
+                "restaurar. Requiere intervencion: la copia original esta en "
+                "el respaldo.",
+                details={**salida,
+                         "cause": str(getattr(fallo, "message", fallo))[:300]}
+            ) from fallo
+        if isinstance(fallo, PowerBIMCPError):
+            # El error original conserva su codigo y su mensaje -es el que
+            # explica QUE fallo- pero se le anade que paso con el destino.
+            # Sin esto, quien recibe el fallo no sabe si su entregable
+            # anterior sigue ahi, que es lo primero que va a preguntar.
+            fallo.details = {**(fallo.details or {}),
+                             "restore": restauracion,
+                             "output_pbix": str(destino),
+                             "source_pbip": str(previo.source_pbip),
+                             "target_existed": previo.existia}
+        raise
+
+    salida["final_state"] = _estado_final(
+        session, abierto=abierto, destino=destino, leave_open=leave_open,
+        timeout=timeout)
+    salida["opened_path_verified"] = bool(
+        salida["final_state"].get("opened_path_verified"))
+    log.info("Exportado %s -> %s (%s bytes)", previo.source_pbip.name,
+             destino.name, salida.get("output_size"))
+    return salida
+
+
+def finalize_delivery(session: Session, *, path: Optional[str] = None,
+                      format: str = "pbix", out_path: Optional[str] = None,
+                      refresh: str = REFRESH_AUTO, overwrite: bool = False,
+                      leave_open: bool = True,
+                      adapter: Optional[Any] = None) -> Dict[str, Any]:
+    """De un archivo cualquiera al entregable, en una sola llamada.
+
+    Resuelve el archivo exacto, convierte si le das un `.pbix`, valida,
+    exporta por Desktop, inspecciona el resultado y deja abierto justo el
+    entregable.
+    """
+    from horizun_pbi_mcp.services import project_prepare
+
+    if str(format or "").casefold() != "pbix":
+        raise ValidationError(
+            f"format='{format}' no esta soportado. Por ahora el entregable es "
+            "'pbix'.", details={"parameter": "format", "valid": ["pbix"]})
+
+    salida: Dict[str, Any] = {"format": "pbix"}
+    if path:
+        preparado = project_prepare.prepare(session, path)
+        salida["prepare"] = preparado
+        pbip = preparado["active_project"]
+    else:
+        activo = getattr(session, "active_pbip", None)
+        if activo is None:
+            raise ValidationError(
+                "No hay proyecto activo y no se indico `path`.",
+                details={"parameter": "path"})
+        pbip = activo.pbip_path
+        salida["prepare"] = {"skipped": True,
+                             "reason": "se uso el proyecto activo"}
+
+    exportado = export(session, pbip_path=pbip, out_path=out_path,
+                       overwrite=overwrite, refresh=refresh,
+                       leave_open=leave_open, adapter=adapter)
+    salida.update(exportado)
+    salida["delivered"] = bool(exportado.get("saved_as_verified"))
+    return salida

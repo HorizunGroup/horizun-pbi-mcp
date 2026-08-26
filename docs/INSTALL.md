@@ -33,7 +33,7 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.0.2/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
 $sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
@@ -169,14 +169,14 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Setup starts automatically on the first session. While it progresses
 you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
-the client the 134 tools will appear. Nothing needs to be downloaded or run
+the client the 139 tools will appear. Nothing needs to be downloaded or run
 separately. The runtime and verified downloads stay in the plugin's local
 data, outside the repository and your projects.
 
 Python 3.10+ is still a requirement: it's the local process that talks to
 Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 
-Reproducible guide from scratch. At the end, an MCP client should see 134 `pbi_*` tools.
+Reproducible guide from scratch. At the end, an MCP client should see 139 `pbi_*` tools.
 
 ---
 
@@ -189,6 +189,7 @@ Reproducible guide from scratch. At the end, an MCP client should see 134 `pbi_*
 | **.NET Framework 4.x** | Used by `pythonnet` (`netfx` runtime) | For the LIVE layer |
 | **Power BI Desktop** | Runs the local `msmdsrv.exe` engine | For the LIVE layer |
 | **Analysis Services DLLs** | ADOMD.NET + TOM. Vendored into `libs/`, no admin or GAC | Yes |
+| **`comtypes`** | UI Automation, to export a `.pbip` as `.pbix` | Only for `pbi_export_pbix` / `pbi_finalize_delivery` |
 
 ---
 
@@ -203,6 +204,18 @@ python scripts/fetch_libs.py
 ```
 
 The second command downloads the Analysis Services DLLs to `libs/`. It doesn't require administrator permissions and doesn't touch the GAC.
+
+### Optional: exporting `.pbip` to `.pbix`
+
+```bash
+python -m pip install "horizun-pbi-mcp[export]"
+```
+
+Only needed for `pbi_export_pbix` and `pbi_finalize_delivery`. Microsoft publishes no API to convert the format, so the tool drives Power BI Desktop's own **Save As** — and that needs UI Automation, which is COM (`comtypes`). Win32 messages are not enough: `CB_SETCURSEL` changes what the file-type dropdown *reads* without notifying the application, and Desktop goes on saving a `.pbip` project with a `.pbix` name.
+
+Everything else — DAX, TMDL, PBIR, audits — works without it. The plugin installer tries to add it on Windows and reports the result under `export_extra`; if it isn't there, `pbi_capabilities` says so in `pbix_export` and `python scripts/doctor.py` raises it as a warning, never as a failure.
+
+The interface is driven from a **separate process**. A blocked COM call cannot be cancelled from the inside, so the timeout is enforced by the operating system terminating that helper — no COM thread is ever left alive inside the MCP server.
 
 ### Check before registering anything
 
@@ -273,7 +286,7 @@ horizun-pbi-completar
 The second command is **not optional**. The wheel cannot ship the Analysis
 Services DLLs (Microsoft binaries) or the PBIR schemas (no redistribution
 permission), so a bare `pip install` leaves a server that starts, speaks MCP and
-answers all 134 tools — and cannot work: the LIVE layer has nothing to talk to
+answers all 139 tools — and cannot work: the LIVE layer has nothing to talk to
 the model with, and every PBIR write fails with `schema_unavailable`.
 `horizun-pbi-completar` downloads both, verified by SHA-256, and
 `horizun-pbi-completar --check` tells you where you stand without downloading

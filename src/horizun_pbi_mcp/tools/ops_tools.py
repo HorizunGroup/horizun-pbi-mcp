@@ -65,6 +65,32 @@ def _cap_esquema_interno() -> Dict[str, Any]:
     }
 
 
+def _cap_exportar_pbix() -> Dict[str, Any]:
+    """Exportar .pbip a .pbix conduciendo el cuadro de guardado de Desktop.
+
+    Se declara aparte porque depende de un extra que puede no estar instalado
+    -y de Windows-. Sin el, `pbi_export_pbix` falla al llamarse; decirlo aqui
+    permite a un agente plantear la entrega de otra forma en vez de descubrirlo
+    a mitad del trabajo.
+    """
+    import os
+
+    from horizun_pbi_mcp.powerbi import desktop_helper
+
+    estado = desktop_helper.comtypes_disponible()
+    return {
+        "available": bool(estado.get("available")),
+        "reason": ("disponible" if estado.get("available")
+                   else estado.get("reason", "no disponible")),
+        "platform": os.name,
+        "install": estado.get("install"),
+        "note": ("Usa el 'Guardar como' oficial de Power BI Desktop desde un "
+                 "proceso aparte. Microsoft no publica API para convertir el "
+                 "formato, y los mensajes Win32 no comprometen el tipo: sin "
+                 "UI Automation el archivo sale como proyecto .pbip."),
+    }
+
+
 def _cap_validador_oficial() -> Dict[str, Any]:
     """CLI de Microsoft: valida el .Report entero, incluidas relaciones."""
     from horizun_pbi_mcp.services import pbir_schema, report_validator as rv
@@ -353,6 +379,7 @@ def register(mcp) -> None:
                         "reason": ("Deshabilitado: 'live' necesita Power BI Desktop "
                                    "abierto y 'pbip' lo necesita cerrado. Elige uno."),
                         "unsupported": True},
+                    "pbix_export": _cap_exportar_pbix(),
                     "cloud_fabric": {
                         "available": False,
                         "reason": "No implementado en esta version (sin autenticacion).",

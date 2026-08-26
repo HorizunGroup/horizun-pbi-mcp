@@ -229,6 +229,24 @@ TORRE_AURORA_TOOLS = [
     "pbi_set_color_from_field",
 ]
 
+#: Lectura y edicion segura de Power Query (M). El codigo M no tiene archivo
+#: propio en un .pbip: vive dentro del TMDL, en la `partition` de cada tabla y
+#: en `expressions.tmdl`, y hasta ahora no habia forma de leerlo ni cambiarlo
+#: sin editar el TMDL a mano.
+POWER_QUERY_TOOLS = [
+    "pbi_get_power_query",
+    "pbi_update_power_query",
+]
+
+#: Seleccion determinista del archivo y entrega final en PBIX. `.pbip` no es
+#: un entregable -quien lo recibe necesita Desktop y la carpeta entera-, y
+#: hasta ahora no habia forma de producir el `.pbix` desde aqui.
+ENTREGA_TOOLS = [
+    "pbi_prepare_project",
+    "pbi_export_pbix",
+    "pbi_finalize_delivery",
+]
+
 TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + MACROFASE_D_TOOLS + MACROFASE_E_TOOLS + MACROFASE_F_TOOLS
                 + FASE_F_R5_TOOLS + CONVERSION_TOOLS + THEME_TOOLS
@@ -237,7 +255,8 @@ TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + CIERRE_TOOLS + BRIEF_TOOLS + DIAGNOSTICO_TOOLS
                 + FUENTES_TOOLS + PUERTO_TOOLS
                 + EXPORTACION_Y_SHAREPOINT_TOOLS + CONTENIDO_TOOLS
-                + TORRE_AURORA_TOOLS)
+                + TORRE_AURORA_TOOLS + POWER_QUERY_TOOLS
+                + ENTREGA_TOOLS)
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 

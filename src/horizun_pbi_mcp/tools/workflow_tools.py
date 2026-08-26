@@ -125,3 +125,80 @@ def register(mcp) -> None:
             return {"output_path": str(destino), "length": len(texto),
                     "sections": ["Modelo semantico", "Informe", "Auditoria"]}
         return guard(_impl)
+
+
+    @mcp.tool()
+    def pbi_export_pbix(pbip_path: str = "", out_path: str = "",
+                        overwrite: bool = False, refresh: str = "auto",
+                        leave_open: bool = True, timeout: int = 600,
+                        confirm_reuse: bool = False,
+                        request_id: str = "") -> Dict[str, Any]:
+        """Exporta el proyecto .pbip a un archivo .pbix de verdad.
+
+        Microsoft no publica ninguna API para convertir el formato, asi que
+        esto automatiza el flujo OFICIAL: abre el proyecto en Power BI Desktop
+        y usa `Archivo > Guardar como`. No se fabrica el .pbix a mano -un zip
+        cosido con TOM abre a veces y rompe otras-.
+
+        Antes de tocar Desktop se resuelve la ruta exacta, se valida el TMDL,
+        se comprueba que el destino cabe en Windows y, si existe y pasas
+        `overwrite=true`, se respalda. Si el destino existe y no lo pasas,
+        falla ANTES de abrir ninguna ventana.
+
+        `refresh`: 'auto' intenta refrescar y declara el resultado sin
+        adornarlo; 'required' no exporta si no pudo refrescar -para no
+        entregar un .pbix como si tuviera datos-; 'skip' guarda el estado que
+        el modelo tenga ahora.
+
+        Que el dialogo desaparezca NO es que se haya guardado: se comprueba
+        que el archivo existe, que es .pbix y no .pbit, que pesa mas de cero,
+        que su fecha es de esta ejecucion y que el lector de .pbix lo puede
+        abrir con informe y modelo dentro. Si `saved_as_verified` no es true,
+        la respuesta no es un exito.
+
+        `leave_open=true` (por defecto) deja abierto exactamente el .pbix
+        generado y lo selecciona como modelo activo. Nunca cierra una ventana
+        que no abrio esta operacion.
+
+        Requiere Windows, Power BI Desktop instalado y el extra `export`
+        (`pip install "horizun-pbi-mcp[export]"`). El cuadro de guardado se
+        conduce por UI Automation desde un proceso aparte: los mensajes Win32
+        cambian lo que se LEE en el desplegable de tipo sin avisar a la
+        aplicacion, y Desktop sigue guardando un proyecto. `pbi_capabilities`
+        dice en `pbix_export` si esta disponible aqui y ahora.
+        """
+        from horizun_pbi_mcp.services import pbix_export
+
+        return guard_mutation(lambda: pbix_export.export(
+            get_session(), pbip_path=pbip_path or None,
+            out_path=out_path or None, overwrite=overwrite, refresh=refresh,
+            leave_open=leave_open, timeout=timeout,
+            confirm_reuse=confirm_reuse))
+
+    @mcp.tool()
+    def pbi_finalize_delivery(path: str = "", format: str = "pbix",
+                              out_path: str = "", refresh: str = "auto",
+                              overwrite: bool = False,
+                              leave_open: bool = True,
+                              request_id: str = "") -> Dict[str, Any]:
+        """El ULTIMO paso de una construccion: del proyecto al entregable.
+
+        Hace de extremo a extremo lo que hasta ahora eran cinco llamadas y un
+        par de suposiciones: resuelve el archivo exacto que le pasas, lo
+        prepara -convirtiendolo si le das un .pbix-, valida el proyecto,
+        exporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado
+        y deja abierto justo el entregable, seleccionado como modelo activo.
+
+        Una sola respuesta verificable: `output_pbix`, `output_sha256`,
+        `output_size`, `saved_as_verified` y `opened_path_verified`.
+
+        `path` se puede omitir para usar el proyecto activo. `format` solo
+        acepta 'pbix' por ahora, y se declara asi en vez de fingir que hay
+        mas. Requiere Windows con Power BI Desktop instalado.
+        """
+        from horizun_pbi_mcp.services import pbix_export
+
+        return guard_mutation(lambda: pbix_export.finalize_delivery(
+            get_session(), path=path or None, format=format,
+            out_path=out_path or None, refresh=refresh, overwrite=overwrite,
+            leave_open=leave_open))

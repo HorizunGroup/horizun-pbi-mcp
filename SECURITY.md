@@ -67,8 +67,8 @@ release. There is no long-term-support branch.
 
 | Version | Supported |
 |---|---|
-| `2.0.x` | ✅ Yes |
-| `1.5.x` and older | ❌ No — upgrade |
+| `2.1.x` | ✅ Yes |
+| `2.0.x` and older | ❌ No — upgrade |
 
 Upgrading is `claude plugin install horizun-pbi-mcp@horizun` again, or the
 one-paste installer, which is idempotent.

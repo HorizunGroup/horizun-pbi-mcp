@@ -104,6 +104,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_diff_page_spec": READ_ONLY,
     "pbi_generate_page_spec": READ_ONLY,
     "pbi_get_object": READ_ONLY,
+    "pbi_get_power_query": READ_ONLY,
     "pbi_get_visual": READ_ONLY,
     "pbi_health_check": READ_ONLY,
     "pbi_inspect_journal": READ_ONLY,
@@ -218,6 +219,17 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_normalize_page_layout": WRITE_REVERSIBLE,
     "pbi_normalize_report": WRITE_REVERSIBLE,
     "pbi_prepare_delivery": WRITE_REVERSIBLE,
+    # Resuelve, convierte si hace falta y ACTIVA un proyecto: escribe
+    # el arbol convertido y cambia a que apunta todo lo que venga
+    # despues. No es una lectura por mucho que empiece leyendo.
+    "pbi_prepare_project": WRITE_REVERSIBLE,
+    # Conducen Power BI Desktop y escriben un .pbix. No son
+    # destructivas en el sentido de esta tabla: `overwrite` viene en
+    # false y con `true` el destino se respalda ANTES y se restaura
+    # si algo falla. Lo que las separa de una lectura es que dejan
+    # un archivo y mueven una ventana del usuario.
+    "pbi_export_pbix": WRITE_REVERSIBLE,
+    "pbi_finalize_delivery": WRITE_REVERSIBLE,
     "pbi_rename_page": WRITE_REVERSIBLE,
     "pbi_reorder_pages": WRITE_REVERSIBLE,
     "pbi_repair_broken_references": WRITE_REVERSIBLE,
@@ -231,6 +243,8 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_set_visual_title": WRITE_REVERSIBLE,
     "pbi_set_visual_z_order": WRITE_REVERSIBLE,
     "pbi_update_measure": WRITE_REVERSIBLE,
+    # Reemplaza una consulta M con transaccion, journal y rollback.
+    "pbi_update_power_query": WRITE_REVERSIBLE,
     "pbi_update_visual_position": WRITE_REVERSIBLE,
 
     # -- write_destructive (9): todas exigen confirm=true --

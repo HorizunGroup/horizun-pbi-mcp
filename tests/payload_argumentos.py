@@ -91,6 +91,11 @@ ARGUMENTOS = {
     "pbi_measure_dependencies": {"name": "Total"},
     "pbi_column_dependencies": {"table": "Ventas", "column": "Importe"},
     "pbi_create_calculated_column": {"table": "Ventas", "name": "C1", "expression": "1"},
+    # El proyecto sintetico de esta pasada tiene la tabla `Ventas` sin
+    # particion M; lo que se congela aqui es el error educativo con los
+    # candidatos, que es la respuesta que un cliente se encuentra primero.
+    "pbi_update_power_query": {"table": "Ventas",
+                               "m": "let Origen = 1 in Origen"},
     "pbi_create_calculated_table": {"name": "T1", "expression": "ROW(\"a\",1)"},
     "pbi_create_hierarchy": {"table": "Ventas", "name": "H1", "levels": ["Importe"]},
     "pbi_create_relationship": {"from_table": "Ventas", "from_column": "Importe",
@@ -136,6 +141,17 @@ ARGUMENTOS = {
 # y `{pbip}` por el proyecto sintetico.
 ARGUMENTOS.update({
     "pbi_open_pbip_project": {"path": "{pbip}"},
+    # Resuelve y activa ESE .pbip. No abre Desktop ni convierte nada: la
+    # conversion solo entra cuando lo que se pasa es un .pbix.
+    "pbi_prepare_project": {"path": "{pbip}"},
+    # Estas dos CONDUCEN Power BI Desktop. Se les escribe una llamada valida
+    # a proposito: asi la pasada demuestra su dependencia del entorno -la
+    # prohibicion de procesos salta cuando intentan lanzarlo- en vez de
+    # dejarlas sin ejecutar por ser destructivas.
+    "pbi_export_pbix": {"pbip_path": "{pbip}",
+                        "out_path": "{tmp}/Entregable.pbix"},
+    "pbi_finalize_delivery": {"path": "{pbip}",
+                              "out_path": "{tmp}/Entregable.pbix"},
     # Desde CONTRACT-003 es `session_write`, asi que el escenario
     # `con-proyecto` -que solo ejecuta lecturas- ya no la cubre. Un puerto que
     # no sirve nada da un error de dominio estable y sin salir a ningun lado.

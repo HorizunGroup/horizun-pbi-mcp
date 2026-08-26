@@ -16,7 +16,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-VERSION = "2.0.2"
+#: Duplicada a proposito: el bootstrap corre ANTES de que el paquete
+#: exista, asi que no puede importar `branding`. Una prueba compara
+#: las dos y falla si se separan, que es como se caza este olvido.
+VERSION = "2.1.0"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -518,16 +521,48 @@ def _instalar_dependencias(sp: dict[str, Path], env: dict[str, str]) -> dict[str
             _run([str(sp["python"]), "-m", "pip", "install", "--no-deps",
                   str(PLUGIN_ROOT)], env=env)
             return {"source": "lock", "lock": str(lock), "reason": None,
-                    "note": "Versiones fijadas y verificadas por SHA-256."}
+                    "note": "Versiones fijadas y verificadas por SHA-256.",
+                    "export_extra": _instalar_extra_export(sp, env)}
         except Exception as exc:                             # noqa: BLE001
             motivo = f"{type(exc).__name__}: {exc}"
 
     _run([str(sp["python"]), "-m", "pip", "install", str(PLUGIN_ROOT)], env=env)
     return {"source": "resolver", "reason": motivo, "lock": None,
+            "export_extra": _instalar_extra_export(sp, env),
             "note": ("Esta instalacion NO es reproducible: las dependencias se "
                      "resolvieron en el momento y no estan fijadas por hash. "
                      "Anade la combinacion a la matriz de "
                      "scripts/generar_lock.py y regenera.")}
+
+
+def _instalar_extra_export(sp: dict[str, Path], env: dict[str, str]) -> dict[str, Any]:
+    """Instala `comtypes` si se puede, y si no, lo dice sin tumbar nada.
+
+    Es el extra `export`: solo hace falta para convertir un `.pbip` en `.pbix`
+    conduciendo el cuadro de guardado de Power BI Desktop. Todo lo demas -DAX,
+    TMDL, PBIR, auditorias- funciona igual sin el, asi que fallar la instalacion
+    entera porque no se pudo bajar seria cambiar una capacidad por todas.
+
+    No entra en el lock A PROPOSITO. El lock fija las dependencias declaradas,
+    y esta es opcional: meterla ahi la volveria obligatoria en las cinco
+    combinaciones de la matriz, incluidas las que no exportan nada.
+
+    Si no queda instalado, `pbi_capabilities` lo dice en `pbix_export` y el
+    doctor lo marca como aviso, con la orden exacta para instalarlo.
+    """
+    if os.name != "nt":
+        return {"installed": False, "reason": "solo aplica en Windows",
+                "required": False}
+    try:
+        _run([str(sp["python"]), "-m", "pip", "install", "comtypes>=1.4,<2"],
+             env=env)
+        return {"installed": True, "reason": None, "required": False}
+    except Exception as exc:                                 # noqa: BLE001
+        return {"installed": False, "required": False,
+                "reason": f"{type(exc).__name__}: {exc}"[:200],
+                "impact": ("Solo se pierde `pbi_export_pbix` / "
+                           "`pbi_finalize_delivery`. Se instala despues con: "
+                           'pip install "horizun-pbi-mcp[export]"')}
 
 
 def _adoptar_runtime_existente(root: Path) -> dict[str, Any] | None:

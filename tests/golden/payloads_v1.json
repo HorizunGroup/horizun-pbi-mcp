@@ -1,7 +1,7 @@
 {
   "payload_contract_version": 2,
-  "muestras": 174,
-  "tools_cubiertas": 134,
+  "muestras": 182,
+  "tools_cubiertas": 139,
   "note": "Forma de los payloads: claves y tipos, nunca valores ni longitudes. Una clave por `<tool>.<escenario>`. La cobertura tool por tool, con la dependencia medida de cada exclusion, esta en docs/COBERTURA_PAYLOADS.md.",
   "payloads": {
     "guide.situacion": {
@@ -1131,6 +1131,58 @@
       "status": "str",
       "warnings": []
     },
+    "pbi_export_pbix.con-argumentos": {
+      "details": {
+        "backup": "null",
+        "findings": [
+          {
+            "evidence": {
+              "table": "str"
+            },
+            "object": {
+              "file": "str",
+              "kind": "str",
+              "table": "str"
+            },
+            "recommendation": "str",
+            "rule": "str",
+            "severity": "str"
+          }
+        ],
+        "output_pbix": "str",
+        "source_pbip": "str",
+        "target_existed": "bool",
+        "validation": {
+          "error_count": "int",
+          "parse_checked": "bool",
+          "tmdl_valid": "bool"
+        },
+        "warnings": []
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_export_pbix.sin-proyecto": {
+      "details": {
+        "parameter": "str"
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
     "pbi_export_report_content.con-argumentos": {
       "details": {
         "skipped": [
@@ -1139,6 +1191,58 @@
             "title": "str"
           }
         ]
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_finalize_delivery.con-argumentos": {
+      "details": {
+        "backup": "null",
+        "findings": [
+          {
+            "evidence": {
+              "table": "str"
+            },
+            "object": {
+              "file": "str",
+              "kind": "str",
+              "table": "str"
+            },
+            "recommendation": "str",
+            "rule": "str",
+            "severity": "str"
+          }
+        ],
+        "output_pbix": "str",
+        "source_pbip": "str",
+        "target_existed": "bool",
+        "validation": {
+          "error_count": "int",
+          "parse_checked": "bool",
+          "tmdl_valid": "bool"
+        },
+        "warnings": []
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_finalize_delivery.sin-proyecto": {
+      "details": {
+        "parameter": "str"
       },
       "duration_ms": "float",
       "error": "str",
@@ -1248,6 +1352,39 @@
       "warnings": []
     },
     "pbi_get_object.con-argumentos": {
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_get_power_query.con-proyecto": {
+      "details": {
+        "candidates": {
+          "expressions": [],
+          "partitions": []
+        },
+        "requested": {
+          "kind": "null",
+          "name": "null",
+          "table": "null"
+        }
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_get_power_query.sin-proyecto": {
       "duration_ms": "float",
       "error": "str",
       "message": "str",
@@ -1652,6 +1789,8 @@
       "count": "int",
       "diagnostics": {
         "adomd_dll_present": "bool",
+        "clr_detail": "str",
+        "clr_state": "str",
         "libs_dir": "str",
         "libs_dir_exists": "bool",
         "runtime_loaded": "bool",
@@ -1671,6 +1810,8 @@
       "count": "int",
       "diagnostics": {
         "adomd_dll_present": "bool",
+        "clr_detail": "str",
+        "clr_state": "str",
         "libs_dir": "str",
         "libs_dir_exists": "bool",
         "runtime_loaded": "bool",
@@ -2308,6 +2449,33 @@
       "ok": "bool",
       "operation": "str",
       "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_prepare_project.con-argumentos": {
+      "active_project": "str",
+      "converted": "bool",
+      "duration_ms": "float",
+      "ok": "bool",
+      "opened": "bool",
+      "operation": "str",
+      "path_match": "bool",
+      "previous_active_project": "str",
+      "project": {
+        "has_pbir": "bool",
+        "has_tmdl": "bool",
+        "pbip_path": "str",
+        "project_dir": "str",
+        "report_dir": "str",
+        "report_name": "str",
+        "semantic_model_dir": "str",
+        "warnings": []
+      },
+      "request_id": "str",
+      "requested_path": "str",
+      "resolved_path": "str",
+      "selection_reason": "str",
       "side_effects": [],
       "status": "str",
       "warnings": []
@@ -3008,6 +3176,28 @@
         "reason": "str",
         "requested_mode": "str",
         "suggested_mode": "str"
+      },
+      "duration_ms": "float",
+      "error": "str",
+      "message": "str",
+      "ok": "bool",
+      "operation": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "warnings": []
+    },
+    "pbi_update_power_query.con-argumentos": {
+      "details": {
+        "candidates": {
+          "expressions": [],
+          "partitions": []
+        },
+        "requested": {
+          "kind": "null",
+          "name": "null",
+          "table": "str"
+        }
       },
       "duration_ms": "float",
       "error": "str",

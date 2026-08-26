@@ -43,10 +43,11 @@ TAREAS: List[Dict[str, Any]] = [
     {"task": "Partir de cero con unos archivos de datos",
      "steps": ["pbi_create_pbip_project", "pbi_add_table_from_file",
                "pbi_create_measure", "pbi_apply_design_system",
-               "pbi_compose_page", "pbi_validate_tmdl", "pbi_open_in_desktop"]},
-    {"task": "Trabajar sobre un .pbip que ya existe",
-     "steps": ["pbi_open_pbip_project", "pbi_model_summary", "pbi_list_report_pages",
-               "pbi_page_building_blocks"]},
+               "pbi_compose_page", "pbi_validate_tmdl",
+               "pbi_finalize_delivery"]},
+    {"task": "Trabajar sobre un .pbip (o un .pbix) que ya existe",
+     "steps": ["pbi_prepare_project", "pbi_model_summary",
+               "pbi_list_report_pages", "pbi_page_building_blocks"]},
     {"task": "Convertir un .pbix heredado",
      "steps": ["pbi_inspect_pbix", "pbi_convert_pbix_to_pbip",
                "pbi_validate_tmdl"]},
@@ -64,6 +65,9 @@ TAREAS: List[Dict[str, Any]] = [
     {"task": "Comprobar que abre antes de entregar",
      "steps": ["pbi_validate_tmdl", "pbi_audit_report_only",
                "pbi_open_in_desktop"]},
+    {"task": "Entregar el resultado como un .pbix de verdad",
+     "steps": ["pbi_audit_project", "pbi_validate_tmdl",
+               "pbi_finalize_delivery"]},
     {"task": "Deshacer algo que salio mal",
      "steps": ["pbi_list_pending_journals", "pbi_recover_from_journal"]},
 ]
@@ -280,6 +284,12 @@ def situacion(session) -> Dict[str, Any]:
         "pbi_open_in_desktop",
         "Y para verlo de verdad: abre el proyecto y espera al motor. Que "
         "valide no es lo mismo que que se vea bien."))
+    pasos.append(_paso(
+        "pbi_finalize_delivery",
+        "El ultimo paso normal: un .pbip no es un entregable -quien lo "
+        "reciba necesita Desktop y la carpeta entera-. Esto lo guarda como "
+        ".pbix conduciendo Desktop, comprueba el archivo resultante y deja "
+        "abierto justo ese."))
 
     return {"situation": " ".join(frases), "project": proyecto,
             "next_steps": pasos, "common_tasks": TAREAS}

@@ -102,15 +102,25 @@ def _assert_existing_target_writable(target: Path, *, operation: str) -> None:
         return
     from horizun_pbi_mcp.services import project_state
 
-    pbips = sorted(target.glob("*.pbip"))
-    reports = sorted(p for p in target.glob("*.Report") if p.is_dir())
-    models = sorted(p for p in target.glob("*.SemanticModel") if p.is_dir())
+    from horizun_pbi_mcp.services import project_resolver
+
+    # Misma politica que el localizador: con dos candidatos no se elige uno.
+    # Aqui ademas se va a REEMPLAZAR el destino, asi que equivocarse de
+    # proyecto al comprobar si esta abierto en Desktop es doblemente caro.
+    pbip = project_resolver.unico(target, "*.pbip", kind="proyecto .pbip",
+                                  obligatorio=False)
+    report = project_resolver.unico(target, "*.Report",
+                                    kind="carpeta .Report",
+                                    solo_directorios=True, obligatorio=False)
+    model = project_resolver.unico(target, "*.SemanticModel",
+                                   kind="carpeta .SemanticModel",
+                                   solo_directorios=True, obligatorio=False)
     active = ActivePbip(
-        pbip_path=str(pbips[0] if pbips else target / "__unknown__.pbip"),
+        pbip_path=str(pbip if pbip else target / "__unknown__.pbip"),
         project_dir=str(target),
-        report_dir=str(reports[0]) if reports else None,
-        semantic_model_dir=str(models[0]) if models else None,
-        has_pbir=bool(reports), has_tmdl=bool(models),
+        report_dir=str(report) if report else None,
+        semantic_model_dir=str(model) if model else None,
+        has_pbir=bool(report), has_tmdl=bool(model),
     )
     project_state.assert_writable(active, operation=operation)
 

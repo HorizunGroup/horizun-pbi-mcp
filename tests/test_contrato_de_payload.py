@@ -155,9 +155,12 @@ def test_el_alcance_esta_declarado():
                        .read_text(encoding="utf-8"))
     assert "COBERTURA_PAYLOADS.md" in crudo["note"], (
         "el golden no dice donde esta la cobertura tool por tool")
-    assert crudo["tools_cubiertas"] == 134, (
-        f"el golden cubre {crudo['tools_cubiertas']} tools de 134. G2.2 se "
-        "cerro con las 134 congeladas: si baja, vuelve a estar abierto")
+    from tests.test_tool_contract import EXPECTED_COUNT
+
+    assert crudo["tools_cubiertas"] == EXPECTED_COUNT, (
+        f"el golden cubre {crudo['tools_cubiertas']} tools de "
+        f"{EXPECTED_COUNT}. G2.2 se cerro con TODAS congeladas: si baja, "
+        "vuelve a estar abierto")
 
 
 def test_la_cobertura_publicada_coincide_con_el_recorrido():
@@ -213,15 +216,16 @@ def test_ninguna_tool_se_queda_sin_llamada_valida_escrita():
         "impedimento externo, es trabajo")
 
 
-def test_las_134_tienen_payload_congelado():
-    """G2.2 literal: 134 de 134, y ninguna exclusion."""
+def test_todas_tienen_payload_congelado():
+    """G2.2 literal: todas, y ninguna exclusion."""
     from tests.payload_muestras import recorrer
+    from tests.test_tool_contract import EXPECTED_COUNT
 
     resumen = recorrer()[1]
     pendientes = sorted(n for n, d in resumen.items()
                         if d["estado"] == "pendiente")
     assert not pendientes, f"sin payload congelado: {pendientes}"
-    assert len(resumen) == 134
+    assert len(resumen) == EXPECTED_COUNT
 
 
 def test_las_dependencias_que_quedan_son_del_ENTORNO_y_estan_medidas():

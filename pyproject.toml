@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "horizun-pbi-mcp"
 # PEP 440. Must match branding.VERSION and the Git tag.
-version = "2.0.2"
+version = "2.1.0"
 description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -64,6 +64,22 @@ test = [
     "ruff>=0.16,<0.17",
     "mypy>=2.3,<2.4",
     "pytest-cov>=7.1,<8",
+]
+# comtypes: exportar un .pbip a .pbix conduce el cuadro "Guardar como" de
+# Power BI Desktop, y el desplegable de TIPO de ese cuadro no se puede mover
+# con mensajes Win32 -se comprobo: `CB_SETCURSEL` cambia lo que se ve pero no
+# el filtro real, y el archivo salia guardado como .pbip-. La unica via que
+# funciona es UI Automation, que es COM: `comtypes` lee la typelib y evita
+# escribir a mano los desplazamientos de la vtable, donde un numero mal puesto
+# no da un error sino una llamada a otra funcion.
+#
+# Va como EXTRA y no como dependencia obligatoria por dos razones: solo la
+# necesita esta funcion -el resto del servidor no toca COM- y anadirla a
+# `dependencies` obligaria a regenerar los cinco locks de la matriz, cada uno
+# con su propio interprete. Sin `pbi_export_pbix` falla cerrado y dice como
+# instalarlo, que es mejor que arrastrar COM a todas las instalaciones.
+export = [
+    "comtypes>=1.4,<2; sys_platform == 'win32'",
 ]
 
 [project.scripts]
@@ -144,8 +160,15 @@ files = [
 source = ["horizun_pbi_mcp"]
 
 [tool.coverage.report]
-# Measured on 2026-08-15: 86% over 18,780 statements. One point of slack
-# absorbs noise between 3.13 and 3.14, while still turning a material drop
-# into a CI failure.
+# Medido el 2026-08-26: 86.29% sobre 20,924 sentencias. Un punto de holgura
+# absorbe el ruido entre 3.13 y 3.14 y sigue convirtiendo una caida material
+# en un fallo de CI.
+#
+# La 2.1.0 lo puso a prueba: anadio ~2,100 sentencias, buena parte de ellas la
+# capa que conduce ventanas, que solo ejercitan las pruebas `live` y que CI no
+# puede correr porque no hay Power BI Desktop en un runner. La cobertura cayo
+# al 83.30% y el gate lo caso. Se arreglo probando de verdad lo que si es
+# probable -con dobles de user32 y de UI Automation- y borrando el camino
+# Win32 que estaba medido que no funcionaba; NO bajando este numero.
 fail_under = 85
 show_missing = true

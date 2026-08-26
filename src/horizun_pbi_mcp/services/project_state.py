@@ -239,8 +239,20 @@ def _detect_uncached(active: ActivePbip) -> ProjectOpenState:
         from horizun_pbi_mcp.powerbi import desktop_launcher
 
         stem = Path(active.pbip_path).stem
+        objetivo = Path(active.pbip_path)
+        # Un proceso cuya linea de comandos nombra OTRO proyecto no es prueba
+        # de que este abierto el nuestro, aunque su ventana se titule igual:
+        # dos `Demo.pbip` en carpetas distintas producen el mismo titulo.
+        candidatos = [pid for pid in sin_identificar
+                      if not desktop_launcher._sirve_otro_proyecto(  # noqa: SLF001
+                          pid, objetivo)]
+        descartados = [pid for pid in sin_identificar if pid not in candidatos]
+        if descartados:
+            signals.append({"signal": "window_title", "result": "discarded",
+                            "pids": descartados,
+                            "detail": "su linea de comandos nombra otro proyecto"})
         ventanas = desktop_launcher.coincidencias_por_titulo(
-            stem, sin_identificar)
+            stem, candidatos)
 
         if len(ventanas.pids) == 1:
             pid = ventanas.pids[0]

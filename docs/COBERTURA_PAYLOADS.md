@@ -30,10 +30,10 @@ lo genera tiene un informe abierto.
 
 | | |
 |---|---|
-| Tools | **134** |
-| Con payload congelado | **134** |
-| — de éxito | **44** |
-| — solo de error de dominio | **90** |
+| Tools | **139** |
+| Con payload congelado | **139** |
+| — de éxito | **45** |
+| — solo de error de dominio | **94** |
 | Sin payload congelado | **0** |
 
 ### De qué depende cada exclusión
@@ -42,13 +42,14 @@ lo genera tiene un informe abierto.
 |---|---|
 | solo error de dominio en estos escenarios (validation_error) | **25** |
 | modelo-vivo | **24** |
-| solo error de dominio en estos escenarios (no_active_pbip) | **10** |
+| solo error de dominio en estos escenarios (no_active_pbip) | **11** |
 | solo error de dominio en estos escenarios (schema_unsupported) | **10** |
 | solo error de dominio en estos escenarios (page_spec_invalid) | **3** |
 | solo error de dominio en estos escenarios (schema_unavailable) | **3** |
 | solo error de dominio en estos escenarios (unexpected) | **2** |
 | solo error de dominio en estos escenarios (pbix_conversion_failed) | **2** |
 | solo error de dominio en estos escenarios (visual_factory_error) | **2** |
+| solo error de dominio en estos escenarios (pbix_export_failed) | **2** |
 | solo error de dominio en estos escenarios (conditional_format_error) | **2** |
 | solo error de dominio en estos escenarios (sharepoint_not_configured) | **2** |
 | solo error de dominio en estos escenarios (pbix_read_error) | **1** |
@@ -56,6 +57,7 @@ lo genera tiene un informe abierto.
 | solo error de dominio en estos escenarios (recovery_failed) | **1** |
 | solo error de dominio en estos escenarios (model_discovery_error) | **1** |
 | solo error de dominio en estos escenarios (model_author_error) | **1** |
+| solo error de dominio en estos escenarios (power_query_error) | **1** |
 
 **`requiere-argumentos` no es un bloqueo externo**: es trabajo de escribir una llamada válida por tool, y mientras esté ahí, G2.2 no está cumplido.
 
@@ -117,13 +119,16 @@ lo genera tiene un informe abierto.
 | `pbi_duplicate_visual` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_export_excel` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_export_page_html` | éxito congelado | con-argumentos | — |
+| `pbi_export_pbix` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (pbix_export_failed) |
 | `pbi_export_report_content` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
+| `pbi_finalize_delivery` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (pbix_export_failed) |
 | `pbi_generate_page_spec` | éxito congelado | con-argumentos | — |
 | `pbi_generate_pdf_report` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_generate_report_page` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unavailable) |
 | `pbi_generate_technical_documentation` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (no_active_pbip) |
 | `pbi_get_brief` | éxito congelado | con-proyecto, sin-proyecto | — |
 | `pbi_get_object` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
+| `pbi_get_power_query` | error de dominio congelado | con-proyecto, sin-proyecto | solo error de dominio en estos escenarios (no_active_pbip) |
 | `pbi_get_visual` | éxito congelado | con-argumentos | — |
 | `pbi_health_check` | éxito congelado | con-proyecto, sin-proyecto | — |
 | `pbi_hide_columns` | éxito congelado | con-argumentos | — |
@@ -159,6 +164,7 @@ lo genera tiene un informe abierto.
 | `pbi_plan_audit_fixes` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_plan_change` | éxito congelado | con-argumentos | — |
 | `pbi_prepare_delivery` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (no_active_pbip) |
+| `pbi_prepare_project` | éxito congelado | con-argumentos | — |
 | `pbi_preview_page_spec` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (page_spec_invalid) |
 | `pbi_preview_spec_html` | éxito congelado | con-argumentos | — |
 | `pbi_profile_data` | error de dominio congelado | sin-proyecto | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
@@ -190,6 +196,7 @@ lo genera tiene un informe abierto.
 | `pbi_start_here` | éxito congelado | con-proyecto, sin-proyecto | — |
 | `pbi_test_connection` | error de dominio congelado | con-proyecto, sin-proyecto | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
 | `pbi_update_measure` | error de dominio congelado | con-argumentos | modelo-vivo: el payload de exito exige Power BI Desktop sirviendo un modelo (no_active_model) |
+| `pbi_update_power_query` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (power_query_error) |
 | `pbi_update_visual_position` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unsupported) |
 | `pbi_validate_desktop_render` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (unexpected) |
 | `pbi_validate_generated_page` | éxito congelado | con-argumentos | — |
