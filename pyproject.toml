@@ -65,6 +65,22 @@ test = [
     "mypy>=2.3,<2.4",
     "pytest-cov>=7.1,<8",
 ]
+# comtypes: exportar un .pbip a .pbix conduce el cuadro "Guardar como" de
+# Power BI Desktop, y el desplegable de TIPO de ese cuadro no se puede mover
+# con mensajes Win32 -se comprobo: `CB_SETCURSEL` cambia lo que se ve pero no
+# el filtro real, y el archivo salia guardado como .pbip-. La unica via que
+# funciona es UI Automation, que es COM: `comtypes` lee la typelib y evita
+# escribir a mano los desplazamientos de la vtable, donde un numero mal puesto
+# no da un error sino una llamada a otra funcion.
+#
+# Va como EXTRA y no como dependencia obligatoria por dos razones: solo la
+# necesita esta funcion -el resto del servidor no toca COM- y anadirla a
+# `dependencies` obligaria a regenerar los cinco locks de la matriz, cada uno
+# con su propio interprete. Sin `pbi_export_pbix` falla cerrado y dice como
+# instalarlo, que es mejor que arrastrar COM a todas las instalaciones.
+export = [
+    "comtypes>=1.4,<2; sys_platform == 'win32'",
+]
 
 [project.scripts]
 horizun-pbi-mcp = "horizun_pbi_mcp.server:main"

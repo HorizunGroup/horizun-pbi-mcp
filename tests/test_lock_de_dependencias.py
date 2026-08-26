@@ -381,15 +381,21 @@ def test_el_fallback_dice_que_NO_es_reproducible(bootstrap, tmp_path, monkeypatc
         "el estado tiene que decir COMO se arregla, no solo que no lo esta")
 
 
+def _sin_el_extra(ordenes):
+    """Las ordenes de pip que NO son el extra opcional de exportacion."""
+    return [o for o in _pip(ordenes) if not any("comtypes" in x for x in o)]
+
+
 def test_el_paquete_propio_va_aparte_y_sin_deps(bootstrap, tmp_path, monkeypatch):
     _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
     ordenes = _grabador(monkeypatch, bootstrap)
     bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
 
-    fijado, propio = _pip(ordenes)
+    fijado, propio = _sin_el_extra(ordenes)
+    assert "--require-hashes" in fijado
     assert "--no-deps" in propio and str(bootstrap.PLUGIN_ROOT) in propio
     assert not any(o[-1] == str(bootstrap.PLUGIN_ROOT) and "--no-deps" not in o
-                   for o in _pip(ordenes)), (
+                   for o in _sin_el_extra(ordenes)), (
         "sobrevive la orden que resuelve de cero: el lock no fija nada")
 
 
@@ -402,7 +408,78 @@ def test_si_el_lock_falla_cae_al_resolutor_y_lo_dice(bootstrap, tmp_path,
 
     assert resultado["source"] == "resolver"
     assert "fallo inyectado" in resultado["reason"]
-    assert _pip(ordenes)[-1][-1] == str(bootstrap.PLUGIN_ROOT)
+    assert _sin_el_extra(ordenes)[-1][-1] == str(bootstrap.PLUGIN_ROOT)
+
+
+# ------------------------- el extra opcional de exportacion -----------------
+def test_el_extra_de_exportacion_no_entra_en_el_lock(bootstrap):
+    """`comtypes` es opcional: fijarlo lo volveria obligatorio en toda la matriz.
+
+    El lock existe para que dos instalaciones de la misma combinacion salgan
+    identicas. Meter ahi una dependencia que solo hace falta para exportar
+    obligaria a bajarla en las cinco versiones de la matriz, incluidas las
+    instalaciones que no exportan nada, y `--require-hashes` rechazaria el
+    archivo entero si esa rueda no estuviera disponible.
+    """
+    import sys as _sys
+
+    generar = _sys.modules.get("scripts.generar_lock")
+    if generar is None:
+        import importlib.util
+        ruta = Path(bootstrap.PLUGIN_ROOT) / "scripts" / "generar_lock.py"
+        spec = importlib.util.spec_from_file_location("generar_lock_bajo_prueba",
+                                                      ruta)
+        generar = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generar)
+
+    declaradas = " ".join(generar.dependencias_declaradas()).lower()
+    assert "comtypes" not in declaradas
+
+
+def test_el_extra_se_intenta_aparte_y_despues_del_paquete(bootstrap, tmp_path,
+                                                          monkeypatch):
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
+    monkeypatch.setattr(bootstrap.os, "name", "nt")
+    ordenes = _grabador(monkeypatch, bootstrap)
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+
+    extras = [o for o in _pip(ordenes) if any("comtypes" in x for x in o)]
+    assert len(extras) == 1, "el extra se pide una vez, no en cada paso"
+    assert _pip(ordenes)[-1] is extras[0], "va DESPUES del paquete propio"
+    assert resultado["export_extra"]["installed"] is True
+
+
+def test_si_el_extra_falla_la_instalacion_sigue_adelante(bootstrap, tmp_path,
+                                                        monkeypatch):
+    """Perder la exportacion no puede costar el servidor entero.
+
+    Sin `comtypes` se pierden dos tools; el resto -DAX, TMDL, PBIR, auditorias-
+    funciona igual. Tumbar la instalacion por eso seria cambiar una capacidad
+    por todas.
+    """
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
+    monkeypatch.setattr(bootstrap.os, "name", "nt")
+    _grabador(monkeypatch, bootstrap,
+              romper=lambda c: any("comtypes" in x for x in c))
+
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+
+    assert resultado["source"] == "lock", "el lock si se aplico"
+    assert resultado["export_extra"]["installed"] is False
+    assert "fallo inyectado" in resultado["export_extra"]["reason"]
+    assert "horizun-pbi-mcp[export]" in resultado["export_extra"]["impact"]
+
+
+def test_fuera_de_windows_el_extra_ni_se_intenta(bootstrap, tmp_path,
+                                                 monkeypatch):
+    _finge_interprete(monkeypatch, bootstrap, "3.14", "win_amd64")
+    monkeypatch.setattr(bootstrap.os, "name", "posix")
+    ordenes = _grabador(monkeypatch, bootstrap)
+    resultado = bootstrap._instalar_dependencias({"python": tmp_path / "py"}, {})
+
+    assert not any("comtypes" in x for o in _pip(ordenes) for x in o)
+    assert resultado["export_extra"]["installed"] is False
+    assert "Windows" in resultado["export_extra"]["reason"]
 
 
 def test_el_intento_fijado_gasta_los_mismos_reintentos_que_el_de_siempre(

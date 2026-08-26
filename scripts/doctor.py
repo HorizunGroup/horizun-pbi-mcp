@@ -224,6 +224,26 @@ def check_dependencies(rep: Report) -> None:
             ver = "?"
         rep.add("pythonnet", f"pythonnet (interop .NET) {ver}", OK, "", required=False)
 
+    # comtypes es obligatorio SOLO para exportar .pbip -> .pbix.
+    if os.name != "nt":
+        rep.add("comtypes", "comtypes (exportar a .pbix)", WARN,
+                "Exportar a .pbix conduce Power BI Desktop y eso solo existe "
+                "en Windows.", required=False)
+    elif importlib.util.find_spec("comtypes") is None:
+        rep.add("comtypes", "comtypes (exportar a .pbix)", WARN,
+                "No disponible: `pbi_export_pbix` y `pbi_finalize_delivery` "
+                "fallaran. El resto del servidor funciona igual.",
+                required=False,
+                hint='python -m pip install "horizun-pbi-mcp[export]"')
+    else:
+        try:
+            import importlib.metadata as md
+            ver = md.version("comtypes")
+        except Exception:  # noqa: BLE001
+            ver = "?"
+        rep.add("comtypes", f"comtypes (exportar a .pbix) {ver}", OK, "",
+                required=False)
+
 
 def check_dlls(rep: Report) -> None:
     libs_dir = Path(os.environ.get("PBI_MCP_LIBS_DIR") or (PROJECT_ROOT / "libs"))
