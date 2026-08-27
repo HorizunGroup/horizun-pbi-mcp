@@ -1,0 +1,4 @@
+interface:
+  display_name: "Power BI Project Workflows"
+  short_description: "Build, audit, and repair Power BI projects"
+  default_prompt: "Use $powerbi-project-workflows to audit this Power BI project and prioritize the fixes."

@@ -6,11 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "horizun-pbi-mcp"
 # PEP 440. Must match branding.VERSION and the Git tag.
 version = "2.1.0"
-description = "MCP server for Power BI: live semantic model (DAX/TOM), .pbip projects (TMDL/PBIR), report authoring, full auditing and workflows."
+description = "Build, audit, diagnose and repair Power BI Desktop models and PBIP reports through MCP using DAX, TOM, TMDL and PBIR."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-keywords = ["mcp", "model-context-protocol", "power-bi", "dax", "pbip", "tmdl", "pbir", "claude", "codex", "business-intelligence"]
+keywords = ["mcp", "model-context-protocol", "power-bi", "powerbi", "dax", "pbip", "tmdl", "pbir", "semantic-model", "report-authoring", "data-analysis", "claude", "codex", "business-intelligence"]
 classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",

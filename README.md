@@ -13,6 +13,9 @@ report pages — and checks its own work afterwards.
 
 **v2.1.0** · 139 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
 
+New to the project? Start with [what this Power BI MCP is, when to use it, and
+what it deliberately does not do](docs/POWER_BI_MCP.md).
+
 ## Install
 
 No repository clone, manual DLL download or `.mcp.json` editing is required.
@@ -137,6 +140,7 @@ do not.
 |---|---|
 | [Installation](docs/INSTALL.md) | Setup, repair, offline installation and MCP client registration |
 | [Tutorial](docs/TUTORIAL.md) | First connection through report authoring |
+| [Power BI MCP overview](docs/POWER_BI_MCP.md) | Use cases, boundaries, safety and first workflow |
 | [Tool catalog](docs/TOOL_CATALOG.md) | All tools, grouped by capability and risk |
 | [Architecture](docs/ARCHITECTURE.md) | Components, boundaries and invariants |
 | [Security](docs/SECURITY.md) | Threat model and operational guarantees |
