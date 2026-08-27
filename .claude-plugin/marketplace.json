@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "horizun-pbi-mcp",
-      "description": "Safe control of Power BI Desktop and PBIP projects via MCP.",
+      "description": "Build, audit and repair local Power BI Desktop models and PBIP reports.",
       "author": {"name": "HorizunGroup"},
       "category": "development",
       "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "v2.1.0"},

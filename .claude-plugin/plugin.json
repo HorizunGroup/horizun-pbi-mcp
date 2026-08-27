@@ -1,12 +1,12 @@
 {
   "name": "horizun-pbi-mcp",
   "version": "2.1.0",
-  "description": "Power BI Desktop and PBIP from Claude: DAX, TOM, TMDL, PBIR, visuals, auditing and safe workflows.",
+  "description": "Build, audit, diagnose and repair local Power BI Desktop models and PBIP reports with DAX, TOM, TMDL and PBIR.",
   "author": {"name": "HorizunGroup", "url": "https://github.com/HorizunGroup"},
   "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",
   "repository": "https://github.com/HorizunGroup/horizun-pbi-mcp",
   "license": "Apache-2.0",
-  "keywords": ["power-bi", "mcp", "dax", "pbip", "pbir", "tmdl"],
+  "keywords": ["power-bi", "powerbi", "mcp", "dax", "pbip", "pbir", "tmdl", "semantic-model", "report-authoring", "data-analysis"],
   "skills": "./skills/",
   "mcpServers": {
     "horizun-pbi-mcp": {
