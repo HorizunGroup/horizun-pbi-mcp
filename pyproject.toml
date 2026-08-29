@@ -58,8 +58,8 @@ Changelog = "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/CHANGELOG
 # on 3.10, where `tomllib` does not exist yet. Ruff, mypy and pytest-cov are
 # repository gates; they are not installed into users' runtime.
 test = [
-    "pytest>=8.0",
-    "pyyaml>=6,<7",
+    "pytest>=9.1.1",
+    "pyyaml>=6.0.3,<7",
     "tomli>=2; python_version < '3.11'",
     "ruff>=0.16,<0.17",
     "mypy>=2.3,<2.4",
