@@ -28,7 +28,7 @@ python-dotenv>=1.0,<2
 
 # PBIR validation against the OFFICIAL schemas. Without these two, every write
 # to the report fails with `schema_unavailable`.
-jsonschema>=4.20,<5
+jsonschema>=4.26.0,<5
 referencing>=0.30,<1
 
 # Verified export to Excel and PDF.
