@@ -37,4 +37,4 @@ reportlab>=4.2,<6
 pypdf>=5,<7
 
 # App-only authentication for SharePoint Online through Microsoft Graph.
-msal>=1.31,<2
+msal>=1.38.0,<2

@@ -42,7 +42,7 @@ dependencies = [
     "reportlab>=4.2,<6",
     "pypdf>=5,<7",
     # Microsoft's official app-only authentication for SharePoint/Graph.
-    "msal>=1.31,<2",
+    "msal>=1.38.0,<2",
 ]
 
 [project.urls]
