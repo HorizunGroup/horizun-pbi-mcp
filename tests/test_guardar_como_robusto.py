@@ -164,7 +164,8 @@ def test_con_el_foco_en_otro_proceso_no_se_teclea(monkeypatch):
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
                         lambda t, **kw: tecleado.append(t))
     monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: False)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: False)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: False)
 
     with pytest.raises(uia_helper.HelperError) as fallo:
         uia_helper._escribir_ruta(_UiaFalso(), 22,             # noqa: SLF001
@@ -186,7 +187,7 @@ def test_si_el_foco_se_recupera_se_teclea_y_se_verifica(monkeypatch):
                         lambda h: estado["frente"])
     frentes = []
     monkeypatch.setattr(uia_helper, "traer_al_frente",
-                        lambda h, p: frentes.append((h, p)) or
+                        lambda h, p, **kw: frentes.append((h, p)) or
                         estado.update(frente=True) or True)
 
     paso = uia_helper._escribir_ruta(_UiaFalso(valor_nombre=ruta), 22,  # noqa: SLF001
@@ -361,7 +362,8 @@ def _secuencia(monkeypatch, uia):
     monkeypatch.setattr(uia_helper, "_ventana_principal",
                         lambda pid: {"hwnd": 11, "title": "Demo"})
     monkeypatch.setattr(uia_helper, "_enviar_teclas", lambda e: None)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     monkeypatch.setattr(uia_helper, "_esperar_cuadro",
                         lambda u, pid, plazo: {"hwnd": 22})
     monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [])

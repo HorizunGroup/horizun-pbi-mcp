@@ -12,11 +12,24 @@ cuadro de guardado, y sin tocar `pages.json`.
 
 Lo que se promete y lo que no
 -----------------------------
-Cada accion devuelve `verified`. Solo es `true` cuando la interfaz releyo el
-estado que se pidio (la pestaña dice `IsSelected`, el control de zoom dice
-que esta activo). Si Desktop no expone ese estado, se devuelve `false` con la
-razon exacta, y quien captura decide: capturar la pagina equivocada en
-silencio es peor que decir que no se pudo demostrar.
+Cada accion devuelve `verified`, y solo es `true` con evidencia que hable de
+LO QUE SE PIDIO:
+
+- pagina: la pestaña dice `IsSelected`;
+- zoom: el control dice que quedo activo -no lo expone en las versiones
+  medidas- o Power BI publica un anuncio NUEVO de nivel de zoom
+  ("Informe ampliado a 72 %") entre el instante anterior a pulsar y el
+  posterior. Eso demuestra que el NIVEL de zoom cambio al pulsar, no que el
+  modo resultante sea "ajustar a la pagina": "ajustar al ancho" tambien
+  anunciaria. Es la evidencia mas especifica que la ventana expone.
+
+Un cambio de pixeles NO es verificacion: la ventana tambien cambia al abrir
+la cinta, al mover el foco, al terminar de pintar los datos o por una
+animacion. Viaja como `visual_change`, evidencia de que algo se movio, y
+nunca pone `verified` en `true` por si solo.
+
+Y la falta de cambio tampoco demuestra lo contrario: si nada cambia, no se
+afirma que "ya estaba ajustada"; se dice que no se pudo determinar.
 """
 from __future__ import annotations
 
@@ -125,10 +138,11 @@ def huella_de_ventana(opened: Any) -> Optional[str]:
     """Huella de los pixeles de la ventana AHORA. `None` si no se pudo.
 
     No escribe ningun archivo: se usa para comparar el antes y el despues de
-    una accion de vista. Es el unico oraculo disponible para el zoom, porque
-    el control de "Ajustar a la pagina" es un `Button` que solo expone
-    `Invoke` -medido contra Power BI Desktop real: sin `Toggle` ni
-    `SelectionItem` que releer-.
+    una accion de vista. Para el zoom es una señal SECUNDARIA -el oraculo que
+    decide es el anuncio de nivel que publica Power BI-, y sirve para poder
+    decir que algo se movio cuando no hay anuncio. El control de "Ajustar a
+    la pagina" es un `Button` que solo expone `Invoke` en las versiones
+    medidas, sin `Toggle` ni `SelectionItem` que releer.
     """
     from horizun_pbi_mcp.powerbi import desktop_capture
 
@@ -148,7 +162,11 @@ def huella_de_ventana(opened: Any) -> Optional[str]:
 
 
 def _cambio_de_vista(opened: Any, antes: Optional[str]) -> Optional[bool]:
-    """Si la ventana se ve distinta que antes. `None` si no se pudo mirar."""
+    """Si la ventana se ve distinta que antes. `None` si no se pudo mirar.
+
+    Es una señal DEBIL a proposito: dice que algo se movio en la ventana, no
+    que se movio lo que se pidio. Quien la usa debe llamarla por su nombre.
+    """
     if antes is None:
         return None
     time.sleep(ESPERA_REPINTADO)
@@ -200,6 +218,8 @@ def navegar(opened: Any, *, page: Optional[str] = None,
             bloque.update({
                 "verified": por_estado,
                 "verified_by": "control_state" if por_estado else None,
+                "disambiguated_by": respuesta.get("disambiguated_by"),
+                "container": respuesta.get("container"),
                 # El lienzo cambia al cambiar de pagina. No sustituye a
                 # `IsSelected` -no dice CUAL pagina quedo- pero cuando la
                 # seleccion se demostro, confirma que ademas se repinto.
@@ -222,16 +242,22 @@ def navegar(opened: Any, *, page: Optional[str] = None,
         try:
             respuesta = adapter.ajustar_a_pagina(pid=int(pid), started=started)
             por_estado = bool(respuesta.get("verified"))
-            cambio = None if por_estado else _cambio_de_vista(opened, antes)
+            por_zoom = bool(respuesta.get("zoom_level_changed"))
+            # Los pixeles se miran siempre, pero como lo que son: señal de
+            # que algo se movio. Nunca deciden `verified`.
+            cambio = None if (por_estado or por_zoom) else _cambio_de_vista(
+                opened, antes)
             bloque.update({
-                "verified": por_estado or cambio is True,
+                "verified": por_estado or por_zoom,
                 "verified_by": ("control_state" if por_estado
-                                else "frame_changed" if cambio else None),
-                "frame_changed": cambio,
+                                else "zoom_level_announced" if por_zoom
+                                else None),
+                "zoom_level_announced": respuesta.get("zoom_announcements_new"),
+                "visual_change": cambio,
                 "via": respuesta.get("via"),
                 "path": respuesta.get("path"),
                 "state_after": respuesta.get("state_after"),
-                "reason": (None if por_estado or cambio is True else
+                "reason": (None if por_estado or por_zoom else
                            _motivo_zoom(respuesta, cambio)),
                 "attempts": respuesta.get("attempts"),
             })
@@ -246,9 +272,21 @@ def navegar(opened: Any, *, page: Optional[str] = None,
 
 
 def _motivo_zoom(respuesta: Dict[str, Any], cambio: Optional[bool]) -> str:
-    """Por que no se pudo demostrar el zoom, distinguiendo los dos casos."""
+    """Por que el zoom quedo SIN DEMOSTRAR, sin inventarse la explicacion.
+
+    Tres casos, y ninguno afirma que la vista ya estuviera ajustada: eso
+    haria falta demostrarlo, y no hay con que.
+    """
     base = respuesta.get("verification_reason") or "sin estado que releer"
+    comun = ("Power BI no publico ningun nivel de zoom nuevo, que es la unica "
+             "señal especifica disponible")
+    if cambio is True:
+        return (f"{base}; {comun}. La ventana SI cambio de aspecto, pero eso "
+                "tambien lo produce abrir la cinta, mover el foco o terminar "
+                "de pintar: no identifica el modo de vista")
     if cambio is False:
-        return (f"{base}; y la ventana no cambio de aspecto: puede que ya "
-                "estuviera ajustada a la pagina, o que la accion no llegara")
-    return f"{base}; tampoco se pudo comparar el aspecto de la ventana"
+        return (f"{base}; {comun}, y la ventana tampoco cambio de aspecto. No "
+                "se puede distinguir si la vista ya estaba ajustada o si la "
+                "accion no llego")
+    return (f"{base}; {comun}, y ademas no se pudo comparar el aspecto de la "
+            "ventana")

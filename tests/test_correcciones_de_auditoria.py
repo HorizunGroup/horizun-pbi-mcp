@@ -211,7 +211,8 @@ def test_un_fallo_inesperado_en_la_secuencia_tambien_limpia_el_cuadro(monkeypatc
             raise KeyError("bug")
 
     _secuencia_montada(monkeypatch, _Bug())
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     limpiezas = []
     monkeypatch.setattr(uia_helper, "_cancelar_cuadro",
                         lambda u, h, p: limpiezas.append(h) or {"attempted": True})
@@ -233,7 +234,8 @@ def test_con_el_foco_en_la_ventana_principal_del_mismo_proceso_no_se_teclea(
                         lambda t: tecleado.append(t))
     # El primer plano es del proceso, pero no es el cuadro.
     monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: False)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
 
     with pytest.raises(uia_helper.HelperError) as fallo:
         uia_helper._escribir_ruta(_UiaFalso(), 22, r"C:\x\a.pbix", 4321)  # noqa: SLF001
@@ -693,7 +695,8 @@ def test_un_fallo_despues_de_guardar_no_se_queda_sin_fase(monkeypatch):
                     estado_tras=uia_helper.ESTADO_CERRADO,
                     valor_nombre=r"C:\x\a.pbix")
     _secuencia_montada(monkeypatch, uia)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
 
     def _revienta(u, pid, ex):
@@ -779,19 +782,23 @@ def test_el_boton_del_dialogo_de_plantilla_se_busca_por_nombre():
     assert not uia_helper.NOMBRE_BOTON_ACEPTAR.search("Cancelar")
 
 
-# ===== 13) el zoom: el control no tiene estado, la ventana si =============
+# ===== 13) el zoom: que cuenta como evidencia y que no ===================
 # Medido contra Power BI Desktop real: "Ajustar a la pagina" es un `Button`
-# que solo expone `Invoke` y `LegacyIAccessible`. No hay `Toggle` ni
-# `SelectionItem` que releer, y aun asi la accion SI cambia la vista -la
-# captura pasaba de 66.583 a 61.194 bytes-. Con solo el estado del control,
-# una accion que funciona se reportaba como no demostrada.
+# que solo expone `Invoke` y `LegacyIAccessible`; no hay estado que releer.
+# Lo que SI publica Desktop al cambiar el zoom es un anuncio de nivel
+# ("Informe ampliado a 72 %"), y eso es especifico. Un cambio de pixeles no
+# lo es: tambien lo produce abrir la cinta o terminar de pintar los datos.
 class _AdaptadorZoom:
-    def __init__(self, *, verified=False):
+    def __init__(self, *, verified=False, anuncios=()):
         self.verified = verified
+        self.anuncios = list(anuncios)
 
     def ajustar_a_pagina(self, *, pid, started, timeout=30.0):
         return {"verified": self.verified, "via": "invoke",
                 "path": ["fit_to_page"], "state_after": None,
+                "zoom_announcements_before": [],
+                "zoom_announcements_new": self.anuncios,
+                "zoom_level_changed": bool(self.anuncios),
                 "verification_reason": ("el control no expone Toggle ni "
                                         "SelectionItem")}
 
@@ -803,24 +810,53 @@ def _opened_nav(tmp_path):
                           False, 0.0, desktop_started=1.0)
 
 
-def test_el_zoom_se_demuestra_por_el_cambio_de_la_ventana(monkeypatch, tmp_path):
+def test_el_zoom_se_demuestra_con_el_anuncio_de_nivel(monkeypatch, tmp_path):
+    """La señal especifica: Desktop publica el nivel nuevo."""
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    miradas = []
+    monkeypatch.setattr(nav, "huella_de_ventana",
+                        lambda o: miradas.append(1) or "x")
+    monkeypatch.setattr(nav.time, "sleep",
+                        lambda s: pytest.fail("comparo pixeles sin necesitarlo"))
+
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom(
+                        anuncios=["Informe ampliado a 72 %"]))["fit_to_page"]
+
+    assert r["verified"] is True
+    assert r["verified_by"] == "zoom_level_announced"
+    assert r["visual_change"] is None
+    assert len(miradas) == 1, "solo la huella previa, que se toma siempre"
+    assert r["zoom_level_announced"] == ["Informe ampliado a 72 %"]
+    assert r["reason"] is None
+
+
+def test_un_cambio_de_pixeles_NO_verifica_el_zoom(monkeypatch, tmp_path):
+    """El punto de la auditoria: la ventana cambia por muchas razones.
+
+    Abrir la cinta para llegar al control ya la cambia. Que cambie no dice
+    que el modo de vista sea "ajustar a la pagina".
+    """
     from horizun_pbi_mcp.powerbi import desktop_navigation as nav
 
     huellas = iter(["antes", "despues"])
-    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: next(huellas, "despues"))
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: next(huellas, "z"))
     monkeypatch.setattr(nav.time, "sleep", lambda s: None)
 
     r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
                     adapter=_AdaptadorZoom())["fit_to_page"]
 
-    assert r["verified"] is True
-    assert r["verified_by"] == "frame_changed"
-    assert r["frame_changed"] is True
-    assert r["reason"] is None
+    assert r["verified"] is False, "los pixeles no pueden verificar el zoom"
+    assert r["verified_by"] is None
+    assert r["visual_change"] is True
+    assert "no identifica el modo de vista" in r["reason"]
+    assert "frame_changed" not in r, "el nombre viejo prometia de mas"
 
 
-def test_si_la_ventana_no_cambia_el_zoom_no_se_da_por_hecho(monkeypatch,
-                                                            tmp_path):
+def test_sin_cambio_no_se_afirma_que_ya_estuviera_ajustada(monkeypatch,
+                                                           tmp_path):
+    """Tampoco al reves: la ausencia de cambio no demuestra nada."""
     from horizun_pbi_mcp.powerbi import desktop_navigation as nav
 
     monkeypatch.setattr(nav, "huella_de_ventana", lambda o: "igual")
@@ -830,30 +866,29 @@ def test_si_la_ventana_no_cambia_el_zoom_no_se_da_por_hecho(monkeypatch,
                     adapter=_AdaptadorZoom())["fit_to_page"]
 
     assert r["verified"] is False
-    assert r["frame_changed"] is False
-    assert "ya estuviera ajustada" in r["reason"]
+    assert r["visual_change"] is False
+    # Se ofrecen las DOS posibilidades y se dice que no se distinguen; lo que
+    # no se hace es quedarse con la tranquilizadora.
+    assert "No se puede distinguir" in r["reason"]
+    assert "la accion no llego" in r["reason"]
 
 
-def test_el_estado_del_control_manda_sobre_los_pixeles(monkeypatch, tmp_path):
-    """Con estado del control no se vuelve a mirar la ventana.
-
-    La huella de ANTES se toma siempre -no se sabe todavia si habra estado
-    que releer-, pero la de despues solo si hace falta.
-    """
+def test_el_estado_del_control_manda_sobre_todo(monkeypatch, tmp_path):
+    """Si el control dice que quedo activo, no hace falta nada mas."""
     from horizun_pbi_mcp.powerbi import desktop_navigation as nav
 
     miradas = []
     monkeypatch.setattr(nav, "huella_de_ventana",
                         lambda o: miradas.append(1) or "x")
     monkeypatch.setattr(nav.time, "sleep",
-                        lambda s: pytest.fail("espero un repintado inutil"))
+                        lambda s: pytest.fail("comparo pixeles sin necesitarlo"))
 
     r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
                     adapter=_AdaptadorZoom(verified=True))["fit_to_page"]
 
     assert r["verified"] is True and r["verified_by"] == "control_state"
-    assert r["frame_changed"] is None
-    assert len(miradas) == 1, "se comparo la ventana sin necesitarlo"
+    assert r["visual_change"] is None
+    assert len(miradas) == 1
 
 
 def test_sin_poder_mirar_la_ventana_se_dice_que_no_se_pudo(monkeypatch,
@@ -865,8 +900,42 @@ def test_sin_poder_mirar_la_ventana_se_dice_que_no_se_pudo(monkeypatch,
     r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
                     adapter=_AdaptadorZoom())["fit_to_page"]
 
-    assert r["verified"] is False and r["frame_changed"] is None
-    assert "tampoco se pudo comparar" in r["reason"]
+    assert r["verified"] is False and r["visual_change"] is None
+    assert "no se pudo comparar" in r["reason"]
+
+
+def test_el_anuncio_de_zoom_no_se_confunde_con_las_plantillas():
+    """La ventana lleva textos fijos que tambien citan un porcentaje."""
+    R = uia_helper.ANUNCIO_DE_ZOOM
+    assert R.search("Informe ampliado a 72 %").group(1) == "72"
+    assert R.search("Report zoomed to 72%").group(1) == "72"
+    # Estos aparecen SIEMPRE, antes y despues: por eso se comparan listas.
+    assert R.search("Informe ampliado a 100 %. 10 resultados")
+    assert not R.search("Grafico de barras 100 % apiladas")
+    assert not R.search("Nivel de zoom. Haga clic para abrir el cuadro")
+
+
+def test_solo_cuenta_el_anuncio_NUEVO(monkeypatch):
+    """Lo constante se cancela: solo lo que aparece es evidencia."""
+    class _Uia(_UiaFalso):
+        def __init__(self, textos):
+            super().__init__()
+            self.textos = textos
+
+        def todos_de_tipo(self, raiz, tipo):
+            return list(self.textos)
+
+        def nombre(self, elemento):
+            return elemento
+
+    fijos = ["Informe ampliado a 100 %. 10 resultados", "Nivel de zoom"]
+    assert uia_helper._anuncios_de_zoom(_Uia(fijos), None) == [  # noqa: SLF001
+        "Informe ampliado a 100 %. 10 resultados"]
+    con_nuevo = uia_helper._anuncios_de_zoom(                     # noqa: SLF001
+        _Uia(fijos + ["Informe ampliado a 72 %"]), None)
+    assert [a for a in con_nuevo
+            if a not in ["Informe ampliado a 100 %. 10 resultados"]] == [
+        "Informe ampliado a 72 %"]
 
 
 # ===== 14) tras aceptar el reemplazo NO se vuelve a pulsar Guardar ========
@@ -981,7 +1050,8 @@ def test_si_el_foco_se_va_antes_del_acelerador_no_se_manda_F12(monkeypatch):
 
     uia = _UiaFalso()
     _secuencia_montada(monkeypatch, uia)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: False)
     teclas = []
     monkeypatch.setattr(uia_helper, "_enviar_teclas",
@@ -1003,7 +1073,8 @@ def test_el_cuadro_que_no_aparece_se_reintenta_y_termina_abriendo(monkeypatch):
     uia = _UiaFalso(valor_tipo="Archivo de Power BI (*.pbix)",
                     estado_tras=uia_helper.ESTADO_CERRADO, valor_nombre=ruta)
     _secuencia_montada(monkeypatch, uia)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
     monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
     intentos = {"n": 0}
@@ -1025,3 +1096,351 @@ def test_el_cuadro_que_no_aparece_se_reintenta_y_termina_abriendo(monkeypatch):
     fases = {p["phase"]: p for p in salida["steps"]}
     assert fases["abrir_cuadro"]["attempts_total"] == 2
     assert fases["abrir_cuadro"]["attempts"][0]["reason"] == "save_dialog_not_found"
+
+
+# ===== 17) el limite REAL de la guardia de foco ===========================
+def test_lo_que_puede_escaparse_es_UNA_tanda_no_cero(monkeypatch):
+    """La guardia acota el fragmento; no lo elimina.
+
+    Entre consultar el foco y que `SendInput` entregue la tanda hay una
+    ventana temporal que Windows no deja cerrar. Esta prueba fija el limite
+    para que nadie lo describa como imposibilidad: como mucho se escapa una
+    tanda, y despues la escritura se detiene.
+    """
+    enviadas = []
+    monkeypatch.setattr(uia_helper, "_enviar_teclas",
+                        lambda e: enviadas.append(len(e)))
+    monkeypatch.setattr(uia_helper.time, "sleep", lambda s: None)
+    # El foco esta bien al comprobar y se pierde justo despues, ya enviada
+    # esa tanda: es el peor caso que el mecanismo permite.
+    veces = {"n": 0}
+
+    def _guardia():
+        veces["n"] += 1
+        return veces["n"] <= 1
+
+    with pytest.raises(uia_helper.FocoPerdido) as fallo:
+        uia_helper.escribir_texto_real("x" * 100, tanda=40, pausa=0,
+                                       guardia=_guardia)
+
+    assert enviadas == [40], "se entrego mas de una tanda sin foco"
+    assert fallo.value.escritos == 20        # 40 eventos = 20 caracteres
+    maximo = max(t for t, _p in uia_helper.CADENCIAS_TECLEO) // 2
+    assert fallo.value.escritos <= maximo
+
+
+def test_la_cadencia_lenta_acota_mas_el_fragmento():
+    """La ultima cadencia deja escapar 4 caracteres, no 20."""
+    lenta = uia_helper.CADENCIAS_TECLEO[-1][0]
+    assert lenta // 2 == 4
+
+
+def test_ctrl_a_tampoco_se_envia_sin_foco(monkeypatch):
+    """La primera pulsacion que sale es `Ctrl+A`, y tambien va protegida."""
+    ruta = r"C:\entrega\Informe.pbix"
+    pulsado = []
+    monkeypatch.setattr(uia_helper, "seleccionar_todo",
+                        lambda: pulsado.append("ctrl+a"))
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: pulsado.append("texto"))
+    # Pasa la comprobacion de entrada y se pierde justo antes del Ctrl+A.
+    focos = iter([True, False, True, False, True, False,
+                  True, False, True, False, True, False])
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro",
+                        lambda h: next(focos, False))
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper._escribir_ruta(_UiaFalso(), 22, ruta, 4321)  # noqa: SLF001
+
+    assert pulsado == [], "se envio Ctrl+A sin tener el foco"
+    assert fallo.value.detalles["reason"] == "focus_lost_before_select_all"
+
+
+def test_cada_reintento_vuelve_a_exigir_cuadro_Y_campo(monkeypatch):
+    """El reintento no se salta ninguna de las dos comprobaciones."""
+    ruta = r"C:\entrega\Informe.pbix"
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t, **kw: None)
+    cuadro, campo = [], []
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro",
+                        lambda h: cuadro.append(h) or True)
+
+    class _SinFocoEnCampo(_UiaFalso):
+        def foco_dentro_de(self, elemento):
+            campo.append(1)
+            return False
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper._escribir_ruta(_SinFocoEnCampo(), 22, ruta, 4321)  # noqa: SLF001
+
+    intentos = uia_helper.INTENTOS_NOMBRE
+    assert fallo.value.detalles["reason"] == "field_focus_lost"
+    assert len(campo) == intentos, "algun reintento no comprobo el campo"
+    assert len(cuadro) >= intentos, "algun reintento no comprobo el cuadro"
+
+
+# ===== 18) pagina vs cinta: se distinguen por DONDE viven =================
+# Medido contra Power BI Desktop real. La pestaña de cinta "Ver" tiene
+# AutomationId 'view' y cuelga de `ms-OverflowSet` dentro del grupo
+# `tablist`; la pagina "Ver" tiene id vacio y su contenedor de seleccion es
+# `carouselScrollPane`, dentro de `explorationNavigationContent`. Son clases
+# CSS del lienzo web, no texto traducido.
+class _Pestana:
+    def __init__(self, nombre, *, aid="", contenedor="", ancestros=()):
+        self.CurrentName = nombre
+        self.CurrentAutomationId = aid
+        self._contenedor = contenedor
+        self._ancestros = list(ancestros)
+        self.seleccionada = False
+
+
+class _UiaConCintaYPaginas(_UiaFalso):
+    """Como el arbol real: cinta y paginas comparten el tipo TabItem."""
+
+    def __init__(self, pestanas):
+        super().__init__()
+        self.pestanas = pestanas
+        self.selecciones = []
+
+    def todos_de_tipo(self, raiz, tipo):
+        return list(self.pestanas) if tipo == uia_helper.UIA_TIPO_TABITEM else []
+
+    def nombre(self, e):
+        return e.CurrentName
+
+    def clase(self, e):
+        return e if isinstance(e, str) else ""
+
+    def contenedor_de_seleccion(self, e):
+        return e._contenedor or None
+
+    def ancestros(self, e, niveles=4):
+        return list(e._ancestros)
+
+    def seleccionar(self, e):
+        self.selecciones.append(e.CurrentName)
+        e.seleccionada = True
+        return "selection_item"
+
+    def esta_seleccionado(self, e):
+        return e.seleccionada
+
+
+def _arbol_real():
+    return [
+        _Pestana("Inicio", aid="home", contenedor="ms-OverflowSet root-137",
+                 ancestros=["ms-OverflowSet root-137", "ms-FocusZone css-136"]),
+        _Pestana("Ver", aid="view", contenedor="ms-OverflowSet root-137",
+                 ancestros=["ms-OverflowSet root-137", "ms-FocusZone css-136"]),
+        _Pestana("Page 1", contenedor="carouselScrollPane",
+                 ancestros=["carouselScrollPane",
+                            "editing explorationNavigationContent unselectable"]),
+        _Pestana("Ver", contenedor="carouselScrollPane",
+                 ancestros=["carouselScrollPane",
+                            "editing explorationNavigationContent unselectable"]),
+    ]
+
+
+def test_una_pagina_llamada_como_la_cinta_SI_se_puede_elegir(monkeypatch):
+    """Ya no se rechaza: el contenedor la distingue."""
+    from tests.test_navegacion_en_sesion_abierta import _montar
+
+    uia = _UiaConCintaYPaginas(_arbol_real())
+    _montar(monkeypatch, uia)
+
+    salida = uia_helper.seleccionar_pagina({"desktop_pid": 4321,
+                                            "page_name": "Ver"})
+
+    assert salida["verified"] is True
+    assert salida["disambiguated_by"] == "page_tab_container"
+    assert uia.selecciones == ["Ver"]
+    seleccionadas = [p for p in uia.pestanas if p.seleccionada]
+    assert [p.CurrentAutomationId for p in seleccionadas] == [""], (
+        "se activo la pestaña de la CINTA, que lleva AutomationId 'view'")
+    assert salida["container"]["selection_container_class"] == "carouselScrollPane"
+
+
+def test_una_pagina_sin_homonimos_no_necesita_desambiguar(monkeypatch):
+    from tests.test_navegacion_en_sesion_abierta import _montar
+
+    uia = _UiaConCintaYPaginas(_arbol_real())
+    _montar(monkeypatch, uia)
+
+    salida = uia_helper.seleccionar_pagina({"desktop_pid": 4321,
+                                            "page_name": "Page 1"})
+
+    assert salida["verified"] is True
+    assert salida["disambiguated_by"] is None
+
+
+def test_si_el_filtro_no_deja_una_sola_se_sigue_rechazando(monkeypatch):
+    """Dos paginas homonimas en el carrusel: no hay criterio, no se elige."""
+    from tests.test_navegacion_en_sesion_abierta import _montar
+
+    dos = [_Pestana("Ver", contenedor="carouselScrollPane"),
+           _Pestana("Ver", contenedor="carouselScrollPane")]
+    uia = _UiaConCintaYPaginas(dos)
+    _montar(monkeypatch, uia)
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper.seleccionar_pagina({"desktop_pid": 4321, "page_name": "Ver"})
+
+    assert fallo.value.detalles["reason"] == "page_tab_ambiguous"
+    assert fallo.value.detalles["matches_in_page_carousel"] == 2
+    assert uia.selecciones == []
+
+
+def test_sin_poder_leer_el_contenedor_no_se_adivina(monkeypatch):
+    """Un arbol que no expone clases deja la ambiguedad como estaba."""
+    from tests.test_navegacion_en_sesion_abierta import _UiaConPestanas, _montar
+
+    uia = _UiaConPestanas(["Ver", "Ver"])          # sin clase ni contenedor
+    _montar(monkeypatch, uia)
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper.seleccionar_pagina({"desktop_pid": 4321, "page_name": "Ver"})
+
+    assert fallo.value.detalles["reason"] == "page_tab_ambiguous"
+    assert fallo.value.detalles["matches_in_page_carousel"] == 0
+    assert uia.selecciones == []
+
+
+def test_el_patron_del_carrusel_no_depende_del_idioma():
+    """Se filtra por CLASE CSS, no por el nombre traducido del grupo."""
+    R = uia_helper.CLASE_PESTANAS_DE_PAGINA
+    assert R.search("carouselScrollPane")
+    assert R.search("editing explorationNavigationContent unselectable")
+    assert not R.search("ms-OverflowSet root-137")
+    assert not R.search("ms-FocusZone css-136")
+
+
+def test_fijar_valor_se_niega_a_correr():
+    """No se deja como si funcionara: leerla disponible costo caro una vez."""
+    class _Uia(uia_helper.Uia):
+        def __init__(self):
+            pass
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        _Uia().fijar_valor(object(), "C:/x/a.pbix")
+
+    assert fallo.value.detalles["reason"] == "set_value_does_not_commit"
+    assert fallo.value.transitoria is False
+
+
+# ===== 19) recuperar el foco DEL CUADRO, no del proceso ==================
+def test_traer_al_frente_exacto_no_se_conforma_con_el_proceso(monkeypatch):
+    """El defecto: la ventana principal del mismo Desktop tenia el foco.
+
+    `traer_al_frente` devolvia True sin tocar nada -el primer plano era del
+    pid- y el llamador concluia "no se pudo recuperar el foco". La
+    recuperacion no llegaba a intentarse justo en su caso.
+    """
+    import ctypes
+
+    estado = {"frente": 11, "intentos": 0}          # 11 = ventana principal
+
+    class _Fn:
+        def __init__(self, efecto):
+            self.efecto = efecto
+            self.argtypes = self.restype = None
+
+        def __call__(self, *a):
+            return self.efecto(*a)
+
+    def _duenio(hwnd, puntero):
+        puntero._obj.value = 4321                   # mismo proceso siempre
+        return 7
+
+    def _set_foreground(h):
+        estado["intentos"] += 1
+        estado["frente"] = 22                       # ahora si, el cuadro
+        return 1
+
+    class _U32:
+        def __init__(self):
+            self.GetForegroundWindow = _Fn(lambda: estado["frente"])
+            self.GetWindowThreadProcessId = _Fn(_duenio)
+            self.SetForegroundWindow = _Fn(_set_foreground)
+
+        def __getattr__(self, n):
+            return _Fn(lambda *a: 1)
+
+    monkeypatch.setattr(uia_helper, "_user32", lambda: _U32())
+    monkeypatch.setattr(ctypes, "byref", lambda x: type("P", (), {"_obj": x})())
+    monkeypatch.setattr(uia_helper, "_raiz_de", lambda h: h)
+    monkeypatch.setattr(uia_helper.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ctypes, "WinDLL", lambda *a, **k: _U32())
+
+    # Sin `exacto`, se da por hecho: el foco es del proceso.
+    estado.update(frente=11, intentos=0)
+    assert uia_helper.traer_al_frente(22, 4321) is True
+    assert estado["intentos"] == 0, "no intento nada y dijo que si"
+
+    # Con `exacto`, se exige ESA ventana y se actua.
+    estado.update(frente=11, intentos=0)
+    assert uia_helper.traer_al_frente(22, 4321, exacto=True) is True
+    assert estado["intentos"] >= 1, "no intento traer el cuadro al frente"
+
+
+def test_el_cuadro_se_recupera_con_exacto(monkeypatch):
+    """`_escribir_ruta` pide la ventana concreta, no cualquiera del pid."""
+    ruta = r"C:\entrega\Informe.pbix"
+    pedidos = []
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t, **kw: None)
+    estado = {"ok": False}
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro",
+                        lambda h: estado["ok"])
+
+    def _frente(h, p, *, exacto=False):
+        pedidos.append(exacto)
+        estado["ok"] = True
+        return True
+
+    monkeypatch.setattr(uia_helper, "traer_al_frente", _frente)
+
+    paso = uia_helper._escribir_ruta(_UiaFalso(valor_nombre=ruta), 22,  # noqa: SLF001
+                                     ruta, 4321)
+
+    assert paso["filename_verified"] is True
+    assert pedidos == [True], "pidio el foco sin exigir ESTA ventana"
+
+
+# ===== 20) la ventana de medicion del zoom empieza al pulsar ==============
+def test_el_anuncio_se_mide_desde_el_invoke_no_desde_la_entrada(monkeypatch):
+    """Llegar al control puede costar segundos, y la pagina anuncia sola.
+
+    Si la foto de referencia se toma al entrar, un anuncio provocado por la
+    navegacion previa contaria como prueba del pulsado.
+    """
+    from tests.test_navegacion_en_sesion_abierta import _UiaConCinta, _montar
+
+    class _AnunciaAlNavegar(_UiaConCinta):
+        def __init__(self):
+            super().__init__(directo=False)
+            self.textos = ["Informe ampliado a 100 %. 3 resultados"]
+
+        def todos_de_tipo(self, raiz, tipo):
+            if tipo == uia_helper.UIA_TIPO_TEXT:
+                return list(self.textos)
+            return super().todos_de_tipo(raiz, tipo)
+
+        def nombre(self, e):
+            return e if isinstance(e, str) else super().nombre(e)
+
+        def invocar(self, elemento):
+            # Al desplegar el menu, la pagina anuncia su nivel actual.
+            if elemento is self.menu:
+                self.textos.append("Informe ampliado a 55 %")
+            return super().invocar(elemento)
+
+    uia = _AnunciaAlNavegar()
+    _montar(monkeypatch, uia)
+
+    salida = uia_helper.ajustar_a_pagina({"desktop_pid": 4321})
+
+    assert salida["zoom_level_changed"] is False, (
+        "conto como prueba un anuncio que provoco la propia navegacion")
+    assert "Informe ampliado a 55 %" in salida["zoom_announcements_before"]
+    assert salida["zoom_announcements_at_entry"] == [
+        "Informe ampliado a 100 %. 3 resultados"]

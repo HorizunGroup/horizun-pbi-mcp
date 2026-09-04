@@ -162,6 +162,31 @@ NOMBRE_PESTANA_VISTA = re.compile(r"^(ver|vista|view)$", re.I)
 NOMBRE_VISTA_DE_PAGINA = re.compile(r"vista de p[aá]gina|page view", re.I)
 NOMBRE_AJUSTAR_A_PAGINA = re.compile(r"ajustar a la p[aá]gina|fit to page",
                                      re.I)
+#: Anuncio del NIVEL de zoom que Power BI Desktop publica en su region viva
+#: al cambiarlo: se midio `Informe ampliado a 72 %` apareciendo justo despues
+#: de pulsar "Ajustar a la pagina", donde antes no habia ninguno. Es la unica
+#: señal especifica del zoom que el arbol expone: el boton no tiene estado, y
+#: el valor en reposo de la barra no se puede leer.
+ANUNCIO_DE_ZOOM = re.compile(
+    r"(?:ampliad[oa]|zoom(?:ed)?|escala)\D{0,24}(\d{1,4})\s*%", re.I)
+#: Como se distingue una pestaña de PAGINA de una de la CINTA. Las dos son
+#: `TabItem` y pueden llamarse igual -una pagina puede llamarse "Ver"-, asi
+#: que el nombre no basta. Lo que si las separa es DONDE viven, y eso se
+#: midio contra Power BI Desktop real:
+#:
+#:   pagina  -> contenedor de seleccion de clase `carouselScrollPane`,
+#:              dentro de un grupo `explorationNavigationContent`, y sin
+#:              AutomationId;
+#:   cinta   -> contenedor `ms-OverflowSet` dentro del grupo `tablist`
+#:              ("Pestañas de la cinta"), y con AutomationId propio
+#:              (`view`, `home`, `help`, `externalTools`...).
+#:
+#: Se filtra por CLASE y no por el nombre del grupo porque el nombre esta
+#: traducido y la clase no. Es un filtro, no un dogma: si no deja exactamente
+#: una candidata, se sigue rechazando por ambiguedad.
+CLASE_PESTANAS_DE_PAGINA = re.compile(
+    r"carouselScrollPane|explorationNavigation", re.I)
+
 #: Titulos del dialogo de plantilla que Desktop abre al guardar como `.pbit`.
 NOMBRE_DIALOGO_PLANTILLA = re.compile(r"plantilla|template", re.I)
 NOMBRE_BOTON_ACEPTAR = re.compile(r"^(aceptar|ok)$", re.I)
@@ -316,11 +341,20 @@ def escribir_texto_real(texto: str, *, tanda: int = 40,
     como permite `SendInput` pierde caracteres en el cuadro de guardado, y la
     ruta queda a medias.
 
-    `guardia` se consulta ANTES de cada tanda y corta la escritura en cuanto
-    deja de ser cierta. Sin el, perder el foco a mitad de una ruta larga no
-    detenia nada: el resto de las pulsaciones seguia saliendo, y acababa en
-    la ventana que hubiera robado el primer plano. Se midio con dos ventanas
-    de Power BI Desktop peleandose por el foco.
+    `guardia` se consulta ANTES de cada tanda y corta la escritura en la
+    siguiente. Sin ella, perder el foco a mitad de una ruta larga no detenia
+    nada: el resto de las pulsaciones seguia saliendo hacia la ventana que
+    hubiera robado el primer plano. Se midio con dos ventanas de Power BI
+    Desktop peleandose por el foco.
+
+    LO QUE ACOTA Y LO QUE NO. Entre consultar la guardia y que `SendInput`
+    entregue la tanda hay una ventana temporal que no se puede cerrar desde
+    aqui: Windows no ofrece "enviar estas teclas solo si el foco sigue
+    siendo este". Asi que la guardia REDUCE lo que puede escaparse a una
+    tanda -`tanda // 2` caracteres: 20, 8 o 4 segun la cadencia- y no lo
+    elimina. Decir "ningun caracter puede acabar en otra ventana" seria
+    falso; lo cierto es que como mucho se escapa una tanda y la escritura se
+    detiene ahi.
     """
     eventos: List[Any] = []
     for letra in texto:
@@ -618,28 +652,29 @@ class Uia:
             return None
 
     def fijar_valor(self, elemento, texto: str) -> bool:
-        """`ValuePattern.SetValue`: pone el texto sin pasar por el teclado.
+        """Se NIEGA: `ValuePattern.SetValue` no compromete lo que escribe.
 
-        Es la via preferida para la ruta: no depende de quien tenga el foco ni
-        de la cola de entrada del sistema, que son las dos cosas que se
-        rompian con varias ventanas abiertas. Devuelve False si el control no
-        lo soporta o esta en solo lectura; entonces se teclea.
+        Estaba aqui como la via rapida para el campo del nombre -no depende
+        del foco ni de la cola de teclado- y se midio contra Power BI Desktop
+        que no sirve: tras `SetValue`, UI Automation Y `WM_GETTEXT` devolvian
+        los 133 caracteres pedidos, y el cuadro guardo igualmente con SU
+        nombre y SU carpeta por defecto. El dialogo moderno lleva su propio
+        estado y solo lo actualiza con las notificaciones que produce la
+        escritura real.
+
+        Se conserva fallando, y no borrada, por lo mismo que los pasos Win32
+        del adaptador: leerla como disponible fue lo que hizo que el arreglo
+        de verdad tardara en encontrarse. Si algun dia hace falta poner un
+        valor en OTRO control, se escribe una funcion nueva que diga contra
+        que se verifico.
         """
-        try:
-            patron = elemento.GetCurrentPattern(UIA_PAT_VALOR).QueryInterface(
-                self.modulo.IUIAutomationValuePattern)
-        except Exception:                                 # noqa: BLE001
-            return False
-        try:
-            if bool(patron.CurrentIsReadOnly):
-                return False
-        except Exception:                                 # noqa: BLE001
-            pass
-        try:
-            patron.SetValue(texto)
-            return True
-        except Exception:                                 # noqa: BLE001
-            return False
+        raise HelperError(
+            "interfaz",
+            "ValuePattern.SetValue no compromete el valor en el cuadro de "
+            "guardado: cambia lo que se LEE y el dialogo guarda con su nombre "
+            "por defecto. Se comprobo contra la aplicacion real. La ruta se "
+            "teclea.",
+            reason="set_value_does_not_commit", element=str(elemento)[:60])
 
     def expandir(self, combo):
         combo.GetCurrentPattern(UIA_PAT_EXPANDIR).QueryInterface(
@@ -704,6 +739,43 @@ class Uia:
             return "selection_item"
         except Exception:                                 # noqa: BLE001
             return self.invocar(elemento)
+
+    def clase(self, elemento) -> str:
+        try:
+            return str(elemento.CurrentClassName or "")
+        except Exception:                                 # noqa: BLE001
+            return ""
+
+    def contenedor_de_seleccion(self, elemento):
+        """El contenedor del patron SelectionItem, o None."""
+        try:
+            patron = elemento.GetCurrentPattern(UIA_PAT_SELITEM)
+            if not patron:
+                return None
+            contenedor = patron.QueryInterface(
+                self.modulo.IUIAutomationSelectionItemPattern
+            ).CurrentSelectionContainer
+            return contenedor if contenedor else None
+        except Exception:                                 # noqa: BLE001
+            return None
+
+    def ancestros(self, elemento, niveles: int = 4) -> List[Any]:
+        """Los `niveles` padres del elemento, en la vista de control."""
+        salida: List[Any] = []
+        try:
+            caminante = self.auto.ControlViewWalker
+        except Exception:                                 # noqa: BLE001
+            return salida
+        actual = elemento
+        for _ in range(niveles):
+            try:
+                actual = caminante.GetParentElement(actual)
+            except Exception:                             # noqa: BLE001
+                break
+            if not actual:
+                break
+            salida.append(actual)
+        return salida
 
     def esta_seleccionado(self, elemento) -> Optional[bool]:
         """`IsSelected` del patron SelectionItem, o None si no lo expone."""
@@ -809,12 +881,20 @@ def ventanas_de(pid: int) -> List[Dict[str, Any]]:
     return salida
 
 
-def traer_al_frente(hwnd: int, pid: int) -> bool:
+def traer_al_frente(hwnd: int, pid: int, *, exacto: bool = False) -> bool:
     """Primer plano por la via documentada, y COMPROBADO despues.
 
     `SetForegroundWindow` a secas lo ignora Windows cuando quien llama no es
     el duenio del foco -un servidor lanzado desde consola nunca lo es-, y no
     falla ruidosamente: solo parpadea el boton de la barra de tareas.
+
+    `exacto=True` exige que quede al frente ESTA ventana, no una cualquiera
+    del proceso. Sin el, la funcion daba por hecho el trabajo en cuanto el
+    primer plano pertenecia al pid, asi que recuperar el foco del CUADRO de
+    guardado cuando lo tenia la ventana principal del mismo Desktop no
+    llegaba a intentarse: devolvia True sin tocar nada y el llamador
+    concluia "no se pudo recuperar". Es justo el caso para el que se
+    escribio la recuperacion.
     """
     import ctypes.wintypes
     wintypes = ctypes.wintypes
@@ -829,12 +909,17 @@ def traer_al_frente(hwnd: int, pid: int) -> bool:
                                          wintypes.BOOL]
     propio = int(kernel32.GetCurrentThreadId())
 
+    def _ya_esta(frente: int, duenio: int) -> bool:
+        if exacto:
+            return bool(frente) and _raiz_de(int(frente)) == int(hwnd)
+        return duenio == int(pid)
+
     for _ in range(25):
         frente = user32.GetForegroundWindow()
         duenio = wintypes.DWORD()
         hilo_frente = user32.GetWindowThreadProcessId(frente,
                                                       ctypes.byref(duenio))
-        if int(duenio.value) == int(pid):
+        if _ya_esta(int(frente or 0), int(duenio.value)):
             return True
         adjunto = False
         try:
@@ -850,6 +935,11 @@ def traer_al_frente(hwnd: int, pid: int) -> bool:
                 user32.AttachThreadInput(
                     wintypes.DWORD(propio), wintypes.DWORD(hilo_frente), False)
         time.sleep(0.15)
+        frente = user32.GetForegroundWindow()
+        duenio = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(frente, ctypes.byref(duenio))
+        if _ya_esta(int(frente or 0), int(duenio.value)):
+            return True
     return False
 
 
@@ -1199,7 +1289,11 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
     intento teclea mas despacio que el anterior.
 
     Y no se teclea a ciegas: hace falta el foco en ESTE cuadro -no en otra
-    ventana del mismo proceso- y, si UIA lo expone, en ESTE campo.
+    ventana del mismo proceso- y, si UIA lo expone, en ESTE campo. La
+    comprobacion se repite antes del `Ctrl+A` y antes de cada tanda de
+    teclas, y en cada reintento se vuelve a exigir cuadro y campo. Aun asi,
+    entre comprobar y enviar hay una ventana temporal: lo que se acota es
+    CUANTO puede escaparse -una tanda-, no que no se escape nada.
     """
 
     def intento(numero: int) -> Dict[str, Any]:
@@ -1209,7 +1303,7 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
         metodos: List[str] = ["keyboard"]
 
         if pid is not None and not _primer_plano_es_el_cuadro(dialogo_hwnd):
-            traer_al_frente(dialogo_hwnd, pid)
+            traer_al_frente(dialogo_hwnd, pid, exacto=True)
             if not _primer_plano_es_el_cuadro(dialogo_hwnd):
                 raise HelperError(
                     "nombre", "El cuadro de guardado no tiene el foco y no se "
@@ -1226,6 +1320,14 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
                 reason="field_focus_lost", methods_tried=metodos)
         tanda, pausa = CADENCIAS_TECLEO[min(numero - 1,
                                             len(CADENCIAS_TECLEO) - 1)]
+        # `Ctrl+A` es la primera pulsacion que sale y tambien puede acabar en
+        # otra ventana: se comprueba el foco justo antes, como con el texto.
+        if pid is not None and not _primer_plano_es_el_cuadro(dialogo_hwnd):
+            raise HelperError(
+                "nombre", "El foco salio del cuadro antes de seleccionar el "
+                "contenido del campo; no se envia Ctrl+A a otra ventana.",
+                transitoria=True, reason="focus_lost_before_select_all",
+                methods_tried=metodos)
         seleccionar_todo()
         try:
             escribir_texto_real(
@@ -1319,7 +1421,7 @@ def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
         raise HelperError("guardar",
                           "El boton no expone un punto sobre el que pulsar.",
                           attempts=intentos)
-    if not traer_al_frente(dialogo_hwnd, pid):
+    if not traer_al_frente(dialogo_hwnd, pid, exacto=True):
         raise HelperError("guardar",
                           "No se pudo poner el cuadro al frente; no se hace "
                           "clic a ciegas.", attempts=intentos)
@@ -1742,6 +1844,55 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ------------------------------------------------- navegar en la ventana ----
+def _clases_del_contenedor(uia: Uia, pestana) -> Dict[str, Any]:
+    """Donde vive una pestaña: su contenedor de seleccion y sus ancestros.
+
+    Es la evidencia con la que se decide si es de pagina o de la cinta, y
+    viaja en la respuesta para que no haya que creerselo.
+    """
+    leer_clase = getattr(uia, "clase", None)
+    if leer_clase is None:                    # doble de pruebas sin la lectura
+        return {}
+    contenedor = getattr(uia, "contenedor_de_seleccion", lambda e: None)(pestana)
+    ancestros = getattr(uia, "ancestros", lambda e, n=4: [])(pestana, 4)
+    return {
+        "automation_id": (pestana.CurrentAutomationId
+                          if hasattr(pestana, "CurrentAutomationId") else None),
+        "selection_container_class": leer_clase(contenedor) if contenedor else None,
+        "ancestor_classes": [leer_clase(a) for a in ancestros],
+    }
+
+
+def _anuncios_de_zoom(uia: Uia, raiz) -> List[str]:
+    """Textos del arbol que anuncian un nivel de zoom, ordenados.
+
+    Se devuelve la lista ENTERA y no un porcentaje suelto porque la ventana
+    lleva plantillas fijas que tambien citan un porcentaje ("Informe ampliado
+    a 100 %. 10 resultados"). Comparando la lista antes y despues, lo
+    constante se cancela y lo que aparece es el anuncio real.
+    """
+    try:
+        textos = [uia.nombre(e) for e in uia.todos_de_tipo(raiz, UIA_TIPO_TEXT)]
+    except Exception:                                     # noqa: BLE001
+        return []
+    return sorted(t for t in textos if t and ANUNCIO_DE_ZOOM.search(t))
+
+
+def _es_pestana_de_pagina(uia: Uia, pestana) -> bool:
+    """True si la pestaña vive en el carrusel de paginas del informe.
+
+    Se mira el contenedor de seleccion y, si no dice nada, los ancestros. Un
+    doble de pruebas que no exponga estas lecturas devuelve False: sin
+    evidencia no se decide, y quien llama se queda con la ambiguedad.
+    """
+    pistas = _clases_del_contenedor(uia, pestana)
+    if not pistas:
+        return False
+    candidatas = [pistas.get("selection_container_class") or ""]
+    candidatas.extend(pistas.get("ancestor_classes") or [])
+    return any(CLASE_PESTANAS_DE_PAGINA.search(c or "") for c in candidatas)
+
+
 def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
     """Activa la pestaña de una pagina en una ventana ABIERTA, y lo verifica.
 
@@ -1781,14 +1932,26 @@ def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
                 "ventana de Power BI Desktop.", transitoria=True,
                 reason="page_tab_not_found", page=nombre,
                 tabs_seen=[n for n in nombres if n][:40])
+        via_filtro = None
         if len(coincidencias) > 1:
-            raise HelperError(
-                "pagina", f"Hay {len(coincidencias)} pestañas llamadas "
-                f"'{nombre}' en la ventana -la cinta usa el mismo tipo de "
-                "control que las paginas- y no se elige ninguna.",
-                reason="page_tab_ambiguous", page=nombre,
-                matches=len(coincidencias),
-                tabs_seen=[n for n in nombres if n][:40])
+            # El nombre no basta -una pagina puede llamarse como una pestaña
+            # de la cinta- pero el sitio si: se filtran las que viven en el
+            # carrusel de paginas.
+            del_carrusel = [p for p in coincidencias if _es_pestana_de_pagina(uia, p)]
+            if len(del_carrusel) == 1:
+                coincidencias = del_carrusel
+                via_filtro = "page_tab_container"
+            else:
+                raise HelperError(
+                    "pagina", f"Hay {len(coincidencias)} pestañas llamadas "
+                    f"'{nombre}' en la ventana y el filtro por contenedor de "
+                    f"paginas deja {len(del_carrusel)}; no se elige ninguna.",
+                    reason="page_tab_ambiguous", page=nombre,
+                    matches=len(coincidencias),
+                    matches_in_page_carousel=len(del_carrusel),
+                    containers=[_clases_del_contenedor(uia, p)
+                                for p in coincidencias][:6],
+                    tabs_seen=[n for n in nombres if n][:40])
         objetivo = coincidencias[0]
         ya = uia.esta_seleccionado(objetivo)
         via = "already_selected" if ya else uia.seleccionar(objetivo)
@@ -1798,6 +1961,8 @@ def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
         seleccionado = uia.esta_seleccionado(objetivo)
         return {"page": nombre, "via": via, "verified": bool(estado),
                 "selection_state": seleccionado,
+                "disambiguated_by": via_filtro,
+                "container": _clases_del_contenedor(uia, objetivo),
                 "verification_reason": (
                     None if estado else
                     "la pestaña no expone IsSelected" if seleccionado is None
@@ -1832,6 +1997,7 @@ def ajustar_a_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
 
     def intento(_numero: int) -> Dict[str, Any]:
         raiz = uia.desde_hwnd(principal["hwnd"])
+        anuncios_al_entrar = _anuncios_de_zoom(uia, raiz)
         camino: List[str] = []
         opciones = uia.por_nombre(raiz, NOMBRE_AJUSTAR_A_PAGINA)
         if not opciones:
@@ -1854,13 +2020,29 @@ def ajustar_a_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
                 reason="fit_to_page_control_not_found", path=camino)
         opcion = opciones[0]
         antes = _estado(opcion)
+        # La foto de anuncios se toma AQUI, no al entrar: llegar hasta el
+        # control puede costar la pestaña de la cinta y hasta seis segundos
+        # esperando a que aparezca, y en ese rato la pagina que se acaba de
+        # cambiar puede publicar su propio nivel de zoom. Midiendo desde el
+        # invoke, lo que ya estuviera esta en las dos lecturas y se cancela.
+        anuncios_antes = _anuncios_de_zoom(uia, raiz)
         via = "already_selected" if antes else uia.invocar(opcion)
         camino.append("fit_to_page")
         estado = _hasta_que(lambda: (True if _estado(opcion) else None),
                             plazo=ESPERA_INTERFAZ)
         despues = _estado(opcion)
+        # El anuncio de nivel de zoom es la unica señal ESPECIFICA que hay:
+        # se espera a que aparezca uno nuevo en vez de leerlo una vez.
+        nuevos = _hasta_que(
+            lambda: ([a for a in _anuncios_de_zoom(uia, raiz)
+                      if a not in anuncios_antes] or None),
+            plazo=min(4.0, ESPERA_INTERFAZ)) or []
         return {"via": via, "path": camino, "verified": bool(estado),
                 "state_after": despues,
+                "zoom_announcements_at_entry": anuncios_al_entrar[:6],
+                "zoom_announcements_before": anuncios_antes[:6],
+                "zoom_announcements_new": nuevos[:6],
+                "zoom_level_changed": bool(nuevos),
                 "verification_reason": (
                     None if estado else
                     "el control no expone Toggle ni SelectionItem"

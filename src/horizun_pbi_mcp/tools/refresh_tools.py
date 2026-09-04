@@ -145,8 +145,8 @@ def register(mcp) -> None:
                 bloque = navegacion.get("fit_to_page")
                 if bloque is not None and not bloque.get("verified"):
                     avisos.append(
-                        "No se pudo demostrar 'Ajustar a la pagina' "
-                        f"({bloque.get('reason')}).")
+                        "No se pudo demostrar 'Ajustar a la pagina'; la vista "
+                        f"queda como estuviera. {bloque.get('reason')}.")
                 if avisos:
                     salida.setdefault("warnings", []).extend(avisos)
             return salida

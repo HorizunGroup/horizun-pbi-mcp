@@ -358,8 +358,8 @@ def register(mcp) -> None:
                     if bloque_zoom is not None and not bloque_zoom.get("verified"):
                         avisos.append(
                             "No se pudo demostrar 'Ajustar a la pagina' en la "
-                            "sesion abierta: la captura sale al zoom actual de "
-                            f"Desktop ({bloque_zoom.get('reason')}).")
+                            "sesion abierta; la captura sale al zoom que tenga "
+                            f"Desktop. {bloque_zoom.get('reason')}.")
                 elif vista is not None:
                     visuales_en_pagina = desktop_navigation.contar_visuales(
                         pbix, vista.get("page_id"))

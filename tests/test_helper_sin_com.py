@@ -206,7 +206,8 @@ def test_sin_boton_de_guardar_no_se_inventa_donde_pulsar():
 def test_si_no_se_puede_poner_al_frente_no_se_pulsa_a_ciegas(monkeypatch):
     """Un clic sin el cuadro al frente cae en la aplicacion de otra persona."""
     monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: True)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: False)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: False)
     clics = []
     monkeypatch.setattr(uia_helper, "clic_dinamico",
                         lambda *a, **k: clics.append(a))
