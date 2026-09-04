@@ -257,7 +257,21 @@ class Session:
         # Lo pone `_load_persisted`; se declara aqui para que `_persist`
         # nunca pueda mirarlo antes de que exista.
         self._session_corrupta: Optional[str] = None
+        # Nota de la ultima recuperacion de sesion caducada, pendiente de
+        # entregar en la respuesta de la tool que la provoco. No se persiste.
+        self._recuperacion: Optional[Dict[str, Any]] = None
         self._load_persisted()
+
+    # -- recuperacion de sesion caducada --
+    def note_recovery(self, nota: Dict[str, Any]) -> None:
+        with self._lock:
+            self._recuperacion = dict(nota)
+
+    def consume_recovery(self) -> Optional[Dict[str, Any]]:
+        """Entrega la nota UNA vez: la tool que recupero es la que la cuenta."""
+        with self._lock:
+            nota, self._recuperacion = self._recuperacion, None
+            return nota
 
     # -- modelo activo --
     @property
@@ -360,10 +374,26 @@ class Session:
                 if self._active_model is model \
                         and self._model_identity(model) == identity:
                     self._invalidate_model_verification()
+            # Recuperacion CENTRALIZADA: la misma regla que pbi_select_model.
+            # Solo cuando el motor guardado MURIO (`stale`): con una sola
+            # instancia viva se reconecta y la tool lo declara; con varias o
+            # ninguna, `recuperar_sesion` lanza el error accionable con los
+            # candidatos. Un `mismatch` -el puerto lo ocupa ahora OTRO
+            # proceso o sirve otro modelo- nunca se reconecta solo: es justo
+            # el caso en que conectar "porque el puerto esta abierto" acaba
+            # en el modelo equivocado, y exige `pbi_select_model` explicito.
+            from horizun_pbi_mcp.powerbi.desktop_discovery import (
+                StaleSessionError, candidatos_de_seleccion, recuperar_sesion)
+
+            if status["status"] == "stale":
+                return recuperar_sesion(self, previo=model, status=status)
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {status['reason']} "
-                "Ejecuta pbi_list_desktop_models y pbi_select_model de nuevo.",
-                details={"status": status["status"], "recorded": model.to_dict()},
+                "El puerto lo ocupa otra instancia y no se reconecta a ciegas: "
+                "ejecuta pbi_list_desktop_models y pbi_select_model(port=...).",
+                details={"status": status["status"], "recorded": model.to_dict(),
+                         "recovery": "explicit_selection_required",
+                         "candidates": candidatos_de_seleccion()},
             )
         with self._lock:
             # La seleccion pudo cambiar en otro hilo mientras se enumeraban

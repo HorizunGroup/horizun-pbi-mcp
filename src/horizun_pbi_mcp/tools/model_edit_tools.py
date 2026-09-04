@@ -535,7 +535,8 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def pbi_get_power_query(table: str = "", name: str = "",
-                            kind: str = "") -> Dict[str, Any]:
+                            kind: str = "", object_name: str = "",
+                            source: str = "") -> Dict[str, Any]:
         """Lee la consulta Power Query (M) de una particion o expresion.
 
         En un .pbip el M no tiene archivo propio: vive dentro del TMDL, en la
@@ -544,18 +545,46 @@ def register(mcp) -> None:
         `pbi_update_power_query` como `expected_sha256` para no escribir sobre
         una version que ya cambio.
 
+        `source`: 'pbip' (TMDL en disco), 'live' (motor de Desktop, DMV
+        `TMSCHEMA_PARTITIONS` / `TMSCHEMA_EXPRESSIONS`) o vacio: pbip si hay
+        proyecto activo, si no el modelo vivo. Con `live` la respuesta trae
+        `file: null` y `source: 'live'`: es la definicion cargada en Desktop,
+        no el archivo.
+
         `table` + `name` seleccionan una particion; `name` con
-        `kind='expression'`, una expresion con nombre. Si la seleccion queda
-        ambigua o no existe, el error trae la lista de candidatos.
+        `kind='expression'`, una expresion con nombre. `object_name` es un
+        alias de `name` (si llegan distintos, conflicto). Si la seleccion
+        queda ambigua o no existe, el error trae la lista de candidatos.
 
         Solo lectura, y solo lectura de TEXTO: nadie ha ejecutado esta
         consulta. No hay motor M fuera de Power BI Desktop.
         """
         from horizun_pbi_mcp.services import power_query
+        from horizun_pbi_mcp.tools._common import alias_unico
 
-        return guard(lambda: power_query.get_power_query(
-            _proyecto_activo(), table=table or None, name=name or None,
-            kind=kind or None))
+        def _impl():
+            nombre = alias_unico(name=name, object_name=object_name)
+            fuente = (source or "").strip().casefold()
+            if fuente not in ("", "pbip", "live"):
+                raise ValidationError(
+                    f"source='{source}' no existe. Usa pbip, live o vacio.",
+                    details={"parameter": "source",
+                             "valid": ["pbip", "live"]})
+            sesion = get_session()
+            if not fuente:
+                fuente = "pbip" if sesion.active_pbip is not None else "live"
+            if fuente == "live":
+                from horizun_pbi_mcp.services import live_query
+
+                return live_query.get_power_query(
+                    sesion, table=table or None, name=nombre, kind=kind or None)
+            salida = power_query.get_power_query(
+                _proyecto_activo(), table=table or None, name=nombre,
+                kind=kind or None)
+            salida.setdefault("source", "pbip")
+            return salida
+
+        return guard(_impl)
 
     @mcp.tool()
     def pbi_update_power_query(m: str, table: str = "", name: str = "",

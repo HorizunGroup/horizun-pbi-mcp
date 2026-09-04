@@ -126,7 +126,14 @@ def test_un_fallo_sigue_reportandose_como_no_confirmado(session, sample_pbip,
 # --------------------------------------------------------------------------
 
 def test_particiones_no_legibles_no_se_reportan_como_ausencia(session, monkeypatch):
-    """Con conexion viva las particiones no se exponen; decir que no hay miente."""
+    """Si la DMV del motor no se puede leer, es un error; no "no hay ninguna".
+
+    Las particiones en vivo se leen de `TMSCHEMA_PARTITIONS`. Un fallo de esa
+    lectura tiene que salir como fallo: una lista vacia con `supported=true`
+    le diria a quien llama que el modelo no tiene particiones.
+    """
+    from horizun_pbi_mcp.powerbi.errors import DaxQueryError
+    from horizun_pbi_mcp.services import live_query
     from horizun_pbi_mcp.tools import explore_tools
 
     capturado = {}
@@ -139,14 +146,14 @@ def test_particiones_no_legibles_no_se_reportan_como_ausencia(session, monkeypat
             return envoltorio
 
     explore_tools.register(MCPFalso())
-    monkeypatch.setattr(
-        explore_tools, "load_model",
-        lambda _source: {"tables": [{"name": "Ventas"}]})   # sin 'partitions'
+
+    def _no_se_puede(_session):
+        raise DaxQueryError("la DMV no respondio")
+
+    monkeypatch.setattr(live_query, "list_partitions", _no_se_puede)
 
     salida = capturado["pbi_list_partitions"](source="live")
 
-    assert salida["supported"] is False
-    aviso = " ".join(salida["warnings"])
-    assert "NO SOPORTADO" in aviso
-    assert "no como ausencia" in aviso
-    assert "No se detectaron particiones" not in aviso
+    assert salida["ok"] is False
+    assert salida["error"] == "dax_query_error"
+    assert "partitions" not in salida, "un fallo no puede traer una lista vacia"

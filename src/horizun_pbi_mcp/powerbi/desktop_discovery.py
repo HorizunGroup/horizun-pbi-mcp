@@ -471,6 +471,18 @@ def select_model(
                      "ports": [i["port"] for i in instances]},
         )
 
+    return _activar(session, chosen, catalog=catalog)
+
+
+def _activar(session: Session, chosen: Dict[str, Any], *,
+             catalog: Optional[str] = None) -> ActiveModel:
+    """Convierte una instancia descubierta en el modelo activo de la sesion.
+
+    Es la UNICA forma de activar un modelo: la seleccion explicita y la
+    recuperacion de una sesion caducada pasan por aqui, con la misma
+    identidad (pid, hora de arranque, workspace, huella) para que despues se
+    pueda detectar un puerto reutilizado por otro proceso.
+    """
     if chosen["status"] != "ok":
         raise ModelDiscoveryError(
             f"La instancia en el puerto {chosen['port']} no responde.",
@@ -494,3 +506,99 @@ def select_model(
     session.set_active_model(model)
     log.info("Modelo activo: puerto %s catalogo %s", model.port, model.catalog)
     return model
+
+
+def _candidatas_de_recuperacion(instances: List[Dict[str, Any]]
+                                ) -> List[Dict[str, Any]]:
+    """Instancias VIVAS y verificables: responden y tienen catalogo.
+
+    Un archivo de puerto huerfano (`status='unreachable'`) no es candidato, y
+    tampoco lo es el puerto viejo por el hecho de estar otra vez abierto: lo
+    que se elige sale de la foto NUEVA, con el pid y la hora de arranque de
+    quien lo ocupa ahora.
+    """
+    return [i for i in instances
+            if i.get("status") == "ok" and i.get("catalog")]
+
+
+def candidatos_de_seleccion() -> List[Dict[str, Any]]:
+    """Instancias vivas con la llamada exacta para elegir cada una."""
+    try:
+        vivas = _candidatas_de_recuperacion(discover_instances())
+    except Exception as exc:                              # noqa: BLE001
+        log.debug("No se pudieron listar candidatos: %s", exc)
+        return []
+    return [{"port": i["port"], "model_name": i.get("model_name"),
+             "table_count": i.get("table_count"),
+             "tables_sample": i.get("tables_sample") or [],
+             "select_with": f"pbi_select_model(port={i['port']})"}
+            for i in vivas]
+
+
+def recuperar_sesion(session: Session, *, previo: ActiveModel,
+                     status: Dict[str, Any]) -> ActiveModel:
+    """Reconecta una sesion caducada con la MISMA regla que `pbi_select_model`.
+
+    Al reiniciar Power BI Desktop, `session.json` conserva un puerto muerto y
+    cada tool -hasta `pbi_capabilities`- fallaba con esa sesion. En vez de
+    hacer que cada una lo resuelva a su manera, la regla vive aqui, una vez:
+
+    - exactamente UNA instancia viva y verificable -> se selecciona, y la
+      respuesta de la tool lo declara en `session_recovery`;
+    - varias -> `stale_session` con los candidatos y la llamada exacta, sin
+      elegir ninguna a ciegas;
+    - ninguna -> `stale_session` accionable.
+
+    Nunca reconecta al puerto guardado por el hecho de estar abierto: si lo
+    ocupa otro proceso, es otra instancia y entra por la foto nueva como
+    cualquier otra. Y NO reproduce ninguna operacion: solo deja la sesion
+    apuntando a un modelo demostrable para que la operacion en curso se
+    ejecute una sola vez sobre el.
+    """
+    instancias = discover_instances()
+    candidatas = _candidatas_de_recuperacion(instancias)
+    grabado = previo.to_dict()
+    motivo = str(status.get("reason") or "la sesion guardada ya no es valida")
+    if not candidatas:
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} No hay ninguna "
+            "instancia viva de Power BI Desktop a la que reconectar. Abre el "
+            "informe en Desktop y ejecuta pbi_list_desktop_models y "
+            "pbi_select_model.",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "no_instances",
+                     "instances_seen": len(instancias)})
+    if len(candidatas) > 1:
+        opciones = [
+            {"port": i["port"], "model_name": i.get("model_name"),
+             "table_count": i.get("table_count"),
+             "tables_sample": i.get("tables_sample") or [],
+             "select_with": f"pbi_select_model(port={i['port']})"}
+            for i in candidatas]
+        puertos = ", ".join(str(i["port"]) for i in candidatas)
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} Hay "
+            f"{len(candidatas)} instancias vivas y no se elige ninguna a "
+            f"ciegas. Llama pbi_select_model(port=...) con uno de estos "
+            f"puertos: {puertos}.",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "ambiguous", "candidates": opciones,
+                     "ports": [i["port"] for i in candidatas]})
+    elegida = candidatas[0]
+    modelo = _activar(session, elegida)
+    nota = {
+        "recovered": True,
+        "reason": motivo,
+        "previous": {"port": previo.port, "pid": previo.pid,
+                     "catalog": previo.catalog},
+        "selected": {"port": modelo.port, "pid": modelo.pid,
+                     "catalog": modelo.catalog,
+                     "model_name": modelo.model_name},
+        "rule": "unica instancia viva y verificable, como pbi_select_model",
+    }
+    anotar = getattr(session, "note_recovery", None)
+    if anotar is not None:
+        anotar(nota)
+    log.info("Sesion caducada recuperada: puerto %s -> %s",
+             previo.port, modelo.port)
+    return modelo
