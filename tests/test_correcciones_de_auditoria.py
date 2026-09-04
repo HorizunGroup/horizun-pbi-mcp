@@ -12,6 +12,10 @@ no por atributos ausentes. Se agrupan por hallazgo:
 6. `pbi_capabilities` no recuperaba; `source` invalido se aceptaba.
 7. `same_window_followed` con el mismo nombre; `opened_path_verified` por titulo.
 8. Titulo "Power BI Desktop" a secas y plantilla `.pbit` sin esquema.
+
+Despues, los grupos 9-20 recogen lo medido contra Desktop real y la
+revision adversarial; 21-22 cierran la rama: que demuestra el zoom y
+que una prueba live no pise la sesion del usuario.
 """
 from __future__ import annotations
 
@@ -1444,3 +1448,119 @@ def test_el_anuncio_se_mide_desde_el_invoke_no_desde_la_entrada(monkeypatch):
     assert "Informe ampliado a 55 %" in salida["zoom_announcements_before"]
     assert salida["zoom_announcements_at_entry"] == [
         "Informe ampliado a 100 %. 3 resultados"]
+
+
+# ===== 21) `verified` del zoom no puede leerse como "modo aplicado" ========
+# El grupo 13 fijo QUE cuenta como evidencia. Este fija hasta donde llega esa
+# evidencia en la respuesta publica, que es lo que un cliente MCP lee.
+def test_el_anuncio_de_nivel_no_se_publica_como_prueba_del_modo(monkeypatch,
+                                                                tmp_path):
+    """El anuncio demuestra que el zoom CAMBIO al pulsar, y nada mas.
+
+    "Ajustar al ancho" tambien anunciaria un nivel nuevo, asi que la
+    respuesta tiene que declarar ella misma el alcance de su `verified`.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: "x")
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom(
+                        anuncios=["Informe ampliado a 86 %"]))["fit_to_page"]
+
+    assert r["verified"] is True
+    dicho = r.get("verified_means")
+    assert dicho and "no que el modo" in dicho, (
+        "publica `verified` sin decir hasta donde llega")
+    assert "Ajustar al ancho" in dicho
+
+
+def test_solo_el_estado_del_control_identifica_el_modo(monkeypatch, tmp_path):
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: "x")
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom(verified=True))["fit_to_page"]
+
+    assert r["verified_by"] == "control_state"
+    assert "identifica el modo" in (r.get("verified_means") or "")
+
+
+def test_sin_evidencia_no_se_afirma_nada_del_modo(monkeypatch, tmp_path):
+    """Ni "ya estaba ajustada" ni "no llego": no se pueden distinguir."""
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: "x")
+    monkeypatch.setattr(nav.time, "sleep", lambda s: None)
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom())["fit_to_page"]
+
+    assert r["verified"] is False
+    assert r["verified_by"] is None
+    assert r.get("verified_means", "ausente") is None
+    assert r["visual_change"] is False
+    assert "ya estaba ajustada o si la accion no llego" in r["reason"], (
+        "afirmo una de las dos causas sin poder distinguirlas")
+
+
+def test_la_descripcion_publica_no_promete_el_modo_de_vista():
+    """Aguas abajo, lo que un cliente MCP lee es la ficha de la tool.
+
+    De nada sirve que el codigo sea preciso si la descripcion publicada dice
+    que el zoom "se verifica" a secas.
+    """
+    from horizun_pbi_mcp.tools import dax_tools
+
+    mcp = _Mcp()
+    dax_tools.register(mcp)
+    ficha = mcp.tools["pbi_validate_desktop_render"].__doc__ or ""
+
+    assert "se VERIFICA el resultado" not in ficha
+    assert "verified_means" in ficha
+    assert "no que el modo resultante" in ficha
+
+
+# ===== 22) una prueba live no puede pisar la sesion del usuario ===========
+def test_una_prueba_live_puede_aislar_su_session_json(monkeypatch, tmp_path):
+    """El incidente de esta rama: los scripts live escribieron `session.json`.
+
+    `project_locator.open_project()` persiste el proyecto activo, asi que un
+    script de prueba deja apuntando la sesion a su fixture temporal. La via
+    de aislamiento no es nueva -`HORIZUN_PBI_MCP_OUTPUTS_DIR` ya existia-,
+    pero nadie la ejercitaba: sin esta prueba, un cambio en la resolucion de
+    rutas volveria a llevar la sesion de las pruebas a la del usuario.
+    """
+    from horizun_pbi_mcp import config
+
+    del_usuario = tmp_path / "outputs_del_usuario"
+    del_usuario.mkdir()
+    suyo = del_usuario / "session.json"
+    suyo.write_text('{"active_model": null, "active_pbip": null}',
+                    encoding="utf-8")
+    antes = suyo.read_bytes()
+
+    aislada = tmp_path / "outputs_de_la_prueba"
+    monkeypatch.setenv("HORIZUN_PBI_MCP_OUTPUTS_DIR", str(aislada))
+    monkeypatch.setattr(config, "_settings", None)
+
+    ajustes = config.Settings.load()
+    ajustes.ensure_dirs()
+    assert ajustes.outputs_dir == aislada
+
+    sesion = config.Session(ajustes)
+    sesion.set_active_pbip(config.ActivePbip(
+        pbip_path=str(tmp_path / "Sintetico.pbip"),
+        project_dir=str(tmp_path)))
+
+    assert (aislada / "session.json").is_file(), "no escribio donde se le dijo"
+    assert suyo.read_bytes() == antes, "toco la sesion del usuario"
+
+
+def test_el_prefijo_antiguo_tambien_aisla(monkeypatch, tmp_path):
+    """Quien tenga el nombre viejo en su entorno no se queda sin aislamiento."""
+    from horizun_pbi_mcp import config
+
+    monkeypatch.delenv("HORIZUN_PBI_MCP_OUTPUTS_DIR", raising=False)
+    monkeypatch.setenv("PBI_MCP_OUTPUTS_DIR", str(tmp_path / "vieja"))
+    monkeypatch.setattr(config, "_settings", None)
+
+    assert config.Settings.load().outputs_dir == tmp_path / "vieja"

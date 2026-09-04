@@ -209,9 +209,13 @@ def register(mcp) -> None:
         debia observar no lo hace por su cuenta. Sin `confirm_reuse`, `page`
         sobre una sesion abierta es un error y `fit_to_page` degrada a un
         aviso (se captura al zoom actual). Con el, se elige la pestaña y el
-        zoom por UI Automation y se VERIFICA el resultado (`navigation`): si
-        la pagina no se pudo demostrar, la tool falla en vez de capturar
-        otra; si el zoom no se pudo demostrar, lo dice en `warnings`. Nunca
+        zoom por UI Automation y se demuestra el resultado hasta donde se
+        puede (`navigation`): la pagina por el `IsSelected` de su pestaña; el
+        zoom solo por el nivel que anuncia Power BI, lo que prueba que el zoom
+        CAMBIO y no que el modo resultante sea "Ajustar a la pagina"
+        -`verified_means` lo dice en la propia respuesta-. Si la pagina no se
+        pudo demostrar, la tool falla en vez de capturar otra; si el zoom no
+        se pudo demostrar, lo dice en `warnings`. Nunca
         toca `pages.json` de un proyecto abierto.
 
         La captura separa cuatro señales que no son la misma cosa:

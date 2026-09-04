@@ -1975,12 +1975,16 @@ def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def ajustar_a_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
-    """Pone la vista en "Ajustar a la pagina" desde la cinta, y lo verifica.
+    """Pone la vista en "Ajustar a la pagina" desde la cinta, con su evidencia.
 
     Camino: pestaña Vista -> Vista de pagina -> Ajustar a la pagina. Cada
-    control se busca por su nombre accesible (español o ingles). Si la opcion
-    no expone un estado que se pueda releer -Toggle o SelectionItem-, se
-    devuelve `verified=false` con la razon: el padre decide si le vale.
+    control se busca por su nombre accesible (español o ingles). La opcion no
+    expone estado que releer -ni Toggle ni SelectionItem-, asi que la unica
+    señal especifica es el anuncio de nivel de zoom que publica Power BI,
+    tomado entre el instante ANTERIOR A PULSAR y el posterior: demuestra que
+    el nivel cambio al pulsar, no que el modo resultante sea el pedido. Sin
+    estado ni anuncio se devuelve `verified=false` con la razon: el padre
+    decide si le vale.
     """
     pid = int(peticion["desktop_pid"])
     identidad = verificar_proceso(pid, peticion.get("desktop_started"))

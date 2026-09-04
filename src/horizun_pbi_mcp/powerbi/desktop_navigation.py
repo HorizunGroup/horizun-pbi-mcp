@@ -141,8 +141,9 @@ def huella_de_ventana(opened: Any) -> Optional[str]:
     una accion de vista. Para el zoom es una señal SECUNDARIA -el oraculo que
     decide es el anuncio de nivel que publica Power BI-, y sirve para poder
     decir que algo se movio cuando no hay anuncio. El control de "Ajustar a
-    la pagina" es un `Button` que solo expone `Invoke` en las versiones
-    medidas, sin `Toggle` ni `SelectionItem` que releer.
+    la pagina" es un `Button` sin `Toggle` ni `SelectionItem` que releer:
+    medido contra Desktop real ofrece `Invoke` y `LegacyIAccessible`, y el
+    estado de este ultimo no se ha examinado como oraculo.
     """
     from horizun_pbi_mcp.powerbi import desktop_capture
 
@@ -252,6 +253,9 @@ def navegar(opened: Any, *, page: Optional[str] = None,
                 "verified_by": ("control_state" if por_estado
                                 else "zoom_level_announced" if por_zoom
                                 else None),
+                "verified_means": SIGNIFICADO_DEL_ZOOM.get(
+                    "control_state" if por_estado
+                    else "zoom_level_announced" if por_zoom else ""),
                 "zoom_level_announced": respuesta.get("zoom_announcements_new"),
                 "visual_change": cambio,
                 "via": respuesta.get("via"),
@@ -263,12 +267,27 @@ def navegar(opened: Any, *, page: Optional[str] = None,
             })
         except PowerBIMCPError as exc:
             bloque.update({"verified": False, "verified_by": None,
-                           "error": exc.code,
+                           "verified_means": None, "error": exc.code,
                            "reason": str(exc.message)[:200],
                            "details": exc.details})
         salida["fit_to_page"] = bloque
 
     return salida
+
+
+#: Que demuestra cada oraculo del zoom, dicho en la propia respuesta. Existe
+#: porque `verified=true` invita a leer mas de lo que se midio: el anuncio de
+#: nivel prueba que el zoom CAMBIO, no que el modo resultante sea el pedido.
+SIGNIFICADO_DEL_ZOOM = {
+    "control_state": (
+        "el control declaro su estado despues de la accion: es el unico "
+        "oraculo que identifica el modo"),
+    "zoom_level_announced": (
+        "Power BI anuncio un nivel de zoom nuevo entre el instante anterior a "
+        "pulsar y el posterior: demuestra que el zoom CAMBIO al pulsar, no que "
+        "el modo resultante sea \"Ajustar a la pagina\" -\"Ajustar al ancho\" "
+        "tambien anunciaria-"),
+}
 
 
 def _motivo_zoom(respuesta: Dict[str, Any], cambio: Optional[bool]) -> str:

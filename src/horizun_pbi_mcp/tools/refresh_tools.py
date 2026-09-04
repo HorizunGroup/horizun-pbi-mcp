@@ -87,8 +87,10 @@ def register(mcp) -> None:
         pestaña de esa pagina y la vista "Ajustar a la pagina" en la propia
         ventana, por UI Automation, sin tocar `pages.json`. Mueven la ventana
         igual que el refresh la vacia: los cubre el mismo `confirm=true`. La
-        respuesta trae `navigation` con `verified` por accion: lo que no se
-        pudo demostrar se dice en `warnings`, no se da por hecho.
+        respuesta trae `navigation` con `verified` por accion y, en el zoom,
+        `verified_means` con lo que esa prueba alcanza: que el nivel de zoom
+        cambio, no que el modo resultante sea el pedido. Lo que no se pudo
+        demostrar se dice en `warnings`, no se da por hecho.
 
         **Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:
         los dos efectos son visibles y el segundo descarta lo que hubiera en
