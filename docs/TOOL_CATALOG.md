@@ -51,7 +51,7 @@ tools registered.
 | `pbi_list_desktop_models` | Open Power BI Desktop instances |
 | `pbi_select_model` | Sets the active model (requires a port if there are several) |
 | `pbi_test_connection` | Validates the connection |
-| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`); only closes Desktop if the tool opened it |
+| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`: the page by `IsSelected`, the zoom by the window's pixels changing, since its control exposes no state); only closes Desktop if the tool opened it |
 | `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open. Also accepts `desktop_pid` + `desktop_started` (from the export's `desktop_session`) to close the window an export left open; refuses a recycled PID |
 | `pbi_list_pending_journals` | Journals of operations left half-done |
 | `pbi_inspect_journal` | Compares a journal with the current state (read-only) |

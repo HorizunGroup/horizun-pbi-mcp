@@ -222,13 +222,55 @@ no other Desktop window open:
 | Session recovery with zero instances | `stale_session` with `recovery="no_instances"` |
 | Stray-file detection | reported `Demo.pbix` in the project folder with its cause |
 
+### The last three scenarios, run live
+
+The three gaps left above were executed against real Power BI Desktop with
+synthetic projects and identified test instances. Two more defects turned up,
+both fixed:
+
+- **The zoom could not be proven, but it worked.** `Ajustar a la página` is a
+  `Button` exposing only `Invoke` and `LegacyIAccessible` — no `Toggle`, no
+  `SelectionItem` to read back — so a working action was reported as
+  unverified. Navigation now compares the window's pixels before and after
+  and reports `verified_by: "frame_changed"`. When nothing changes it says
+  so, distinguishing "already fitted" from "the action never landed".
+- **Losing focus mid-path kept typing.** The remaining keystrokes went on to
+  whatever window had taken the foreground. Typing now consults a guard
+  between batches and stops the moment the foreground is no longer this
+  dialog (`focus_lost_mid_typing`, with how many characters got through).
+- Opening the dialog is a retried phase too: with the foreground stolen right
+  as `F12` is released, the accelerator reached another window and the export
+  died waiting. The foreground is re-checked immediately before the key, and
+  the phase retries within its budget.
+- The name phase gets more attempts (6, still capped by the same 25 s) because
+  a failed attempt now costs tenths of a second instead of seconds.
+- After accepting the replace prompt, Save is never pressed again: the code
+  waits for the dialog to close.
+- `0x80131509` (the UIA provider's `InvalidOperationException`, measured under
+  contention) joins the transient HRESULTs.
+
+Measured, five repetitions per regime:
+
+| Scenario | Result |
+|---|---|
+| Page selection | `Portada` selected and verified by `IsSelected`; the canvas changed (53,168 → 67,764 bytes) |
+| Page named like a ribbon tab (`Ver`) | ambiguity reported (2 matches), the ribbon was never activated |
+| Fit to page from `ActualSize` | applied; capture changed (67,764 → 61,359 bytes); second call correctly says nothing changed because it was already fitted |
+| Navigation without `confirm_reuse` | refused with `desktop_open_page_needs_confirm`; `pages.json` untouched |
+| Overwrite without permission | `pbix_export_failed`, Desktop never opened, target byte-for-byte identical |
+| Overwrite with `overwrite=true` | backup taken, replace prompt accepted (`via: invoke`), new 3-page output, different hash, Save pressed once |
+| Focus contention, realistic (3-5 steals) | 5/5 exports succeeded, 1 recovered from `focus_lost_mid_typing` |
+| Focus contention, pathological (27-53 steals) | 3/5 succeeded; the 2 failures refused to type without the foreground |
+
+Across all 15 contention runs: no file was ever written to the wrong path, no
+stray default-name output appeared, the other test project stayed
+byte-for-byte identical, and every definitive failure cancelled its own
+dialog.
+
 ### Pending real-Desktop validation
 
-Still only covered by doubles: page selection and "Fit to page" being
-*applied* (their controls were found in the live UIA tree — `Ajustar a la
-página`, and the page tab `Page 1` — but no page was actually switched), the
-replace prompt under `overwrite=true`, and focus contention between two
-competing windows.
+Nothing from this batch. What remains untested live is outside it: the
+credentials and data-load modals, which need a model with an external source.
 
 ---
 
