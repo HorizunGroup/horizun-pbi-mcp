@@ -472,6 +472,43 @@ def _capture_window_bgra(hwnd: int) -> tuple[int, int, bytes]:
         user32.ReleaseDC(wintypes.HWND(hwnd), source_dc)
 
 
+#: Fraccion de pixeles muestreados que tiene que ocupar UN solo color para
+#: sospechar que la captura es un lienzo vacio. No se mira el tamaño del PNG
+#: -41.809 bytes fue el sintoma de un caso, no una regla- sino la imagen.
+UMBRAL_FOTOGRAMA_UNIFORME = 0.985
+
+
+def analizar_fotograma(width: int, height: int, bgra: bytes,
+                       muestras: int = 4096) -> dict[str, Any]:
+    """Cuanto se parece la captura a un lienzo en blanco.
+
+    Una imagen estable no demuestra que haya datos: una pagina en blanco es
+    perfectamente estable. Aqui se muestrea el bitmap y se cuenta que fraccion
+    ocupa el color dominante; si es casi todo, la captura es sospechosa de
+    estar vacia. Es una SEÑAL, no un veredicto: una pagina legitimamente
+    vacia tambien sale uniforme, y eso lo decide quien sepa cuantos visuales
+    tiene la pagina.
+    """
+    pixeles = max(1, width * height)
+    paso = max(1, pixeles // max(1, muestras))
+    cuenta: dict[bytes, int] = {}
+    total = 0
+    for indice in range(0, pixeles, paso):
+        color = bgra[indice * 4:indice * 4 + 3]
+        if len(color) < 3:
+            break
+        cuenta[color] = cuenta.get(color, 0) + 1
+        total += 1
+    if not total:
+        return {"sampled": 0, "distinct_colors": 0,
+                "dominant_color_ratio": 1.0, "uniform": True}
+    dominante = max(cuenta.values())
+    proporcion = dominante / total
+    return {"sampled": total, "distinct_colors": len(cuenta),
+            "dominant_color_ratio": round(proporcion, 4),
+            "uniform": proporcion >= UMBRAL_FOTOGRAMA_UNIFORME}
+
+
 def _encode_png(width: int, height: int, bgra: bytes) -> bytes:
     """Codifica un DIB BGRA como PNG RGB usando solo la biblioteca estandar."""
     expected = width * height * 4
@@ -554,12 +591,23 @@ def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
 
 def capture_opened(opened: Any, *, timeout: int = 30,
                    output_dir: Optional[Path] = None,
-                   settle_seconds: float = 0.0) -> dict[str, Any]:
+                   settle_seconds: float = 0.0,
+                   identity_timeout: Optional[float] = None) -> dict[str, Any]:
     """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado.
 
     Con `settle_seconds` se espera a que la ventana deje de cambiar antes de
     dar la captura por buena; es lo que hace falta justo despues de un refresh,
     cuando la pagina todavia se esta repintando.
+
+    Antes de fotografiar se espera a que la IDENTIDAD de la ventana se
+    asiente: mientras el titulo diga `Sin titulo`, Desktop sigue abriendo el
+    documento y la captura seria de un lienzo vacio que ademas es estable.
+    Dos capturas identicas de 41.809 bytes con `frame_settled=true` fueron
+    exactamente eso. Por eso la respuesta separa cuatro cosas que antes se
+    confundian: `identity` (la ventana es la del documento), `frame_settled`
+    (la imagen dejo de cambiar), `frame_uniform` (la imagen es casi de un
+    solo color) y `capture_representative` (las tres anteriores a la vez).
+    `frame_settled` no se declara verdadero con la identidad sin asentar.
     """
     timeout = validate_limit(timeout, "capture_timeout", 120)
     assert timeout is not None
@@ -570,6 +618,13 @@ def capture_opened(opened: Any, *, timeout: int = 30,
         raise DesktopCaptureError(
             "La sesion abierta no identifica proceso y archivo de Desktop.",
             details={"pid": pid, "path": report_path})
+
+    from horizun_pbi_mcp.powerbi import desktop_identity
+
+    identidad = desktop_identity.esperar_identidad_de_ventana(
+        int(pid), report_path,
+        timeout=float(timeout if identity_timeout is None else identity_timeout))
+    identidad_ok = bool(identidad.get("settled"))
 
     deadline = time.monotonic() + timeout
     while True:
@@ -593,6 +648,11 @@ def capture_opened(opened: Any, *, timeout: int = 30,
     if settle_seconds > 0:
         width, height, png, estable = _fotograma_estable(
             window.hwnd, png, width, height, float(settle_seconds))
+        if estable and not identidad_ok:
+            # Una imagen que no cambia mientras el documento aun no cargo es
+            # la foto de la espera, no del informe: no se declara asentada.
+            estable = False
+    fotograma = analizar_fotograma(width, height, pixels)
 
     root = Path(output_dir) if output_dir is not None else (
         get_settings().outputs_dir / "desktop_captures")
@@ -605,7 +665,23 @@ def capture_opened(opened: Any, *, timeout: int = 30,
         "desktop_pid": int(pid), "hwnd": window.hwnd,
         "window_title": window.title, "capture_method": "PrintWindow",
         "focus_required": False,
+        "identity": identidad,
+        "identity_settled": identidad_ok,
+        "frame_uniform": fotograma["uniform"],
+        "frame_analysis": fotograma,
     }
     if estable is not None:
         salida["frame_settled"] = estable
+    salida["capture_representative"] = bool(
+        identidad_ok and (estable is None or estable)
+        and not fotograma["uniform"])
+    if not identidad_ok:
+        salida["capture_warning"] = (
+            "La ventana no llego a mostrar el documento esperado (titulo "
+            f"'{identidad.get('status')}'): la captura puede ser del lienzo "
+            "de carga, no del informe.")
+    elif fotograma["uniform"]:
+        salida["capture_warning"] = (
+            "La imagen es casi de un solo color: puede ser una pagina vacia "
+            "o un informe que aun no pinto sus visuales.")
     return salida

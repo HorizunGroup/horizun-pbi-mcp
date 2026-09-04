@@ -273,6 +273,20 @@ class AdaptadorUI(Protocol):
                 excluir: Sequence[int] = ()) -> List[Modal]:
         """Dialogos abiertos de ese proceso, clasificados y redactados."""
 
+    def seleccionar_pagina(self, *, pid: int, started: Optional[float],
+                           page_name: str,
+                           timeout: float = 30.0) -> Dict[str, Any]:
+        """Activa la pestaña de esa pagina en la ventana abierta y lo verifica."""
+
+    def ajustar_a_pagina(self, *, pid: int, started: Optional[float],
+                         timeout: float = 30.0) -> Dict[str, Any]:
+        """Pone la vista en 'Ajustar a la pagina' y dice si pudo comprobarlo."""
+
+
+#: Tope para una accion de navegacion (elegir pestaña, cambiar el zoom). Es
+#: un par de clics; si tarda mas, la interfaz no esta respondiendo.
+LIMITE_NAVEGACION = 30.0
+
 
 # ------------------------------------------------------------------ Win32 ----
 def _user32():
@@ -725,7 +739,38 @@ class Win32UIAdapter:
             "extension": extension,
             "dialog_timeout": min(60.0, timeout),
             "save_timeout": timeout,
+            # Para que el helper distinga "el archivo ya aparecio en ESTA
+            # ejecucion" de un destino que existia de antes.
+            "started_at": time.time(),
         }, timeout=min(timeout, LIMITE_HELPER) + 60.0)
+
+    def seleccionar_pagina(self, *, pid: int, started: Optional[float],
+                           page_name: str,
+                           timeout: float = LIMITE_NAVEGACION) -> Dict[str, Any]:
+        """La pestaña se elige por UI Automation desde el proceso aparte.
+
+        Es lo que evita cerrar la ventana, tocar `pages.json` y reabrir solo
+        para fotografiar otra pagina. El helper devuelve `verified`: si la
+        pestaña no expone su estado de seleccion, aqui NO se afirma nada.
+        """
+        from horizun_pbi_mcp.powerbi import desktop_helper
+
+        return desktop_helper.ejecutar({
+            "action": "select_page",
+            "desktop_pid": int(pid),
+            "desktop_started": started,
+            "page_name": str(page_name),
+        }, timeout=min(float(timeout), LIMITE_NAVEGACION) + 15.0)
+
+    def ajustar_a_pagina(self, *, pid: int, started: Optional[float],
+                         timeout: float = LIMITE_NAVEGACION) -> Dict[str, Any]:
+        from horizun_pbi_mcp.powerbi import desktop_helper
+
+        return desktop_helper.ejecutar({
+            "action": "fit_to_page",
+            "desktop_pid": int(pid),
+            "desktop_started": started,
+        }, timeout=min(float(timeout), LIMITE_NAVEGACION) + 15.0)
 
     def esperar_cierre(self, dialogo: Ventana, *, timeout: float) -> bool:
         import ctypes.wintypes

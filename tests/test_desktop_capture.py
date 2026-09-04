@@ -108,16 +108,30 @@ def test_render_con_page_exige_pbip(monkeypatch, tmp_path):
     assert "pbip" in r["message"].casefold()
 
 
-def test_render_con_sesion_abierta_y_page_falla_claro(pbip_sintetico, monkeypatch):
+def test_render_con_sesion_abierta_y_page_no_demostrada_falla_claro(
+        pbip_sintetico, monkeypatch):
+    """Con la sesion abierta la pagina se elige en la ventana; si no se puede
+    DEMOSTRAR, la tool falla en vez de capturar otra pagina."""
+    from horizun_pbi_mcp.powerbi import desktop_navigation
+
     pbip, _active = pbip_sintetico
     mcp = _McpCaptura()
     dax_tools.register(mcp)
     monkeypatch.setattr(desktop_launcher, "proceso_con_archivo_abierto",
                         lambda _p: 4242)
+    monkeypatch.setattr(desktop_launcher, "open_pbix",
+                        lambda *a, **k: _opened(launched_by_us=False))
+    monkeypatch.setattr(desktop_navigation, "navegar",
+                        lambda opened, page=None, fit_to_page=False, adapter=None: {
+                            "page": {"verified": False, "reason": "sin pestañas"}})
+    capturas = []
+    monkeypatch.setattr(desktop_capture, "capture_opened",
+                        lambda *a, **k: capturas.append(1))
 
     r = mcp.tools["pbi_validate_desktop_render"](str(pbip), page="Portada")
     assert r["ok"] is False
-    assert r["details"]["reason"] == "desktop_open_page_unavailable"
+    assert r["details"]["reason"] == "desktop_open_page_unverified"
+    assert capturas == []
 
 
 def test_elige_informe_por_titulo_antes_que_splash_mas_grande():

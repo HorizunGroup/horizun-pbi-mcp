@@ -49,8 +49,18 @@ log = get_logger("pbix_export")
 REFRESH_AUTO, REFRESH_REQUIRED, REFRESH_SKIP = "auto", "required", "skip"
 MODOS_REFRESH = (REFRESH_AUTO, REFRESH_REQUIRED, REFRESH_SKIP)
 
+#: Formatos que `Guardar como` puede producir desde aqui. `.pbit` es una
+#: plantilla: lleva informe y definicion del modelo, pero NO los datos.
+FORMATO_PBIX, FORMATO_PBIT = "pbix", "pbit"
+FORMATOS = (FORMATO_PBIX, FORMATO_PBIT)
+
 #: Limite de Windows para la ruta de un archivo que Desktop debe poder abrir.
 MAX_RUTA = 250
+
+#: Cuanto se espera a que la ventana muestre el documento pedido antes de
+#: conducirla. Que el motor tabular responda no significa que la interfaz
+#: haya terminado de abrir: durante medio minuto el titulo dice `Sin titulo`.
+ESPERA_IDENTIDAD = 90.0
 
 #: Espera maxima a que el cuadro de guardado aparezca, en segundos.
 ESPERA_DIALOGO = 60.0
@@ -108,30 +118,43 @@ class Preflight:
         }
 
 
-def _resolver_destino(pbip: Path, out_path: Optional[str]) -> Path:
+def normalizar_formato(formato: Optional[str]) -> str:
+    """`pbix` o `pbit`, en minusculas y sin punto. Otra cosa es un error."""
+    valor = str(formato or FORMATO_PBIX).strip().casefold().lstrip(".")
+    if valor not in FORMATOS:
+        raise ValidationError(
+            f"format='{formato}' no esta soportado. Usa {' o '.join(FORMATOS)}.",
+            details={"parameter": "format", "valid": list(FORMATOS)})
+    return valor
+
+
+def _resolver_destino(pbip: Path, out_path: Optional[str],
+                      formato: str = FORMATO_PBIX) -> Path:
+    extension = f".{formato}"
     if out_path:
         destino = Path(str(out_path)).expanduser()
     else:
-        destino = pbip.with_suffix(".pbix")
+        destino = pbip.with_suffix(extension)
     if not destino.is_absolute():
         destino = (Path.cwd() / destino)
     destino = Path(os.path.normpath(str(destino)))
-    if destino.suffix.casefold() != ".pbix":
+    if destino.suffix.casefold() != extension:
         # Sin comillas anidadas en el f-string: el repositorio soporta Python
         # 3.10 y ahi eso es un SyntaxError, no un detalle de estilo.
         tenia = destino.suffix or "(ninguna extension)"
         raise ValidationError(
-            f"El destino debe terminar en .pbix y termina en '{tenia}'. "
-            "Guardar con otra extension produce una plantilla o un archivo "
-            "que Power BI no abre.",
+            f"El destino debe terminar en {extension} y termina en '{tenia}'. "
+            "La extension tiene que coincidir con el formato pedido: guardar "
+            "con otra produce un archivo que Power BI no abre.",
             details={"parameter": "out_path", "out_path": str(destino),
-                     "suffix": destino.suffix})
+                     "suffix": destino.suffix, "format": formato})
     return destino
 
 
 def preflight(session: Session, *, pbip_path: Optional[str] = None,
               out_path: Optional[str] = None,
-              overwrite: bool = False) -> Preflight:
+              overwrite: bool = False,
+              formato: str = FORMATO_PBIX) -> Preflight:
     """Todo lo comprobable SIN abrir Power BI Desktop."""
     from horizun_pbi_mcp.pbip import project_locator
     from horizun_pbi_mcp.services import tmdl_validate
@@ -155,7 +178,7 @@ def preflight(session: Session, *, pbip_path: Optional[str] = None,
         raise ValidationError(f"El proyecto no existe: {origen}",
                               details={"path": str(origen)})
 
-    destino = _resolver_destino(origen, out_path)
+    destino = _resolver_destino(origen, out_path, formato)
     resultado = Preflight(source_pbip=origen, output_pbix=destino)
 
     if len(str(destino)) >= MAX_RUTA:
@@ -290,12 +313,65 @@ def _refrescar(session: Session, modo: str,
 
 
 # ------------------------------------------------------------- verificacion --
+def _inspeccionar_plantilla(destino: Path) -> Dict[str, Any]:
+    """Estructura de un `.pbit`: informe y definicion, y SIN modelo de datos.
+
+    Una plantilla es el mismo contenedor que un `.pbix` pero sin `DataModel`
+    ni `SecurityBindings`. No se fabrica quitandolos de un zip: se lee lo que
+    Desktop escribio y se comprueba que tenga la forma de plantilla. Y no se
+    afirma que lleve datos, porque una plantilla nunca los lleva.
+    """
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(destino) as zf:
+            nombres = zf.namelist()
+            tamanos = {n: zf.getinfo(n).file_size for n in nombres}
+    except zipfile.BadZipFile as exc:
+        raise PbixExportNotVerified(
+            "El archivo existe pero no es un contenedor de Power BI valido.",
+            details={"output_pbix": str(destino),
+                     "cause": f"{type(exc).__name__}: {exc}"[:200]}) from exc
+    tiene_informe = any(n.startswith("Report/") for n in nombres)
+    modelo_datos = tamanos.get("DataModel", 0)
+    tiene_esquema = any(n in ("DataModelSchema",) or n.startswith("DataModelSchema")
+                        for n in nombres)
+    resumen = {
+        "path": str(destino),
+        "report_format": ("pbir" if any(n.startswith("Report/definition/")
+                                        for n in nombres)
+                          else "layout" if "Report/Layout" in nombres
+                          else "none"),
+        "has_data_model": modelo_datos > 0,
+        "data_model_size": modelo_datos,
+        "has_model_schema": tiene_esquema,
+        "parts": len(nombres),
+        "template": True,
+        "warnings": [],
+    }
+    if not tiene_informe:
+        raise PbixExportNotVerified(
+            "La plantilla guardada no contiene ningun informe.",
+            details={"output_pbix": str(destino), "summary": resumen})
+    if modelo_datos > 0:
+        # Una plantilla no lleva datos por definicion. Si los lleva, Desktop
+        # guardo otra cosa con esa extension, y eso no se entrega como .pbit.
+        raise PbixExportNotVerified(
+            "El archivo lleva un DataModel con contenido: no tiene la forma "
+            "de una plantilla. Desktop guardo otro formato con extension "
+            ".pbit; comprueba el tipo elegido en el cuadro.",
+            details={"output_pbix": str(destino), "summary": resumen,
+                     "reason": "template_has_data_model"})
+    return resumen
+
+
 def verificar_salida(destino: Path, *, desde: float,
-                     antes: Optional[Dict[str, float]] = None
-                     ) -> Dict[str, Any]:
-    """Que el archivo existe, es un .pbix de verdad y es de ESTA ejecucion."""
+                     antes: Optional[Dict[str, float]] = None,
+                     formato: str = FORMATO_PBIX) -> Dict[str, Any]:
+    """Que el archivo existe, es del formato pedido y es de ESTA ejecucion."""
     from horizun_pbi_mcp.pbip import pbix_reader
 
+    extension = f".{formato}"
     comprobaciones: Dict[str, Any] = {"exists": destino.is_file()}
     if not comprobaciones["exists"]:
         raise PbixExportNotVerified(
@@ -304,9 +380,9 @@ def verificar_salida(destino: Path, *, desde: float,
             details={"output_pbix": str(destino), "checks": comprobaciones})
 
     comprobaciones["extension"] = destino.suffix.casefold()
-    if comprobaciones["extension"] != ".pbix":
+    if comprobaciones["extension"] != extension:
         raise PbixExportNotVerified(
-            f"El archivo guardado es '{destino.suffix}', no '.pbix'.",
+            f"El archivo guardado es '{destino.suffix}', no '{extension}'.",
             details={"output_pbix": str(destino), "checks": comprobaciones})
 
     stat = destino.stat()
@@ -324,6 +400,19 @@ def verificar_salida(destino: Path, *, desde: float,
             "ahi no lo escribio este guardado.",
             details={"output_pbix": str(destino), "checks": comprobaciones,
                      "started_at": desde})
+
+    if formato == FORMATO_PBIT:
+        resumen = _inspeccionar_plantilla(destino)
+        comprobaciones["report_format"] = resumen.get("report_format")
+        comprobaciones["has_data_model"] = resumen.get("has_data_model")
+        comprobaciones["template"] = True
+        comprobaciones["inspected"] = True
+        return {
+            "checks": comprobaciones,
+            "output_size": stat.st_size,
+            "output_sha256": sha256_de(destino),
+            "pbix_summary": resumen,
+        }
 
     try:
         contenido = pbix_reader.read_pbix(destino)
@@ -564,7 +653,16 @@ def _abrir_o_reutilizar(objetivo: Path, *, timeout: int,
                                       reuse_open=True)
 
 
-def _identidad_verificada(abierto: Any, objetivo: Path) -> Dict[str, Any]:
+def _identidad_verificada(abierto: Any, objetivo: Path, *,
+                          timeout: float = ESPERA_IDENTIDAD) -> Dict[str, Any]:
+    """Identidad de la ventana, ESPERANDO a que se asiente antes de juzgar.
+
+    `Sin titulo - Power BI Desktop` es la ventana cargando, no otra ventana.
+    Rechazarla al instante hacia que la misma peticion fallara y, treinta
+    segundos despues, funcionara. Se sondea el titulo con tope: un titulo
+    provisional espera; uno estable de OTRO documento se rechaza enseguida,
+    porque esperar no lo va a convertir en el nuestro.
+    """
     from horizun_pbi_mcp.powerbi import desktop_identity
 
     identidad = desktop_identity.identify(abierto.instance, target=objetivo)
@@ -573,7 +671,32 @@ def _identidad_verificada(abierto: Any, objetivo: Path) -> Dict[str, Any]:
             "No se pudo identificar el proceso de Power BI Desktop que sirve "
             "este proyecto. No se conduce una ventana sin saber cual es.",
             details={"path": str(objetivo), "identity": identidad})
+
+    titulo = identidad.get("desktop_window_title")
+    # Solo se espera cuando lo que hay es "todavia no": sin documento probado
+    # y con un titulo ausente o provisional. Un documento abierto distinto, o
+    # un titulo estable de otro informe, es una respuesta, no una espera.
+    pendiente = (identidad.get("path_match") is not True
+                 and not identidad.get("project_path")
+                 and (not titulo or desktop_identity.titulo_provisional(titulo)))
+    if pendiente:
+        espera = desktop_identity.esperar_identidad_de_ventana(
+            identidad["desktop_pid"], objetivo, timeout=timeout)
+        identidad["window_wait"] = espera
+        if espera.get("settled"):
+            identidad = {**desktop_identity.identify(abierto.instance,
+                                                     target=objetivo),
+                         "window_wait": espera}
     if identidad.get("path_match") is False:
+        estado = (identidad.get("window_wait") or {}).get("status")
+        if estado == desktop_identity.IDENTIDAD_TIMEOUT:
+            raise PbixExportError(
+                "La ventana de Power BI Desktop no llego a mostrar el "
+                "documento pedido en el plazo: el titulo siguio siendo "
+                "provisional. No se guarda desde una ventana que aun no "
+                "termino de abrir.",
+                details={"path": str(objetivo), "identity": identidad,
+                         "reason": "desktop_window_not_settled"})
         raise PbixExportError(
             "La ventana identificada esta sirviendo OTRO documento. No se "
             "guarda desde ahi por mucho que sea la unica que aparecio durante "
@@ -585,7 +708,9 @@ def _identidad_verificada(abierto: Any, objetivo: Path) -> Dict[str, Any]:
 
 def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                   destino: Path, timeout: float,
-                  origen: Optional[Path] = None) -> Dict[str, Any]:
+                  origen: Optional[Path] = None,
+                  formato: str = FORMATO_PBIX,
+                  desde: Optional[float] = None) -> Dict[str, Any]:
     """El flujo oficial, paso a paso y sin aceptar nada por defecto.
 
     El adaptador real ofrece `save_as_completo`, que hace toda la interaccion
@@ -596,10 +721,19 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
     """
     from horizun_pbi_mcp.powerbi import desktop_ui
 
+    extension = f".{formato}"
     if hasattr(adapter, "save_as_completo"):
         respuesta = adapter.save_as_completo(
             pid=pid, started=started, destino=str(destino),
-            extension=".pbix", timeout=timeout)
+            extension=extension, timeout=timeout)
+        plantilla = respuesta.get("template_dialog")
+        if formato == FORMATO_PBIT and plantilla and plantilla.get("seen") \
+                and not plantilla.get("accepted"):
+            raise desktop_ui.DesktopModalError(
+                "Desktop abrio el dialogo de plantilla y no se pudo aceptar "
+                "desde aqui. Atiendelo en la ventana y repite.",
+                details={"template_dialog": plantilla,
+                         "helper": respuesta.get("steps")})
         if respuesta.get("modals"):
             raise desktop_ui.DesktopModalError(
                 "El guardado se detuvo en un dialogo. No se cierra "
@@ -630,6 +764,8 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
         return {"file_type_selected": respuesta.get("file_type_selected"),
                 "commit_method": respuesta.get("commit_method"),
                 "dialog_closed": respuesta.get("dialog_closed"),
+                "filename_method": respuesta.get("filename_method"),
+                "template_dialog": plantilla,
                 "helper_steps": respuesta.get("steps"),
                 "write_wait": espera}
 
@@ -652,7 +788,7 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                 details={"modals": [m.to_dict() for m in modales]}) from exc
         raise
 
-    tipo = adapter.elegir_tipo(dialogo, ".pbix")
+    tipo = adapter.elegir_tipo(dialogo, extension)
     adapter.escribir_ruta(dialogo, str(destino))
     adapter.confirmar(dialogo)
 
@@ -704,12 +840,23 @@ def _estado_final(session: Session, *, abierto: Any, destino: Path,
         salida["opened_path_verified"] = False
         return salida
 
-    # Normalmente `Guardar como` reapunta la MISMA ventana al .pbix. Se
-    # verifica en vez de darlo por hecho.
+    # Normalmente `Guardar como` reapunta la MISMA ventana al archivo. Se
+    # verifica en vez de darlo por hecho: primero por descriptor abierto y,
+    # si no lo hay -Desktop trabaja sobre su copia de TempSaves y no deja
+    # ninguno sobre el destino-, por el titulo de la ventana, que tras un
+    # `Guardar como` pasa a ser el nombre del archivo guardado.
     pid = abierto.desktop_pid
     abierto_ahora = desktop_launcher.proceso_con_archivo_abierto(destino)
+    seguimiento = None
+    if not abierto_ahora and pid:
+        seguimiento = desktop_identity.esperar_identidad_de_ventana(
+            pid, destino, timeout=30.0)
+        if seguimiento.get("settled"):
+            abierto_ahora = int(pid)
     salida["same_window_followed"] = bool(
         abierto_ahora and int(abierto_ahora) == int(pid or -1))
+    if seguimiento is not None:
+        salida["window_follow"] = seguimiento
 
     if not abierto_ahora:
         # No siguio: se abre explicitamente el entregable. La ventana anterior
@@ -730,11 +877,30 @@ def _estado_final(session: Session, *, abierto: Any, destino: Path,
         instancia = nuevo.instance
     else:
         identidad = desktop_identity.identify(abierto.instance, target=destino)
+        if identidad.get("path_match") is None and seguimiento \
+                and seguimiento.get("settled"):
+            identidad["path_match"] = True
+            identidad["identity_confidence"] = desktop_identity.MEDIUM
         salida["reopened"] = False
         salida["desktop_pid"] = abierto_ahora
         salida["identity"] = identidad
         salida["opened_path_verified"] = True
         instancia = abierto.instance
+
+    # Referencia UTILIZABLE por `pbi_close_desktop`: la ventana que queda
+    # abierta ya no responde a la ruta del .pbip original, y por el nombre del
+    # .pbix tampoco siempre. PID + hora de arranque la identifican sin
+    # adivinar, y protegen frente a un PID reutilizado.
+    pid_final = salida.get("desktop_pid")
+    salida["desktop_session"] = {
+        "desktop_pid": pid_final,
+        "desktop_started": desktop_launcher._process_started(pid_final),  # noqa: SLF001
+        "document": str(destino),
+        "window_title": (salida.get("identity") or {}).get(
+            "desktop_window_title"),
+        "close_with": (f"pbi_close_desktop(desktop_pid={pid_final}, "
+                       "desktop_started=<desktop_started>, confirm=true)"),
+    }
 
     try:
         modelo = desktop_discovery.select_model(
@@ -751,10 +917,19 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
            out_path: Optional[str] = None, overwrite: bool = False,
            refresh: str = REFRESH_AUTO, leave_open: bool = True,
            timeout: int = 600, confirm_reuse: bool = False,
-           adapter: Optional[Any] = None) -> Dict[str, Any]:
-    """PBIP -> PBIX por `Guardar como`, con todo verificado a los dos lados."""
+           adapter: Optional[Any] = None,
+           format: str = FORMATO_PBIX) -> Dict[str, Any]:
+    """PBIP -> PBIX (o PBIT) por `Guardar como`, verificado a los dos lados.
+
+    Con `format='pbit'` se produce una PLANTILLA: el mismo `Guardar como`,
+    eligiendo el tipo de plantilla, atendiendo el dialogo de descripcion que
+    Desktop abre despues y verificando que el archivo tenga forma de plantilla
+    -informe y definicion, sin modelo de datos-. Nunca se fabrica quitando
+    partes de un `.pbix`, y nunca se afirma que lleve datos.
+    """
     from horizun_pbi_mcp.powerbi import desktop_ui
 
+    formato = normalizar_formato(format)
     modo = str(refresh or REFRESH_AUTO).casefold()
     if modo not in MODOS_REFRESH:
         raise ValidationError(
@@ -762,7 +937,7 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
             details={"parameter": "refresh", "valid": list(MODOS_REFRESH)})
 
     previo = preflight(session, pbip_path=pbip_path, out_path=out_path,
-                       overwrite=overwrite)
+                       overwrite=overwrite, formato=formato)
     destino = previo.output_pbix
     adapter = adapter or desktop_ui.adaptador_por_defecto()
     inicio = time.time()
@@ -771,11 +946,17 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
     salida: Dict[str, Any] = {
         "source_pbip": str(previo.source_pbip),
         "output_pbix": str(destino),
+        "output_format": formato,
         "preflight": previo.to_dict(),
         "saved_as_verified": False,
         "opened_path_verified": False,
         "warnings": list(previo.warnings),
     }
+    if formato == FORMATO_PBIT:
+        salida["warnings"].append(
+            "format='pbit': el resultado es una PLANTILLA. Lleva informe y "
+            "definicion del modelo, no datos; quien la abra tendra que "
+            "cargarlos.")
 
     abierto = _abrir_o_reutilizar(previo.source_pbip, timeout=timeout,
                                   confirm_reuse=confirm_reuse)
@@ -792,10 +973,11 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
             adapter, pid=identidad["desktop_pid"],
             started=identidad.get("desktop_process_started"),
             destino=destino, timeout=float(timeout),
-            origen=previo.source_pbip)
+            origen=previo.source_pbip, formato=formato, desde=inicio)
         salida.update(guardado)
 
-        verificacion = verificar_salida(destino, desde=inicio)
+        verificacion = verificar_salida(destino, desde=inicio,
+                                        formato=formato)
         salida.update({k: v for k, v in verificacion.items()
                        if k != "checks"})
         salida["verification"] = verificacion["checks"]
@@ -836,6 +1018,8 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
         timeout=timeout)
     salida["opened_path_verified"] = bool(
         salida["final_state"].get("opened_path_verified"))
+    if salida["final_state"].get("desktop_session"):
+        salida["desktop_session"] = salida["final_state"]["desktop_session"]
     log.info("Exportado %s -> %s (%s bytes)", previo.source_pbip.name,
              destino.name, salida.get("output_size"))
     return salida
@@ -854,12 +1038,8 @@ def finalize_delivery(session: Session, *, path: Optional[str] = None,
     """
     from horizun_pbi_mcp.services import project_prepare
 
-    if str(format or "").casefold() != "pbix":
-        raise ValidationError(
-            f"format='{format}' no esta soportado. Por ahora el entregable es "
-            "'pbix'.", details={"parameter": "format", "valid": ["pbix"]})
-
-    salida: Dict[str, Any] = {"format": "pbix"}
+    formato = normalizar_formato(format)
+    salida: Dict[str, Any] = {"format": formato}
     if path:
         preparado = project_prepare.prepare(session, path)
         salida["prepare"] = preparado
@@ -876,7 +1056,8 @@ def finalize_delivery(session: Session, *, path: Optional[str] = None,
 
     exportado = export(session, pbip_path=pbip, out_path=out_path,
                        overwrite=overwrite, refresh=refresh,
-                       leave_open=leave_open, adapter=adapter)
+                       leave_open=leave_open, adapter=adapter,
+                       format=formato)
     salida.update(exportado)
     salida["delivered"] = bool(exportado.get("saved_as_verified"))
     return salida

@@ -699,12 +699,13 @@ def test_finalize_delivery_entrega_de_extremo_a_extremo(entorno):
     assert salida["prepare"]["path_match"] is True
 
 
-def test_finalize_delivery_solo_acepta_pbix(entorno):
+def test_finalize_delivery_rechaza_un_formato_que_no_existe(entorno):
+    """`pbit` ya se produce de verdad; lo que sigue sin fingirse es lo demas."""
     with pytest.raises(PowerBIMCPError) as exc:
-        pbix_export.finalize_delivery(entorno["session"], format="pbit",
+        pbix_export.finalize_delivery(entorno["session"], format="docx",
                                       adapter=_AdaptadorFalso())
 
-    assert exc.value.details["valid"] == ["pbix"]
+    assert exc.value.details["valid"] == ["pbix", "pbit"]
 
 
 def test_los_defaults_de_la_tool_nueva_son_los_pedidos():

@@ -8,7 +8,8 @@ from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import dax_runner, desktop_discovery
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
-from horizun_pbi_mcp.tools._common import guard, ruta_de_proyecto as _ruta_de_proyecto
+from horizun_pbi_mcp.tools._common import (alias_unico, guard,
+                                           ruta_de_proyecto as _ruta_de_proyecto)
 
 
 def _estado_de_datos(instance: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -93,7 +94,8 @@ def register(mcp) -> None:
     def pbi_open_in_desktop(path: Optional[str] = None, timeout: int = 300,
                             reuse_open: bool = True,
                             select: bool = True,
-                            pbip_path: Optional[str] = None) -> Dict[str, Any]:
+                            pbip_path: Optional[str] = None,
+                            project_path: Optional[str] = None) -> Dict[str, Any]:
         """Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.
 
         Cierra el ciclo de trabajo: despues de editar un proyecto, esto permite
@@ -107,8 +109,10 @@ def register(mcp) -> None:
         Si el archivo ya estaba abierto se reutiliza esa sesion y no se toca
         nada (`reuse_open`). Nunca cierra una ventana del usuario.
 
-        `path` (o `pbip_path`, como lo llama `pbi_session_info`) se puede
-        omitir: entonces se abre el proyecto .pbip activo.
+        `path` (o `pbip_path`, como lo llama `pbi_session_info`, o
+        `project_path`) se puede omitir: entonces se abre el proyecto .pbip
+        activo. Tambien acepta la CARPETA del proyecto si contiene un unico
+        `.pbip`; con varios, dice cuales hay y no elige.
 
         Ojo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues
         con pbi_refresh_model si vas a comprobar valores.
@@ -116,7 +120,7 @@ def register(mcp) -> None:
         def _impl():
             from horizun_pbi_mcp.powerbi import desktop_identity, desktop_launcher
 
-            objetivo = str(_ruta_de_proyecto(path, pbip_path))
+            objetivo = str(_ruta_de_proyecto(path, pbip_path, project_path))
             abierto = desktop_launcher.open_pbix(
                 objetivo, timeout=timeout, reuse_open=reuse_open)
             # La MISMA identidad que publica pbi_list_desktop_models, ahora
@@ -168,7 +172,8 @@ def register(mcp) -> None:
                                     fit_to_page: bool = True,
                                     refresh: bool = False,
                                     refresh_timeout_seconds: Optional[int] = None,
-                                    pbip_path: Optional[str] = None) -> Dict[str, Any]:
+                                    pbip_path: Optional[str] = None,
+                                    project_path: Optional[str] = None) -> Dict[str, Any]:
         """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
 
         Es la comprobacion visual automatizable que complementa al validador
@@ -192,13 +197,24 @@ def register(mcp) -> None:
         captura no es representativa del informe, es la foto de un modelo sin
         datos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.
 
-        `page` (solo .pbip): captura ESA pagina (id o nombre visible), no la
-        que quedo activa. `fit_to_page` (solo .pbip, activado por defecto):
-        fuerza la vista "Ajustar a la pagina" para que salga el lienzo COMPLETO
-        y no el tercio superior al zoom guardado. Ambos ajustan la vista antes
-        de abrir y la restauran byte a byte al terminar; exigen que el proyecto
-        no este ya abierto (con sesion reutilizada no se pueden aplicar: `page`
-        falla y `fit_to_page` degrada a un aviso).
+        `page`: captura ESA pagina (id o nombre visible), no la que quedo
+        activa. `fit_to_page` (activado por defecto): fuerza la vista
+        "Ajustar a la pagina" para que salga el lienzo COMPLETO y no el tercio
+        superior al zoom guardado. Con el proyecto CERRADO (.pbip) ambos se
+        aplican como una vista temporal en disco que se restaura byte a byte
+        al terminar. Con la ventana YA ABIERTA -o con un .pbix- se hacen en
+        la propia interfaz: se elige la pestaña y el zoom por UI Automation y
+        se VERIFICA el resultado (`navigation`). Si la pagina no se pudo
+        demostrar, la tool falla en vez de capturar otra; si el zoom no se
+        pudo demostrar, lo dice en `warnings`. Nunca toca `pages.json` de un
+        proyecto abierto.
+
+        La captura separa cuatro señales que no son la misma cosa:
+        `capture.identity_settled` (la ventana muestra ESTE documento),
+        `capture.frame_settled` (la imagen dejo de cambiar), `data_loaded`
+        (el modelo tiene filas) y `capture.frame_uniform` (la imagen es casi
+        de un solo color: pagina vacia o visuales sin pintar).
+        `capture.capture_representative` resume las tres primeras.
 
         Si la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la
         captura falla) y devuelve la seleccion de modelo a como estaba. Si el
@@ -212,31 +228,34 @@ def register(mcp) -> None:
             from horizun_pbi_mcp.services import project_state
             from horizun_pbi_mcp.services import txn as txn_mod
 
-            pbix = _ruta_de_proyecto(path, pbip_path)
+            pbix = _ruta_de_proyecto(path, pbip_path, project_path)
             avisos: List[str] = []
             vista: Optional[Dict[str, Any]] = None
+            navegacion: Optional[Dict[str, Any]] = None
             quiere_vista = bool(page) or fit_to_page
             if quiere_vista and pbix.suffix.casefold() != ".pbip":
-                if page:
+                # Un .pbix no se puede preparar en disco sin editarlo. Si YA
+                # esta abierto, la pagina y el zoom se eligen en la ventana y
+                # se verifican; si no, no se abre Desktop solo para descubrir
+                # que la pagina no se puede demostrar.
+                pid = desktop_launcher.proceso_con_archivo_abierto(pbix)
+                if page and not pid:
                     raise ValidationError(
-                        "Elegir pagina de captura requiere un proyecto .pbip: "
-                        "un .pbix compilado no se puede preparar sin editarlo.",
+                        "Elegir pagina de captura requiere un proyecto .pbip "
+                        "o un .pbix YA ABIERTO en Desktop: un .pbix cerrado "
+                        "no se puede preparar sin editarlo.",
                         details={"path": str(pbix), "page": page})
-                avisos.append("fit_to_page solo aplica a .pbip; la captura "
-                              "sale al zoom guardado del .pbix.")
+                if pid:
+                    navegacion = {"page": page, "fit_to_page": fit_to_page}
+                else:
+                    avisos.append("fit_to_page solo aplica a .pbip; la "
+                                  "captura sale al zoom guardado del .pbix.")
             elif quiere_vista:
                 pid = desktop_launcher.proceso_con_archivo_abierto(pbix)
-                if pid and page:
-                    raise ValidationError(
-                        "El proyecto ya esta abierto en Desktop y la pagina "
-                        "activa no se puede cambiar desde fuera; cierra la "
-                        "sesion (pbi_close_desktop) y reintenta.",
-                        details={"path": str(pbix), "pid": pid, "page": page,
-                                 "reason": "desktop_open_page_unavailable"})
                 if pid:
-                    avisos.append(
-                        "Sesion reutilizada: no se pudo forzar 'Ajustar a la "
-                        "pagina'; la captura sale al zoom actual de Desktop.")
+                    # Sesion reutilizada: no se toca `pages.json` de un
+                    # proyecto abierto. Se navega en la interfaz.
+                    navegacion = {"page": page, "fit_to_page": fit_to_page}
                 else:
                     vista = desktop_capture.planificar_vista_de_captura(
                         pbix, page=page, fit_to_page=fit_to_page)
@@ -253,10 +272,11 @@ def register(mcp) -> None:
                     activo, vista["cambios"],
                     tool="pbi_validate_desktop_render"))
             with pila:
-                return _con_desktop(pbix, vista, avisos)
+                return _con_desktop(pbix, vista, avisos, navegacion)
 
-        def _con_desktop(pbix, vista, avisos):
-            from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
+        def _con_desktop(pbix, vista, avisos, navegacion=None):
+            from horizun_pbi_mcp.powerbi import (desktop_capture, desktop_launcher,
+                                                 desktop_navigation)
 
             opened = desktop_launcher.open_pbix(
                 str(pbix), timeout=timeout, reuse_open=reuse_open)
@@ -279,6 +299,36 @@ def register(mcp) -> None:
                     refresco = refresh_mod.refresh_model(
                         session, "full", None, refresh_timeout_seconds)
                 datos = _estado_de_datos(opened.instance)
+                nav_result: Optional[Dict[str, Any]] = None
+                visuales_en_pagina: Optional[int] = None
+                if navegacion is not None:
+                    nav_result = desktop_navigation.navegar(
+                        opened, page=navegacion.get("page"),
+                        fit_to_page=bool(navegacion.get("fit_to_page")))
+                    bloque_pagina = nav_result.get("page")
+                    if bloque_pagina is not None:
+                        visuales_en_pagina = bloque_pagina.get("visual_count")
+                        if not bloque_pagina.get("verified"):
+                            raise ValidationError(
+                                "La pagina pedida no se pudo seleccionar ni "
+                                "demostrar en la ventana abierta; no se "
+                                "captura otra pagina en su lugar. Si Desktop "
+                                "no expone las pestañas, cierra la sesion "
+                                "(pbi_close_desktop) y reintenta con el "
+                                "proyecto cerrado.",
+                                details={"path": str(pbix),
+                                         "page": navegacion.get("page"),
+                                         "reason": "desktop_open_page_unverified",
+                                         "navigation": nav_result})
+                    bloque_zoom = nav_result.get("fit_to_page")
+                    if bloque_zoom is not None and not bloque_zoom.get("verified"):
+                        avisos.append(
+                            "No se pudo demostrar 'Ajustar a la pagina' en la "
+                            "sesion abierta: la captura sale al zoom actual de "
+                            f"Desktop ({bloque_zoom.get('reason')}).")
+                elif vista is not None:
+                    visuales_en_pagina = desktop_navigation.contar_visuales(
+                        pbix, vista.get("page_id"))
                 capture = desktop_capture.capture_opened(
                     opened, timeout=capture_timeout,
                     # Tras refrescar, Desktop vuelve a lanzar las consultas de
@@ -295,8 +345,32 @@ def register(mcp) -> None:
                     "capture": capture,
                     "data_loaded": datos.get("data_loaded"),
                 }
+                if nav_result is not None:
+                    result["navigation"] = nav_result
+                if visuales_en_pagina is not None:
+                    result["page_visual_count"] = visuales_en_pagina
                 if refresco is not None:
                     result["refresh"] = refresco
+                if capture.get("identity_settled") is False:
+                    avisos.append(
+                        "La ventana no llego a mostrar el documento esperado: "
+                        "la captura puede ser del lienzo de carga, no del "
+                        "informe. Evidencia en capture.identity.")
+                if capture.get("frame_uniform"):
+                    if visuales_en_pagina:
+                        avisos.append(
+                            f"La pagina declara {visuales_en_pagina} visual(es) "
+                            "y la captura es casi de un solo color: posible "
+                            "captura VACIA (visuales sin pintar).")
+                    elif visuales_en_pagina == 0:
+                        avisos.append(
+                            "La pagina no declara visuales: un lienzo uniforme "
+                            "es lo esperable, no un fallo de carga.")
+                    else:
+                        avisos.append(
+                            "La captura es casi de un solo color; no se pudo "
+                            "contar los visuales de la pagina para saber si "
+                            "eso es normal.")
                 if datos.get("data_loaded") is False:
                     avisos.append(
                         "El modelo no tiene datos cargados: la captura NO es "
@@ -365,6 +439,10 @@ def register(mcp) -> None:
         Devuelve columnas, tipos observados, filas, estadisticas de ejecucion y
         si se trunco (y por que: filas o tamano). Los errores DAX del motor se
         devuelven tal cual.
+
+        `query` es el unico nombre de la consulta: no hay alias `dax`, porque
+        `query` es obligatorio en el contrato congelado y un alias no podria
+        sustituirlo. Ejemplo: `pbi_run_dax(query="EVALUATE TOPN(5, 'Ventas')")`.
         """
         return guard(lambda: dax_runner.run_dax(
             get_session(), query, max_rows, max_bytes, timeout_seconds, export))
@@ -387,7 +465,10 @@ def register(mcp) -> None:
     @mcp.tool()
     def pbi_close_desktop(path: Optional[str] = None, confirm: bool = False,
                           pbip_path: Optional[str] = None,
-                          request_id: str = "") -> Dict[str, Any]:
+                          request_id: str = "",
+                          desktop_pid: Optional[int] = None,
+                          desktop_started: Optional[float] = None,
+                          project_path: Optional[str] = None) -> Dict[str, Any]:
         """Cierra la instancia de Power BI Desktop que sirve ESE proyecto.
 
         Es la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir
@@ -404,8 +485,16 @@ def register(mcp) -> None:
         exige `confirm=true`. Si el archivo no estaba abierto, no hace nada y
         lo dice (`was_open: false`).
 
-        `path` (o `pbip_path`) se puede omitir: se cierra el proyecto activo,
-        que es el que el servidor ya conoce.
+        `path` (o `pbip_path` / `project_path`) se puede omitir: se cierra
+        el proyecto activo, que es el que el servidor ya conoce.
+
+        **Tras `pbi_export_pbix(leave_open=true)`** la ventana queda sobre el
+        archivo exportado y ya no responde a la ruta del .pbip original.
+        Pasa `desktop_pid` y `desktop_started` tal cual los devuelve
+        `desktop_session` de la exportacion: se cierra exactamente esa
+        instancia, verificando nombre del proceso y hora de arranque (nunca
+        el PID a secas, que Windows recicla). Con `path` ademas se exige que
+        la ventana no este sirviendo demostrablemente otro documento.
         """
         def _impl():
             if not confirm:
@@ -415,6 +504,15 @@ def register(mcp) -> None:
                     "si es lo que quieres.")
             from horizun_pbi_mcp.powerbi import desktop_launcher
 
+            ruta_dada = alias_unico(path=path, pbip_path=pbip_path,
+                                    project_path=project_path)
+            if desktop_pid is not None:
+                documento = (str(_ruta_de_proyecto(path, pbip_path,
+                                                   project_path))
+                             if ruta_dada else None)
+                return desktop_launcher.close_desktop_by_identity(
+                    int(desktop_pid), desktop_started,
+                    expected_document=documento)
             return desktop_launcher.close_desktop_by_path(
-                str(_ruta_de_proyecto(path, pbip_path)))
+                str(_ruta_de_proyecto(path, pbip_path, project_path)))
         return guard(_impl)
