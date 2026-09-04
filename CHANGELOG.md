@@ -110,13 +110,125 @@ The frozen contract is intact: **0 breaking changes, 24 compatible ones**
   `path`, `out_dir` and `query` are required in the frozen contract — so
   their descriptions now say so.
 
+### Fixed after the independent audit of this batch
+
+- **Save could be pressed again with a dialog in front.** The retry loop of
+  the save confirmation only looked at "dialog closed" and "file appeared";
+  with `overwrite=true` the common dialog's "replace?" prompt was open and
+  the fallback click could land on it. Now any open dialog stops the loop
+  and is returned as `blocking_modals`. The only prompt ever accepted is the
+  replace confirmation **owned by this operation's own dialog** and only
+  when the caller passed `overwrite=true` (the destination was backed up
+  beforehand); the acceptance is reported in `overwrite_confirmed`. Dialogs
+  are now enumerated across all window classes — Desktop's own dialogs are
+  WPF, not `#32770` — but a non-common window only counts as a dialog when
+  it is owned by another window, so the main window is never mistaken for
+  one.
+- **A UI Automation `COMError` was neither retried nor cleaned up.** The
+  HRESULTs that mean "the element went away" (`UIA_E_ELEMENTNOTAVAILABLE`,
+  `UIA_E_TIMEOUT`, RPC retry/unavailable) are now transient; any other
+  `COMError` is a definitive `ui_com_error` with its phase; other exceptions
+  are not disguised, and every failure still cancels this operation's dialog.
+- **Focus was checked per process, not per dialog.** Typing now requires
+  the foreground window to be the save dialog itself and, when UIA exposes
+  it, the focused element to be inside the file-name field.
+- **The helper's budget exceeded its process deadline** (`save_timeout`
+  inherited 600 s while the process was killed at 180 s). The dialog-close
+  budget is now derived from the process deadline minus the phases' worst
+  case; the file write is still awaited by the parent with the full timeout.
+- **Session recovery could redirect an operation to another report.** With
+  an active project, the single live instance must demonstrably serve it
+  (`desktop_identity`), otherwise `stale_session` with
+  `recovery="document_mismatch"`. Without a project, a live **mutation**
+  is never redirected (`explicit_selection_required`); reads still
+  reconnect. `pbi_capabilities` now recovers like every other tool, and
+  `session_recovery` is consumed at the start of each call and after
+  untyped exceptions, so it never describes a previous call.
+- **A reused-session capture moved the user's window on its own.** With
+  the default `fit_to_page=true` on an already-open project the tool
+  selected the View ribbon and pressed "Fit to page". Navigation in a
+  window this call did not open now requires the new optional
+  `confirm_reuse=true`; without it, `page` is a clear error
+  (`desktop_open_page_needs_confirm`) and the zoom degrades to the previous
+  warning. `pbi_open_and_refresh` keeps `confirm=true` as its authorization.
+- **`same_window_followed` and `opened_path_verified` overclaimed.** With
+  the default output name the window title cannot tell the `.pbip` from the
+  `.pbix`: the follow-up is now `inconclusive`, no second window is opened,
+  `desktop_session.document` is `null` with the candidates listed, and
+  `opened_path_verified` is `true` only with an open-file descriptor (title
+  evidence is `medium` confidence and says so). A `.pbit` never re-points
+  the window: `desktop_session.document` is the source project.
+- **Closing the exported `.pbix` by path never worked** because the
+  command-line filter discarded the window launched with the `.pbip`. The
+  export now records `desktop_session` in the server session and closing by
+  path uses it first; otherwise the title match is accepted only when the
+  process's command-line document lives in the same folder, and two
+  compatible windows return `ambiguous_window` instead of a close.
+- **Template checks.** The template dialog is searched in every window
+  class; a `.pbit` of a project with a semantic model must carry
+  `DataModelSchema` (`template_without_model_schema`), and a populated
+  `DataModel` is still refused.
+- **`pbi_list_partitions(source="foo")` is rejected again.** A title that
+  is only the product name (`Power BI Desktop`) is provisional, and one
+  provisional title is enough to keep waiting during opening.
+
+### Fixed against real Power BI Desktop
+
+Running the exporter against a real Desktop with a synthetic project turned
+up four defects that no double had caught, two of them in code this batch
+had just added:
+
+- **`ValuePattern.SetValue` does not commit the file name.** It looked like
+  the clean way in — no focus, no keyboard queue — and it is not. Measured:
+  after `SetValue`, both UI Automation *and* `WM_GETTEXT` returned the 133
+  characters requested, and Save still wrote `Demo.pbix` into the project
+  folder, using the dialog's own default name and folder. The modern common
+  dialog keeps its own state and only updates it from the notifications real
+  typing produces. It is the same failure as `CB_SETCURSEL` with the file
+  type, and it is resolved the same way: the path is **only** typed. No
+  read-back — not even the Win32 one — is accepted as proof on its own.
+- **Typing too fast loses characters.** 133 requested, 26 delivered in a live
+  run: that is the `expected_len=182, actual_len=30` of the original report,
+  reproduced. Each attempt now types slower than the last (40, 16 and 8
+  events per batch), and the export completes on the first or second.
+- **`FindFirst` returns a NULL COM pointer, which is not `None`.** The
+  template dialog gives its buttons no `AutomationId`, so `por_id` returned
+  that null, the caller's `is None` did not see it, and `Invoke` died with
+  `ValueError: NULL COM pointer access` **after the file had been written**.
+  `por_id` now normalizes it, `FindAll` collections tolerate it, and
+  `invocar` checks the pattern instead of trusting an exception type.
+- **A failure after the save had no phase and no cleanup.** The template and
+  close steps now sit inside the same guarded block, so an unexpected error
+  there reports its phase (`unexpected_after_save`) and still cancels this
+  operation's dialog.
+
+Also from live inspection: the ribbon tab is **`Ver`** in Spanish, not
+`Vista`, so the fallback path for the zoom never found it; and page tabs and
+ribbon tabs are the same control type, so a page named like a ribbon tab is
+now reported as ambiguous instead of silently activating the ribbon.
+
+### Verified live
+
+With a synthetic project and an identified test instance, on a machine with
+no other Desktop window open:
+
+| Check | Result |
+|---|---|
+| `.pbix` export, 161-character path | verified, 13,920 bytes, `report_format=pbir`, model inside, ~18 s |
+| `.pbit` export | verified, template dialog `Exportar una plantilla` seen and accepted, `has_model_schema=true`, no `DataModel` |
+| Template opens in Desktop | launches and creates a new untitled document, which is what a template does; no error dialog in 90 s |
+| Provisional title during opening | observed `Sin título - Power BI Desktop` at 2.9 s, `Demo` at 9.5 s |
+| Close after export by `desktop_session` | closed and verified, no orphan processes |
+| Session recovery with zero instances | `stale_session` with `recovery="no_instances"` |
+| Stray-file detection | reported `Demo.pbix` in the project folder with its cause |
+
 ### Pending real-Desktop validation
 
-The behaviours above are covered by regression tests with doubles for UI
-Automation, timing, processes and sessions. What still needs a machine with
-Power BI Desktop: the `.pbit` template dialog (title and OK button), the
-page-tab and ribbon control names for navigation, and `ValuePattern.SetValue`
-on the file-name box of this Desktop build.
+Still only covered by doubles: page selection and "Fit to page" being
+*applied* (their controls were found in the live UIA tree — `Ajustar a la
+página`, and the page tab `Page 1` — but no page was actually switched), the
+replace prompt under `overwrite=true`, and focus contention between two
+competing windows.
 
 ---
 

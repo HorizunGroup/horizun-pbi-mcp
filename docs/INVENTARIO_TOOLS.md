@@ -197,7 +197,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_update_measure` | escritura | 8 | 2 | — | sí | falta un requerido | `name, table` |
 | `pbi_update_power_query` | escritura | 7 | 1 | — | sí | falta un requerido | `m` |
 | `pbi_update_visual_position` | escritura | 8 | 6 | — | sí | falta un requerido | `height, page, visual_id, width, x, y` |
-| `pbi_validate_desktop_render` | escritura | 10 | 0 | — | sí | tipo invalido | `path` |
+| `pbi_validate_desktop_render` | escritura | 11 | 0 | — | sí | tipo invalido | `path` |
 | `pbi_validate_generated_page` | solo lectura | 1 | 1 | — | sí | falta un requerido | `page` |
 | `pbi_validate_measures` | solo lectura | 1 | 1 | — | sí | falta un requerido | `measures` |
 | `pbi_validate_page_spec` | solo lectura | 1 | 1 | — | sí | falta un requerido | `spec` |

@@ -51,7 +51,7 @@ tools registered.
 | `pbi_list_desktop_models` | Open Power BI Desktop instances |
 | `pbi_select_model` | Sets the active model (requires a port if there are several) |
 | `pbi_test_connection` | Validates the connection |
-| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI and verifies it (`navigation`); only closes Desktop if the tool opened it |
+| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`); only closes Desktop if the tool opened it |
 | `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open. Also accepts `desktop_pid` + `desktop_started` (from the export's `desktop_session`) to close the window an export left open; refuses a recycled PID |
 | `pbi_list_pending_journals` | Journals of operations left half-done |
 | `pbi_inspect_journal` | Compares a journal with the current state (read-only) |
@@ -128,7 +128,7 @@ tools registered.
 | Tool | What it does |
 |---|---|
 | `pbi_prepare_project` | Resolves EXACTLY the file you pass — `.pbip`, `.pbix` (converted first) or a folder with a single candidate — and activates it. Two `.pbip` in one folder fail with `ambiguous_pbip_project` instead of picking the alphabetically first one |
-| `pbi_export_pbix` | PBIP -> PBIX (or PBIT with `format='pbit'`) through Power BI Desktop's own `File > Save As`. Preflight before opening any window, window identity polled until it settles, file type chosen (never inherited), path set by `ValuePattern.SetValue` with keyboard fallback, up to three attempts per transient phase, and the saved file verified — existence, extension, size, mtime, and openable by the .pbix reader. Returns `desktop_session` for `pbi_close_desktop` |
+| `pbi_export_pbix` | PBIP -> PBIX (or PBIT with `format='pbit'`) through Power BI Desktop's own `File > Save As`. Preflight before opening any window, window identity polled until it settles, file type chosen (never inherited), path **typed** (measured live: `ValuePattern.SetValue` leaves the text in the control and the dialog still saves under its default name) with the dialog and its field focused and a slower cadence on each of up to three attempts per transient phase, no second Save while a dialog is open, the replace prompt accepted only under `overwrite=true`, and the saved file verified — existence, extension, size, mtime, and openable by the .pbix reader. Returns `desktop_session` for `pbi_close_desktop` |
 | `pbi_finalize_delivery` | The normal last step of a build: resolve, prepare, validate, export (`pbix` or `pbit`), inspect and leave exactly the deliverable open and selected |
 
 ## Proposals and data quality
