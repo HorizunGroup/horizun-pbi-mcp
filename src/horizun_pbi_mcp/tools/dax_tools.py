@@ -412,20 +412,20 @@ def register(mcp) -> None:
                         "la captura puede ser del lienzo de carga, no del "
                         "informe. Evidencia en capture.identity.")
                 if capture.get("frame_uniform"):
-                    if visuales_en_pagina:
-                        avisos.append(
-                            f"La pagina declara {visuales_en_pagina} visual(es) "
-                            "y la captura es casi de un solo color: posible "
-                            "captura VACIA (visuales sin pintar).")
-                    elif visuales_en_pagina == 0:
-                        avisos.append(
-                            "La pagina no declara visuales: un lienzo uniforme "
-                            "es lo esperable, no un fallo de carga.")
-                    else:
+                    if visuales_en_pagina is None:
                         avisos.append(
                             "La captura es casi de un solo color; no se pudo "
                             "contar los visuales de la pagina para saber si "
                             "eso es normal.")
+                    elif visuales_en_pagina > 0:
+                        avisos.append(
+                            f"La pagina declara {visuales_en_pagina} visual(es) "
+                            "y la captura es casi de un solo color: posible "
+                            "captura VACIA (visuales sin pintar).")
+                    else:
+                        avisos.append(
+                            "La pagina no declara visuales: un lienzo uniforme "
+                            "es lo esperable, no un fallo de carga.")
                 if datos.get("data_loaded") is False:
                     avisos.append(
                         "El modelo no tiene datos cargados: la captura NO es "

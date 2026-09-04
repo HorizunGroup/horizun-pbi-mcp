@@ -397,6 +397,8 @@ def _write_status(p: dict[str, Path], **values: Any) -> None:
         try:
             tmp.unlink(missing_ok=True)
         except OSError:
+            # No se oculta el resultado publicado por un fallo de limpieza;
+            # el nombre unico evita que este vestigio pise otro intento.
             pass
 
 

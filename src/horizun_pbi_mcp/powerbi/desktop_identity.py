@@ -204,7 +204,6 @@ def esperar_identidad_de_ventana(pid: Optional[int], objetivo: str | Path, *,
     limite = inicio + max(0.0, float(timeout))
     observados: List[str] = []
     lecturas = 0
-    estado = IDENTIDAD_SIN_TITULO
     while True:
         actuales = [str(t) for t in (leer(pid) or [])]
         lecturas += 1
@@ -215,7 +214,7 @@ def esperar_identidad_de_ventana(pid: Optional[int], objetivo: str | Path, *,
         if estado in (IDENTIDAD_ASENTADA, IDENTIDAD_OTRO_DOCUMENTO):
             break
         if time.monotonic() >= limite:
-            estado = IDENTIDAD_TIMEOUT if estado != IDENTIDAD_ASENTADA                 else estado
+            estado = IDENTIDAD_TIMEOUT
             break
         time.sleep(max(0.05, min(cada, limite - time.monotonic())))
     return {

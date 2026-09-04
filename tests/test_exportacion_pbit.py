@@ -18,7 +18,7 @@ import pytest
 from horizun_pbi_mcp.powerbi import desktop_ui, uia_helper
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.services import pbix_export
-from tests.test_exportacion_pbix import _AdaptadorFalso, entorno  # noqa: F401
+from tests.test_exportacion_pbix import entorno  # noqa: F401
 
 
 def _escribir_pbit(ruta: Path, *, con_datos: bool = False) -> None:

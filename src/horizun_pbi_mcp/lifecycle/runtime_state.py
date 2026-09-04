@@ -137,6 +137,8 @@ def escribir(root: Path, estado: dict[str, Any]) -> None:
         try:
             tmp.unlink(missing_ok=True)
         except OSError:
+            # El replace ya decidio el resultado; este temporal unico queda
+            # como evidencia recuperable si Windows mantiene un handle abierto.
             pass
 
 

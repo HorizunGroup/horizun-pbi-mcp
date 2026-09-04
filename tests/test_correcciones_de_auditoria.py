@@ -687,9 +687,6 @@ def test_una_coleccion_vacia_de_uia_es_una_lista_vacia():
         def __bool__(self):
             return False
 
-        def __getattr__(self, nombre):
-            raise ValueError("NULL COM pointer access")
-
     assert uia_helper._coleccion(lambda: _Nulo()) == []       # noqa: SLF001
     assert uia_helper._coleccion(lambda: None) == []          # noqa: SLF001
 
@@ -750,9 +747,6 @@ class _PunteroNulo:
     def __bool__(self):
         return False
 
-    def __getattr__(self, nombre):
-        raise ValueError("NULL COM pointer access")
-
 
 def test_por_id_devuelve_None_cuando_no_hay_control():
     """`FindFirst` sin resultados da un puntero NULO que no es `None`.
@@ -763,10 +757,6 @@ def test_por_id_devuelve_None_cuando_no_hay_control():
     veia, y el `Invoke` moria con `ValueError: NULL COM pointer access` con
     el archivo ya guardado.
     """
-    class _Uia(uia_helper.Uia):
-        def __init__(self):
-            self.auto = _Automation()
-
     class _Automation:
         def CreateAndCondition(self, a, b):
             return "cond"
@@ -778,7 +768,9 @@ def test_por_id_devuelve_None_cuando_no_hay_control():
         def FindFirst(self, alcance, condicion):
             return _PunteroNulo()
 
-    assert _Uia().por_id(_Raiz(), "1", uia_helper.UIA_TIPO_BUTTON) is None
+    uia = object.__new__(uia_helper.Uia)
+    uia.auto = _Automation()
+    assert uia.por_id(_Raiz(), "1", uia_helper.UIA_TIPO_BUTTON) is None
 
 
 def test_invocar_no_usa_un_patron_nulo():
@@ -787,12 +779,10 @@ def test_invocar_no_usa_un_patron_nulo():
         def GetCurrentPattern(self, patron):
             return _PunteroNulo()
 
-    class _Uia(uia_helper.Uia):
-        def __init__(self):
-            self.modulo = None
-
+    uia = object.__new__(uia_helper.Uia)
+    uia.modulo = None
     with pytest.raises(uia_helper.HelperError) as fallo:
-        _Uia().invocar(_Elemento())
+        uia.invocar(_Elemento())
 
     assert fallo.value.detalles["reason"] == "element_not_invokable"
 
@@ -1339,12 +1329,9 @@ def test_el_patron_del_carrusel_no_depende_del_idioma():
 
 def test_fijar_valor_se_niega_a_correr():
     """No se deja como si funcionara: leerla disponible costo caro una vez."""
-    class _Uia(uia_helper.Uia):
-        def __init__(self):
-            pass
-
+    uia = object.__new__(uia_helper.Uia)
     with pytest.raises(uia_helper.HelperError) as fallo:
-        _Uia().fijar_valor(object(), "C:/x/a.pbix")
+        uia.fijar_valor(object(), "C:/x/a.pbix")
 
     assert fallo.value.detalles["reason"] == "set_value_does_not_commit"
     assert fallo.value.transitoria is False

@@ -1180,8 +1180,8 @@ def _edit_del_nombre(dialogo_hwnd: int) -> Optional[int]:
     dentro de otro `ComboBox`-, y la pareja (id 1001 + padre ComboBox) es
     unica en el cuadro.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     # `_user32()` devuelve una WinDLL nueva en cada llamada, asi que los
@@ -1224,8 +1224,8 @@ def _texto_win32(hwnd: int) -> str:
     por defecto y en 64 bits revienta con `int too long to convert`. Se vio
     en la primera prueba contra Desktop real.
     """
-    import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = _user32()
     user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
