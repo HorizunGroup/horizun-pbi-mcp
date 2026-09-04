@@ -32,13 +32,17 @@ sustituirlas**; eso está contado abajo, porque es la parte útil.
 
 Esta es la parte que más cambió durante la revisión.
 
-- **El zoom.** «Ajustar a la página» es un `Button` que solo expone `Invoke`:
-  no hay estado que releer. Lo que sí publica Power BI es el nivel de zoom
-  (`Informe ampliado a 72 %`), capturado entre el instante anterior a pulsar y
-  el posterior. Eso demuestra que **el nivel de zoom cambió al pulsar**, no que
+- **El zoom.** «Ajustar a la página» es un `Button` sin `Toggle` ni
+  `SelectionItem`: medido contra Desktop real ofrece `Invoke` y
+  `LegacyIAccessible`, y no hay estado que releer. Lo que sí publica Power BI
+  es el nivel de zoom (`Informe ampliado a 72 %`), capturado entre el instante
+  anterior a pulsar y el posterior. Eso demuestra que **el nivel de zoom cambió al pulsar**, no que
   el modo resultante sea «ajustar a la página». Un cambio de píxeles viaja como
   `visual_change` y nunca decide `verified`: abrir la cinta para llegar al
-  control ya cambia la imagen.
+  control ya cambia la imagen. El bloque publica además `verified_means`, para
+  que quien solo lea `verified` vea hasta dónde llega esa prueba; las
+  descripciones de `pbi_validate_desktop_render` y `pbi_open_and_refresh` dicen
+  lo mismo.
 - **La ausencia de cambio no demuestra lo contrario.** Si nada cambia, la
   respuesta no afirma que ya estuviera ajustada: dice que no se puede
   distinguir de que la acción no llegara.
@@ -52,6 +56,33 @@ Esta es la parte que más cambió durante la revisión.
   lleva id y cuelga de `carouselScrollPane` dentro de
   `explorationNavigationContent`. Son clases CSS, no texto traducido. Si el
   filtro no deja exactamente una, sigue rechazando.
+
+## Los trece hallazgos de la revisión adversarial
+
+Una revisión adversarial de tres lentes (34 agentes) sobre la evidencia del
+zoom y las garantías de foco levantó 31 hallazgos; 13 sobrevivieron a la etapa
+de refutación. Éste es el destino de cada uno.
+
+| # | Hallazgo | Estado | Respaldo |
+|---|---|---|---|
+| 1 | La ventana de medición del anuncio de zoom empezaba al entrar en la fase, así que un anuncio provocado por la propia navegación por la cinta contaba como prueba | corregido | `uia_helper.ajustar_a_pagina` relee `anuncios_antes` justo antes de `invocar`; `test_el_anuncio_se_mide_desde_el_invoke_no_desde_la_entrada` (grupo 20) · `17730a0` |
+| 1b | La segunda mitad de esa corrección —acotar los anuncios al contenedor del control— | descartado con motivo | no hay ningún contenedor medido para el anuncio; acotarlo sería adivinar y podría descartar la única evidencia. Queda dicho en el docstring del módulo · `17730a0` |
+| 2 | El CHANGELOG publicaba `verified_by: "frame_changed"`, que el código ya no emite | corregido | sección `[Unreleased]` reescrita entera · `d23549a` |
+| 3 | `docs/TOOL_CATALOG.md` decía que el zoom se verifica por el cambio de píxeles | corregido | fila de `pbi_validate_desktop_render`, línea 54 · `d23549a` |
+| 4 | Docstrings que afirmaban exclusividad: «el único oráculo disponible», «solo expone `Invoke`» | corregido | `huella_de_ventana` y `ajustar_a_pagina` dicen lo medido (`Invoke` **y** `LegacyIAccessible`) · `17730a0` y este commit |
+| 5 | `traer_al_frente` se cortocircuitaba por PID: la recuperación del foco del cuadro nunca llegaba a ejecutarse | corregido | parámetro `exacto=True`; `test_traer_al_frente_exacto_no_se_conforma_con_el_proceso` y `test_el_cuadro_se_recupera_con_exacto` (grupo 19) · `17730a0` |
+| 6 | El CHANGELOG publicaba el mecanismo `ValuePattern.SetValue`-primero, que no corre | corregido | reescritura; `fijar_valor` se niega a correr y `test_fijar_valor_se_niega_a_correr` lo fija · `d23549a` |
+| 7 | El catálogo decía tres intentos por fase; la fase del nombre hace seis | corregido | `docs/TOOL_CATALOG.md` línea 131 · `d23549a` |
+| 8 | El CHANGELOG decía que el zoom distingue «ya estaba ajustada» de «no llegó la orden»; el código declara lo contrario | corregido | `_motivo_zoom` mantiene la disyunción; `test_sin_cambio_no_se_afirma_que_ya_estuviera_ajustada` · `d23549a` |
+| 9 | «Es el único oráculo disponible» no estaba demostrado | corregido | misma corrección que el 4; la frase ya no existe · este commit |
+| 10 | La tabla de lo medido afirmaba la CAUSA de una observación ambigua («because it was already fitted») | corregido | fila sustituida por lo observado · `d23549a` |
+| 11 | La ambigüedad página/cinta se describía como consecuencia de la plataforma, no del selector | corregido | el selector desambigua por contenedor (grupo 18) y el texto lo dice · `8d5fd84` + `d23549a` |
+| 12 | «Pending real-Desktop validation: nothing from this batch» excedía la evidencia publicada | corregido | «Known limitations» enumera lo que del lote descansa solo en dobles · este commit |
+| 13 | «Across all 15 contention runs» no cuadraba con la tabla publicada | corregido | la tabla lista las cinco tandas y la cifra es 25 · `d23549a` |
+
+Ninguno se reclasificó como limitación para poder cerrar: las tres limitaciones
+de la sección siguiente son propiedades del mecanismo, no hallazgos aparcados.
+Lo único descartado es 1b, y con motivo escrito.
 
 ## Correcciones que sustituyeron a otras correcciones
 
@@ -68,15 +99,26 @@ Esta es la parte que más cambió durante la revisión.
 
 ## Evidencia automatizada
 
-- Suite completa: **3503 pasadas, 6 saltadas**.
+- Suite completa: **3509 pasadas, 6 saltadas** (13 min).
 - `python scripts/doctor.py`: correcto.
 - `python -m tests.contract_utils`: el contrato no cambió.
-- Contra el golden de `main`: **0 rupturas, 25 cambios compatibles**, todos
-  parámetros opcionales con default y descripciones.
-- `ruff` y `mypy` limpios.
-- Regresiones nuevas en `tests/test_correcciones_de_auditoria.py` y en los seis
-  archivos de la primera tanda. Ejecutadas contra el commit anterior en un
-  worktree: fallan por aserción, no por símbolos ausentes.
+- Contra el golden de `main` (`7cbc12d`, que es también el `merge-base`):
+  **0 rupturas, 25 cambios compatibles**, todos parámetros opcionales con
+  default y descripciones. El golden se regeneró **una vez**, deliberadamente,
+  por las dos descripciones que este commit corrige; el diff del archivo son
+  esas dos líneas y las 139 tools siguen intactas.
+- `ruff check src tests`: limpio. `mypy` (sin argumentos, que es como el
+  repositorio lo tiene configurado): limpio en sus 10 archivos de alcance —las
+  fronteras de seguridad, transacciones y bloqueos—. Ese alcance **no** incluye
+  los módulos de esta rama; ampliarlo no entra aquí.
+- Regresiones nuevas en `tests/test_correcciones_de_auditoria.py` (22 grupos)
+  y en los seis archivos de la primera tanda. Ejecutadas contra el commit
+  anterior en un worktree: fallan **por aserción**, no por símbolos ausentes
+  —las cuatro del grupo 21 lo hacen contra `d23549a`—.
+- Las dos del grupo 22 (aislamiento de la sesión) **pasan** también contra el
+  commit anterior, y así debe ser: no arreglan un defecto de código, fijan una
+  vía que ya existía y que el procedimiento no obligaba a usar. Es una prueba
+  de caracterización, no una regresión.
 
 ## Evidencia live
 
@@ -112,10 +154,19 @@ fallo definitivo canceló su propio cuadro.
 ## Limitaciones que quedan
 
 - La evidencia de zoom identifica un cambio de **nivel**, no el modo de vista.
+  El estado de `LegacyIAccessible` del control no se examinó: es la única ruta
+  sin explorar hacia identificar el modo.
 - La guardia de foco acota a una tanda lo que puede desviarse; no lo elimina.
 - Dos páginas con el mismo nombre visible siguen siendo ambiguas por diseño.
-- Sin probar en vivo, y fuera de esta rama: los modales de credenciales y de
-  error de carga, que necesitan un modelo con origen externo.
+- **Lo que corrió en vivo es exactamente lo que listan las dos tablas.** De
+  este mismo lote NO se ejercitaron contra Desktop real, y descansan en dobles:
+  la recuperación de sesión con varias instancias, el puerto tomado por otro
+  proceso (`mismatch`), `document_mismatch` con proyecto activo, el rechazo de
+  un PID reciclado en `pbi_close_desktop` y las lecturas live de
+  `$SYSTEM.TMSCHEMA_*`. Las tablas se midieron sin ninguna otra ventana de
+  Desktop abierta, así que por construcción no podían cubrirlos.
+- Fuera de esta rama y también sin probar en vivo: los modales de credenciales
+  y de error de carga, que necesitan un modelo con origen externo.
 - La contención se midió con una segunda instancia de Power BI Desktop; no se
   probó con aplicaciones de otra clase robando el foco.
 
@@ -126,10 +177,39 @@ con `project_locator.open_project()`, que escribe en él. Al terminar quedó
 apuntando a un proyecto temporal de las pruebas, ya borrado; se eliminó **esa**
 referencia y el archivo queda con `active_model` y `active_pbip` a `null`.
 
-El valor que hubiera antes de la primera prueba no es recuperable: el archivo
-no está en git y los registros del servidor redactan las rutas personales
-(`.../Demo.pbip`), que además coinciden con el nombre del fixture sintético. Si
-había un proyecto activo, se restaura con `pbi_open_pbip_project`.
+El valor que hubiera antes de la primera prueba **no es recuperable**: el
+archivo no está en git y los registros del servidor redactan las rutas
+personales (`.../Demo.pbip`), que además coinciden con el nombre del fixture
+sintético. No se reconstruyó por suposición. Si había un proyecto activo, se
+restaura con `pbi_open_pbip_project`. Es la única alteración de esta rama que
+no se pudo deshacer.
+
+Para que no vuelva a pasar, la vía de aislamiento —que ya existía y nadie
+usaba— queda escrita en el procedimiento (`AGENTS.md`, §5) y ejercitada por una
+prueba:
+
+```bash
+HORIZUN_PBI_MCP_OUTPUTS_DIR=/scratch/outputs python un_script_live.py
+```
+
+La variable se resuelve una sola vez, al construirse los ajustes, así que hay
+que fijarla antes de que el proceso importe nada que los toque. Un `session.json`
+que no parsea no se pisa —invariante previa a esta rama, en `Session._persist`:
+perder la sesión persistida es reversible, destruir el archivo que explica qué
+pasó no lo es—, y `pbi_session_info` lo reporta como `state: corrupt` con qué
+hacer. El grupo 22 de `tests/test_correcciones_de_auditoria.py` comprueba que
+la sesión se escribe donde se le dice y que la del usuario queda byte a byte
+igual. Los scripts de
+esta tanda fueron temporales y no se conservan en el repositorio.
+
+## Base y alcance
+
+Rama `codex/desktop-ui-races-session-recovery` sobre `7cbc12d` (`main`, «Add
+outcome metadata and workflow skill for discovery (#37)»), que es el
+`merge-base` real. Contra el contrato congelado de esa base: **0 rupturas, 25
+cambios compatibles** —parámetros opcionales con default y descripciones—.
+Fuera del alcance y sin tocar: `pbix_to_pbip.py`, `secret_scan.py` y sus
+`.bak-20260831-191525`, que son cambios ajenos en el árbol de trabajo.
 
 ## Commits
 
@@ -142,7 +222,9 @@ había un proyecto activo, se restaura con `pbi_open_pbip_project`.
 | `8c4bd79` | documentación de esa ronda |
 | `8d5fd84` | los tres escenarios live: página y zoom, sobrescritura, contención |
 | `abc59b2` | documentación de esos escenarios |
-| (este) | calibrar la evidencia del zoom, desambiguar la pestaña de página, acotar la garantía de foco y reescribir el registro de cambios |
+| `17730a0` | calibrar la evidencia del zoom, desambiguar la pestaña de página y acotar la garantía de foco |
+| `d23549a` | un registro de cambios que no se contradice, y este borrador |
+| (este) | que la respuesta y las descripciones no prometan el modo de vista; aislamiento de la sesión en pruebas live; trazabilidad de los trece hallazgos |
 
 ## Cómo revisarlo
 

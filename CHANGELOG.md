@@ -144,7 +144,10 @@ The frozen contract is intact: **0 breaking changes, 25 compatible ones**
   `visual_change`, because the ribbon opening to reach the control, focus
   moving, or data finishing painting all change it as well. The reference
   snapshot is taken immediately before the press, not on entry, so an
-  announcement caused by the navigation itself cannot be counted as proof.
+  announcement caused by the navigation itself cannot be counted as proof. The
+  block also carries `verified_means`, so a client that only reads `verified`
+  still sees what that proof reaches: the tool descriptions of
+  `pbi_validate_desktop_render` and `pbi_open_and_refresh` say the same.
 - **No change proves nothing either.** When nothing changes, the response does
   not claim the view was already fitted: it says already-fitted and
   never-arrived cannot be told apart.
@@ -212,9 +215,18 @@ stated above.
   eliminate it.
 - Two pages with the same display name in the same report remain ambiguous by
   design — the selector refuses rather than guessing.
-- Not exercised live, and outside this batch: the credentials and data-load
+- **What ran live is exactly what the two tables above list.** These fixes
+  from this same batch were *not* exercised against a real Desktop and rest on
+  tests with doubles: session recovery with several instances, a port taken
+  over by another process (`mismatch`), `document_mismatch` with an active
+  project, `pbi_close_desktop` refusing a recycled PID, and the live
+  `$SYSTEM.TMSCHEMA_*` reads. The live tables were run on a machine with no
+  other Desktop window open, so by construction they could not cover them.
+- Outside this batch and also untested live: the credentials and data-load
   modals, which need a model with an external source. Their classification and
   handling are unchanged and remain covered only by doubles.
+- The `LegacyIAccessible` state of the fit-to-page control was never examined
+  as an oracle; it is the one unexplored route to identifying the view mode.
 
 ## [2.1.0] — 2026-08-25
 

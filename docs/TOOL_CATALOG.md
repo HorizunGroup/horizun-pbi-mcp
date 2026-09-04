@@ -51,7 +51,7 @@ tools registered.
 | `pbi_list_desktop_models` | Open Power BI Desktop instances |
 | `pbi_select_model` | Sets the active model (requires a port if there are several) |
 | `pbi_test_connection` | Validates the connection |
-| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`: the page by `IsSelected` — a page named like a ribbon tab is told apart by its tab container — and the zoom by Power BI's own zoom-level announcement, since its control exposes no state; a mere pixel change is reported as `visual_change`, not as verification); only closes Desktop if the tool opened it |
+| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`: the page by `IsSelected` — a page named like a ribbon tab is told apart by its tab container — and the zoom by Power BI's own zoom-level announcement, since its control exposes no state; a mere pixel change is reported as `visual_change`, not as verification, and `verified_means` says how far the zoom's proof reaches — the level changed, not that the resulting mode is fit-to-page); only closes Desktop if the tool opened it |
 | `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open. Also accepts `desktop_pid` + `desktop_started` (from the export's `desktop_session`) to close the window an export left open; refuses a recycled PID |
 | `pbi_list_pending_journals` | Journals of operations left half-done |
 | `pbi_inspect_journal` | Compares a journal with the current state (read-only) |
@@ -83,7 +83,7 @@ tools registered.
 | `pbi_set_column_visibility` · `pbi_hide_columns` | No |
 | `pbi_set_relationship_direction` · `pbi_disable_auto_date_time` | No |
 | `pbi_refresh_model` | Irreversible. Devuelve `rows_by_table`: un refresh puede terminar en 'ok' y cargar CERO filas |
-| `pbi_open_and_refresh` | Irreversible. Abre en Desktop y refresca en una llamada: un `.pbip` recien abierto trae el modelo SIN datos. Optional `page`/`fit_to_page` select the tab and zoom in the open window and report `verified` |
+| `pbi_open_and_refresh` | Irreversible. Abre en Desktop y refresca en una llamada: un `.pbip` recien abierto trae el modelo SIN datos. Optional `page`/`fit_to_page` select the tab and zoom in the open window and report `verified` per action, plus `verified_means` for how far the zoom's proof reaches |
 
 ## Project and plans
 

@@ -100,6 +100,22 @@ Synthetic fixtures **contain no** commercial names, data or information from any
 | Live | marked `@pytest.mark.skip` or `live` | Not run on their own. Never destructive against a real model |
 | Local fixture | marked `local_fixture` | Read-only. Skipped if the folder doesn't exist |
 
+**Scripts that drive a real Power BI Desktop** (ad-hoc checks, not part of the
+suite) must **isolate the persisted session before doing anything else**:
+
+```bash
+HORIZUN_PBI_MCP_OUTPUTS_DIR=/some/scratch/outputs python your_live_script.py
+```
+
+Opening a project persists it (`project_locator.open_project()` writes
+`outputs/session.json`), so without this a check leaves the user's session
+pointing at a temporary fixture. The variable is read once, when settings are
+first resolved, so it has to be set **before** the process imports anything
+that touches them. Same rule for the windows themselves: identify every
+process and file before acting, close only the instances the script opened,
+and never point one at a real project. `tests/test_correcciones_de_auditoria.py`
+(group 22) pins the isolation route.
+
 **Path traversal tests:** the "outside" must be created **inside pytest's `tmp_path`** (`synthetic.outside_marker_dir()`). Never point at a real machine path, not even to demonstrate a failure.
 
 ---
