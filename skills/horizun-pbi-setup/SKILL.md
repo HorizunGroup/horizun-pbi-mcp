@@ -10,6 +10,19 @@ y descarga las DLL y esquemas fijados, verificando sus hashes. **La meta es
 que la persona no pelee con dependencias: las resuelves TÚ**, con el
 instalador de un pegado y los remedios de esta skill.
 
+## Clientes de escritorio gratuitos
+
+- **ChatGPT Desktop Free:** el instalador de un pegado registra el marketplace
+  personal en `~/.agents/plugins/marketplace.json`. Después se reinicia la app
+  y se instala **Horizun PBI MCP** desde **Plugins → Personal**. No usa API key.
+- **Claude Desktop Free:** se instala el asset
+  `horizun-pbi-mcp-2.1.0.mcpb` de la release con doble clic. Claude aporta el
+  bootstrap UV/Python; no exige Claude Code ni editar
+  `claude_desktop_config.json`.
+- En ambos, primero pueden aparecer solo `pbi_install_runtime` y
+  `pbi_install_status`. Espera `ready` y reinicia el cliente una vez para
+  cargar el conjunto completo.
+
 ## El prompt de instalación (lo único que la persona pega)
 
 Cuando alguien diga "instálame el MCP de Power BI" (o llegue con este prompt),
@@ -25,7 +38,7 @@ administrador.
 ```powershell
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
-$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
+$sha = '1d92ed68b805af3dbb95614ac918008b1fe4c328a11bb8ccefba1d75cf581582'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una

@@ -21,6 +21,9 @@ Salida (todo bajo --outdir):
     meta/horizun-pbi-mcp-instalar.ps1
                            copia byte a byte de scripts/instalar.ps1, con su
                            SHA-256 comprobado contra downloads_manifest.json
+    meta/horizun-pbi-mcp-<version>.mcpb
+                           bundle local de Claude Desktop, reproducible y
+                           construido solo desde el arbol Git confirmado
     meta/RELEASE_NOTES_<version>.md
     meta/MIGRACION_1x_A_2.0.md
                            las notas que acompanan a la release, COPIADAS AQUI
@@ -44,12 +47,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import build_mcpb
+
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "scripts" / "downloads_manifest.json"
 INSTALADOR = REPO / "scripts" / "instalar.ps1"
 
 #: Nombre del asset en la release. Debe coincidir con el del manifest.
 NOMBRE_ASSET = "horizun-pbi-mcp-instalar.ps1"
+NOMBRE_MCPB = "horizun-pbi-mcp-{version}.mcpb"
 
 #: Las notas que viajan CON la release. `{version}` se sustituye por la que
 #: declara pyproject. Se copian al artefacto en vez de publicarse desde el
@@ -182,7 +188,14 @@ def construir(outdir: Path) -> dict:
         raise SystemExit(f"[release_build] el manifest llama al asset "
                          f"{entrada['name']!r} y aqui se publica {NOMBRE_ASSET!r}")
 
-    # 5. Las notas. Se copian con el nombre con el que se publican y entran en
+    # 5. Claude Desktop: un bundle local instalable con doble clic. Se
+    # construye desde HEAD, no desde el arbol de trabajo, para que una maquina
+    # con outputs, backups o proyectos reales sin versionar no pueda colarlos
+    # en el asset por accidente.
+    mcpb = meta / NOMBRE_MCPB.format(version=version)
+    resumen_mcpb = build_mcpb.build(mcpb, repo=REPO, ref="HEAD")
+
+    # 6. Las notas. Se copian con el nombre con el que se publican y entran en
     #    SHA256SUMS como cualquier otro publicable. Si falta una, se para aqui:
     #    una release sin notas de migracion en una MAYOR es la que obliga a
     #    leerse el diff para saber que se rompio.
@@ -197,9 +210,9 @@ def construir(outdir: Path) -> dict:
         shutil.copyfile(origen, destino)
         notas.append(destino)
 
-    # 6. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
+    # 7. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
     #    comprueba antes de usar nada.
-    publicables = [wheels[0], sdists[0], asset, sbom, *notas]
+    publicables = [wheels[0], sdists[0], asset, mcpb, sbom, *notas]
     lineas = []
     for p in publicables:
         rel = p.relative_to(outdir).as_posix()
@@ -212,6 +225,7 @@ def construir(outdir: Path) -> dict:
         "wheel": wheels[0].name,
         "sdist": sdists[0].name,
         "asset_instalador": NOMBRE_ASSET,
+        "asset_claude_desktop": resumen_mcpb,
         "notas": [n.name for n in notas],
         "sbom_componentes": len(componentes),
         "digests": {p.relative_to(outdir).as_posix(): _sha256(p)

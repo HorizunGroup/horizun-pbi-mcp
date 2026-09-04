@@ -78,6 +78,7 @@ def artefacto(tmp_path, version) -> Path:
         f"dist/horizun_pbi_mcp-{version}-py3-none-any.whl": b"PK\x03\x04 wheel\n",
         f"dist/horizun_pbi_mcp-{version}.tar.gz": b"\x1f\x8b sdist\n",
         "meta/sbom.cdx.json": b'{"bomFormat":"CycloneDX"}\n',
+        f"meta/horizun-pbi-mcp-{version}.mcpb": b"PK\x03\x04 mcpb\n",
         f"meta/RELEASE_NOTES_{version}.md": (
             f"# {version}\n\nNotas de esta version.\n".encode()),
         "meta/MIGRACION_1x_A_2.0.md": b"# Migracion\n\nComo adaptarse.\n",
@@ -188,6 +189,7 @@ def test_los_assets_son_exactamente_los_firmados(artefacto, version):
         f"horizun_pbi_mcp-{version}-py3-none-any.whl",
         f"horizun_pbi_mcp-{version}.tar.gz",
         "horizun-pbi-mcp-instalar.ps1",
+        f"horizun-pbi-mcp-{version}.mcpb",
         "sbom.cdx.json",
         f"RELEASE_NOTES_{version}.md",
         "MIGRACION_1x_A_2.0.md",
@@ -198,6 +200,7 @@ def test_los_assets_son_exactamente_los_firmados(artefacto, version):
 def test_el_minimo_exigido_esta_cubierto(artefacto):
     nombres = set(rv.assets_publicables(artefacto))
     assert "horizun-pbi-mcp-instalar.ps1" in nombres, "sin instalador, 404"
+    assert any(n.endswith(".mcpb") for n in nombres), "sin MCPB no hay instalacion en Claude Desktop"
     assert "SHA256SUMS" in nombres, "sin sumas nadie puede comprobar un asset suelto"
     assert any(n.startswith("sbom") for n in nombres)
     assert any(n.endswith(".whl") for n in nombres)

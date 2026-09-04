@@ -38,8 +38,9 @@ SITIOS_DE_VERSION = {
     ".codex-plugin/plugin.json": lambda t: json.loads(t)["version"],
     ".claude-plugin/marketplace.json": lambda t: _ref(t),
     ".agents/plugins/marketplace.json": lambda t: _ref(t),
+    "packaging/claude-desktop/manifest.json": lambda t: json.loads(t)["version"],
     "scripts/downloads_manifest.json": lambda t: json.loads(t)["downloads"]["instalar.ps1"]["version"],
-    # El noveno, que faltaba: el launcher del plugin decide con EL SUYO si
+    # El launcher del plugin decide con EL SUYO si
     # el runtime instalado sirve o hay que reinstalar. Quedandose atras, un
     # plugin recien actualizado seguiria dando por buena la version anterior.
     # Se colaba porque solo lo miraba una prueba de empaquetado, no el gate.

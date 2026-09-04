@@ -13,9 +13,10 @@
 #
 # Que hace: comprueba e instala los prerequisitos a NIVEL USUARIO (Python real,
 # Git, Node opcional), esquiva el alias de Python de la Microsoft Store, ajusta
-# la politica de ejecucion del usuario, registra el plugin en Claude Code y
-# deja dicho el unico paso restante. Es idempotente: correrlo dos veces no
-# rompe nada. No pide ni usa permisos de administrador.
+# la politica de ejecucion del usuario, registra el marketplace personal que
+# lee ChatGPT Desktop y el plugin de Claude Code, y deja dicho el unico paso
+# restante. Es idempotente: correrlo dos veces no rompe nada. No pide ni usa
+# permisos de administrador.
 #
 # -DryRun: diagnostica y publica el PLAN sin tocar nada. Ningun efecto puede
 # escaparse porque todos pasan por la funcion Efecto, que en seco registra la
@@ -129,6 +130,83 @@ function DetectarClaudeCode {
     Refresh-Path
     SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
     return (Tiene 'claude')
+}
+
+function RegistrarMarketplaceChatGPT {
+    # ChatGPT Desktop descubre automaticamente este marketplace personal. No
+    # se pisa un JSON ilegible: un archivo roto es evidencia diagnostica, no
+    # permiso para reemplazarlo. Si hay que cambiar uno valido, se respalda y
+    # se publica con File.Replace en el mismo volumen.
+    $destino = Join-Path $env:USERPROFILE '.agents\plugins\marketplace.json'
+    $carpeta = Split-Path -Parent $destino
+    $existia = Test-Path -LiteralPath $destino
+    if ($existia) {
+        $crudo = [IO.File]::ReadAllText($destino)
+        try { $doc = $crudo | ConvertFrom-Json }
+        catch { throw ("El marketplace de ChatGPT no contiene JSON valido: " + $destino + ". Se conserva intacto.") }
+        if ($null -eq $doc -or $doc -is [Array]) {
+            throw ("El marketplace de ChatGPT no contiene un objeto JSON: " + $destino + ". Se conserva intacto.")
+        }
+    } else {
+        $doc = [pscustomobject]@{
+            name = 'personal'
+            interface = [pscustomobject]@{ displayName = 'Personal' }
+            plugins = @()
+        }
+    }
+
+    if (-not ($doc.PSObject.Properties.Name -contains 'plugins')) {
+        $doc | Add-Member -NotePropertyName plugins -NotePropertyValue @()
+    }
+    if ($null -eq $doc.plugins) { $doc.plugins = @() }
+    $actuales = @($doc.plugins | Where-Object { $_.name -eq 'horizun-pbi-mcp' })
+    if ($actuales.Count -eq 1) {
+        $a = $actuales[0]
+        if ($a.source.source -eq 'url' -and
+            $a.source.url -eq 'https://github.com/HorizunGroup/horizun-pbi-mcp.git' -and
+            $a.source.ref -eq 'v2.1.0' -and
+            $a.policy.installation -eq 'AVAILABLE' -and
+            $a.policy.authentication -eq 'ON_INSTALL') {
+            return [pscustomobject]@{ Path = $destino; Changed = $false; Backup = $null }
+        }
+    }
+
+    $entrada = [pscustomobject]@{
+        name = 'horizun-pbi-mcp'
+        source = [pscustomobject]@{
+            source = 'url'
+            url = 'https://github.com/HorizunGroup/horizun-pbi-mcp.git'
+            ref = 'v2.1.0'
+        }
+        policy = [pscustomobject]@{
+            installation = 'AVAILABLE'
+            authentication = 'ON_INSTALL'
+        }
+        category = 'Developer Tools'
+    }
+    $otros = @($doc.plugins | Where-Object { $_.name -ne 'horizun-pbi-mcp' })
+    $doc.plugins = @($otros) + @($entrada)
+
+    [IO.Directory]::CreateDirectory($carpeta) | Out-Null
+    $tmp = $destino + '.tmp-' + [guid]::NewGuid().ToString('N')
+    $utf8 = New-Object Text.UTF8Encoding($false)
+    $texto = ($doc | ConvertTo-Json -Depth 20) + "`n"
+    [IO.File]::WriteAllText($tmp, $texto, $utf8)
+    $respaldo = $null
+    try {
+        # Releer lo escrito antes de publicarlo: nunca se deja un JSON que no
+        # pueda volver a parsearse.
+        [void]([IO.File]::ReadAllText($tmp) | ConvertFrom-Json)
+        if ($existia) {
+            $respaldo = $destino + '.bak-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+            [IO.File]::Replace($tmp, $destino, $respaldo, $true)
+        } else {
+            [IO.File]::Move($tmp, $destino)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    }
+    return [pscustomobject]@{ Path = $destino; Changed = $true; Backup = $respaldo }
 }
 
 function PythonRealPorRuta {
@@ -390,7 +468,30 @@ else {
     } elseif (Tiene 'node') { ReportarNode }
 }
 
-# --- 5. Claude Code ----------------------------------------------------------
+# --- 5. ChatGPT Desktop ------------------------------------------------------
+Paso "Marketplace personal de ChatGPT Desktop"
+$registroChatGPT = $null
+try {
+    $registroChatGPT = Efecto -Categoria 'plugin' `
+        -Descripcion "registrar horizun-pbi-mcp en ~/.agents/plugins/marketplace.json" `
+        -Simulado ([pscustomobject]@{ Path = '~/.agents/plugins/marketplace.json'; Changed = $true; Backup = $null }) `
+        -Accion { RegistrarMarketplaceChatGPT }
+    if ($script:Seco) {
+        $script:Clientes += "ChatGPT Desktop: se registraria el marketplace personal"
+    } elseif ($registroChatGPT.Changed) {
+        Ok ("Marketplace de ChatGPT registrado en " + $registroChatGPT.Path)
+        if ($registroChatGPT.Backup) { Write-Host ("  Respaldo: " + $registroChatGPT.Backup) }
+        $script:Clientes += "ChatGPT Desktop: marketplace registrado"
+    } else {
+        Ok ("Marketplace de ChatGPT ya estaba registrado en " + $registroChatGPT.Path)
+        $script:Clientes += "ChatGPT Desktop: marketplace ya registrado"
+    }
+} catch {
+    FalloVerificacion $_.Exception.Message
+    $script:Clientes += "ChatGPT Desktop: registro fallido"
+}
+
+# --- 6. Claude Code ----------------------------------------------------------
 Paso "Claude Code"
 SumarAlPathDeSesion (Join-Path $env:USERPROFILE ".local\bin")
 $hayClaude = DetectarClaudeCode
@@ -412,10 +513,10 @@ if ($hayClaude) {
            "(https://docs.anthropic.com/en/docs/claude-code) y vuelve a pegar " +
            "este comando para que se registre el plugin.")
 }
-# Codex se registra a mano: este instalador no lo cubre (CLI-001 sigue abierta).
-$script:Clientes += "Codex: fuera del alcance de este instalador (registro manual)"
+# Codex y ChatGPT Desktop comparten el mismo marketplace universal/local.
+$script:Clientes += "Codex: cubierto por el marketplace personal de ChatGPT"
 
-# --- 6. Registrar el plugin en Claude Code -----------------------------------
+# --- 7. Registrar el plugin en Claude Code -----------------------------------
 Paso "Plugin horizun-pbi-mcp en Claude Code"
 if (Tiene 'claude') {
     Efecto -Categoria 'plugin' `
@@ -480,7 +581,7 @@ if (Tiene 'claude') {
     }
 }
 
-# --- 7. Veredicto ------------------------------------------------------------
+# --- 8. Veredicto ------------------------------------------------------------
 Write-Host ""
 Write-Host "-------------------------------------------------------------"
 if ($script:FallosVerificacion.Count -gt 0) {
@@ -525,12 +626,14 @@ if ($script:Seco) {
 }
 
 if ($script:Pendientes.Count -eq 0) {
-    Write-Host "LISTO. Un solo paso restante:" -ForegroundColor Green
-    Write-Host "  1. Abre (o reinicia) Claude Code: la primera sesion prepara el runtime SOLA."
+    Write-Host "LISTO. Pasos restantes:" -ForegroundColor Green
+    Write-Host "  1. ChatGPT Desktop: reinicia, abre Plugins, fuente Personal, e instala Horizun PBI MCP."
+    Write-Host "  2. Claude Desktop gratuito: instala el asset .mcpb de la release con doble clic."
+    Write-Host "  3. Claude Code: abre (o reinicia); la primera sesion prepara el runtime SOLA."
     Write-Host "     (Si es la primera vez en este equipo, Claude te pedira iniciar sesion:"
     Write-Host "      eso es normal, no es un fallo de la instalacion.)"
-    Write-Host "  2. Escribe 'pbi_install_status' si quieres ver el avance (tarda ~1-2 min)."
-    Write-Host "  3. Cuando diga 'Runtime listo', reinicia Claude Code una vez: apareceran las tools pbi_*."
+    Write-Host "  4. Escribe 'pbi_install_status' si quieres ver el avance (tarda ~1-2 min)."
+    Write-Host "  5. Cuando diga 'Runtime listo', reinicia el cliente una vez: apareceran las tools pbi_*."
 } else {
     Write-Host ("QUEDARON " + $script:Pendientes.Count + " PENDIENTE(S):") -ForegroundColor Yellow
     $script:Pendientes | ForEach-Object { Write-Host ("  - " + $_) }

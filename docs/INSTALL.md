@@ -1,5 +1,43 @@
 # Installing and registering Horizun PBI MCP
 
+## Free ChatGPT Desktop and free Claude Desktop
+
+Both desktop clients can run the same local MCP without an API key or a paid
+connector plan. The server stays on the Windows machine because it must reach
+Power BI Desktop and local PBIP files.
+
+### ChatGPT Desktop (Free)
+
+1. Run the verified one-paste installer in the next section. It adds Horizun
+   to the personal plugin marketplace at
+   `%USERPROFILE%\.agents\plugins\marketplace.json`; valid existing entries
+   are preserved and a changed file is backed up first.
+2. Restart ChatGPT Desktop, open **Plugins**, choose **Personal**, open
+   **Horizun PBI MCP**, and select **Install**.
+3. Start a new chat. On first use the plugin exposes
+   `pbi_install_runtime` and `pbi_install_status` while it prepares the local
+   runtime. When status is `ready`, restart ChatGPT Desktop once; the complete
+   `pbi_*` toolset then appears.
+
+ChatGPT and Codex use the same plugin package and marketplace entry. The
+installer does not need an OpenAI API key.
+
+### Claude Desktop (Free)
+
+1. Download
+   [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb).
+2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
+   Advanced settings → Install Extension**, and approve the installation.
+3. Start a new chat and query `pbi_install_status`. The MCPB uses Claude
+   Desktop's managed UV/Python bootstrap, so the user does not need to install
+   Claude Code, Python, or edit `claude_desktop_config.json`. When status is
+   `ready`, restart Claude Desktop once.
+
+The `.mcpb` is built only from committed files, is included in the release's
+`SHA256SUMS`, and is re-read by the release pipeline before publication. It
+cannot include a developer's ignored outputs, backups, PBIX/PBIP files, or
+local credentials.
+
 ## If you already have Claude Code: ONE PROMPT — start here
 
 Paste this into Claude Code and let the agent fight the dependencies for you.
@@ -34,7 +72,7 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 ```powershell
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
-$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
+$sha = '1d92ed68b805af3dbb95614ac918008b1fe4c328a11bb8ccefba1d75cf581582'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una
@@ -116,7 +154,7 @@ try {
 It checks and installs everything at **user level**: real Python (dodging the
 Microsoft Store alias that silently kills MCP servers), Git, optional Node for
 the official PBIR validator, the user execution policy and the plugin
-registration. **Claude Code itself is not installed by this script** — there is
+registration for ChatGPT Desktop and Claude Code. **Claude Code itself is not installed by this script** — there is
 no pinned, hash-verifiable build to run, so it is detected, and if missing you
 get a pointer to Anthropic's official docs instead of a remote script piped
 into your shell. It is **idempotent**: if something stays pending (e.g. IT must
@@ -129,9 +167,10 @@ prerequisites, missing dependencies, planned actions and registrable clients,
 and it cannot download, install, register, write a file or change the execution
 policy — every effect goes through a single gate that dry-run closes.
 
-When it prints `LISTO`, open Claude Code: the first session prepares the
-runtime by itself (`pbi_install_status` shows progress), then restart Claude
-once and the `pbi_*` tools appear.
+When it prints `LISTO`, restart ChatGPT Desktop and install the plugin from the
+**Personal** source. In Claude Code, the first session prepares the runtime by
+itself. In either client, `pbi_install_status` shows progress; restart the
+client once when it says `ready` and the complete `pbi_*` toolset appears.
 
 **If IT blocks winget**: the script prints exactly which package ids to request
 (`Python.Python.3.12`, `Git.Git`, `OpenJS.NodeJS.LTS` — all user-scope). That
@@ -151,7 +190,7 @@ printout is the ticket to hand to your IT team.
 | "running scripts is disabled" | PowerShell execution policy | installer sets `RemoteSigned` for the current user only |
 | Freshly installed tool "not recognized" | stale PATH in the open terminal | installer refreshes PATH in-session; if it still hides, close and reopen the terminal |
 
-## Direct plugin for Codex and Claude Code
+## Direct plugin for ChatGPT, Codex and Claude Code
 
 This is the recommended path for end users. It doesn't require a dedicated
 executable installer or hand-editing MCP files:
@@ -175,6 +214,9 @@ data, outside the repository and your projects.
 
 Python 3.10+ is still a requirement: it's the local process that talks to
 Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
+
+For Claude Desktop, prefer the release `.mcpb`: Claude supplies the bootstrap
+runtime and no manual Python or JSON configuration is needed.
 
 Reproducible guide from scratch. At the end, an MCP client should see 139 `pbi_*` tools.
 

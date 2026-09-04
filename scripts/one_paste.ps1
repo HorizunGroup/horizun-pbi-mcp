@@ -39,7 +39,7 @@
 # contra los bytes reales del archivo.
 $ErrorActionPreference = 'Stop'
 $url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
-$sha = '00b7893c47a57de658eb69113ea709863e070fa653c35c4004ac612a4453d03d'
+$sha = '1d92ed68b805af3dbb95614ac918008b1fe4c328a11bb8ccefba1d75cf581582'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una

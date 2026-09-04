@@ -19,6 +19,21 @@ The frozen contract is intact: **0 breaking changes, 25 compatible ones**
 (new optional parameters with defaults and longer descriptions), checked with
 `python -m tests.contract_utils` against the golden of `main`.
 
+### Added — free desktop installation
+
+- **ChatGPT Desktop Free:** the verified Windows installer now registers the
+  plugin in the user's personal marketplace without replacing invalid JSON.
+  Existing marketplaces are merged, changed files are backed up, and a second
+  identical run performs no write.
+- **Claude Desktop Free:** releases now include a one-click `.mcpb`. Its UV
+  bootstrap has no dependencies, then hands off to the same verified runtime
+  lifecycle as the Codex and Claude Code plugins. The bundle is reproducible,
+  built only from committed files, signed in `SHA256SUMS`, and published by the
+  existing immutable release flow.
+- The MCPB manifest passes the official `@anthropic-ai/mcpb` validator and its
+  extracted launcher is tested through an MCP initialize + tools/list
+  handshake before release.
+
 ### Fixed — Save As
 
 - **Intermittent failures with the same arguments.** `phase="nombre"` came

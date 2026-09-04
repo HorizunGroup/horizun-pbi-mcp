@@ -27,6 +27,23 @@ sustituirlas**; eso está contado abajo, porque es la parte útil.
 | Elegir página y zoom exigía cerrar y reabrir | Se hacen en la ventana abierta bajo `confirm_reuse`, sin tocar `pages.json` |
 | Faltaba lectura live de Power Query y particiones; parámetros inconsistentes | Lectura por DMV, alias con conflicto explícito y resolución de carpetas de proyecto |
 
+## Instalación en clientes de escritorio gratuitos
+
+La misma entrega queda instalable en las dos aplicaciones gratuitas de
+escritorio. El instalador de Windows registra el marketplace personal que lee
+ChatGPT Desktop, preserva sus entradas, respalda antes de cambiar y rechaza un
+JSON inválido sin sobrescribirlo. Claude Desktop recibe un asset
+`horizun-pbi-mcp-2.1.0.mcpb` de instalación con doble clic; Claude aporta UV y
+Python para arrancar el bootstrap, sin Claude Code ni edición manual de
+`claude_desktop_config.json`.
+
+El `.mcpb` se construye solo desde el árbol confirmado de Git, por lo que no
+puede capturar outputs, backups, PBIX/PBIP ni credenciales del equipo que crea
+la release. Entra en `SHA256SUMS`, pasa el validador oficial
+`@anthropic-ai/mcpb@2.1.2` y se ejercitó desde el ZIP extraído: inicialización
+MCP correcta y exposición de `pbi_install_runtime` y `pbi_install_status` con
+el entorno UV administrado.
+
 ## Lo que la evidencia demuestra, y lo que no
 
 Esta es la parte que más cambió durante la revisión.
