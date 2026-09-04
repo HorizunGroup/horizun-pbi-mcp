@@ -30,6 +30,10 @@ def _tool_text(data: dict[str, Any], *, error: bool = False) -> dict[str, Any]:
 
 def _start_install() -> dict[str, Any]:
     status = bootstrap.read_status()
+    if status.get("state") in {"corrupt", "unreadable"}:
+        # No se repara sobrescribiendo evidencia. La tool devuelve un error
+        # util y deja el archivo exacto para que pueda inspeccionarse/apartarse.
+        return status
     # `installing` a secas no basta: un instalador matado a media faena deja
     # ese estado escrito para siempre y nadie reintentaria.
     if bootstrap.instalacion_en_curso(status=status):
@@ -106,10 +110,15 @@ def bootstrap_server() -> int:
             elif method == "tools/call":
                 name = request.get("params", {}).get("name")
                 if name == "pbi_install_runtime":
-                    _result(request_id, _tool_text(_start_install()))
+                    status = _start_install()
+                    _result(request_id, _tool_text(
+                        status, error=status.get("state") in
+                        {"failed", "corrupt", "unreadable"}))
                 elif name == "pbi_install_status":
                     status = bootstrap.read_status()
-                    _result(request_id, _tool_text(status, error=status.get("state") == "failed"))
+                    _result(request_id, _tool_text(
+                        status, error=status.get("state") in
+                        {"failed", "corrupt", "unreadable"}))
                 else:
                     _reply({"jsonrpc": "2.0", "id": request_id,
                             "error": {"code": -32601, "message": "Tool desconocida"}})
