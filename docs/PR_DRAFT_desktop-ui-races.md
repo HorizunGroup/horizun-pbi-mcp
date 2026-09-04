@@ -1,7 +1,6 @@
 # Conducir Power BI Desktop desde fuera, con evidencia que se sostiene
 
-Borrador local de descripción de PR para `codex/desktop-ui-races-session-recovery`.
-No publicado. Rama sin push.
+Borrador de descripción de PR para `codex/multiagent-audit-fixes`.
 
 ## De dónde viene
 
@@ -23,7 +22,7 @@ sustituirlas**; eso está contado abajo, porque es la parte útil.
 | La exportación rechazaba una ventana con título `Sin título - Power BI Desktop` | La identidad se sondea con tope: un título provisional espera, uno estable de otro documento se rechaza al instante |
 | Capturas vacías con `frame_settled=true` y `data_loaded=true` | Cuatro señales separadas: identidad asentada, fotograma estable, datos cargados y fotograma uniforme; ninguna se declara verdadera sin la anterior |
 | Tras `leave_open=true`, `pbi_close_desktop` no encontraba la ventana | La exportación devuelve `desktop_session` (pid + hora de arranque) y el cierre lo acepta, verificando identidad y rechazando un PID reciclado |
-| Reiniciar Desktop dejaba la sesión con un puerto muerto | Recuperación centralizada con la regla de `pbi_select_model`, que además exige que la instancia sirva el proyecto activo |
+| Reiniciar Desktop dejaba la sesión con un puerto muerto | Las lecturas reseleccionan automáticamente la única instancia viva, aunque sea el PBIX recién exportado; las mutaciones siguen exigiendo identidad alta y coincidencia con el proyecto activo |
 | Faltaba exportación nativa a `.pbit` | `format='pbit'` en `pbi_export_pbix` y `pbi_finalize_delivery`, con su diálogo de plantilla y verificación estructural |
 | Elegir página y zoom exigía cerrar y reabrir | Se hacen en la ventana abierta bajo `confirm_reuse`, sin tocar `pages.json` |
 | Faltaba lectura live de Power Query y particiones; parámetros inconsistentes | Lectura por DMV, alias con conflicto explícito y resolución de carpetas de proyecto |
@@ -99,7 +98,7 @@ Lo único descartado es 1b, y con motivo escrito.
 
 ## Evidencia automatizada
 
-- Suite completa: **3509 pasadas, 6 saltadas** (13 min).
+- Suite completa final: **3564 pasadas, 6 saltadas** (13 min 18 s).
 - `python scripts/doctor.py`: correcto.
 - `python -m tests.contract_utils`: el contrato no cambió.
 - Contra el golden de `main` (`7cbc12d`, que es también el `merge-base`):
@@ -161,8 +160,8 @@ fallo definitivo canceló su propio cuadro.
 - **Lo que corrió en vivo es exactamente lo que listan las dos tablas.** De
   este mismo lote NO se ejercitaron contra Desktop real, y descansan en dobles:
   la recuperación de sesión con varias instancias, el puerto tomado por otro
-  proceso (`mismatch`), `document_mismatch` con proyecto activo, el rechazo de
-  un PID reciclado en `pbi_close_desktop` y las lecturas live de
+  proceso (`mismatch`), el rechazo mutante por `document_mismatch`, el rechazo
+  de un PID reciclado en `pbi_close_desktop` y las lecturas live de
   `$SYSTEM.TMSCHEMA_*`. Las tablas se midieron sin ninguna otra ventana de
   Desktop abierta, así que por construcción no podían cubrirlos.
 - Fuera de esta rama y también sin probar en vivo: los modales de credenciales
@@ -172,10 +171,15 @@ fallo definitivo canceló su propio cuadro.
 
 ## Estado persistido tocado por las pruebas
 
-`outputs/session.json` no está versionado y los scripts live abren proyectos
-con `project_locator.open_project()`, que escribe en él. Al terminar quedó
-apuntando a un proyecto temporal de las pruebas, ya borrado; se eliminó **esa**
-referencia y el archivo queda con `active_model` y `active_pbip` a `null`.
+El smoke final usó ajustes aislados en
+`outputs/live-smoke-20260904-r5/tool-outputs/session.json`; no escribió el
+`outputs/session.json` normal. `doctor.py` sigue reportando allí una referencia
+obsoleta preexistente y se preservó como estado local diagnosticable.
+
+En las primeras rondas, antes de imponer ese aislamiento, los scripts live
+abrieron proyectos con `project_locator.open_project()` y tocaron el archivo
+normal. Al terminar se eliminó la referencia temporal que esas pruebas habían
+creado y ambos campos quedaron a `null` en ese momento.
 
 El valor que hubiera antes de la primera prueba **no es recuperable**: el
 archivo no está en git y los registros del servidor redactan las rutas
@@ -204,7 +208,7 @@ esta tanda fueron temporales y no se conservan en el repositorio.
 
 ## Base y alcance
 
-Rama `codex/desktop-ui-races-session-recovery` sobre `7cbc12d` (`main`, «Add
+Rama `codex/multiagent-audit-fixes` sobre `7cbc12d` (`main`, «Add
 outcome metadata and workflow skill for discovery (#37)»), que es el
 `merge-base` real. Contra el contrato congelado de esa base: **0 rupturas, 25
 cambios compatibles** —parámetros opcionales con default y descripciones—.
@@ -226,6 +230,41 @@ Fuera del alcance y sin tocar: `pbix_to_pbip.py`, `secret_scan.py` y sus
 | `d23549a` | un registro de cambios que no se contradice, y este borrador |
 | `3a51dad` | que la respuesta y las descripciones no prometan el modo de vista; aislamiento de la sesión en pruebas live |
 | `2148771` | la traza de los trece hallazgos y lo que del lote no corrió en vivo |
+| `4e9334b` | cerrar el borrador inicial con la lista completa de commits |
+| `6715fed` | conservar estado de runtime corrupto para diagnóstico en vez de sobrescribirlo |
+| `4b13786` | cerrar huecos de rollback, backups y escritura atómica por lotes |
+| `5115f82` | alinear contrato, clasificación de riesgo y metadatos con los efectos reales |
+| `71b0546` | endurecer captura, exportación, compensación y recuperación de Desktop |
+| `7a55432` | reseleccionar la única instancia viva para lecturas sin redirigir mutaciones |
+
+## Cierre de la auditoría multiagente
+
+Tres revisiones independientes cubrieron fronteras de escritura, contrato MCP y
+automatización de Desktop. Además de los problemas originales, encontraron y se
+corrigieron estos grupos:
+
+- estado de runtime ilegible que podía perder la evidencia del fallo;
+- prevalidación, rollback, manifiestos de backup, colisiones de destino y
+  coincidencias TMDL sensibles a mayúsculas;
+- envelopes que ocultaban estado u operación, capacidades DLL demasiado
+  optimistas y riesgos que no reflejaban efectos reales;
+- reutilización de ventanas homónimas, carreras entre Invoke y clic físico,
+  timeouts de refresh, limpieza de exportaciones fallidas y verificación PBIT;
+- recuperación de sesión de solo lectura que todavía rechazaba el único PBIX
+  vivo cuando el proyecto activo seguía siendo el PBIP fuente.
+
+El smoke live final se ejecutó sobre un PBIP sintético con un textbox visible:
+
+| Comprobación final | Evidencia |
+|---|---|
+| `page + refresh=true` | identidad y frame asentados, `data_loaded=true`, captura representativa y visual visible |
+| Restauración del PBIP | inventario SHA-256 idéntico antes y después de la captura |
+| Exportación PBIT | plantilla PBIR válida, sin `DataModel`, cierre verificado por PID + hora de arranque |
+| Guardar como repetido | 3/3 exportaciones con argumentos idénticos, mismo SHA-256, escritura estable y ruta abierta verificada |
+| Reinicio de Desktop | puerto obsoleto `57498` reemplazado automáticamente por el único puerto vivo `57750` |
+| Limpieza | cero procesos `PBIDesktop`/`msmdsrv` al terminar |
+
+Evidencia local ignorada por Git: `outputs/live-smoke-20260904-r5/evidence.json`.
 
 ## Cómo revisarlo
 
