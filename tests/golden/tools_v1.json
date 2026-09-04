@@ -946,12 +946,22 @@
     },
     {
       "name": "pbi_close_desktop",
-      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).\n\n`path` (o `pbip_path`) se puede omitir: se cierra el proyecto activo,\nque es el que el servidor ya conoce.",
+      "description": "Cierra la instancia de Power BI Desktop que sirve ESE proyecto.\n\nEs la salida que faltaba del ciclo editar-abrir-mirar-editar: escribir\nel TMDL exige Desktop cerrado, y no habia forma de cerrarlo desde aqui\n-tocaba matar el proceso a mano en PowerShell-.\n\nCierra SOLO la instancia con ese archivo abierto, verificando la\nidentidad del proceso (nombre + hora de arranque, nunca el PID a\nsecas). Al final re-comprueba que el archivo ya no este abierto y lo\ndice en `verified_closed`.\n\nDESTRUCTIVA: los cambios SIN GUARDAR de esa ventana se pierden -y en\nun .pbip eso incluye los datos refrescados de la sesion-. Por eso\nexige `confirm=true`. Si el archivo no estaba abierto, no hace nada y\nlo dice (`was_open: false`).\n\n`path` (o `pbip_path` / `project_path`) se puede omitir: se cierra\nel proyecto activo, que es el que el servidor ya conoce.\n\n**Tras `pbi_export_pbix(leave_open=true)`** la ventana queda sobre el\narchivo exportado y ya no responde a la ruta del .pbip original.\nPasa `desktop_pid` y `desktop_started` tal cual los devuelve\n`desktop_session` de la exportacion: se cierra exactamente esa\ninstancia, verificando nombre del proceso y hora de arranque (nunca\nel PID a secas, que Windows recicla). Con `path` ademas se exige que\nla ventana no este sirviendo demostrablemente otro documento.",
       "params": {
         "confirm": {
           "required": false,
           "type": "boolean",
           "default": false
+        },
+        "desktop_pid": {
+          "required": false,
+          "type": "integer|null",
+          "default": null
+        },
+        "desktop_started": {
+          "required": false,
+          "type": "null|number",
+          "default": null
         },
         "path": {
           "required": false,
@@ -959,6 +969,11 @@
           "default": null
         },
         "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "project_path": {
           "required": false,
           "type": "null|string",
           "default": null
@@ -1116,7 +1131,7 @@
     },
     {
       "name": "pbi_convert_pbix_to_pbip",
-      "description": "Convierte uno o varios .pbix en proyectos .pbip (PBIR + TMDL).\n\nEl informe sale del propio archivo: si el .pbix ya guarda PBIR se copia\ntal cual, y si trae el formato heredado se traduce pagina a pagina.\n\nEl modelo NO se puede leer del archivo (es un backup comprimido del\nmotor), asi que se ABRE EL .pbix EN POWER BI DESKTOP y se serializa a\nTMDL desde ahi. Cuenta con eso: cada archivo tarda lo que tarde Desktop\nen cargarlo. Si el informe ya esta abierto se reutiliza esa sesion; si\nlo abre esta tool, lo cierra al terminar (`close_desktop`). El .pbix\noriginal nunca se modifica.\n\n`path`: un .pbix o una CARPETA (`recursive` incluye subcarpetas).\n`out_dir`: carpeta donde crear el proyecto; se crea una subcarpeta por\ninforme. `include_model=false` genera solo la mitad del informe, sin\ntocar Desktop. `dataset_connection_string` es obligatorio para informes\ncon conexion en vivo (los que no llevan modelo propio).\n\nDevuelve, por archivo, que se escribio y —lo importante— los avisos y\nlo que se quedo por el camino (`dropped`), como los marcadores.",
+      "description": "Convierte uno o varios .pbix en proyectos .pbip (PBIR + TMDL).\n\nEl informe sale del propio archivo: si el .pbix ya guarda PBIR se copia\ntal cual, y si trae el formato heredado se traduce pagina a pagina.\n\nEl modelo NO se puede leer del archivo (es un backup comprimido del\nmotor), asi que se ABRE EL .pbix EN POWER BI DESKTOP y se serializa a\nTMDL desde ahi. Cuenta con eso: cada archivo tarda lo que tarde Desktop\nen cargarlo. Si el informe ya esta abierto se reutiliza esa sesion; si\nlo abre esta tool, lo cierra al terminar (`close_desktop`). El .pbix\noriginal nunca se modifica.\n\n`path`: un .pbix o una CARPETA (`recursive` incluye subcarpetas).\n`out_dir`: carpeta donde crear el proyecto; se crea una subcarpeta por\ninforme. Los dos son obligatorios y esos son sus nombres: `pbix_path`\ny `output_dir` NO existen como alias, porque un parametro obligatorio\ndel contrato congelado no se puede sustituir por otro nombre.\n`include_model=false` genera solo la mitad del informe, sin\ntocar Desktop. `dataset_connection_string` es obligatorio para informes\ncon conexion en vivo (los que no llevan modelo propio).\n\nDevuelve, por archivo, que se escribio y —lo importante— los avisos y\nlo que se quedo por el camino (`dropped`), como los marcadores.",
       "params": {
         "close_desktop": {
           "required": false,
@@ -2515,12 +2530,17 @@
     },
     {
       "name": "pbi_export_pbix",
-      "description": "Exporta el proyecto .pbip a un archivo .pbix de verdad.\n\nMicrosoft no publica ninguna API para convertir el formato, asi que\nesto automatiza el flujo OFICIAL: abre el proyecto en Power BI Desktop\ny usa `Archivo > Guardar como`. No se fabrica el .pbix a mano -un zip\ncosido con TOM abre a veces y rompe otras-.\n\nAntes de tocar Desktop se resuelve la ruta exacta, se valida el TMDL,\nse comprueba que el destino cabe en Windows y, si existe y pasas\n`overwrite=true`, se respalda. Si el destino existe y no lo pasas,\nfalla ANTES de abrir ninguna ventana.\n\n`refresh`: 'auto' intenta refrescar y declara el resultado sin\nadornarlo; 'required' no exporta si no pudo refrescar -para no\nentregar un .pbix como si tuviera datos-; 'skip' guarda el estado que\nel modelo tenga ahora.\n\nQue el dialogo desaparezca NO es que se haya guardado: se comprueba\nque el archivo existe, que es .pbix y no .pbit, que pesa mas de cero,\nque su fecha es de esta ejecucion y que el lector de .pbix lo puede\nabrir con informe y modelo dentro. Si `saved_as_verified` no es true,\nla respuesta no es un exito.\n\n`leave_open=true` (por defecto) deja abierto exactamente el .pbix\ngenerado y lo selecciona como modelo activo. Nunca cierra una ventana\nque no abrio esta operacion.\n\nRequiere Windows, Power BI Desktop instalado y el extra `export`\n(`pip install \"horizun-pbi-mcp[export]\"`). El cuadro de guardado se\nconduce por UI Automation desde un proceso aparte: los mensajes Win32\ncambian lo que se LEE en el desplegable de tipo sin avisar a la\naplicacion, y Desktop sigue guardando un proyecto. `pbi_capabilities`\ndice en `pbix_export` si esta disponible aqui y ahora.",
+      "description": "Exporta el proyecto .pbip a un archivo .pbix (o .pbit) de verdad.\n\nMicrosoft no publica ninguna API para convertir el formato, asi que\nesto automatiza el flujo OFICIAL: abre el proyecto en Power BI Desktop\ny usa `Archivo > Guardar como`. No se fabrica el .pbix a mano -un zip\ncosido con TOM abre a veces y rompe otras-.\n\nAntes de tocar Desktop se resuelve la ruta exacta, se valida el TMDL,\nse comprueba que el destino cabe en Windows y, si existe y pasas\n`overwrite=true`, se respalda. Si el destino existe y no lo pasas,\nfalla ANTES de abrir ninguna ventana.\n\n`refresh`: 'auto' intenta refrescar y declara el resultado sin\nadornarlo; 'required' no exporta si no pudo refrescar -para no\nentregar un .pbix como si tuviera datos-; 'skip' guarda el estado que\nel modelo tenga ahora.\n\nQue el dialogo desaparezca NO es que se haya guardado: se comprueba\nque el archivo existe, que es .pbix y no .pbit, que pesa mas de cero,\nque su fecha es de esta ejecucion y que el lector de .pbix lo puede\nabrir con informe y modelo dentro. Si `saved_as_verified` no es true,\nla respuesta no es un exito.\n\n`leave_open=true` (por defecto) deja abierto exactamente el .pbix\ngenerado y lo selecciona como modelo activo. Nunca cierra una ventana\nque no abrio esta operacion. La respuesta trae `desktop_session`\n(`desktop_pid` + `desktop_started`): es lo que acepta\n`pbi_close_desktop` para cerrar ESA ventana despues, porque ya no\nresponde a la ruta del .pbip original.\n\n`format`: 'pbix' (por defecto) o 'pbit'. Con 'pbit' se elige el tipo\nde PLANTILLA en el mismo `Guardar como`, se atiende el dialogo de\ndescripcion que Desktop abre despues y se verifica que el archivo\ntenga forma de plantilla: informe y definicion del modelo, SIN datos.\nNo se fabrica quitando partes de un .pbix.\n\nAntes de conducir la ventana se espera a que su titulo muestre el\ndocumento pedido (hasta 90 s): `Sin titulo` es Desktop cargando, no\notra ventana. Un titulo estable de OTRO documento se rechaza.\n\n`project_path` es un alias de `pbip_path`; si llegan distintos, la\ntool devuelve un conflicto en vez de elegir uno.\n\nRequiere Windows, Power BI Desktop instalado y el extra `export`\n(`pip install \"horizun-pbi-mcp[export]\"`). El cuadro de guardado se\nconduce por UI Automation desde un proceso aparte: los mensajes Win32\ncambian lo que se LEE en el desplegable de tipo sin avisar a la\naplicacion, y Desktop sigue guardando un proyecto. `pbi_capabilities`\ndice en `pbix_export` si esta disponible aqui y ahora.",
       "params": {
         "confirm_reuse": {
           "required": false,
           "type": "boolean",
           "default": false
+        },
+        "format": {
+          "required": false,
+          "type": "string",
+          "default": "pbix"
         },
         "leave_open": {
           "required": false,
@@ -2538,6 +2558,11 @@
           "default": false
         },
         "pbip_path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "project_path": {
           "required": false,
           "type": "string",
           "default": ""
@@ -2640,7 +2665,7 @@
     },
     {
       "name": "pbi_finalize_delivery",
-      "description": "El ULTIMO paso de una construccion: del proyecto al entregable.\n\nHace de extremo a extremo lo que hasta ahora eran cinco llamadas y un\npar de suposiciones: resuelve el archivo exacto que le pasas, lo\nprepara -convirtiendolo si le das un .pbix-, valida el proyecto,\nexporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado\ny deja abierto justo el entregable, seleccionado como modelo activo.\n\nUna sola respuesta verificable: `output_pbix`, `output_sha256`,\n`output_size`, `saved_as_verified` y `opened_path_verified`.\n\n`path` se puede omitir para usar el proyecto activo. `format` solo\nacepta 'pbix' por ahora, y se declara asi en vez de fingir que hay\nmas. Requiere Windows con Power BI Desktop instalado.",
+      "description": "El ULTIMO paso de una construccion: del proyecto al entregable.\n\nHace de extremo a extremo lo que hasta ahora eran cinco llamadas y un\npar de suposiciones: resuelve el archivo exacto que le pasas, lo\nprepara -convirtiendolo si le das un .pbix-, valida el proyecto,\nexporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado\ny deja abierto justo el entregable, seleccionado como modelo activo.\n\nUna sola respuesta verificable: `output_pbix`, `output_sha256`,\n`output_size`, `saved_as_verified` y `opened_path_verified`.\n\n`path` (o su alias `project_path`) se puede omitir para usar el\nproyecto activo. `format`: 'pbix' o 'pbit' (plantilla: informe y\ndefinicion del modelo, sin datos; producida por el propio `Guardar\ncomo` de Desktop, nunca fabricada a mano). Requiere Windows con Power\nBI Desktop instalado.",
       "params": {
         "format": {
           "required": false,
@@ -2663,6 +2688,11 @@
           "default": false
         },
         "path": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "project_path": {
           "required": false,
           "type": "string",
           "default": ""
@@ -2940,7 +2970,7 @@
     },
     {
       "name": "pbi_get_power_query",
-      "description": "Lee la consulta Power Query (M) de una particion o expresion.\n\nEn un .pbip el M no tiene archivo propio: vive dentro del TMDL, en la\n`partition` de cada tabla y en `expressions.tmdl`. Esta tool lo saca\ntal cual, con su SHA-256, que es lo que despues acepta\n`pbi_update_power_query` como `expected_sha256` para no escribir sobre\nuna version que ya cambio.\n\n`table` + `name` seleccionan una particion; `name` con\n`kind='expression'`, una expresion con nombre. Si la seleccion queda\nambigua o no existe, el error trae la lista de candidatos.\n\nSolo lectura, y solo lectura de TEXTO: nadie ha ejecutado esta\nconsulta. No hay motor M fuera de Power BI Desktop.",
+      "description": "Lee la consulta Power Query (M) de una particion o expresion.\n\nEn un .pbip el M no tiene archivo propio: vive dentro del TMDL, en la\n`partition` de cada tabla y en `expressions.tmdl`. Esta tool lo saca\ntal cual, con su SHA-256, que es lo que despues acepta\n`pbi_update_power_query` como `expected_sha256` para no escribir sobre\nuna version que ya cambio.\n\n`source`: 'pbip' (TMDL en disco), 'live' (motor de Desktop, DMV\n`TMSCHEMA_PARTITIONS` / `TMSCHEMA_EXPRESSIONS`) o vacio: pbip si hay\nproyecto activo, si no el modelo vivo. Con `live` la respuesta trae\n`file: null` y `source: 'live'`: es la definicion cargada en Desktop,\nno el archivo.\n\n`table` + `name` seleccionan una particion; `name` con\n`kind='expression'`, una expresion con nombre. `object_name` es un\nalias de `name` (si llegan distintos, conflicto). Si la seleccion\nqueda ambigua o no existe, el error trae la lista de candidatos.\n\nSolo lectura, y solo lectura de TEXTO: nadie ha ejecutado esta\nconsulta. No hay motor M fuera de Power BI Desktop.",
       "params": {
         "kind": {
           "required": false,
@@ -2948,6 +2978,16 @@
           "default": ""
         },
         "name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "object_name": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
+        "source": {
           "required": false,
           "type": "string",
           "default": ""
@@ -3094,7 +3134,7 @@
     },
     {
       "name": "pbi_inspect_pbix",
-      "description": "Radiografia de un .pbix SIN convertirlo ni abrir Power BI Desktop.\n\nDice en que formato esta el informe ('pbir' si ya trae el formato\nmejorado y solo hay que copiarlo, 'layout' si es el heredado y hay que\ntraducirlo), si lleva modelo de datos propio o es un informe con\nconexion en vivo, y cuantas paginas, recursos y visuales personalizados\ntiene. Sirve para saber que esperar antes de lanzar la conversion.\n\n`path`: ruta al archivo .pbix.",
+      "description": "Radiografia de un .pbix SIN convertirlo ni abrir Power BI Desktop.\n\nDice en que formato esta el informe ('pbir' si ya trae el formato\nmejorado y solo hay que copiarlo, 'layout' si es el heredado y hay que\ntraducirlo), si lleva modelo de datos propio o es un informe con\nconexion en vivo, y cuantas paginas, recursos y visuales personalizados\ntiene. Sirve para saber que esperar antes de lanzar la conversion.\n\n`path`: ruta al archivo .pbix. Es el UNICO nombre del parametro: no\nhay alias `pbix_path`, porque `path` es obligatorio en el contrato\ncongelado y un alias no podria sustituirlo.",
       "params": {
         "path": {
           "required": true,
@@ -3331,7 +3371,7 @@
     },
     {
       "name": "pbi_list_partitions",
-      "description": "Lista las particiones por tabla (modo de almacenamiento y origen).",
+      "description": "Lista las particiones por tabla (modo de almacenamiento y origen).\n\nCon `source='live'` se leen del motor (DMV `TMSCHEMA_PARTITIONS`):\ntabla, nombre, tipo de origen (m, calculated...), modo (import,\ndirectQuery, dual...), estado y hora del ultimo refresco. Aparte, en\n`expressions`, las consultas COMPARTIDAS (`TMSCHEMA_EXPRESSIONS`:\nparametros y funciones M), que no pertenecen a ninguna tabla. Con\n`source='pbip'` se leen del TMDL en disco. El texto M no viaja aqui:\nlo da `pbi_get_power_query`.",
       "params": {
         "source": {
           "required": false,
@@ -3705,12 +3745,22 @@
     },
     {
       "name": "pbi_open_and_refresh",
-      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\n`path` y `pbip_path` son el mismo parametro -el segundo es como lo\nllama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa\nel proyecto .pbip activo.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.\n\n**Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:\nlos dos efectos son visibles y el segundo descarta lo que hubiera en\nmemoria sin guardar.",
+      "description": "Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.\n\nEs la secuencia real de trabajo y siempre eran dos llamadas de unos\ncatorce segundos cada una, porque un `.pbip` recien abierto trae el\nmodelo SIN DATOS: abrirlo sin refrescar no sirve para comprobar nada.\n\n`path` y `pbip_path` son el mismo parametro -el segundo es como lo\nllama `pbi_session_info`-, y se pueden omitir los dos: entonces se usa\nel proyecto .pbip activo.\n\nDevuelve lo mismo que las dos por separado, incluido `rows_by_table`.\nSi el archivo ya estaba abierto se reutiliza esa sesion (`reuse_open`).\n\nSi el refresh falla, la ventana se DEJA ABIERTA: ya cargo bien, y\ncerrarla borraria justo el contexto que hace falta para ver por que\nfallo. Sale en `desktop_left_open`.\n\n`page` y `fit_to_page` (opcionales) eligen, DESPUES de refrescar, la\npestaña de esa pagina y la vista \"Ajustar a la pagina\" en la propia\nventana, por UI Automation, sin tocar `pages.json`. La respuesta trae\n`navigation` con `verified` por accion: lo que no se pudo demostrar\nse dice en `warnings`, no se da por hecho.\n\n**Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:\nlos dos efectos son visibles y el segundo descarta lo que hubiera en\nmemoria sin guardar.",
       "params": {
         "confirm": {
           "required": false,
           "type": "boolean",
           "default": false
+        },
+        "fit_to_page": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
+        "page": {
+          "required": false,
+          "type": "null|string",
+          "default": null
         },
         "path": {
           "required": false,
@@ -3718,6 +3768,11 @@
           "default": null
         },
         "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "project_path": {
           "required": false,
           "type": "null|string",
           "default": null
@@ -3772,7 +3827,7 @@
     },
     {
       "name": "pbi_open_in_desktop",
-      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\n`path` (o `pbip_path`, como lo llama `pbi_session_info`) se puede\nomitir: entonces se abre el proyecto .pbip activo.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
+      "description": "Abre un .pbip o .pbix en Power BI Desktop y espera a que sirva el modelo.\n\nCierra el ciclo de trabajo: despues de editar un proyecto, esto permite\ncomprobar que ABRE de verdad y consultar sus medidas, sin pedirle al\nusuario que lo haga a mano. Un TMDL que no carga se manifiesta aqui.\n\nEspera a que el motor local aparezca y deje de crecer, identifica cual\nde las instancias corresponde a este archivo (el puerto es dinamico) y,\ncon `select=true`, lo deja como modelo activo.\n\nSi el archivo ya estaba abierto se reutiliza esa sesion y no se toca\nnada (`reuse_open`). Nunca cierra una ventana del usuario.\n\n`path` (o `pbip_path`, como lo llama `pbi_session_info`, o\n`project_path`) se puede omitir: entonces se abre el proyecto .pbip\nactivo. Tambien acepta la CARPETA del proyecto si contiene un unico\n`.pbip`; con varios, dice cuales hay y no elige.\n\nOjo: un .pbip recien abierto trae el modelo SIN DATOS. Refresca despues\ncon pbi_refresh_model si vas a comprobar valores.",
       "params": {
         "path": {
           "required": false,
@@ -3780,6 +3835,11 @@
           "default": null
         },
         "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "project_path": {
           "required": false,
           "type": "null|string",
           "default": null
@@ -4523,7 +4583,7 @@
     },
     {
       "name": "pbi_run_dax",
-      "description": "Ejecuta una consulta DAX de SOLO LECTURA contra el modelo activo.\n\nSolo se admiten formas reconocidas: EVALUATE, DEFINE...EVALUATE y DMVs\nde $SYSTEM. Cualquier otra cosa se rechaza (politica fail-closed).\n\n`max_rows`: limite de filas. `max_bytes`: tope de tamano del resultado,\npara no devolver megas al cliente. `timeout_seconds`: timeout del\ncomando. `export=true` vuelca el resultado completo a outputs/ y\ndevuelve la ruta.\n\nDevuelve columnas, tipos observados, filas, estadisticas de ejecucion y\nsi se trunco (y por que: filas o tamano). Los errores DAX del motor se\ndevuelven tal cual.",
+      "description": "Ejecuta una consulta DAX de SOLO LECTURA contra el modelo activo.\n\nSolo se admiten formas reconocidas: EVALUATE, DEFINE...EVALUATE y DMVs\nde $SYSTEM. Cualquier otra cosa se rechaza (politica fail-closed).\n\n`max_rows`: limite de filas. `max_bytes`: tope de tamano del resultado,\npara no devolver megas al cliente. `timeout_seconds`: timeout del\ncomando. `export=true` vuelca el resultado completo a outputs/ y\ndevuelve la ruta.\n\nDevuelve columnas, tipos observados, filas, estadisticas de ejecucion y\nsi se trunco (y por que: filas o tamano). Los errores DAX del motor se\ndevuelven tal cual.\n\n`query` es el unico nombre de la consulta: no hay alias `dax`, porque\n`query` es obligatorio en el contrato congelado y un alias no podria\nsustituirlo. Ejemplo: `pbi_run_dax(query=\"EVALUATE TOPN(5, 'Ventas')\")`.",
       "params": {
         "export": {
           "required": false,
@@ -5409,7 +5469,7 @@
     },
     {
       "name": "pbi_validate_desktop_render",
-      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page` (solo .pbip): captura ESA pagina (id o nombre visible), no la\nque quedo activa. `fit_to_page` (solo .pbip, activado por defecto):\nfuerza la vista \"Ajustar a la pagina\" para que salga el lienzo COMPLETO\ny no el tercio superior al zoom guardado. Ambos ajustan la vista antes\nde abrir y la restauran byte a byte al terminar; exigen que el proyecto\nno este ya abierto (con sesion reutilizada no se pueden aplicar: `page`\nfalla y `fit_to_page` degrada a un aviso).\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page`: captura ESA pagina (id o nombre visible), no la que quedo\nactiva. `fit_to_page` (activado por defecto): fuerza la vista\n\"Ajustar a la pagina\" para que salga el lienzo COMPLETO y no el tercio\nsuperior al zoom guardado. Con el proyecto CERRADO (.pbip) ambos se\naplican como una vista temporal en disco que se restaura byte a byte\nal terminar. Con la ventana YA ABIERTA -o con un .pbix- se hacen en\nla propia interfaz: se elige la pestaña y el zoom por UI Automation y\nse VERIFICA el resultado (`navigation`). Si la pagina no se pudo\ndemostrar, la tool falla en vez de capturar otra; si el zoom no se\npudo demostrar, lo dice en `warnings`. Nunca toca `pages.json` de un\nproyecto abierto.\n\nLa captura separa cuatro señales que no son la misma cosa:\n`capture.identity_settled` (la ventana muestra ESTE documento),\n`capture.frame_settled` (la imagen dejo de cambiar), `data_loaded`\n(el modelo tiene filas) y `capture.frame_uniform` (la imagen es casi\nde un solo color: pagina vacia o visuales sin pintar).\n`capture.capture_representative` resume las tres primeras.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
       "params": {
         "capture_timeout": {
           "required": false,
@@ -5432,6 +5492,11 @@
           "default": null
         },
         "pbip_path": {
+          "required": false,
+          "type": "null|string",
+          "default": null
+        },
+        "project_path": {
           "required": false,
           "type": "null|string",
           "default": null

@@ -7,7 +7,116 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ## [Unreleased]
 
-Nothing pending.
+Fixes from an intensive real session: about forty calls through
+edit -> validate -> open -> capture -> export with several Power BI Desktop
+windows open. The verification design held; what broke were UI Automation
+races, focus contention, expired sessions and a few incomplete functions.
+The frozen contract is intact: **0 breaking changes, 24 compatible ones**
+(new optional parameters and longer descriptions), checked with
+`python -m tests.contract_utils`.
+
+### Fixed
+
+- **`pbi_export_pbix` failed intermittently and the same request worked on
+  retry** (`phase="nombre"`: `expected_len=182, actual_len=30`; under focus
+  contention `expected_len=66, actual_len=17`; `phase="tipo"`:
+  `available=[]`). Those were races between the helper and the dialog, not
+  Desktop failures. The path is now set with `ValuePattern.SetValue` first,
+  which needs neither focus nor the keyboard queue; typing is the fallback
+  and only happens when the foreground window belongs to the verified
+  process. Every transient phase gets up to three attempts with short
+  backoff and a per-phase time cap, re-locating its controls each time
+  instead of reusing expired UIA references. A drop-down that has not
+  loaded yet (`file_type_list_not_loaded`, retried) is no longer confused
+  with a format that is genuinely absent (`file_type_not_offered`,
+  definitive). A save confirmation is never repeated blindly: before pressing
+  again, the helper checks whether the dialog already closed or the file
+  already appeared. On a definitive failure it cancels only the dialog of
+  this operation and reports the cleanup. Attempts, phase, waits and
+  verification travel in `steps`.
+- **`pbi_export_pbix` rejected the window as "serving ANOTHER document"**
+  while its title still read `Sin título - Power BI Desktop`; thirty seconds
+  later the same request worked. The tabular engine answering does not mean
+  the window finished opening. Identity is now polled with a bound
+  (`ESPERA_IDENTIDAD`, 90 s): a provisional title means "not yet" and is
+  waited for; a stable title of a different document is rejected at once and
+  is never taken as permission to act on that window; on timeout the
+  observed titles, polls and wait are returned. The product suffix
+  (` - Power BI Desktop`) is no longer part of the document name when
+  correlating windows.
+- **`pbi_validate_desktop_render` returned two identical empty captures with
+  `frame_settled=true` and `data_loaded=true`.** The capture now waits for
+  the window identity to settle before photographing and separates four
+  signals that used to be conflated: `capture.identity_settled`,
+  `capture.frame_settled` (never `true` while the identity is unsettled),
+  `data_loaded` (model rows) and `capture.frame_uniform` (an almost
+  single-colour image, judged on sampled pixels — never on a byte size).
+  `capture.capture_representative` sums them up. A page that declares no
+  visuals is reported as legitimately uniform, not as a load failure.
+- **`pbi_close_desktop` answered `was_open=false` after
+  `pbi_export_pbix(leave_open=true)`**: the window had moved onto the
+  exported `.pbix` (kept by Desktop in its TempSaves) and no longer answered
+  to the original `.pbip`. The export now returns `desktop_session`
+  (`desktop_pid` + `desktop_started`) and `pbi_close_desktop` accepts those
+  two optional parameters: it closes exactly that instance after verifying
+  process name and start time, refuses a recycled PID, and with a path also
+  refuses a window demonstrably serving another document. Closing by path
+  falls back to the window title for `.pbix`/`.pbit` and says so in
+  `matched_by`. `confirm=true` is still required.
+- **A restarted Desktop left the session on a dead port and every tool
+  failed with `stale_session`**, even `pbi_capabilities`. Recovery is now
+  centralised in `Session.require_active_model` with the same rule as
+  `pbi_select_model`: exactly one live, verifiable instance is selected and
+  the tool's response declares it in `session_recovery`; several instances
+  return the candidates with the exact call; none returns an actionable
+  error. A port taken over by another process (`mismatch`) is never
+  reconnected silently: it requires an explicit `pbi_select_model`. No
+  mutation is ever replayed.
+- **`pbi_get_power_query` returned `no_active_pbip` and
+  `pbi_list_partitions` returned `supported=false` on a live model.** Both
+  now read the engine through `$SYSTEM.TMSCHEMA_PARTITIONS` and
+  `$SYSTEM.TMSCHEMA_EXPRESSIONS`, distinguishing partitions (table, source
+  type, storage mode, state, last refresh) from shared expressions
+  (parameters and M functions). Unknown enum values are reported as
+  `unknown(<n>)`, never guessed. `pbi_list_partitions(source='pbip')` now
+  reads the TMDL partitions too.
+- **`pbi_open_in_desktop` given a project folder said "El archivo .pbix no
+  existe".** Folders resolve with the same rule as `pbi_prepare_project`
+  (one `.pbip`, or an ambiguity error naming the candidates) and the
+  not-found error names the real type and path.
+
+### Added
+
+- **Native `.pbit` export.** `pbi_export_pbix(format='pbit')` and
+  `pbi_finalize_delivery(format='pbit')` choose the template type in the same
+  Save As dialog, accept the template-description dialog Desktop opens
+  afterwards, and verify the result has the shape of a template — report and
+  model definition, no data model. A file with a populated `DataModel` is
+  refused (`template_has_data_model`). Nothing is fabricated by removing
+  parts from a `.pbix`, and the response says the template carries no data.
+- **Page and zoom in an open session.** `pbi_validate_desktop_render` with
+  `page`/`fit_to_page` on an already-open project selects the page tab and
+  "Fit to page" through UI Automation (`navigation`) instead of demanding
+  close -> edit `pages.json` -> reopen -> refresh. Each action reports
+  `verified`; an unverified page is an error (`desktop_open_page_unverified`),
+  never a capture of another page; an unverified zoom is a warning.
+  `pbi_open_and_refresh` gains optional `page` and `fit_to_page`.
+  `pages.json` of an open project is never touched.
+- **Parameter aliases where the contract allows them**: `project_path` on the
+  Desktop tools and the export tools, `object_name` on `pbi_get_power_query`,
+  plus `source` on that tool (`pbip`, `live` or automatic). Two aliases with
+  different values return a clear `alias_conflict`; a filter is never
+  silently dropped. `pbix_path`, `output_dir` and `dax` cannot be aliases —
+  `path`, `out_dir` and `query` are required in the frozen contract — so
+  their descriptions now say so.
+
+### Pending real-Desktop validation
+
+The behaviours above are covered by regression tests with doubles for UI
+Automation, timing, processes and sessions. What still needs a machine with
+Power BI Desktop: the `.pbit` template dialog (title and OK button), the
+page-tab and ribbon control names for navigation, and `ValuePattern.SetValue`
+on the file-name box of this Desktop build.
 
 ---
 
