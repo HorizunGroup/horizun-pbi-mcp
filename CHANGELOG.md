@@ -7,272 +7,214 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ## [Unreleased]
 
-Fixes from an intensive real session: about forty calls through
-edit -> validate -> open -> capture -> export with several Power BI Desktop
-windows open. The verification design held; what broke were UI Automation
-races, focus contention, expired sessions and a few incomplete functions.
-The frozen contract is intact: **0 breaking changes, 24 compatible ones**
-(new optional parameters and longer descriptions), checked with
-`python -m tests.contract_utils`.
+Driving Power BI Desktop from the outside, made honest. The batch started from
+an intensive real session — about forty calls through edit -> validate -> open
+-> capture -> export with several Desktop windows open — and then went through
+an independent audit and three rounds against a real Desktop. Several of the
+fixes were themselves wrong and were replaced; what is described below is the
+final behaviour, and the evidence that supports it is separated from what it
+does not prove.
 
-### Fixed
+The frozen contract is intact: **0 breaking changes, 25 compatible ones**
+(new optional parameters with defaults and longer descriptions), checked with
+`python -m tests.contract_utils` against the golden of `main`.
 
-- **`pbi_export_pbix` failed intermittently and the same request worked on
-  retry** (`phase="nombre"`: `expected_len=182, actual_len=30`; under focus
-  contention `expected_len=66, actual_len=17`; `phase="tipo"`:
-  `available=[]`). Those were races between the helper and the dialog, not
-  Desktop failures. The path is now set with `ValuePattern.SetValue` first,
-  which needs neither focus nor the keyboard queue; typing is the fallback
-  and only happens when the foreground window belongs to the verified
-  process. Every transient phase gets up to three attempts with short
-  backoff and a per-phase time cap, re-locating its controls each time
-  instead of reusing expired UIA references. A drop-down that has not
-  loaded yet (`file_type_list_not_loaded`, retried) is no longer confused
-  with a format that is genuinely absent (`file_type_not_offered`,
-  definitive). A save confirmation is never repeated blindly: before pressing
-  again, the helper checks whether the dialog already closed or the file
-  already appeared. On a definitive failure it cancels only the dialog of
-  this operation and reports the cleanup. Attempts, phase, waits and
-  verification travel in `steps`.
-- **`pbi_export_pbix` rejected the window as "serving ANOTHER document"**
-  while its title still read `Sin título - Power BI Desktop`; thirty seconds
-  later the same request worked. The tabular engine answering does not mean
-  the window finished opening. Identity is now polled with a bound
-  (`ESPERA_IDENTIDAD`, 90 s): a provisional title means "not yet" and is
-  waited for; a stable title of a different document is rejected at once and
-  is never taken as permission to act on that window; on timeout the
-  observed titles, polls and wait are returned. The product suffix
-  (` - Power BI Desktop`) is no longer part of the document name when
-  correlating windows.
-- **`pbi_validate_desktop_render` returned two identical empty captures with
-  `frame_settled=true` and `data_loaded=true`.** The capture now waits for
-  the window identity to settle before photographing and separates four
-  signals that used to be conflated: `capture.identity_settled`,
-  `capture.frame_settled` (never `true` while the identity is unsettled),
-  `data_loaded` (model rows) and `capture.frame_uniform` (an almost
-  single-colour image, judged on sampled pixels — never on a byte size).
-  `capture.capture_representative` sums them up. A page that declares no
-  visuals is reported as legitimately uniform, not as a load failure.
-- **`pbi_close_desktop` answered `was_open=false` after
-  `pbi_export_pbix(leave_open=true)`**: the window had moved onto the
-  exported `.pbix` (kept by Desktop in its TempSaves) and no longer answered
-  to the original `.pbip`. The export now returns `desktop_session`
-  (`desktop_pid` + `desktop_started`) and `pbi_close_desktop` accepts those
-  two optional parameters: it closes exactly that instance after verifying
-  process name and start time, refuses a recycled PID, and with a path also
-  refuses a window demonstrably serving another document. Closing by path
-  falls back to the window title for `.pbix`/`.pbit` and says so in
-  `matched_by`. `confirm=true` is still required.
-- **A restarted Desktop left the session on a dead port and every tool
-  failed with `stale_session`**, even `pbi_capabilities`. Recovery is now
-  centralised in `Session.require_active_model` with the same rule as
-  `pbi_select_model`: exactly one live, verifiable instance is selected and
-  the tool's response declares it in `session_recovery`; several instances
-  return the candidates with the exact call; none returns an actionable
-  error. A port taken over by another process (`mismatch`) is never
-  reconnected silently: it requires an explicit `pbi_select_model`. No
-  mutation is ever replayed.
-- **`pbi_get_power_query` returned `no_active_pbip` and
-  `pbi_list_partitions` returned `supported=false` on a live model.** Both
-  now read the engine through `$SYSTEM.TMSCHEMA_PARTITIONS` and
-  `$SYSTEM.TMSCHEMA_EXPRESSIONS`, distinguishing partitions (table, source
-  type, storage mode, state, last refresh) from shared expressions
-  (parameters and M functions). Unknown enum values are reported as
-  `unknown(<n>)`, never guessed. `pbi_list_partitions(source='pbip')` now
-  reads the TMDL partitions too.
-- **`pbi_open_in_desktop` given a project folder said "El archivo .pbix no
-  existe".** Folders resolve with the same rule as `pbi_prepare_project`
-  (one `.pbip`, or an ambiguity error naming the candidates) and the
-  not-found error names the real type and path.
+### Fixed — Save As
+
+- **Intermittent failures with the same arguments.** `phase="nombre"` came
+  back as `expected_len=182, actual_len=30`, and under focus contention
+  `expected_len=66, actual_len=17`; `phase="tipo"` came back with
+  `available=[]`. None of these were Power BI failing — they were races.
+  Every transient phase now retries (three attempts, six for the file name)
+  with a per-phase time cap, re-locating its controls each time instead of
+  reusing UIA references that expired. A drop-down that has not loaded yet
+  (`file_type_list_not_loaded`) is no longer confused with a format that is
+  genuinely absent (`file_type_not_offered`).
+- **The path is typed, and only typed.** `ValuePattern.SetValue` looked like
+  the clean way in and is not: measured live, after `SetValue` both UI
+  Automation *and* `WM_GETTEXT` returned the 133 characters requested, and
+  Save still wrote `Demo.pbix` into the project folder under the dialog's own
+  default name. The modern common dialog keeps its own state and only updates
+  it from the notifications real typing produces — the same failure as
+  `CB_SETCURSEL` with the file type, resolved the same way. `Uia.fijar_valor`
+  now refuses to run rather than sitting there looking usable.
+- **Typing too fast loses characters** (133 requested, 26 delivered in a live
+  run). Each attempt now types slower than the last: 40, 16 and 8 events per
+  batch.
+- **A dialog in front stops the retry.** The confirmation loop used to look
+  only at "dialog closed" and "file appeared", so with `overwrite=true` the
+  replace prompt was open and the fallback click could land on it. Any open
+  dialog now stops the loop and comes back as `blocking_modals`. The one
+  exception is the replace prompt **owned by this operation's own dialog**,
+  and only when the caller passed `overwrite=true`; it is accepted, reported
+  in `overwrite_confirmed`, and Save is not pressed again afterwards.
+- **Dialogs are found across window classes.** Desktop's own dialogs are
+  WinForms, not `#32770`. A non-common window counts as a dialog only when it
+  is owned by another, so the main window is never mistaken for one.
+- **Focus is checked per dialog and per field**, not per process, and again
+  before the `Ctrl+A` that clears the field and before every batch of keys.
+- **`FindFirst` returns a NULL COM pointer, which is not `None`.** The
+  template dialog gives its buttons no `AutomationId`, so the caller's
+  `is None` did not see it and `Invoke` died with
+  `ValueError: NULL COM pointer access` **after the file had been written**.
+  Normalized at the source; `FindAll` collections tolerate it too.
+- **Errors carry their phase and clean up.** A `COMError` meaning "the element
+  went away" retries; any other is definitive with its phase; other exceptions
+  are not disguised. Failures after the save report `unexpected_after_save`,
+  and every definitive failure cancels this operation's dialog.
+- **The helper's budget matches its deadline** (`save_timeout` used to inherit
+  600 s while the process was killed at 180 s).
+- **Opening the dialog is a retried phase.** With the foreground stolen as
+  `F12` is released the accelerator reached another window and the export died
+  waiting; the foreground is now re-checked immediately before the key.
+
+### Fixed — identity, session and evidence
+
+- **A provisional title is not another document.** The export used to reject
+  the window while its title still read `Sin título - Power BI Desktop`;
+  thirty seconds later the same request worked. Identity is now polled with a
+  bound: a provisional title waits, a stable title of a different document is
+  rejected at once, and on timeout the observed titles come back. The product
+  suffix is no longer part of the document name, and `Power BI Desktop` on its
+  own counts as provisional.
+- **Captures separate four signals** that used to be conflated:
+  `identity_settled`, `frame_settled` (never `true` while identity is
+  unsettled), `data_loaded` and `frame_uniform` (judged on sampled pixels,
+  never on a byte size). A page that declares no visuals is reported as
+  legitimately uniform, not as a load failure.
+- **Session recovery no longer changes document.** With an active project the
+  single live instance must demonstrably serve it, otherwise `stale_session`
+  with `recovery="document_mismatch"`. Without a project, a live **mutation**
+  is never redirected; reads still reconnect. `pbi_capabilities` recovers like
+  every other tool, and `session_recovery` is consumed at the start of each
+  call so it never describes a previous one.
+- **Closing after an export.** `pbi_close_desktop` accepts `desktop_pid` +
+  `desktop_started` from the export's `desktop_session`; closing by path uses
+  the export's own record first, then a title match accepted only when the
+  process's command-line document lives in the same folder, and two compatible
+  windows return `ambiguous_window` instead of a close.
+- **The export stopped overclaiming.** With the default output name the window
+  title cannot tell the `.pbip` from the `.pbix`: the follow-up is
+  `inconclusive`, no second window is opened, `desktop_session.document` is
+  `null` with the candidates listed, and `opened_path_verified` is `true` only
+  with an open-file descriptor. A `.pbit` never re-points the window.
+- **A save that lands elsewhere is named.** When the requested file never
+  appears, the project folder is checked for a file of the same extension
+  written during this run, so `Demo.pbix` next to the project is reported with
+  its cause instead of "the file never appeared".
 
 ### Added
 
-- **Native `.pbit` export.** `pbi_export_pbix(format='pbit')` and
-  `pbi_finalize_delivery(format='pbit')` choose the template type in the same
-  Save As dialog, accept the template-description dialog Desktop opens
-  afterwards, and verify the result has the shape of a template — report and
-  model definition, no data model. A file with a populated `DataModel` is
-  refused (`template_has_data_model`). Nothing is fabricated by removing
-  parts from a `.pbix`, and the response says the template carries no data.
-- **Page and zoom in an open session.** `pbi_validate_desktop_render` with
-  `page`/`fit_to_page` on an already-open project selects the page tab and
-  "Fit to page" through UI Automation (`navigation`) instead of demanding
-  close -> edit `pages.json` -> reopen -> refresh. Each action reports
-  `verified`; an unverified page is an error (`desktop_open_page_unverified`),
-  never a capture of another page; an unverified zoom is a warning.
-  `pbi_open_and_refresh` gains optional `page` and `fit_to_page`.
-  `pages.json` of an open project is never touched.
-- **Parameter aliases where the contract allows them**: `project_path` on the
-  Desktop tools and the export tools, `object_name` on `pbi_get_power_query`,
-  plus `source` on that tool (`pbip`, `live` or automatic). Two aliases with
-  different values return a clear `alias_conflict`; a filter is never
-  silently dropped. `pbix_path`, `output_dir` and `dax` cannot be aliases —
-  `path`, `out_dir` and `query` are required in the frozen contract — so
-  their descriptions now say so.
+- **Native `.pbit` export** (`format='pbit'` on `pbi_export_pbix` and
+  `pbi_finalize_delivery`): the template type is chosen in the same Save As
+  dialog, the template-description dialog Desktop opens afterwards is
+  accepted, and the result is verified to have the shape of a template —
+  report plus model definition, no data model, and `DataModelSchema` required
+  when the source project has one. Nothing is fabricated by removing parts
+  from a `.pbix`, and the response says the template carries no data.
+- **Page and zoom in an open session.** `pbi_validate_desktop_render` gains
+  `confirm_reuse`; with it, `page`/`fit_to_page` on an already-open project
+  select the page tab and "Fit to page" through UI Automation instead of
+  demanding close -> edit `pages.json` -> reopen -> refresh. Without it,
+  `page` is refused (`desktop_open_page_needs_confirm`) and the zoom degrades
+  to a warning, because that window belongs to the user.
+  `pbi_open_and_refresh` gains optional `page` and `fit_to_page` under its
+  existing `confirm`. `pages.json` of an open project is never touched.
+- **Live reads.** `pbi_get_power_query` and `pbi_list_partitions` read the
+  engine through `$SYSTEM.TMSCHEMA_PARTITIONS` and
+  `$SYSTEM.TMSCHEMA_EXPRESSIONS`, distinguishing partitions from shared
+  expressions; unknown enum values are reported as `unknown(<n>)`.
+- **Parameter aliases** where the contract allows them (`project_path`,
+  `object_name`, plus `source` on `pbi_get_power_query`). Two aliases with
+  different values return `alias_conflict`; a filter is never silently
+  dropped. `pbix_path`, `output_dir` and `dax` cannot be aliases — `path`,
+  `out_dir` and `query` are required in the frozen contract — so their
+  descriptions say so.
 
-### Fixed after the independent audit of this batch
+### What the evidence proves, and what it does not
 
-- **Save could be pressed again with a dialog in front.** The retry loop of
-  the save confirmation only looked at "dialog closed" and "file appeared";
-  with `overwrite=true` the common dialog's "replace?" prompt was open and
-  the fallback click could land on it. Now any open dialog stops the loop
-  and is returned as `blocking_modals`. The only prompt ever accepted is the
-  replace confirmation **owned by this operation's own dialog** and only
-  when the caller passed `overwrite=true` (the destination was backed up
-  beforehand); the acceptance is reported in `overwrite_confirmed`. Dialogs
-  are now enumerated across all window classes — Desktop's own dialogs are
-  WPF, not `#32770` — but a non-common window only counts as a dialog when
-  it is owned by another window, so the main window is never mistaken for
-  one.
-- **A UI Automation `COMError` was neither retried nor cleaned up.** The
-  HRESULTs that mean "the element went away" (`UIA_E_ELEMENTNOTAVAILABLE`,
-  `UIA_E_TIMEOUT`, RPC retry/unavailable) are now transient; any other
-  `COMError` is a definitive `ui_com_error` with its phase; other exceptions
-  are not disguised, and every failure still cancels this operation's dialog.
-- **Focus was checked per process, not per dialog.** Typing now requires
-  the foreground window to be the save dialog itself and, when UIA exposes
-  it, the focused element to be inside the file-name field.
-- **The helper's budget exceeded its process deadline** (`save_timeout`
-  inherited 600 s while the process was killed at 180 s). The dialog-close
-  budget is now derived from the process deadline minus the phases' worst
-  case; the file write is still awaited by the parent with the full timeout.
-- **Session recovery could redirect an operation to another report.** With
-  an active project, the single live instance must demonstrably serve it
-  (`desktop_identity`), otherwise `stale_session` with
-  `recovery="document_mismatch"`. Without a project, a live **mutation**
-  is never redirected (`explicit_selection_required`); reads still
-  reconnect. `pbi_capabilities` now recovers like every other tool, and
-  `session_recovery` is consumed at the start of each call and after
-  untyped exceptions, so it never describes a previous call.
-- **A reused-session capture moved the user's window on its own.** With
-  the default `fit_to_page=true` on an already-open project the tool
-  selected the View ribbon and pressed "Fit to page". Navigation in a
-  window this call did not open now requires the new optional
-  `confirm_reuse=true`; without it, `page` is a clear error
-  (`desktop_open_page_needs_confirm`) and the zoom degrades to the previous
-  warning. `pbi_open_and_refresh` keeps `confirm=true` as its authorization.
-- **`same_window_followed` and `opened_path_verified` overclaimed.** With
-  the default output name the window title cannot tell the `.pbip` from the
-  `.pbix`: the follow-up is now `inconclusive`, no second window is opened,
-  `desktop_session.document` is `null` with the candidates listed, and
-  `opened_path_verified` is `true` only with an open-file descriptor (title
-  evidence is `medium` confidence and says so). A `.pbit` never re-points
-  the window: `desktop_session.document` is the source project.
-- **Closing the exported `.pbix` by path never worked** because the
-  command-line filter discarded the window launched with the `.pbip`. The
-  export now records `desktop_session` in the server session and closing by
-  path uses it first; otherwise the title match is accepted only when the
-  process's command-line document lives in the same folder, and two
-  compatible windows return `ambiguous_window` instead of a close.
-- **Template checks.** The template dialog is searched in every window
-  class; a `.pbit` of a project with a semantic model must carry
-  `DataModelSchema` (`template_without_model_schema`), and a populated
-  `DataModel` is still refused.
-- **`pbi_list_partitions(source="foo")` is rejected again.** A title that
-  is only the product name (`Power BI Desktop`) is provisional, and one
-  provisional title is enough to keep waiting during opening.
+- **The zoom.** `Ajustar a la página` is a `Button` exposing only `Invoke` and
+  `LegacyIAccessible` on the builds measured: there is no control state to
+  read back. What Power BI does publish is an announcement of the zoom level
+  (`Informe ampliado a 72 %`), captured between the instant before pressing
+  and the instant after. That proves **the zoom level changed when the control
+  was pressed** — not that the resulting mode is "fit to page", since "fit to
+  width" would announce too. `verified_by` is therefore `control_state` or
+  `zoom_level_announced`, never pixels: a changed frame travels as
+  `visual_change`, because the ribbon opening to reach the control, focus
+  moving, or data finishing painting all change it as well. The reference
+  snapshot is taken immediately before the press, not on entry, so an
+  announcement caused by the navigation itself cannot be counted as proof.
+- **No change proves nothing either.** When nothing changes, the response does
+  not claim the view was already fitted: it says already-fitted and
+  never-arrived cannot be told apart.
+- **The focus guard bounds, it does not prevent.** Between consulting the
+  guard and `SendInput` delivering a batch there is a window Windows offers no
+  way to close, so up to one batch (`tanda // 2`: 20, 8 or 4 characters) can
+  still reach whatever took the foreground. The guard stops the writing at the
+  next boundary; it does not make diversion impossible, and a test pins that
+  bound.
+- **A page named like a ribbon tab is selectable** — the earlier claim that
+  the two could not be distinguished was wrong. Page tabs and ribbon tabs are
+  both `TabItem`, but they live in different places: measured live, the
+  ribbon's `Ver` carries `AutomationId='view'` inside `ms-OverflowSet` /
+  `tablist`, while page tabs carry no id and hang off a `carouselScrollPane`
+  container inside `explorationNavigationContent`. Those are CSS classes of
+  the report canvas, not translated text. When the filter leaves exactly one
+  candidate it is used and reported as
+  `disambiguated_by: "page_tab_container"`; when it leaves none or several,
+  the ambiguity refusal stands with the containers it saw.
 
-### Fixed against real Power BI Desktop
+### Verified against a real Power BI Desktop
 
-Running the exporter against a real Desktop with a synthetic project turned
-up four defects that no double had caught, two of them in code this batch
-had just added:
-
-- **`ValuePattern.SetValue` does not commit the file name.** It looked like
-  the clean way in — no focus, no keyboard queue — and it is not. Measured:
-  after `SetValue`, both UI Automation *and* `WM_GETTEXT` returned the 133
-  characters requested, and Save still wrote `Demo.pbix` into the project
-  folder, using the dialog's own default name and folder. The modern common
-  dialog keeps its own state and only updates it from the notifications real
-  typing produces. It is the same failure as `CB_SETCURSEL` with the file
-  type, and it is resolved the same way: the path is **only** typed. No
-  read-back — not even the Win32 one — is accepted as proof on its own.
-- **Typing too fast loses characters.** 133 requested, 26 delivered in a live
-  run: that is the `expected_len=182, actual_len=30` of the original report,
-  reproduced. Each attempt now types slower than the last (40, 16 and 8
-  events per batch), and the export completes on the first or second.
-- **`FindFirst` returns a NULL COM pointer, which is not `None`.** The
-  template dialog gives its buttons no `AutomationId`, so `por_id` returned
-  that null, the caller's `is None` did not see it, and `Invoke` died with
-  `ValueError: NULL COM pointer access` **after the file had been written**.
-  `por_id` now normalizes it, `FindAll` collections tolerate it, and
-  `invocar` checks the pattern instead of trusting an exception type.
-- **A failure after the save had no phase and no cleanup.** The template and
-  close steps now sit inside the same guarded block, so an unexpected error
-  there reports its phase (`unexpected_after_save`) and still cancels this
-  operation's dialog.
-
-Also from live inspection: the ribbon tab is **`Ver`** in Spanish, not
-`Vista`, so the fallback path for the zoom never found it; and page tabs and
-ribbon tabs are the same control type, so a page named like a ribbon tab is
-now reported as ambiguous instead of silently activating the ribbon.
-
-### Verified live
-
-With a synthetic project and an identified test instance, on a machine with
-no other Desktop window open:
+Synthetic projects, identified test instances, on a machine with no other
+Desktop window open. Everything below is an observation of those runs.
 
 | Check | Result |
 |---|---|
 | `.pbix` export, 161-character path | verified, 13,920 bytes, `report_format=pbir`, model inside, ~18 s |
-| `.pbit` export | verified, template dialog `Exportar una plantilla` seen and accepted, `has_model_schema=true`, no `DataModel` |
-| Template opens in Desktop | launches and creates a new untitled document, which is what a template does; no error dialog in 90 s |
-| Provisional title during opening | observed `Sin título - Power BI Desktop` at 2.9 s, `Demo` at 9.5 s |
-| Close after export by `desktop_session` | closed and verified, no orphan processes |
-| Session recovery with zero instances | `stale_session` with `recovery="no_instances"` |
+| `.pbit` export | verified, 4,039 bytes, dialog `Exportar una plantilla` seen and accepted, `DataModelSchema` present, no `DataModel` |
+| Opening the template | Desktop creates a new untitled document, which is what a template does; no error dialog in 90 s |
+| Provisional title while opening | `Sin título - Power BI Desktop` at 2.9 s, `Demo` at 9.5 s |
+| Close by `desktop_session` | closed and verified, no orphan processes |
+| Session recovery, zero instances | `stale_session`, `recovery="no_instances"` |
 | Stray-file detection | reported `Demo.pbix` in the project folder with its cause |
-
-### The last three scenarios, run live
-
-The three gaps left above were executed against real Power BI Desktop with
-synthetic projects and identified test instances. Two more defects turned up,
-both fixed:
-
-- **The zoom could not be proven, but it worked.** `Ajustar a la página` is a
-  `Button` exposing only `Invoke` and `LegacyIAccessible` — no `Toggle`, no
-  `SelectionItem` to read back — so a working action was reported as
-  unverified. Navigation now compares the window's pixels before and after
-  and reports `verified_by: "frame_changed"`. When nothing changes it says
-  so, distinguishing "already fitted" from "the action never landed".
-- **Losing focus mid-path kept typing.** The remaining keystrokes went on to
-  whatever window had taken the foreground. Typing now consults a guard
-  between batches and stops the moment the foreground is no longer this
-  dialog (`focus_lost_mid_typing`, with how many characters got through).
-- Opening the dialog is a retried phase too: with the foreground stolen right
-  as `F12` is released, the accelerator reached another window and the export
-  died waiting. The foreground is re-checked immediately before the key, and
-  the phase retries within its budget.
-- The name phase gets more attempts (6, still capped by the same 25 s) because
-  a failed attempt now costs tenths of a second instead of seconds.
-- After accepting the replace prompt, Save is never pressed again: the code
-  waits for the dialog to close.
-- `0x80131509` (the UIA provider's `InvalidOperationException`, measured under
-  contention) joins the transient HRESULTs.
-
-Measured, five repetitions per regime:
-
-| Scenario | Result |
-|---|---|
-| Page selection | `Portada` selected and verified by `IsSelected`; the canvas changed (53,168 → 67,764 bytes) |
-| Page named like a ribbon tab (`Ver`) | ambiguity reported (2 matches), the ribbon was never activated |
-| Fit to page from `ActualSize` | applied; capture changed (67,764 → 61,359 bytes); second call correctly says nothing changed because it was already fitted |
-| Navigation without `confirm_reuse` | refused with `desktop_open_page_needs_confirm`; `pages.json` untouched |
+| Page selection | `Portada` selected, `IsSelected` true, canvas changed (53,168 -> 66,743 bytes) |
+| Page named `Ver`, colliding with the ribbon | selected as the page: `disambiguated_by: page_tab_container`, container `carouselScrollPane`, ribbon tab (id `view`) untouched; three pages produced three different captures |
+| Fit to page | `verified_by: zoom_level_announced`, `Informe ampliado a 86 %` |
+| Navigation without `confirm_reuse` | refused with `desktop_open_page_needs_confirm`; `pages.json` unchanged |
 | Overwrite without permission | `pbix_export_failed`, Desktop never opened, target byte-for-byte identical |
-| Overwrite with `overwrite=true` | backup taken, replace prompt accepted (`via: invoke`), new 3-page output, different hash, Save pressed once |
-| Focus contention, realistic (3-5 steals) | 5/5 exports succeeded, 1 recovered from `focus_lost_mid_typing` |
-| Focus contention, pathological (27-53 steals) | 3/5 succeeded; the 2 failures refused to type without the foreground |
+| Overwrite with `overwrite=true` | backup taken, replace prompt accepted (`via: invoke`), new 3-page output with a different hash, Save pressed once |
 
-Across all 15 contention runs: no file was ever written to the wrong path, no
-stray default-name output appeared, the other test project stayed
-byte-for-byte identical, and every definitive failure cancelled its own
-dialog.
+**Focus contention**, 25 runs in five batches of five, with a second identified
+test instance stealing the foreground while a 161-character path was typed.
+The batches drove the fixes and are not interchangeable:
 
-### Pending real-Desktop validation
+| Batch | Configuration | Result |
+|---|---|---|
+| 1 | before the guard, ~1 steal/s | 1/5 |
+| 2 | before the guard, 3-5 steals per run | 3/5 |
+| 3 | with the guard, 3 attempts | 2/5 — attempts now failed fast and ran out with time to spare |
+| 4 | with the guard, 6 attempts (final) | **5/5**, one recovering from `focus_lost_mid_typing` |
+| 5 | final, ~3 steals/s (pathological) | 3/5; both failures refused to type without the foreground |
 
-Nothing from this batch. What remains untested live is outside it: the
-credentials and data-load modals, which need a model with an external source.
+In all 25 runs no file was written to the wrong path, no stray default-name
+output appeared, the other test project stayed byte-for-byte identical, and
+every definitive failure cancelled its own dialog. That is what those runs
+showed; the guarantees the implementation provides are the narrower ones
+stated above.
 
----
+### Known limitations
+
+- The zoom evidence identifies a change of zoom **level**, not the resulting
+  view mode.
+- The focus guard bounds the divertible fragment to one batch; it does not
+  eliminate it.
+- Two pages with the same display name in the same report remain ambiguous by
+  design — the selector refuses rather than guessing.
+- Not exercised live, and outside this batch: the credentials and data-load
+  modals, which need a model with an external source. Their classification and
+  handling are unchanged and remain covered only by doubles.
 
 ## [2.1.0] — 2026-08-25
 
