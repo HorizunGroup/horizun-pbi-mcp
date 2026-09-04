@@ -559,11 +559,13 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
     apuntando a un modelo demostrable para que la operacion en curso se
     ejecute una sola vez sobre el.
 
-    Y no cambia de DOCUMENTO por ser la unica instancia viva: con un proyecto
-    activo, la candidata tiene que servir ese proyecto (descriptor o titulo de
-    ventana, via `desktop_identity`); si no coincide, `stale_session` con la
-    evidencia. Sin proyecto activo, una MUTACION no se reconecta a ciegas: no
-    hay contra que verificar el destino y se exige seleccion explicita.
+    Una LECTURA sigue la misma regla publica de `pbi_select_model`: si solo hay
+    una instancia viva, la selecciona aunque el proyecto PBIP activo sea otro,
+    y declara esa diferencia en `document_evidence`. Eso cubre el caso normal
+    tras exportar un PBIP, cerrar Desktop y reabrir el PBIX resultante. Una
+    MUTACION conserva la barrera estricta: solo se reconecta si puede demostrar
+    que la candidata sirve el proyecto activo; sin esa prueba exige seleccion
+    explicita.
     """
     instancias = discover_instances()
     candidatas = _candidatas_de_recuperacion(instancias)
@@ -601,10 +603,10 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
 
         evidencia_documento = desktop_identity.identify(
             elegida, target=getattr(active_pbip, "pbip_path", None))
-        if (evidencia_documento.get("path_match") is not True
-                or (for_mutation and
-                    evidencia_documento.get("identity_confidence")
-                    != desktop_identity.HIGH)):
+        if (for_mutation
+                and (evidencia_documento.get("path_match") is not True
+                     or evidencia_documento.get("identity_confidence")
+                     != desktop_identity.HIGH)):
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {motivo} La unica "
                 "instancia viva no sirve demostrablemente el proyecto activo "

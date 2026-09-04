@@ -316,7 +316,7 @@ def con_proyecto(caducada, tmp_path):
     return caducada
 
 
-def test_con_proyecto_activo_la_unica_instancia_tiene_que_servirlo(
+def test_lectura_con_proyecto_activo_sigue_la_unica_instancia_viva(
         con_proyecto, monkeypatch):
     monkeypatch.setattr(dd, "discover_instances",
                         lambda: [_instancia(50999, pid=300, catalog="Otro")])
@@ -325,8 +325,26 @@ def test_con_proyecto_activo_la_unica_instancia_tiene_que_servirlo(
         "path_match": False, "identity_confidence": "medium",
         "identity_evidence": []})
 
+    modelo = con_proyecto.require_active_model()
+
+    assert modelo.port == 50999
+    nota = con_proyecto.consume_recovery()
+    assert nota["document_evidence"]["path_match"] is False
+    assert nota["rule"] == "unica instancia viva y verificable, como pbi_select_model"
+
+
+def test_mutacion_con_proyecto_activo_no_cambia_de_documento(
+        con_proyecto, monkeypatch):
+    monkeypatch.setattr(dd, "discover_instances",
+                        lambda: [_instancia(50999, pid=300, catalog="Otro")])
+    monkeypatch.setattr(di, "identify", lambda inst, target=None: {
+        "desktop_pid": 300, "desktop_window_title": "OtroInforme",
+        "path_match": False, "identity_confidence": "high",
+        "identity_evidence": []})
+
     with pytest.raises(dd.StaleSessionError) as fallo:
-        con_proyecto.require_active_model()
+        with con_proyecto.active_model_lease():
+            pass
 
     assert fallo.value.details["recovery"] == "document_mismatch"
     assert con_proyecto.active_model.port == 50000, "cambio de documento"
