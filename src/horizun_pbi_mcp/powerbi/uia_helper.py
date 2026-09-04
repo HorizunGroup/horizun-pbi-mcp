@@ -96,6 +96,10 @@ HRESULT_TRANSITORIOS = frozenset({
     0x8001010A,   # RPC_E_SERVERCALL_RETRYLATER
     0x800706BA,   # RPC_S_SERVER_UNAVAILABLE
     0x800706BE,   # RPC_S_CALL_FAILED
+    # InvalidOperationException del proveedor de UIA. Se midio robando el
+    # primer plano durante la escritura: el arbol cambia debajo y la llamada
+    # deja de ser valida. Es una carrera, no un error de programacion.
+    0x80131509,
 })
 NOMBRE_BOTON_SI = re.compile(r"^(s[ií]|yes)$", re.I)
 UIA_PAT_INVOCAR = 10000
@@ -126,6 +130,14 @@ BACKOFF_ENTRE_INTENTOS = (0.3, 0.8)
 #: Techo de tiempo por fase sumando todos los intentos, para que reintentar
 #: no convierta un fallo de segundos en una espera de minutos.
 PLAZO_POR_FASE = 25.0
+
+#: Intentos de la fase del NOMBRE, que tiene mas que los demas. Perder el
+#: foco corta la escritura al instante -no se teclea en la ventana de otro-,
+#: asi que un intento fallido cuesta decimas y el techo de la fase se queda
+#: sin usar. Se midio con dos ventanas peleandose por el primer plano: con
+#: tres intentos, tres de cada cinco exportaciones morian teniendo tiempo de
+#: sobra. El limite real sigue siendo `PLAZO_POR_FASE`.
+INTENTOS_NOMBRE = 6
 #: Tras pulsar Guardar, cuanto se espera a que el cuadro se cierre ANTES de
 #: plantearse repetir la confirmacion. Desktop lo cierra en menos de un
 #: segundo; si en ocho no se cerro, o hay un modal o la pulsacion no llego.
@@ -282,8 +294,18 @@ def _caracter(letra: str, arriba: bool = False):
 CADENCIAS_TECLEO = ((40, 0.01), (16, 0.05), (8, 0.12))
 
 
+class FocoPerdido(Exception):
+    """El foco dejo de estar donde debia MIENTRAS se tecleaba."""
+
+    def __init__(self, escritos: int, total: int):
+        super().__init__("el foco se fue durante la escritura")
+        self.escritos = escritos
+        self.total = total
+
+
 def escribir_texto_real(texto: str, *, tanda: int = 40,
-                        pausa: float = 0.01) -> None:
+                        pausa: float = 0.01,
+                        guardia: Optional[Callable[[], bool]] = None) -> None:
     """Teclea el texto como lo hace una persona, caracter a caracter.
 
     Se usa `KEYEVENTF_UNICODE` en vez de codigos de tecla: asi el resultado no
@@ -293,12 +315,20 @@ def escribir_texto_real(texto: str, *, tanda: int = 40,
     `tanda` y `pausa` regulan la velocidad. Existen porque teclear tan rapido
     como permite `SendInput` pierde caracteres en el cuadro de guardado, y la
     ruta queda a medias.
+
+    `guardia` se consulta ANTES de cada tanda y corta la escritura en cuanto
+    deja de ser cierta. Sin el, perder el foco a mitad de una ruta larga no
+    detenia nada: el resto de las pulsaciones seguia saliendo, y acababa en
+    la ventana que hubiera robado el primer plano. Se midio con dos ventanas
+    de Power BI Desktop peleandose por el foco.
     """
     eventos: List[Any] = []
     for letra in texto:
         eventos.append(_caracter(letra))
         eventos.append(_caracter(letra, arriba=True))
     for i in range(0, len(eventos), tanda):     # tandas: SendInput tiene tope
+        if guardia is not None and not guardia():
+            raise FocoPerdido(i // 2, len(texto))
         _enviar_teclas(eventos[i:i + tanda])
         time.sleep(pausa)
 
@@ -852,6 +882,7 @@ def _esperar_cuadro(uia: Uia, pid: int, plazo: float) -> Dict[str, Any]:
         time.sleep(0.4)
     raise HelperError("abrir_cuadro",
                       "No aparecio el cuadro de guardado en el plazo.",
+                      transitoria=True, reason="save_dialog_not_found",
                       pid=pid, timeout=plazo)
 
 
@@ -1196,7 +1227,18 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
         tanda, pausa = CADENCIAS_TECLEO[min(numero - 1,
                                             len(CADENCIAS_TECLEO) - 1)]
         seleccionar_todo()
-        escribir_texto_real(ruta, tanda=tanda, pausa=pausa)
+        try:
+            escribir_texto_real(
+                ruta, tanda=tanda, pausa=pausa,
+                guardia=(None if pid is None
+                         else lambda: _primer_plano_es_el_cuadro(dialogo_hwnd)))
+        except FocoPerdido as exc:
+            raise HelperError(
+                "nombre", "El foco salio del cuadro a mitad de la ruta; se "
+                "corto la escritura para no teclear en otra ventana.",
+                transitoria=True, reason="focus_lost_mid_typing",
+                typed=exc.escritos, expected_len=exc.total,
+                typing_batch=tanda, methods_tried=metodos) from exc
 
         # Las teclas sinteticas llegan a la cola del sistema al instante, pero
         # la aplicacion las consume a su ritmo. Se espera a que el campo
@@ -1231,7 +1273,7 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
                 "method": "keyboard", "verified_by": fuente["quien"],
                 "typing_batch": tanda, "methods_tried": metodos}
 
-    return _con_intentos("nombre", intento)
+    return _con_intentos("nombre", intento, intentos=INTENTOS_NOMBRE)
 
 
 def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
@@ -1382,9 +1424,26 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
         if overwrite and len(propios) == 1 and reemplazo is None:
             reemplazo = _aceptar_reemplazo(uia, propios[0])
             if reemplazo.get("accepted"):
-                return None                     # se sigue esperando el cierre
+                # Aceptado: lo que toca es ESPERAR el cierre, no volver a
+                # pulsar Guardar. Con el reemplazo confirmado, una segunda
+                # pulsacion cae sobre un cuadro que ya esta guardando.
+                return "handled"
         bloqueo = modales
         return "blocked"
+
+    def _esperar_tras_atender(numero: int) -> bool:
+        """Tras aceptar el reemplazo: esperar el cierre, sin pulsar nada."""
+        nonlocal evidencia
+        restante = limite - time.monotonic()
+        if restante <= 0:
+            return True
+        if _esperar_cierre(dialogo_hwnd, min(ESPERA_CIERRE_TRAS_CONFIRMAR,
+                                             restante)):
+            evidencia = {"attempt": numero, "dialog_closed": True,
+                         "file_appeared": _archivo_aparecio(ruta, desde),
+                         "after_overwrite_confirm": True}
+            return True
+        return False
 
     for numero in range(1, INTENTOS_POR_FASE + 1):
         if numero > 1:
@@ -1396,6 +1455,10 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
                 break
             if veredicto == "blocked":
                 break
+            if veredicto == "handled":
+                if _esperar_tras_atender(numero):
+                    break
+                continue
         confirmacion = _confirmar(uia, dialogo_hwnd, pid)
         intentos.append({"attempt": numero, **confirmacion})
         restante = limite - time.monotonic()
@@ -1408,7 +1471,9 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
                          "file_appeared": _archivo_aparecio(ruta, desde)}
             break
         veredicto = _estado_o_modales(numero)
-        if veredicto == "done" or veredicto == "blocked":
+        if veredicto in ("done", "blocked"):
+            break
+        if veredicto == "handled" and _esperar_tras_atender(numero):
             break
     cerrado = _esperar_cierre(dialogo_hwnd, max(0.0, limite - time.monotonic()))
     return {
@@ -1567,17 +1632,40 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
     pasos.append({"phase": "ventana", "hwnd": principal["hwnd"],
                   "title": _redactar(principal["title"], 60)})
 
-    if not traer_al_frente(principal["hwnd"], pid):
-        raise HelperError("abrir_cuadro",
-                          "No se pudo poner Power BI Desktop al frente; no se "
-                          "envian teclas que acabarian en otra ventana.",
-                          hwnd=principal["hwnd"])
-    _enviar_teclas([_tecla(0x7B)])                        # F12
-    time.sleep(0.05)
-    _enviar_teclas([_tecla(0x7B, arriba=True)])
-    pasos.append({"phase": "abrir_cuadro", "accelerator": "F12"})
+    # Abrir el cuadro es una fase transitoria mas: si el primer plano cambia
+    # entre traer la ventana al frente y soltar F12, el acelerador acaba en
+    # OTRA ventana y el cuadro no aparece nunca. Se midio con dos Desktop
+    # peleandose por el foco: una de cada cinco exportaciones moria en
+    # "no aparecio el cuadro de guardado" tras esperar el plazo entero.
+    plazo_cuadro = float(peticion.get("dialog_timeout", 60))
+    por_intento = max(15.0, plazo_cuadro / INTENTOS_POR_FASE)
 
-    cuadro = _esperar_cuadro(uia, pid, float(peticion.get("dialog_timeout", 60)))
+    def _abrir(_numero: int) -> Dict[str, Any]:
+        if not traer_al_frente(principal["hwnd"], pid):
+            raise HelperError(
+                "abrir_cuadro",
+                "No se pudo poner Power BI Desktop al frente; no se envian "
+                "teclas que acabarian en otra ventana.",
+                transitoria=True, reason="foreground_not_owned",
+                hwnd=principal["hwnd"])
+        # Entre traer al frente y soltar la tecla puede colarse otra ventana.
+        if not _primer_plano_es_de(pid):
+            raise HelperError(
+                "abrir_cuadro",
+                "El primer plano cambio justo antes del acelerador; no se "
+                "envia F12 a la ventana de otro.",
+                transitoria=True, reason="foreground_lost_before_accelerator",
+                hwnd=principal["hwnd"])
+        _enviar_teclas([_tecla(0x7B)])                    # F12
+        time.sleep(0.05)
+        _enviar_teclas([_tecla(0x7B, arriba=True)])
+        ventana = _esperar_cuadro(uia, pid, por_intento)
+        return {"accelerator": "F12", "hwnd": ventana["hwnd"]}
+
+    apertura = _con_intentos("abrir_cuadro", _abrir, plazo=plazo_cuadro)
+    pasos.append({"phase": "abrir_cuadro", **{k: v for k, v in apertura.items()
+                                              if k != "hwnd"}})
+    cuadro = {"hwnd": apertura["hwnd"]}
     pasos.append({"phase": "cuadro", "hwnd": cuadro["hwnd"]})
 
     fuera = [cuadro["hwnd"], principal["hwnd"]]

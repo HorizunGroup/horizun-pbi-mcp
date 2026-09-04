@@ -612,7 +612,8 @@ def test_el_tecleo_afloja_el_ritmo_en_cada_intento():
     pausas = [c[1] for c in uia_helper.CADENCIAS_TECLEO]
     assert tandas == sorted(tandas, reverse=True)
     assert pausas == sorted(pausas)
-    assert len(uia_helper.CADENCIAS_TECLEO) == uia_helper.INTENTOS_POR_FASE
+    # Hay mas intentos que cadencias: los ultimos repiten la mas lenta.
+    assert len(uia_helper.CADENCIAS_TECLEO) <= uia_helper.INTENTOS_NOMBRE
 
 
 def test_un_guardado_con_otro_nombre_en_la_carpeta_del_proyecto_se_explica(
@@ -776,3 +777,251 @@ def test_el_boton_del_dialogo_de_plantilla_se_busca_por_nombre():
     assert uia_helper.NOMBRE_BOTON_ACEPTAR.search("Aceptar")
     assert uia_helper.NOMBRE_BOTON_ACEPTAR.search("OK")
     assert not uia_helper.NOMBRE_BOTON_ACEPTAR.search("Cancelar")
+
+
+# ===== 13) el zoom: el control no tiene estado, la ventana si =============
+# Medido contra Power BI Desktop real: "Ajustar a la pagina" es un `Button`
+# que solo expone `Invoke` y `LegacyIAccessible`. No hay `Toggle` ni
+# `SelectionItem` que releer, y aun asi la accion SI cambia la vista -la
+# captura pasaba de 66.583 a 61.194 bytes-. Con solo el estado del control,
+# una accion que funciona se reportaba como no demostrada.
+class _AdaptadorZoom:
+    def __init__(self, *, verified=False):
+        self.verified = verified
+
+    def ajustar_a_pagina(self, *, pid, started, timeout=30.0):
+        return {"verified": self.verified, "via": "invoke",
+                "path": ["fit_to_page"], "state_after": None,
+                "verification_reason": ("el control no expone Toggle ni "
+                                        "SelectionItem")}
+
+
+def _opened_nav(tmp_path):
+    from horizun_pbi_mcp.powerbi import desktop_launcher as dl_
+
+    return dl_.OpenedPbix(str(tmp_path / "Demo.pbip"), {"port": 1}, 4321,
+                          False, 0.0, desktop_started=1.0)
+
+
+def test_el_zoom_se_demuestra_por_el_cambio_de_la_ventana(monkeypatch, tmp_path):
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    huellas = iter(["antes", "despues"])
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: next(huellas, "despues"))
+    monkeypatch.setattr(nav.time, "sleep", lambda s: None)
+
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom())["fit_to_page"]
+
+    assert r["verified"] is True
+    assert r["verified_by"] == "frame_changed"
+    assert r["frame_changed"] is True
+    assert r["reason"] is None
+
+
+def test_si_la_ventana_no_cambia_el_zoom_no_se_da_por_hecho(monkeypatch,
+                                                            tmp_path):
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: "igual")
+    monkeypatch.setattr(nav.time, "sleep", lambda s: None)
+
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom())["fit_to_page"]
+
+    assert r["verified"] is False
+    assert r["frame_changed"] is False
+    assert "ya estuviera ajustada" in r["reason"]
+
+
+def test_el_estado_del_control_manda_sobre_los_pixeles(monkeypatch, tmp_path):
+    """Con estado del control no se vuelve a mirar la ventana.
+
+    La huella de ANTES se toma siempre -no se sabe todavia si habra estado
+    que releer-, pero la de despues solo si hace falta.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    miradas = []
+    monkeypatch.setattr(nav, "huella_de_ventana",
+                        lambda o: miradas.append(1) or "x")
+    monkeypatch.setattr(nav.time, "sleep",
+                        lambda s: pytest.fail("espero un repintado inutil"))
+
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom(verified=True))["fit_to_page"]
+
+    assert r["verified"] is True and r["verified_by"] == "control_state"
+    assert r["frame_changed"] is None
+    assert len(miradas) == 1, "se comparo la ventana sin necesitarlo"
+
+
+def test_sin_poder_mirar_la_ventana_se_dice_que_no_se_pudo(monkeypatch,
+                                                           tmp_path):
+    from horizun_pbi_mcp.powerbi import desktop_navigation as nav
+
+    monkeypatch.setattr(nav, "huella_de_ventana", lambda o: None)
+
+    r = nav.navegar(_opened_nav(tmp_path), fit_to_page=True,
+                    adapter=_AdaptadorZoom())["fit_to_page"]
+
+    assert r["verified"] is False and r["frame_changed"] is None
+    assert "tampoco se pudo comparar" in r["reason"]
+
+
+# ===== 14) tras aceptar el reemplazo NO se vuelve a pulsar Guardar ========
+def test_aceptado_el_reemplazo_se_espera_el_cierre_sin_pulsar_otra_vez(
+        monkeypatch, tmp_path):
+    """Medido en vivo: con overwrite el cuadro pide confirmacion.
+
+    Aceptarla es lo correcto; volver a pulsar Guardar despues cae sobre un
+    cuadro que ya esta guardando.
+    """
+    modal = {"hwnd": 99, "title": "Confirmar Guardar como",
+             "kind": "confirm_replace", "owned_by_dialog": True}
+    monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: True)
+    # El cuadro no se cierra al primer intento; tras aceptar el reemplazo, si.
+    cierres = iter([False, True, True, True])
+    monkeypatch.setattr(uia_helper, "_esperar_cierre",
+                        lambda h, p: next(cierres, True))
+    monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [modal])
+    monkeypatch.setattr(uia_helper, "_aceptar_reemplazo",
+                        lambda u, m: {"accepted": True, "hwnd": m["hwnd"],
+                                      "via": "invoke", "modal_closed": True})
+    pulsaciones = []
+    monkeypatch.setattr(uia_helper, "_confirmar",
+                        lambda u, h, p: pulsaciones.append(1) or
+                        {"commit_method": "invoke", "attempts": []})
+
+    salida = uia_helper._confirmar_con_verificacion(       # noqa: SLF001
+        _UiaFalso(), 22, 4321, str(tmp_path / "a.pbix"), plazo=5, desde=0.0,
+        overwrite=True)
+
+    assert len(pulsaciones) == 1, "se pulso Guardar tras aceptar el reemplazo"
+    assert salida["overwrite_confirmed"]["accepted"] is True
+    assert salida["commit_evidence"]["after_overwrite_confirm"] is True
+    assert salida["dialog_closed"] is True
+
+
+# ===== 15) perder el foco a mitad NO sigue tecleando =====================
+def test_el_tecleo_se_corta_en_cuanto_el_foco_se_va(monkeypatch):
+    """Medido con dos ventanas de Desktop peleandose por el primer plano.
+
+    Sin guardia, el resto de las pulsaciones salia igual y acababa en la
+    ventana que hubiera robado el foco.
+    """
+    tandas = []
+    monkeypatch.setattr(uia_helper, "_enviar_teclas",
+                        lambda eventos: tandas.append(len(eventos)))
+    monkeypatch.setattr(uia_helper.time, "sleep", lambda s: None)
+    llamadas = {"n": 0}
+
+    def _guardia():
+        llamadas["n"] += 1
+        return llamadas["n"] <= 2          # el foco se va en la tercera tanda
+
+    with pytest.raises(uia_helper.FocoPerdido) as fallo:
+        uia_helper.escribir_texto_real("0123456789" * 6, tanda=8, pausa=0,
+                                       guardia=_guardia)
+
+    assert len(tandas) == 2, "siguio tecleando sin foco"
+    assert fallo.value.escritos == 8       # 2 tandas de 8 eventos = 8 letras
+    assert fallo.value.total == 60
+
+
+def test_sin_guardia_se_teclea_entero():
+    """El comportamiento de siempre cuando no hay a quien preguntar."""
+    enviados = []
+    original = uia_helper._enviar_teclas                  # noqa: SLF001
+    uia_helper._enviar_teclas = lambda e: enviados.append(len(e))  # noqa: SLF001
+    try:
+        uia_helper.escribir_texto_real("abcdef", tanda=4, pausa=0)
+    finally:
+        uia_helper._enviar_teclas = original              # noqa: SLF001
+    assert sum(enviados) == 12                            # 6 letras x 2 eventos
+
+
+def test_el_foco_perdido_a_mitad_es_transitorio_y_dice_cuanto_llego(monkeypatch):
+    ruta = r"C:\entrega\Informe_de_ruta_muy_larga.pbix"
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
+
+    def _teclear(texto, *, tanda=40, pausa=0.01, guardia=None):
+        raise uia_helper.FocoPerdido(11, len(texto))
+
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", _teclear)
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper._escribir_ruta(_UiaFalso(), 22, ruta, 4321)  # noqa: SLF001
+
+    assert fallo.value.transitoria is True
+    assert fallo.value.detalles["reason"] == "focus_lost_mid_typing"
+    assert fallo.value.detalles["typed"] == 11
+    assert fallo.value.detalles["expected_len"] == len(ruta)
+    assert fallo.value.detalles["attempts_total"] == uia_helper.INTENTOS_NOMBRE
+
+
+def test_el_error_de_uia_bajo_contencion_se_reintenta():
+    """0x80131509: medido robando el foco durante la escritura."""
+    assert 0x80131509 in uia_helper.HRESULT_TRANSITORIOS
+    traducido = uia_helper._error_com_como_helper(          # noqa: SLF001
+        _com(-2146233079), "nombre")
+    assert traducido.transitoria is True
+    assert traducido.detalles["reason"] == "ui_element_gone"
+
+
+# ===== 16) abrir el cuadro tambien es una fase que se reintenta ===========
+def test_si_el_foco_se_va_antes_del_acelerador_no_se_manda_F12(monkeypatch):
+    """Medido en vivo: 1 de 5 exportaciones moria en "no aparecio el cuadro".
+
+    Entre traer la ventana al frente y soltar F12 se colaba la otra ventana,
+    y la tecla acababa alli.
+    """
+    from tests.test_ventanas_del_helper import _secuencia_montada
+
+    uia = _UiaFalso()
+    _secuencia_montada(monkeypatch, uia)
+    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: False)
+    teclas = []
+    monkeypatch.setattr(uia_helper, "_enviar_teclas",
+                        lambda e: teclas.append(e))
+
+    with pytest.raises(uia_helper.HelperError) as fallo:
+        uia_helper.guardar_como({"desktop_pid": 4321, "out_path": r"C:\x\a.pbix"})
+
+    assert teclas == [], "se envio F12 sin tener el primer plano"
+    assert fallo.value.fase == "abrir_cuadro"
+    assert fallo.value.detalles["reason"] == "foreground_lost_before_accelerator"
+    assert fallo.value.detalles["attempts_total"] == uia_helper.INTENTOS_POR_FASE
+
+
+def test_el_cuadro_que_no_aparece_se_reintenta_y_termina_abriendo(monkeypatch):
+    from tests.test_ventanas_del_helper import _secuencia_montada
+
+    ruta = r"C:\x\a.pbix"
+    uia = _UiaFalso(valor_tipo="Archivo de Power BI (*.pbix)",
+                    estado_tras=uia_helper.ESTADO_CERRADO, valor_nombre=ruta)
+    _secuencia_montada(monkeypatch, uia)
+    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
+    intentos = {"n": 0}
+
+    def _esperar(u, pid, plazo):
+        intentos["n"] += 1
+        if intentos["n"] < 2:
+            raise uia_helper.HelperError(
+                "abrir_cuadro", "No aparecio el cuadro de guardado en el plazo.",
+                transitoria=True, reason="save_dialog_not_found")
+        return {"hwnd": 22}
+
+    monkeypatch.setattr(uia_helper, "_esperar_cuadro", _esperar)
+
+    salida = uia_helper.guardar_como({"desktop_pid": 4321, "out_path": ruta})
+
+    assert salida["ok"] is True
+    assert intentos["n"] == 2
+    fases = {p["phase"]: p for p in salida["steps"]}
+    assert fases["abrir_cuadro"]["attempts_total"] == 2
+    assert fases["abrir_cuadro"]["attempts"][0]["reason"] == "save_dialog_not_found"

@@ -216,6 +216,9 @@ def _secuencia_montada(monkeypatch, uia):
     monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: False)
     monkeypatch.setattr(uia_helper, "_esperar_cierre", lambda h, p: True)
     monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [])
+    # El primer plano es de la ventana que se conduce: lo que se prueba
+    # aqui es la secuencia, no el forcejeo por el foco.
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
     # El cuadro tiene el foco: lo que se prueba aqui es la secuencia.
     monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
 

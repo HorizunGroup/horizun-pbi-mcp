@@ -82,7 +82,7 @@ def test_cada_intento_teclea_mas_despacio_que_el_anterior(monkeypatch):
 
     estado = {"n": 0}
 
-    def _teclear(texto, *, tanda=40, pausa=0.01):
+    def _teclear(texto, *, tanda=40, pausa=0.01, guardia=None):
         cadencias.append((tanda, pausa))
         estado["n"] += 1
 
@@ -146,7 +146,7 @@ def test_tres_escrituras_parciales_seguidas_agotan_los_intentos(sin_teclado):
         uia_helper._escribir_ruta(uia, 22, ruta, 4321)       # noqa: SLF001
 
     assert fallo.value.transitoria is True
-    assert fallo.value.detalles["attempts_total"] == uia_helper.INTENTOS_POR_FASE
+    assert fallo.value.detalles["attempts_total"] == uia_helper.INTENTOS_NOMBRE
     assert fallo.value.detalles["actual_len"] == 17
     assert fallo.value.detalles["expected_len"] == len(ruta)
     assert all(a["reason"] == "partial_write"
@@ -172,7 +172,7 @@ def test_con_el_foco_en_otro_proceso_no_se_teclea(monkeypatch):
 
     assert tecleado == [], "se tecleo sin tener el foco"
     assert fallo.value.detalles["reason"] == "focus_lost"
-    assert fallo.value.detalles["attempts_total"] == 3
+    assert fallo.value.detalles["attempts_total"] == uia_helper.INTENTOS_NOMBRE
 
 
 def test_si_el_foco_se_recupera_se_teclea_y_se_verifica(monkeypatch):
@@ -365,6 +365,9 @@ def _secuencia(monkeypatch, uia):
     monkeypatch.setattr(uia_helper, "_esperar_cuadro",
                         lambda u, pid, plazo: {"hwnd": 22})
     monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [])
+    # El primer plano es de la ventana que se conduce: lo que se prueba
+    # aqui es la secuencia, no el forcejeo por el foco.
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
 
 
 def test_un_fallo_definitivo_cancela_el_cuadro_y_lo_cuenta(monkeypatch):

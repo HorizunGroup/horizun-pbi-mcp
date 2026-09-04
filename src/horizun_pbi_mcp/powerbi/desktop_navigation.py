@@ -20,7 +20,9 @@ silencio es peor que decir que no se pudo demostrar.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -115,6 +117,47 @@ def contar_visuales(documento: str | Path, page_id: Optional[str]) -> Optional[i
         return None
 
 
+#: Cuanto se deja repintar la ventana antes de volver a mirarla.
+ESPERA_REPINTADO = 1.5
+
+
+def huella_de_ventana(opened: Any) -> Optional[str]:
+    """Huella de los pixeles de la ventana AHORA. `None` si no se pudo.
+
+    No escribe ningun archivo: se usa para comparar el antes y el despues de
+    una accion de vista. Es el unico oraculo disponible para el zoom, porque
+    el control de "Ajustar a la pagina" es un `Button` que solo expone
+    `Invoke` -medido contra Power BI Desktop real: sin `Toggle` ni
+    `SelectionItem` que releer-.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_capture
+
+    pid = getattr(opened, "desktop_pid", None)
+    documento = str(getattr(opened, "pbix_path", ""))
+    if not pid:
+        return None
+    try:
+        ventana = desktop_capture._choose_window(          # noqa: SLF001
+            desktop_capture._enumerate_windows(int(pid)), documento)  # noqa: SLF001
+        _ancho, _alto, pixeles = desktop_capture._capture_window_bgra(  # noqa: SLF001
+            ventana.hwnd)
+    except Exception as exc:                              # noqa: BLE001
+        log.debug("Sin huella de ventana: %s", exc)
+        return None
+    return hashlib.sha256(pixeles).hexdigest()
+
+
+def _cambio_de_vista(opened: Any, antes: Optional[str]) -> Optional[bool]:
+    """Si la ventana se ve distinta que antes. `None` si no se pudo mirar."""
+    if antes is None:
+        return None
+    time.sleep(ESPERA_REPINTADO)
+    despues = huella_de_ventana(opened)
+    if despues is None:
+        return None
+    return despues != antes
+
+
 def navegar(opened: Any, *, page: Optional[str] = None,
             fit_to_page: bool = False,
             adapter: Optional[Any] = None) -> Dict[str, Any]:
@@ -147,12 +190,20 @@ def navegar(opened: Any, *, page: Optional[str] = None,
                                   "resolved_from": resuelto.get("resolved_from"),
                                   "visual_count": contar_visuales(
                                       documento, resuelto.get("page_id"))}
+        antes = huella_de_ventana(opened)
         try:
             respuesta = adapter.seleccionar_pagina(
                 pid=int(pid), started=started,
                 page_name=resuelto["display_name"])
+            por_estado = bool(respuesta.get("verified"))
+            cambio = _cambio_de_vista(opened, antes)
             bloque.update({
-                "verified": bool(respuesta.get("verified")),
+                "verified": por_estado,
+                "verified_by": "control_state" if por_estado else None,
+                # El lienzo cambia al cambiar de pagina. No sustituye a
+                # `IsSelected` -no dice CUAL pagina quedo- pero cuando la
+                # seleccion se demostro, confirma que ademas se repinto.
+                "canvas_changed": cambio,
                 "via": respuesta.get("via"),
                 "selection_state": respuesta.get("selection_state"),
                 "reason": respuesta.get("verification_reason"),
@@ -166,21 +217,38 @@ def navegar(opened: Any, *, page: Optional[str] = None,
         salida["page"] = bloque
 
     if fit_to_page:
-        bloque = {"attempted": True}
+        bloque: Dict[str, Any] = {"attempted": True}
+        antes = huella_de_ventana(opened)
         try:
             respuesta = adapter.ajustar_a_pagina(pid=int(pid), started=started)
+            por_estado = bool(respuesta.get("verified"))
+            cambio = None if por_estado else _cambio_de_vista(opened, antes)
             bloque.update({
-                "verified": bool(respuesta.get("verified")),
+                "verified": por_estado or cambio is True,
+                "verified_by": ("control_state" if por_estado
+                                else "frame_changed" if cambio else None),
+                "frame_changed": cambio,
                 "via": respuesta.get("via"),
                 "path": respuesta.get("path"),
                 "state_after": respuesta.get("state_after"),
-                "reason": respuesta.get("verification_reason"),
+                "reason": (None if por_estado or cambio is True else
+                           _motivo_zoom(respuesta, cambio)),
                 "attempts": respuesta.get("attempts"),
             })
         except PowerBIMCPError as exc:
-            bloque.update({"verified": False, "error": exc.code,
+            bloque.update({"verified": False, "verified_by": None,
+                           "error": exc.code,
                            "reason": str(exc.message)[:200],
                            "details": exc.details})
         salida["fit_to_page"] = bloque
 
     return salida
+
+
+def _motivo_zoom(respuesta: Dict[str, Any], cambio: Optional[bool]) -> str:
+    """Por que no se pudo demostrar el zoom, distinguiendo los dos casos."""
+    base = respuesta.get("verification_reason") or "sin estado que releer"
+    if cambio is False:
+        return (f"{base}; y la ventana no cambio de aspecto: puede que ya "
+                "estuviera ajustada a la pagina, o que la accion no llegara")
+    return f"{base}; tampoco se pudo comparar el aspecto de la ventana"
