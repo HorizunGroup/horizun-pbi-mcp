@@ -224,7 +224,8 @@ Fuera del alcance y sin tocar: `pbix_to_pbip.py`, `secret_scan.py` y sus
 | `abc59b2` | documentación de esos escenarios |
 | `17730a0` | calibrar la evidencia del zoom, desambiguar la pestaña de página y acotar la garantía de foco |
 | `d23549a` | un registro de cambios que no se contradice, y este borrador |
-| (este) | que la respuesta y las descripciones no prometan el modo de vista; aislamiento de la sesión en pruebas live; trazabilidad de los trece hallazgos |
+| `3a51dad` | que la respuesta y las descripciones no prometan el modo de vista; aislamiento de la sesión en pruebas live |
+| `2148771` | la traza de los trece hallazgos y lo que del lote no corrió en vivo |
 
 ## Cómo revisarlo
 
