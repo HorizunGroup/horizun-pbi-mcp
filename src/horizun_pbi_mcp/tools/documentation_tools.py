@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from horizun_pbi_mcp.config import get_session, get_settings
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi import model_reader
+from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.pbip import tmdl_reader
 from horizun_pbi_mcp.reporting import (analyze_model_quality, document_model_markdown)
 from horizun_pbi_mcp.services import model_explorer
@@ -15,7 +16,19 @@ from horizun_pbi_mcp.utils.file_utils import atomic_write_text, timestamp
 log = get_logger("doc_tools")
 
 
+def _normalizar_source(source: str) -> str:
+    """Fuente canonica; nunca convierte un typo en una lectura live."""
+    normalizada = str(source or "").strip().casefold()
+    if normalizada not in {"live", "pbip"}:
+        raise ValidationError(
+            f"source invalido: {source!r}. Usa 'live' o 'pbip'.",
+            details={"parameter": "source", "value": source,
+                     "valid": ["live", "pbip"]})
+    return normalizada
+
+
 def _load_model_data(source: str = "live") -> Dict[str, Any]:
+    source = _normalizar_source(source)
     session = get_session()
     if source == "pbip":
         active = session.require_active_pbip()
@@ -94,7 +107,8 @@ def register(mcp) -> None:
         (RLS) y advertencias de calidad. Guarda el archivo en outputs/.
         """
         def _impl():
-            data = _load_model_data(source)
+            fuente = _normalizar_source(source)
+            data = _load_model_data(fuente)
             quality = analyze_model_quality(data) if include_quality else None
             md = document_model_markdown(data, quality)
             settings = get_settings()
@@ -102,7 +116,7 @@ def register(mcp) -> None:
             atomic_write_text(out_path, md)
             return {
                 "output_path": str(out_path),
-                "source": source,
+                "source": fuente,
                 "summary": {
                     "tables": len(data["tables"]),
                     "measures": len(data["measures"]),

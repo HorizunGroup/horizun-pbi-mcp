@@ -174,7 +174,9 @@ RISK_BY_TOOL: Dict[str, str] = {
 
     # -- side_effect_external (2): abren/cierran Power BI Desktop --
     "pbi_open_in_desktop": SIDE_EFFECT_EXTERNAL,
-    "pbi_validate_desktop_render": SIDE_EFFECT_EXTERNAL,
+    # Puede ejecutar refresh=true. La clase publica refleja el efecto maximo
+    # posible de la tool, no el camino mas suave por defecto.
+    "pbi_validate_desktop_render": WRITE_IRREVERSIBLE,
 
     # -- write_reversible (48) --
     "pbi_add_custom_visual": WRITE_REVERSIBLE,

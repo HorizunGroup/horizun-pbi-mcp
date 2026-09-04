@@ -57,7 +57,7 @@ dar por hecho al ver 134 filas en verde:
 | Sin modo de fallo (ejecutadas, se exige `ok: true`) | **8** |
 | Excepciones declaradas con motivo | **0** |
 | De solo lectura | **54** |
-| Con `confirm` | **11** |
+| Con `confirm` | **12** |
 | Con payload congelado | **139** |
 
 ## Las tools, una por una
@@ -120,7 +120,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_export_page_html` | escritura | 1 | 1 | — | sí | falta un requerido | `page` |
 | `pbi_export_pbix` | escritura | 10 | 0 | — | sí | tipo invalido | `pbip_path` |
 | `pbi_export_report_content` | escritura | 8 | 1 | — | sí | falta un requerido | `select` |
-| `pbi_finalize_delivery` | escritura | 8 | 0 | — | sí | tipo invalido | `path` |
+| `pbi_finalize_delivery` | escritura | 9 | 0 | — | sí | tipo invalido | `path` |
 | `pbi_generate_page_spec` | solo lectura | 6 | 1 | — | sí | falta un requerido | `page_name` |
 | `pbi_generate_pdf_report` | escritura | 7 | 0 | — | sí | tipo invalido | `report_type` |
 | `pbi_generate_report_page` | escritura | 6 | 1 | — | sí | falta un requerido | `page_name` |
@@ -197,7 +197,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_update_measure` | escritura | 8 | 2 | — | sí | falta un requerido | `name, table` |
 | `pbi_update_power_query` | escritura | 7 | 1 | — | sí | falta un requerido | `m` |
 | `pbi_update_visual_position` | escritura | 8 | 6 | — | sí | falta un requerido | `height, page, visual_id, width, x, y` |
-| `pbi_validate_desktop_render` | escritura | 11 | 0 | — | sí | tipo invalido | `path` |
+| `pbi_validate_desktop_render` | destructiva | 13 | 0 | sí | sí | tipo invalido | `path` |
 | `pbi_validate_generated_page` | solo lectura | 1 | 1 | — | sí | falta un requerido | `page` |
 | `pbi_validate_measures` | solo lectura | 1 | 1 | — | sí | falta un requerido | `measures` |
 | `pbi_validate_page_spec` | solo lectura | 1 | 1 | — | sí | falta un requerido | `spec` |

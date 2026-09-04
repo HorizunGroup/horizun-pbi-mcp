@@ -2665,8 +2665,13 @@
     },
     {
       "name": "pbi_finalize_delivery",
-      "description": "El ULTIMO paso de una construccion: del proyecto al entregable.\n\nHace de extremo a extremo lo que hasta ahora eran cinco llamadas y un\npar de suposiciones: resuelve el archivo exacto que le pasas, lo\nprepara -convirtiendolo si le das un .pbix-, valida el proyecto,\nexporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado\ny deja abierto justo el entregable, seleccionado como modelo activo.\n\nUna sola respuesta verificable: `output_pbix`, `output_sha256`,\n`output_size`, `saved_as_verified` y `opened_path_verified`.\n\n`path` (o su alias `project_path`) se puede omitir para usar el\nproyecto activo. `format`: 'pbix' o 'pbit' (plantilla: informe y\ndefinicion del modelo, sin datos; producida por el propio `Guardar\ncomo` de Desktop, nunca fabricada a mano). Requiere Windows con Power\nBI Desktop instalado.",
+      "description": "El ULTIMO paso de una construccion: del proyecto al entregable.\n\nHace de extremo a extremo lo que hasta ahora eran cinco llamadas y un\npar de suposiciones: resuelve el archivo exacto que le pasas, lo\nprepara -convirtiendolo si le das un .pbix-, valida el proyecto,\nexporta a .pbix conduciendo Power BI Desktop, inspecciona el resultado\ny deja abierto justo el entregable, seleccionado como modelo activo.\n\nUna sola respuesta verificable: `output_pbix`, `output_sha256`,\n`output_size`, `saved_as_verified` y `opened_path_verified`.\n\n`path` (o su alias `project_path`) se puede omitir para usar el\nproyecto activo. `format`: 'pbix' o 'pbit' (plantilla: informe y\ndefinicion del modelo, sin datos; producida por el propio `Guardar\ncomo` de Desktop, nunca fabricada a mano). Requiere Windows con Power\nBI Desktop instalado.\n\n`confirm_reuse=true` autoriza conducir una ventana que ya estaba\nabierta por el usuario. Sin esa autorizacion el flujo falla cerrado,\nigual que `pbi_export_pbix`.",
       "params": {
+        "confirm_reuse": {
+          "required": false,
+          "type": "boolean",
+          "default": false
+        },
         "format": {
           "required": false,
           "type": "string",
@@ -5469,12 +5474,17 @@
     },
     {
       "name": "pbi_validate_desktop_render",
-      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page`: captura ESA pagina (id o nombre visible), no la que quedo\nactiva. `fit_to_page` (activado por defecto): fuerza la vista\n\"Ajustar a la pagina\" para que salga el lienzo COMPLETO y no el tercio\nsuperior al zoom guardado. Con el proyecto CERRADO (.pbip) ambos se\naplican como una vista temporal en disco que se restaura byte a byte\nal terminar. Con la ventana YA ABIERTA -que es del usuario- se hacen\nen la propia interfaz, pero SOLO con `confirm_reuse=true`: elegir una\npestaña y cambiar el zoom mueven esa ventana, y una captura que solo\ndebia observar no lo hace por su cuenta. Sin `confirm_reuse`, `page`\nsobre una sesion abierta es un error y `fit_to_page` degrada a un\naviso (se captura al zoom actual). Con el, se elige la pestaña y el\nzoom por UI Automation y se demuestra el resultado hasta donde se\npuede (`navigation`): la pagina por el `IsSelected` de su pestaña; el\nzoom solo por el nivel que anuncia Power BI, lo que prueba que el zoom\nCAMBIO y no que el modo resultante sea \"Ajustar a la pagina\"\n-`verified_means` lo dice en la propia respuesta-. Si la pagina no se\npudo demostrar, la tool falla en vez de capturar otra; si el zoom no\nse pudo demostrar, lo dice en `warnings`. Nunca\ntoca `pages.json` de un proyecto abierto.\n\nLa captura separa cuatro señales que no son la misma cosa:\n`capture.identity_settled` (la ventana muestra ESTE documento),\n`capture.frame_settled` (la imagen dejo de cambiar), `data_loaded`\n(el modelo tiene filas) y `capture.frame_uniform` (la imagen es casi\nde un solo color: pagina vacia o visuales sin pintar).\n`capture.capture_representative` resume las tres primeras.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
+      "description": "Abre un .pbip/.pbix y captura su ventana real sin depender del foco.\n\nEs la comprobacion visual automatizable que complementa al validador\nPBIR: espera el modelo, identifica la ventana por PID y hora de inicio,\ny la renderiza con PrintWindow directamente a ``outputs/desktop_captures``.\nLa captura no activa ni trae Desktop al frente, por lo que no puede\nfotografiar por accidente otra ventana que tape el informe.\n\n`path` (o `pbip_path`, el mismo nombre que devuelve `pbi_session_info`)\nse puede omitir: entonces se usa el proyecto .pbip activo.\n\n**`refresh=true` es lo que hace que la captura signifique algo en un\n.pbip**: ese formato guarda la definicion, no los datos, asi que recien\nabierto el modelo viene VACIO y las tablas y matrices salen en blanco\naunque el informe este perfecto. Con `refresh` se abre, se refresca, se\nespera a que la ventana deje de repintar y se captura. Ese es tambien\nel camino para fotografiar OTRA pagina con datos: `page` exige abrir el\nproyecto, y al abrirlo hay que volver a refrescar.\n\nComo el refresh modifica de forma irreversible el modelo en memoria,\n`refresh=true` exige ademas `confirm=true`. `confirm_reuse` autoriza\nmover una ventana que ya era del usuario; son autorizaciones distintas.\n\nPase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la\ncaptura no es representativa del informe, es la foto de un modelo sin\ndatos. Si no se pudo comprobar, se dice; no se afirma ninguna de las dos.\n\n`page`: captura ESA pagina (id o nombre visible), no la que quedo\nactiva. `fit_to_page` (activado por defecto): fuerza la vista\n\"Ajustar a la pagina\" para que salga el lienzo COMPLETO y no el tercio\nsuperior al zoom guardado. Con el proyecto CERRADO (.pbip) ambos se\naplican como una vista temporal en disco que se restaura byte a byte\nal terminar. Con la ventana YA ABIERTA -que es del usuario- se hacen\nen la propia interfaz, pero SOLO con `confirm_reuse=true`: elegir una\npestaña y cambiar el zoom mueven esa ventana, y una captura que solo\ndebia observar no lo hace por su cuenta. Sin `confirm_reuse`, `page`\nsobre una sesion abierta es un error y `fit_to_page` degrada a un\naviso (se captura al zoom actual). Con el, se elige la pestaña y el\nzoom por UI Automation y se demuestra el resultado hasta donde se\npuede (`navigation`): la pagina por el `IsSelected` de su pestaña; el\nzoom solo por el nivel que anuncia Power BI, lo que prueba que el zoom\nCAMBIO y no que el modo resultante sea \"Ajustar a la pagina\"\n-`verified_means` lo dice en la propia respuesta-. Si la pagina no se\npudo demostrar, la tool falla en vez de capturar otra; si el zoom no\nse pudo demostrar, lo dice en `warnings`. Nunca\ntoca `pages.json` de un proyecto abierto.\n\nLa captura separa cuatro señales que no son la misma cosa:\n`capture.identity_settled` (la ventana muestra ESTE documento),\n`capture.frame_settled` (la imagen dejo de cambiar), `data_loaded`\n(el modelo tiene filas) y `capture.frame_uniform` (la imagen es casi\nde un solo color: pagina vacia o visuales sin pintar).\n`capture.capture_representative` resume las tres primeras.\n\nSi la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la\ncaptura falla) y devuelve la seleccion de modelo a como estaba. Si el\ninforme ya estaba abierto, reutiliza esa sesion y nunca cierra la\nventana del usuario.",
       "params": {
         "capture_timeout": {
           "required": false,
           "type": "integer",
           "default": 30
+        },
+        "confirm": {
+          "required": false,
+          "type": "boolean",
+          "default": false
         },
         "confirm_reuse": {
           "required": false,
@@ -5516,6 +5526,11 @@
           "type": "integer|null",
           "default": null
         },
+        "request_id": {
+          "required": false,
+          "type": "string",
+          "default": ""
+        },
         "reuse_open": {
           "required": false,
           "type": "boolean",
@@ -5538,7 +5553,7 @@
         ]
       },
       "annotations": {
-        "destructiveHint": false,
+        "destructiveHint": true,
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": false

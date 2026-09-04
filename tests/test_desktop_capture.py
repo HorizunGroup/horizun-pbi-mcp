@@ -350,7 +350,7 @@ def test_refresh_true_refresca_antes_de_capturar(monkeypatch):
     monkeypatch.setattr(desktop_capture, "capture_opened", captura)
 
     result = mcp.tools["pbi_validate_desktop_render"](
-        "Ventas.pbix", refresh=True)
+        "Ventas.pbix", refresh=True, confirm=True)
 
     assert result["ok"] is True
     assert orden[0] == "refresh"

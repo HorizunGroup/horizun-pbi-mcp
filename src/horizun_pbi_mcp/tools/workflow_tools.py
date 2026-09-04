@@ -35,7 +35,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_dashboard(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, preset=preset, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_build_executive_page(measures: List[str],
@@ -48,7 +49,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_executive_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_build_evm_page(measures: List[str], name: str = "EVM",
@@ -63,7 +65,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_evm_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_repair_broken_references(mapping: Optional[Dict[str, str]] = None,
@@ -201,7 +204,8 @@ def register(mcp) -> None:
                               overwrite: bool = False,
                               leave_open: bool = True,
                               request_id: str = "",
-                              project_path: str = "") -> Dict[str, Any]:
+                              project_path: str = "",
+                              confirm_reuse: bool = False) -> Dict[str, Any]:
         """El ULTIMO paso de una construccion: del proyecto al entregable.
 
         Hace de extremo a extremo lo que hasta ahora eran cinco llamadas y un
@@ -218,6 +222,10 @@ def register(mcp) -> None:
         definicion del modelo, sin datos; producida por el propio `Guardar
         como` de Desktop, nunca fabricada a mano). Requiere Windows con Power
         BI Desktop instalado.
+
+        `confirm_reuse=true` autoriza conducir una ventana que ya estaba
+        abierta por el usuario. Sin esa autorizacion el flujo falla cerrado,
+        igual que `pbi_export_pbix`.
         """
         from horizun_pbi_mcp.services import pbix_export
 
@@ -226,4 +234,4 @@ def register(mcp) -> None:
             path=alias_unico(path=path, project_path=project_path),
             format=format,
             out_path=out_path or None, refresh=refresh, overwrite=overwrite,
-            leave_open=leave_open))
+            leave_open=leave_open, confirm_reuse=confirm_reuse))

@@ -18,7 +18,7 @@ def _active():
 
 def _guardar_formatos(resultado: Dict[str, Any], formatos: List[str]) -> None:
     """Valida todo el lote antes de escribir y explicita fallos de artefactos."""
-    normalizados = [str(fmt).lower() for fmt in formatos]
+    normalizados = [str(fmt).strip().casefold() for fmt in formatos]
     invalidos = [f for f in normalizados
                  if f not in ("markdown", "md", "html", "json")]
     if invalidos:
@@ -211,7 +211,7 @@ def register(mcp) -> None:
                 el_brief = None
             return data_diagnose.diagnose(session, modelo, brief=el_brief,
                                           tables=tables)
-        return guard(_impl)
+        return guard(_impl, request_id=request_id)
 
     @mcp.tool()
     def pbi_define_port_contract(datasets: List[Dict[str, Any]],
@@ -282,4 +282,4 @@ def register(mcp) -> None:
             modelo = tmdl_reader.read_semantic_model(active, strict=False)
             return {"defined": True,
                     **port_contract.check_model(contrato, modelo)}
-        return guard(_impl)
+        return guard(_impl, request_id=request_id)

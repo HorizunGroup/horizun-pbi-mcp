@@ -8,7 +8,7 @@ from horizun_pbi_mcp.config import get_session
 from horizun_pbi_mcp.powerbi import dax_runner, desktop_discovery
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.powerbi.clr_bootstrap import diagnostics
-from horizun_pbi_mcp.tools._common import (alias_unico, guard,
+from horizun_pbi_mcp.tools._common import (alias_unico, guard, guard_mutation,
                                            ruta_de_proyecto as _ruta_de_proyecto)
 
 
@@ -174,7 +174,9 @@ def register(mcp) -> None:
                                     refresh_timeout_seconds: Optional[int] = None,
                                     pbip_path: Optional[str] = None,
                                     project_path: Optional[str] = None,
-                                    confirm_reuse: bool = False) -> Dict[str, Any]:
+                                    confirm_reuse: bool = False,
+                                    confirm: bool = False,
+                                    request_id: str = "") -> Dict[str, Any]:
         """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
 
         Es la comprobacion visual automatizable que complementa al validador
@@ -193,6 +195,10 @@ def register(mcp) -> None:
         espera a que la ventana deje de repintar y se captura. Ese es tambien
         el camino para fotografiar OTRA pagina con datos: `page` exige abrir el
         proyecto, y al abrirlo hay que volver a refrescar.
+
+        Como el refresh modifica de forma irreversible el modelo en memoria,
+        `refresh=true` exige ademas `confirm=true`. `confirm_reuse` autoriza
+        mover una ventana que ya era del usuario; son autorizaciones distintas.
 
         Pase lo que pase, la respuesta lleva `data_loaded`: si es `false`, la
         captura no es representativa del informe, es la foto de un modelo sin
@@ -236,6 +242,11 @@ def register(mcp) -> None:
             from horizun_pbi_mcp.powerbi import desktop_capture, desktop_launcher
             from horizun_pbi_mcp.services import project_state
             from horizun_pbi_mcp.services import txn as txn_mod
+
+            if refresh and not confirm:
+                raise ValidationError(
+                    "Refrescar modifica el modelo abierto y puede tardar "
+                    "minutos. Con refresh=true pasa tambien confirm=true.")
 
             pbix = _ruta_de_proyecto(path, pbip_path, project_path)
             avisos: List[str] = []
@@ -367,12 +378,18 @@ def register(mcp) -> None:
                 elif vista is not None:
                     visuales_en_pagina = desktop_navigation.contar_visuales(
                         pbix, vista.get("page_id"))
-                capture = desktop_capture.capture_opened(
-                    opened, timeout=capture_timeout,
+                capture_kwargs = {
+                    "timeout": capture_timeout,
                     # Tras refrescar, Desktop vuelve a lanzar las consultas de
                     # la pagina: capturar en ese instante fotografia el
                     # repintado a medias.
-                    settle_seconds=8.0 if refresh else 0.0)
+                    "settle_seconds": 8.0 if refresh else 0.0,
+                }
+                # Mantiene compatibles adaptadores de captura de terceros que
+                # implementan la firma anterior cuando no hubo evidencia.
+                if datos.get("data_loaded") is not None:
+                    capture_kwargs["data_loaded"] = datos["data_loaded"]
+                capture = desktop_capture.capture_opened(opened, **capture_kwargs)
                 result = {
                     "path": opened.pbix_path,
                     "instance": opened.instance,
@@ -457,7 +474,8 @@ def register(mcp) -> None:
             if avisos:
                 result.setdefault("warnings", []).extend(avisos)
             return result
-        return guard(_impl)
+        return (guard_mutation(_impl) if refresh
+                else guard(_impl, request_id=request_id))
 
     @mcp.tool()
     def pbi_run_dax(query: str, max_rows: Optional[int] = None,
@@ -553,4 +571,4 @@ def register(mcp) -> None:
                     expected_document=documento)
             return desktop_launcher.close_desktop_by_path(
                 str(_ruta_de_proyecto(path, pbip_path, project_path)))
-        return guard(_impl)
+        return guard_mutation(_impl)
