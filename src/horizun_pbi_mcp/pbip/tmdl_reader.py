@@ -299,6 +299,7 @@ def find_table_file(active: ActivePbip, table_name: str) -> Path:
     """Devuelve el archivo .tmdl que define una tabla (por su nombre real)."""
     definition = _definition_dir(active)
     tables_dir = definition / "tables"
+    wanted = table_name.casefold()
     if tables_dir.exists():
         for tf in sorted(tables_dir.glob("*.tmdl")):
             try:
@@ -307,7 +308,7 @@ def find_table_file(active: ActivePbip, table_name: str) -> Path:
                     if _indent(line) == 0 and _first_token(line) == "table":
                         first = _unquote(line.strip()[len("table"):].strip())
                         break
-                if first == table_name:
+                if first is not None and first.casefold() == wanted:
                     return tf
             except OSError:
                 continue

@@ -42,7 +42,7 @@ def _column_block(lines: List[str], column: str) -> Optional[Tuple[int, int]]:
     for i, line in enumerate(lines):
         if _indent(line) == 1 and _first_token(line) == "column":
             nm = _unquote(line.strip()[len("column"):].split("=", 1)[0].strip())
-            if nm == column:
+            if nm.casefold() == column.casefold():
                 j = i + 1
                 while j < len(lines) and (lines[j].strip() == "" or _indent(lines[j]) > 1):
                     j += 1
@@ -250,7 +250,7 @@ def set_relationship_direction_pbip(active: ActivePbip, from_table: str, to_tabl
     if not rp.exists():
         raise ValidationError("El proyecto no tiene relationships.tmdl.")
     lines = rp.read_text(encoding="utf-8-sig").splitlines()
-    wanted = {from_table, to_table}
+    wanted = {from_table.casefold(), to_table.casefold()}
 
     matched = 0
     for blk in _rel_blocks(lines):
@@ -264,7 +264,7 @@ def set_relationship_direction_pbip(active: ActivePbip, from_table: str, to_tabl
                 t_tbl = _table_of(s.split(":", 1)[1])
             elif s.startswith("crossFilteringBehavior:"):
                 cf_idx = k
-        if {f_tbl, t_tbl} != wanted:
+        if {str(f_tbl).casefold(), str(t_tbl).casefold()} != wanted:
             continue
         matched += 1
         blk["cf_idx"] = cf_idx
@@ -287,7 +287,7 @@ def set_relationship_direction_pbip(active: ActivePbip, from_table: str, to_tabl
                 ft = _table_of(s.split(":", 1)[1])
             elif s.startswith("toColumn:"):
                 tt = _table_of(s.split(":", 1)[1])
-        return {ft, tt}
+        return {str(ft).casefold(), str(tt).casefold()}
 
     target_ranges = [(b["start"], b["end"]) for b in blocks if _block_tables(b) == wanted]
 

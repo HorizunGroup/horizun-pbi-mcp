@@ -863,6 +863,8 @@ def delete_page(active: ActivePbip, page: str,
             "no abre en Power BI Desktop.")
 
     archivos = [p for p in page_dir.rglob("*") if p.is_file()]
+    directorios_originales = [page_dir, *(
+        p for p in page_dir.rglob("*") if p.is_dir())]
     pages_json_path, meta = _leer_pages_json(active)
     meta["pageOrder"] = [p for p in meta.get("pageOrder", []) if p != page_id]
     activa_antes = meta.get("activePageName")
@@ -872,25 +874,59 @@ def delete_page(active: ActivePbip, page: str,
     objetivos = archivos + [pages_json_path]
     assert_escritura_pbir(active, operation="Eliminar una pagina")
     cm = txn_service.project_transaction(active, objetivos, tool="pbi_delete_page")
-    with cm as t:
-        for archivo in archivos:
-            t.delete(archivo)
-        t.write_json(pages_json_path, meta)
-        # Dentro de la transaccion, por lo mismo que en delete_visual: una
-        # carpeta de pagina vacia deja el informe en un estado que el validador
-        # oficial rechaza.
-        for d in sorted((p for p in page_dir.rglob("*") if p.is_dir()),
-                        key=lambda p: len(p.parts), reverse=True):
+    try:
+        with cm as t:
+            for archivo in archivos:
+                t.delete(archivo)
+            t.write_json(pages_json_path, meta)
+            # Dentro de la transaccion, por lo mismo que en delete_visual: una
+            # carpeta de pagina vacia deja el informe en un estado que el validador
+            # oficial rechaza.
+            for d in sorted((p for p in page_dir.rglob("*") if p.is_dir()),
+                            key=lambda p: len(p.parts), reverse=True):
+                try:
+                    safe_paths.assert_still_contained(
+                        page_dir, d, kind="directorio de pagina eliminado")
+                    if not any(d.iterdir()):
+                        safe_paths.assert_still_contained(
+                            page_dir, d, kind="directorio de pagina eliminado")
+                        d.rmdir()
+                except OSError:                       # pragma: no cover
+                    pass
             try:
-                if not any(d.iterdir()):
-                    d.rmdir()
+                safe_paths.assert_still_contained(
+                    _pages_dir(active), page_dir,
+                    kind="directorio de pagina eliminado")
+                if page_dir.exists() and not any(page_dir.iterdir()):
+                    safe_paths.assert_still_contained(
+                        _pages_dir(active), page_dir,
+                        kind="directorio de pagina eliminado")
+                    page_dir.rmdir()
             except OSError:                           # pragma: no cover
                 pass
-        try:
-            if page_dir.exists() and not any(page_dir.iterdir()):
-                page_dir.rmdir()
-        except OSError:                               # pragma: no cover
-            pass
+    except BaseException as exc:
+        fallos = []
+        for directory in sorted(directorios_originales,
+                                key=lambda p: len(p.parts)):
+            try:
+                safe_paths.assert_still_contained(
+                    page_dir, directory,
+                    kind="directorio original de pagina")
+                if directory.exists() and not directory.is_dir():
+                    raise OSError("la ruta ahora es un archivo")
+                directory.mkdir(parents=True, exist_ok=True)
+            except (OSError, PowerBIMCPError) as restore_exc:
+                fallos.append({"directory": str(directory),
+                               "error": (f"{type(restore_exc).__name__}: "
+                                         f"{restore_exc}")})
+        if fallos:
+            raise txn_service.RollbackIncompleteError(
+                "La eliminacion de pagina fallo y no se pudo restaurar toda "
+                "la topologia original de directorios.",
+                details={"cause": f"{type(exc).__name__}: {exc}",
+                         "directories": fallos,
+                         "journal": (cm.result or {}).get("journal")}) from exc
+        raise
 
 
 

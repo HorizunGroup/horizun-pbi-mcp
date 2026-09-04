@@ -90,7 +90,11 @@ def _remove_empty_dirs(root: Path, keep: set[str]) -> None:
         if directory.relative_to(root).as_posix() in keep:
             continue
         try:
+            safe_paths.assert_still_contained(
+                root, directory, kind="directorio obsoleto del proyecto")
             if not any(directory.iterdir()):
+                safe_paths.assert_still_contained(
+                    root, directory, kind="directorio obsoleto del proyecto")
                 directory.rmdir()
         except OSError:                                # pragma: no cover
             continue
@@ -144,6 +148,10 @@ def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
             details={"target": str(destino)})
 
     existentes = _files(destino)
+    # Los archivos no describen toda la topologia: una carpeta vacia tambien
+    # puede ser parte valida del proyecto. Se conserva para poder reconstruirla
+    # si una escritura o el cierre del journal falla despues de retirarla.
+    directorios_originales = set(_dirs(destino))
     destino_no_vacio = destino.exists() and any(destino.iterdir())
     if destino_no_vacio and not overwrite:
         raise ProjectPublishError(
@@ -171,17 +179,44 @@ def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
         destino, get_settings().backups_dir, extra_forbidden=(staging,))
     cm = txn_service.transaction(
         destino, backup_root, objetivos, tool=tool, request_id=request_id)
-    with cm as tx:
-        for rel, archivo in existentes.items():
-            if rel not in nuevos:
-                tx.delete(archivo)
-        for rel, archivo in nuevos.items():
-            tx.write_bytes(destino / rel, archivo.read_bytes())
-        for rel in sorted(nuevos_dirs, key=lambda p: len(Path(p).parts)):
-            tx.ensure_directory(destino / rel)
-        # Los directorios viejos ya vacios tambien son residuo: un directorio
-        # de pagina sin page.json confunde tanto a Desktop como al lector.
-        _remove_empty_dirs(destino, set(nuevos_dirs))
+    try:
+        with cm as tx:
+            for rel, archivo in existentes.items():
+                if rel not in nuevos:
+                    tx.delete(archivo)
+            for rel, archivo in nuevos.items():
+                tx.write_bytes(destino / rel, archivo.read_bytes())
+            for rel in sorted(nuevos_dirs, key=lambda p: len(Path(p).parts)):
+                tx.ensure_directory(destino / rel)
+            # Los directorios viejos ya vacios tambien son residuo: un directorio
+            # de pagina sin page.json confunde tanto a Desktop como al lector.
+            _remove_empty_dirs(destino, set(nuevos_dirs))
+    except BaseException as exc:
+        # El rollback de archivos ya termino al llegar aqui. Reconstruimos la
+        # topologia original que no puede representarse en un journal de
+        # archivos (incluidos directorios vacios retirados antes del fallo).
+        fallos = []
+        for rel in sorted(directorios_originales,
+                          key=lambda p: len(Path(p).parts)):
+            directory = destino / rel
+            try:
+                safe_paths.assert_still_contained(
+                    destino, directory,
+                    kind="directorio original del proyecto")
+                if directory.exists() and not directory.is_dir():
+                    raise OSError("la ruta ahora es un archivo")
+                directory.mkdir(parents=True, exist_ok=True)
+            except (OSError, PowerBIMCPError) as restore_exc:
+                fallos.append({"directory": rel,
+                               "error": (f"{type(restore_exc).__name__}: "
+                                         f"{restore_exc}")})
+        if fallos:
+            raise ProjectPublishError(
+                "La publicacion fallo y no se pudo restaurar toda la topologia "
+                "original de directorios.",
+                details={"target": str(destino), "directories": fallos,
+                         "cause": f"{type(exc).__name__}: {exc}"}) from exc
+        raise
 
     return {
         "target": str(destino),
