@@ -110,8 +110,29 @@ def documentos_abiertos(pid: Optional[int]) -> List[str]:
         proceso = psutil.Process(int(pid))
         return sorted({a.path for a in proceso.open_files()
                        if Path(a.path).suffix.casefold() in DOCUMENTOS})
-    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError,
+            AttributeError):
         return []
+
+
+def documentos_en_linea_de_comandos(pid: Optional[int]) -> List[str]:
+    """Rutas de documentos nombradas por el proceso de Desktop.
+
+    Un `.pbip` no deja un descriptor abierto, pero cuando Desktop se lanzo con
+    una ruta esa ruta permanece en su linea de comandos. A diferencia del
+    titulo, esto distingue dos `Demo.pbip` ubicados en carpetas diferentes.
+    """
+    if not pid:
+        return []
+    import psutil
+
+    try:
+        argumentos = psutil.Process(int(pid)).cmdline() or []
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError,
+            AttributeError):
+        return []
+    return sorted({str(a) for a in argumentos
+                   if Path(str(a)).suffix.casefold() in DOCUMENTOS})
 
 
 def titulos_de_ventana(pid: Optional[int]) -> List[str]:
@@ -265,11 +286,18 @@ def identify(instance: Dict[str, Any], *,
         evidencia.append({"signal": "window_title", "status": "unavailable"})
 
     documentos = documentos_abiertos(desktop.pid)
+    fuente_documento = "open_document"
+    if not documentos:
+        documentos = documentos_en_linea_de_comandos(desktop.pid)
+        fuente_documento = "command_line_document"
     if documentos:
         salida["project_path"] = documentos[0]
-        evidencia.append({"signal": "open_document", "status": "ok",
+        evidencia.append({"signal": fuente_documento, "status": "ok",
                           "value": documentos[0],
-                          "detail": "descriptor abierto sobre el archivo"})
+                          "detail": ("descriptor abierto sobre el archivo"
+                                     if fuente_documento == "open_document"
+                                     else "ruta explicita en la linea de "
+                                          "comandos de Power BI Desktop")})
         confianza = HIGH
     else:
         evidencia.append({

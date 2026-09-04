@@ -1298,7 +1298,8 @@ def test_sin_poder_leer_el_contenedor_no_se_adivina(monkeypatch):
     """Un arbol que no expone clases deja la ambiguedad como estaba."""
     from tests.test_navegacion_en_sesion_abierta import _UiaConPestanas, _montar
 
-    uia = _UiaConPestanas(["Ver", "Ver"])          # sin clase ni contenedor
+    uia = _UiaConPestanas(
+        ["Ver", "Ver"], expone_contenedor=False)    # sin clase ni contenedor
     _montar(monkeypatch, uia)
 
     with pytest.raises(uia_helper.HelperError) as fallo:

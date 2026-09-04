@@ -1416,6 +1416,18 @@ def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
     if cerrado:
         return {"commit_method": intentos[-1]["method"], "attempts": intentos}
 
+    # `Invoke` puede haber abierto una confirmacion (reemplazo, permisos,
+    # plantilla). En ese estado el punto calculado para Guardar ya no es un
+    # destino seguro: la ventana superior puede ocuparlo. Se vuelve a mirar
+    # antes de preparar el fallback fisico.
+    modales = _modales(uia, pid, [dialogo_hwnd])
+    if modales:
+        raise HelperError(
+            "guardar", "Power BI abrio un dialogo despues de Invoke; no se "
+            "hace un clic fisico sobre una interfaz que ya cambio.",
+            reason="modal_open_after_invoke", blocking_modals=modales,
+            attempts=intentos)
+
     punto = uia.punto_clicable(boton)
     if punto is None:
         raise HelperError("guardar",
@@ -1425,6 +1437,16 @@ def _confirmar(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
         raise HelperError("guardar",
                           "No se pudo poner el cuadro al frente; no se hace "
                           "clic a ciegas.", attempts=intentos)
+    # La activacion puede bombear mensajes y abrir el modal que no existia en
+    # la lectura anterior. Esta segunda comprobacion cierra esa ventana de
+    # carrera justo antes del clic.
+    modales = _modales(uia, pid, [dialogo_hwnd])
+    if modales:
+        raise HelperError(
+            "guardar", "Power BI abrio un dialogo al recuperar el foco; no "
+            "se hace clic sobre el control que quedo detras.",
+            reason="modal_open_before_dynamic_click", blocking_modals=modales,
+            attempts=intentos)
     detalle = clic_dinamico(punto, dialogo_hwnd, pid)
     intentos.append({"method": "dynamic_click", **detalle})
     return {"commit_method": "dynamic_click", "attempts": intentos}
@@ -1449,18 +1471,34 @@ def _esperar_cierre(hwnd: int, plazo: float) -> bool:
         time.sleep(0.3)
 
 
-def _archivo_aparecio(ruta: str, desde: float) -> bool:
+def _huella_archivo(ruta: str) -> Optional[Dict[str, Any]]:
+    try:
+        stat = os.stat(ruta)
+        return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+                "inode": getattr(stat, "st_ino", None)}
+    except OSError:
+        return None
+
+
+def _archivo_aparecio(ruta: str, desde: float,
+                      antes: Optional[Dict[str, Any]] = None) -> bool:
     """Si el destino existe y es de ESTA ejecucion (mtime posterior)."""
     try:
-        return os.path.isfile(ruta) and os.path.getmtime(ruta) >= desde - 2
+        if not os.path.isfile(ruta):
+            return False
+        actual = _huella_archivo(ruta)
+        if antes is not None and actual == antes:
+            return False
+        return os.path.getmtime(ruta) >= desde - 2
     except OSError:
         return False
 
 
-def _estado_del_guardado(hwnd: int, ruta: str, desde: float) -> Dict[str, Any]:
+def _estado_del_guardado(hwnd: int, ruta: str, desde: float,
+                        antes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Lo que ya OCURRIO, antes de plantearse repetir una confirmacion."""
     return {"dialog_closed": not _cuadro_sigue_abierto(hwnd),
-            "file_appeared": _archivo_aparecio(ruta, desde)}
+            "file_appeared": _archivo_aparecio(ruta, desde, antes)}
 
 
 def _aceptar_reemplazo(uia: Uia, modal: Dict[str, Any]) -> Dict[str, Any]:
@@ -1487,7 +1525,8 @@ def _aceptar_reemplazo(uia: Uia, modal: Dict[str, Any]) -> Dict[str, Any]:
 def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
                                 ruta: str, *, plazo: float, desde: float,
                                 overwrite: bool = False,
-                                excluir: Optional[List[int]] = None
+                                excluir: Optional[List[int]] = None,
+                                estado_previo: Optional[Dict[str, Any]] = None,
                                 ) -> Dict[str, Any]:
     """Pulsa Guardar y espera el cierre; repite SOLO si nada ocurrio.
 
@@ -1514,7 +1553,7 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
     def _estado_o_modales(numero: int) -> Optional[str]:
         """'done' si ya paso algo, 'blocked' si hay un dialogo, None si nada."""
         nonlocal evidencia, bloqueo, reemplazo
-        estado = _estado_del_guardado(dialogo_hwnd, ruta, desde)
+        estado = _estado_del_guardado(dialogo_hwnd, ruta, desde, estado_previo)
         if estado["dialog_closed"] or estado["file_appeared"]:
             evidencia = {"attempt": numero, **estado}
             return "done"
@@ -1542,7 +1581,8 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
         if _esperar_cierre(dialogo_hwnd, min(ESPERA_CIERRE_TRAS_CONFIRMAR,
                                              restante)):
             evidencia = {"attempt": numero, "dialog_closed": True,
-                         "file_appeared": _archivo_aparecio(ruta, desde),
+                         "file_appeared": _archivo_aparecio(
+                             ruta, desde, estado_previo),
                          "after_overwrite_confirm": True}
             return True
         return False
@@ -1570,7 +1610,8 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
                   else restante)
         if _esperar_cierre(dialogo_hwnd, min(espera, restante)):
             evidencia = {"attempt": numero, "dialog_closed": True,
-                         "file_appeared": _archivo_aparecio(ruta, desde)}
+                         "file_appeared": _archivo_aparecio(
+                             ruta, desde, estado_previo)}
             break
         veredicto = _estado_o_modales(numero)
         if veredicto in ("done", "blocked"):
@@ -1727,6 +1768,7 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
     ruta = str(peticion["out_path"])
     extension = str(peticion.get("extension", ".pbix"))
     desde = float(peticion.get("started_at") or time.time())
+    estado_previo = _huella_archivo(ruta)
     pasos: List[Dict[str, Any]] = [{"phase": "identidad", **identidad}]
 
     uia = Uia()
@@ -1784,7 +1826,8 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
         confirmacion = _confirmar_con_verificacion(
             uia, cuadro["hwnd"], pid, ruta,
             plazo=float(peticion.get("save_timeout", 120)), desde=desde,
-            overwrite=bool(peticion.get("overwrite")), excluir=fuera)
+            overwrite=bool(peticion.get("overwrite")), excluir=fuera,
+            estado_previo=estado_previo)
         pasos.append({"phase": "guardar", **confirmacion})
     except HelperError as exc:
         # El cuadro que abrio ESTA operacion no se deja colgado: se intenta
@@ -1932,26 +1975,27 @@ def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
                 "ventana de Power BI Desktop.", transitoria=True,
                 reason="page_tab_not_found", page=nombre,
                 tabs_seen=[n for n in nombres if n][:40])
-        via_filtro = None
-        if len(coincidencias) > 1:
-            # El nombre no basta -una pagina puede llamarse como una pestaña
-            # de la cinta- pero el sitio si: se filtran las que viven en el
-            # carrusel de paginas.
-            del_carrusel = [p for p in coincidencias if _es_pestana_de_pagina(uia, p)]
-            if len(del_carrusel) == 1:
-                coincidencias = del_carrusel
-                via_filtro = "page_tab_container"
-            else:
-                raise HelperError(
-                    "pagina", f"Hay {len(coincidencias)} pestañas llamadas "
-                    f"'{nombre}' en la ventana y el filtro por contenedor de "
-                    f"paginas deja {len(del_carrusel)}; no se elige ninguna.",
-                    reason="page_tab_ambiguous", page=nombre,
-                    matches=len(coincidencias),
-                    matches_in_page_carousel=len(del_carrusel),
-                    containers=[_clases_del_contenedor(uia, p)
-                                for p in coincidencias][:6],
-                    tabs_seen=[n for n in nombres if n][:40])
+        # El tipo TabItem y un nombre unico tampoco prueban que sea una pagina:
+        # puede ser una pestaña unica de la cinta. El contenedor se valida
+        # SIEMPRE, no solo cuando ya vimos dos homonimos.
+        cantidad_por_nombre = len(coincidencias)
+        del_carrusel = [p for p in coincidencias if _es_pestana_de_pagina(uia, p)]
+        if len(del_carrusel) != 1:
+            raise HelperError(
+                "pagina", f"Hay {len(coincidencias)} pestaña(s) llamadas "
+                f"'{nombre}' en la ventana y el filtro por contenedor de "
+                f"paginas deja {len(del_carrusel)}; no se elige ninguna.",
+                reason=("page_tab_ambiguous" if len(coincidencias) > 1
+                        else "page_tab_container_unverified"),
+                page=nombre, matches=len(coincidencias),
+                matches_in_page_carousel=len(del_carrusel),
+                containers=[_clases_del_contenedor(uia, p)
+                            for p in coincidencias][:6],
+                tabs_seen=[n for n in nombres if n][:40])
+        coincidencias = del_carrusel
+        # Para un nombre unico no hubo que desambiguar, aunque igualmente se
+        # valido el contenedor. Se conserva la semantica publica del campo.
+        via_filtro = ("page_tab_container" if cantidad_por_nombre > 1 else None)
         objetivo = coincidencias[0]
         ya = uia.esta_seleccionado(objetivo)
         via = "already_selected" if ya else uia.seleccionar(objetivo)

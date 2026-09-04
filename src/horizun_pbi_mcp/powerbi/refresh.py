@@ -137,7 +137,12 @@ def refresh_model(
                 # Dispara el refresh de forma sincrona, con plazo y
                 # cancelacion: sin esto un origen sin credenciales cuelga la
                 # llamada para siempre.
-                _guardar_con_plazo(server, mdl, timeout_seconds)
+                quarantine = getattr(session, "quarantine_active_model", None)
+                _guardar_con_plazo(
+                    server, mdl, timeout_seconds,
+                    on_unconfirmed=(
+                        (lambda worker: quarantine(model, worker))
+                        if callable(quarantine) else None))
                 objetivo_conteo = (_nombres_de_tablas(mdl)
                                    if refreshed == ["<todo el modelo>"]
                                    else list(refreshed))
@@ -249,7 +254,8 @@ def _cancelar_comando(server) -> bool:
         return False
 
 
-def _guardar_con_plazo(server, mdl, timeout_seconds: int) -> None:
+def _guardar_con_plazo(server, mdl, timeout_seconds: int, *,
+                       on_unconfirmed: Any = None) -> None:
     """Ejecuta `SaveChanges()` con plazo, cancelando si se agota.
 
     `SaveChanges()` es SINCRONO y bloqueante: es la llamada que dispara el
@@ -286,6 +292,13 @@ def _guardar_con_plazo(server, mdl, timeout_seconds: int) -> None:
     cancelado = _cancelar_comando(server)
     hilo.join(_GRACIA_TRAS_CANCELAR)
     sigue_corriendo = hilo.is_alive()
+    cuarentena = False
+    if sigue_corriendo and callable(on_unconfirmed):
+        # Se registra ANTES de propagar el timeout y mientras el lease actual
+        # aun esta tomado. Asi no existe una rendija donde otra mutacion entre
+        # antes de que la sesion sepa que SaveChanges sigue vivo.
+        on_unconfirmed(hilo)
+        cuarentena = True
 
     origenes = _origenes_que_piden_credenciales(mdl)
     detalle = (f" Origenes que requieren credenciales: {origenes}."
@@ -304,6 +317,7 @@ def _guardar_con_plazo(server, mdl, timeout_seconds: int) -> None:
             "timeout_seconds": timeout_seconds,
             "cancel_requested": cancelado,
             "cancel_confirmed": not sigue_corriendo,
+            "session_quarantined": cuarentena,
             "sources_requiring_credentials": origenes,
             # Se enumeran los origenes que PIDEN credenciales; no se comprueba
             # si estan guardadas, porque TOM no expone el almacen de Desktop.

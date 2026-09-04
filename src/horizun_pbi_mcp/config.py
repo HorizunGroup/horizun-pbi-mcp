@@ -243,6 +243,12 @@ class Session:
         # Serializa exclusivamente seleccion/mutaciones live. No se reutiliza
         # `_lock`: un refresh largo no debe bloquear operaciones PBIP en disco.
         self._model_operation_lock = threading.RLock()
+        # Un SaveChanges de refresh puede seguir vivo aun despues del timeout.
+        # Mientras ese hilo no termine, ninguna operacion live puede entrar.
+        self._model_quarantine: Optional[Dict[str, Any]] = None
+        # Una recuperacion read-only puede vivir solo en memoria. La primera
+        # mutacion posterior debe persistir esa seleccion ya verificada.
+        self._model_recovery_needs_persist = False
         self._active_model: Optional[ActiveModel] = None
         self._active_pbip: Optional[ActivePbip] = None
         # Huella ya verificada en este proceso. Una sesion recargada de disco
@@ -307,7 +313,7 @@ class Session:
         with self._lock:
             return self._active_model
 
-    def set_active_model(self, model: ActiveModel) -> None:
+    def set_active_model(self, model: ActiveModel, *, persist: bool = True) -> None:
         with self._model_operation_lock:
             with self._lock:
                 self._active_model = model
@@ -315,7 +321,54 @@ class Session:
                 self._verified_fingerprint = model.session_fingerprint
                 self._verified_identity = self._model_identity(model)
                 self._verified_at_monotonic = time.monotonic()
+                if persist:
+                    self._persist()
+                self._model_recovery_needs_persist = not persist
+
+    def _persist_recovery_for_mutation(self, model: ActiveModel, *,
+                                       for_mutation: bool) -> None:
+        if not for_mutation:
+            return
+        with self._lock:
+            if (self._active_model is model
+                    and self._model_recovery_needs_persist):
                 self._persist()
+                self._model_recovery_needs_persist = False
+
+    def quarantine_active_model(self, model: ActiveModel,
+                                worker: threading.Thread) -> None:
+        """Bloquea la sesion live mientras un SaveChanges agotado siga vivo."""
+        with self._model_operation_lock:
+            with self._lock:
+                self._model_quarantine = {
+                    "identity": self._model_identity(model),
+                    "worker": worker,
+                    "since": time.monotonic(),
+                    "thread_name": worker.name,
+                }
+
+    def _assert_model_not_quarantined(self) -> None:
+        """Libera una cuarentena terminada o rechaza entrar mientras siga viva."""
+        with self._lock:
+            quarantine = self._model_quarantine
+            if quarantine is None:
+                return
+            worker = quarantine.get("worker")
+            if worker is not None and worker.is_alive():
+                from horizun_pbi_mcp.powerbi.errors import RefreshError
+
+                raise RefreshError(
+                    "El refresh anterior agoto su plazo y el motor aun no "
+                    "confirmo que SaveChanges terminara. La sesion live esta "
+                    "en cuarentena para no solapar otra operacion.",
+                    details={
+                        "reason": "refresh_still_running",
+                        "quarantined": True,
+                        "thread": quarantine.get("thread_name"),
+                        "waited_seconds": round(
+                            time.monotonic() - float(quarantine["since"]), 1),
+                    })
+            self._model_quarantine = None
 
     def restore_active_model(self, model: Optional[ActiveModel]) -> None:
         """Devuelve la seleccion de modelo a como estaba, incluido "no habia".
@@ -331,6 +384,7 @@ class Session:
         with self._model_operation_lock:
             with self._lock:
                 self._active_model = None
+                self._model_recovery_needs_persist = False
                 self._invalidate_model_verification()
                 self._persist()
 
@@ -361,6 +415,8 @@ class Session:
         """
         from horizun_pbi_mcp.powerbi.errors import NoActiveModelError
 
+        self._assert_model_not_quarantined()
+
         with self._lock:
             model = self._active_model
             if model is None:
@@ -374,6 +430,8 @@ class Session:
             identity = self._model_identity(model)
 
         if not verify:
+            self._persist_recovery_for_mutation(
+                model, for_mutation=for_mutation)
             return model
 
         # La cache esta ligada a TODA la identidad y caduca como maximo en un
@@ -383,6 +441,8 @@ class Session:
                 and verified_identity == identity and verified_at is not None:
             age = time.monotonic() - verified_at
             if 0.0 <= age < self._MODEL_VERIFICATION_TTL_SECONDS:
+                self._persist_recovery_for_mutation(
+                    model, for_mutation=for_mutation)
                 return model
 
         from horizun_pbi_mcp.powerbi.desktop_discovery import StaleSessionError, verify_model
@@ -417,7 +477,8 @@ class Session:
             if status["status"] == "stale":
                 return recuperar_sesion(self, previo=model, status=status,
                                         active_pbip=self.active_pbip,
-                                        for_mutation=for_mutation)
+                                        for_mutation=for_mutation,
+                                        persist_recovery=for_mutation)
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {status['reason']} "
                 "El puerto lo ocupa otra instancia y no se reconecta a ciegas: "
@@ -441,6 +502,7 @@ class Session:
             self._verified_fingerprint = model.session_fingerprint
             self._verified_identity = identity
             self._verified_at_monotonic = time.monotonic()
+        self._persist_recovery_for_mutation(model, for_mutation=for_mutation)
         return model
 
     @contextmanager
@@ -454,6 +516,7 @@ class Session:
         escrituras TOM, sin bloquear PBIP ni lecturas DAX concurrentes.
         """
         with self._model_operation_lock:
+            self._assert_model_not_quarantined()
             # Una mutacion no se redirige a otro documento por recuperacion:
             # solo se reconecta si el destino se puede demostrar.
             model = self.require_active_model(for_mutation=True)

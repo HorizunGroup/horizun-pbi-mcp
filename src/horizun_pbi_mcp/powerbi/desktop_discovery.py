@@ -475,7 +475,8 @@ def select_model(
 
 
 def _activar(session: Session, chosen: Dict[str, Any], *,
-             catalog: Optional[str] = None) -> ActiveModel:
+             catalog: Optional[str] = None,
+             persist: bool = True) -> ActiveModel:
     """Convierte una instancia descubierta en el modelo activo de la sesion.
 
     Es la UNICA forma de activar un modelo: la seleccion explicita y la
@@ -503,7 +504,7 @@ def _activar(session: Session, chosen: Dict[str, Any], *,
         workspace=chosen.get("workspace"),
         session_fingerprint=chosen.get("session_fingerprint"),
     )
-    session.set_active_model(model)
+    session.set_active_model(model, persist=persist)
     log.info("Modelo activo: puerto %s catalogo %s", model.port, model.catalog)
     return model
 
@@ -538,7 +539,8 @@ def candidatos_de_seleccion() -> List[Dict[str, Any]]:
 def recuperar_sesion(session: Session, *, previo: ActiveModel,
                      status: Dict[str, Any],
                      active_pbip: Any = None,
-                     for_mutation: bool = False) -> ActiveModel:
+                     for_mutation: bool = False,
+                     persist_recovery: bool = True) -> ActiveModel:
     """Reconecta una sesion caducada con la MISMA regla que `pbi_select_model`.
 
     Al reiniciar Power BI Desktop, `session.json` conserva un puerto muerto y
@@ -599,7 +601,10 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
 
         evidencia_documento = desktop_identity.identify(
             elegida, target=getattr(active_pbip, "pbip_path", None))
-        if evidencia_documento.get("path_match") is not True:
+        if (evidencia_documento.get("path_match") is not True
+                or (for_mutation and
+                    evidencia_documento.get("identity_confidence")
+                    != desktop_identity.HIGH)):
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {motivo} La unica "
                 "instancia viva no sirve demostrablemente el proyecto activo "
@@ -626,7 +631,7 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
                          "port": elegida["port"],
                          "model_name": elegida.get("model_name"),
                          "select_with": f"pbi_select_model(port={elegida['port']})"}]})
-    modelo = _activar(session, elegida)
+    modelo = _activar(session, elegida, persist=persist_recovery)
     nota = {
         "recovered": True,
         "reason": motivo,

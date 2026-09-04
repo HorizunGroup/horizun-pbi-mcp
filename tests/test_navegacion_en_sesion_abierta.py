@@ -47,11 +47,17 @@ class _Pestana:
         self.seleccionada = False
 
 
+class _Carrusel:
+    pass
+
+
 class _UiaConPestanas(_UiaFalso):
-    def __init__(self, nombres, *, expone_estado=True):
+    def __init__(self, nombres, *, expone_estado=True, expone_contenedor=True):
         super().__init__()
         self.pestanas = [_Pestana(n) for n in nombres]
+        self.carrusel = _Carrusel()
         self.expone_estado = expone_estado
+        self.expone_contenedor = expone_contenedor
         self.selecciones = []
 
     def todos_de_tipo(self, raiz, tipo):
@@ -68,6 +74,15 @@ class _UiaConPestanas(_UiaFalso):
 
     def esta_seleccionado(self, elemento):
         return elemento.seleccionada if self.expone_estado else None
+
+    def contenedor_de_seleccion(self, elemento):
+        return self.carrusel if self.expone_contenedor else None
+
+    def ancestros(self, elemento, max_depth=4):
+        return [self.carrusel] if self.expone_contenedor else []
+
+    def clase(self, elemento):
+        return "carouselScrollPane" if elemento is self.carrusel else "TabItem"
 
 
 def _montar(monkeypatch, uia):

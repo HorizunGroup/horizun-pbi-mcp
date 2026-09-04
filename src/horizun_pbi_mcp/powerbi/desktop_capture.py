@@ -566,7 +566,10 @@ def _write_atomic(path: Path, data: bytes) -> None:
 
 
 def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
-                       segundos: float) -> tuple[int, int, bytes, bool]:
+                       segundos: float, *,
+                       ultimo: Optional[dict[str, Any]] = None,
+                       pixeles_iniciales: Optional[bytes] = None,
+                       ) -> tuple[int, int, bytes, bool]:
     """Repite la captura hasta que DOS fotogramas salgan identicos.
 
     Despues de un refresh, Desktop vuelve a lanzar las consultas de la pagina y
@@ -576,6 +579,8 @@ def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
     cambiar, y si nunca se estabiliza lo dice en vez de fingir.
     """
     fin = time.monotonic() + segundos
+    if ultimo is not None and pixeles_iniciales is not None:
+        ultimo["bgra"] = pixeles_iniciales
     while time.monotonic() < fin:
         time.sleep(0.5)
         try:
@@ -583,6 +588,8 @@ def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
             actual = _encode_png(ancho, alto, pixeles)
         except (DesktopCaptureError, ValidationError):
             continue                      # aun repintando: se reintenta
+        if ultimo is not None:
+            ultimo["bgra"] = pixeles
         if actual == png and (ancho, alto) == (width, height):
             return width, height, png, True
         png, width, height = actual, ancho, alto
@@ -592,7 +599,8 @@ def _fotograma_estable(hwnd: int, png: bytes, width: int, height: int,
 def capture_opened(opened: Any, *, timeout: int = 30,
                    output_dir: Optional[Path] = None,
                    settle_seconds: float = 0.0,
-                   identity_timeout: Optional[float] = None) -> dict[str, Any]:
+                   identity_timeout: Optional[float] = None,
+                   data_loaded: Optional[bool] = None) -> dict[str, Any]:
     """Captura la ventana exacta asociada a un ``OpenedPbix`` verificado.
 
     Con `settle_seconds` se espera a que la ventana deje de cambiar antes de
@@ -621,12 +629,19 @@ def capture_opened(opened: Any, *, timeout: int = 30,
 
     from horizun_pbi_mcp.powerbi import desktop_identity
 
+    # `capture_timeout` es el presupuesto de TODA la captura. Antes cada fase
+    # (identidad, primer fotograma y asentamiento) estrenaba el mismo plazo y
+    # una peticion de 30 s podia tardar mas del doble.
+    deadline = time.monotonic() + timeout
+    identity_budget = max(0.0, deadline - time.monotonic())
+    if identity_timeout is not None:
+        identity_budget = min(identity_budget, max(0.0, float(identity_timeout)))
+
     identidad = desktop_identity.esperar_identidad_de_ventana(
         int(pid), report_path,
-        timeout=float(timeout if identity_timeout is None else identity_timeout))
+        timeout=identity_budget)
     identidad_ok = bool(identidad.get("settled"))
 
-    deadline = time.monotonic() + timeout
     while True:
         _assert_desktop_identity(int(pid), started)
         try:
@@ -646,8 +661,15 @@ def capture_opened(opened: Any, *, timeout: int = 30,
 
     estable: Optional[bool] = None
     if settle_seconds > 0:
+        ultimo: dict[str, Any] = {}
+        restante = max(0.0, deadline - time.monotonic())
         width, height, png, estable = _fotograma_estable(
-            window.hwnd, png, width, height, float(settle_seconds))
+            window.hwnd, png, width, height,
+            min(float(settle_seconds), restante), ultimo=ultimo,
+            pixeles_iniciales=pixels)
+        # El PNG que se guarda es el ULTIMO fotograma; sus pixeles tienen que
+        # ser tambien los que se diagnostican. Antes se analizaba el primero.
+        pixels = ultimo.get("bgra", pixels)
         if estable and not identidad_ok:
             # Una imagen que no cambia mientras el documento aun no cargo es
             # la foto de la espera, no del informe: no se declara asentada.
@@ -669,12 +691,13 @@ def capture_opened(opened: Any, *, timeout: int = 30,
         "identity_settled": identidad_ok,
         "frame_uniform": fotograma["uniform"],
         "frame_analysis": fotograma,
+        "data_loaded": data_loaded,
     }
     if estable is not None:
         salida["frame_settled"] = estable
     salida["capture_representative"] = bool(
         identidad_ok and (estable is None or estable)
-        and not fotograma["uniform"])
+        and not fotograma["uniform"] and data_loaded is not False)
     if not identidad_ok:
         salida["capture_warning"] = (
             "La ventana no llego a mostrar el documento esperado (titulo "

@@ -30,9 +30,11 @@ devolver un error limpio sobre un archivo que quedo destrozado.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -104,6 +106,7 @@ class Preflight:
     output_pbix: Path
     existia: bool = False
     backup: Optional[Path] = None
+    previous_state: Optional[Dict[str, Any]] = None
     validation: Dict[str, Any] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
 
@@ -113,6 +116,7 @@ class Preflight:
             "output_pbix": str(self.output_pbix),
             "target_existed": self.existia,
             "backup": str(self.backup) if self.backup else None,
+            "previous_state": self.previous_state,
             "validation": self.validation,
             "warnings": self.warnings,
         }
@@ -222,6 +226,7 @@ def preflight(session: Session, *, pbip_path: Optional[str] = None,
             "descubrir esto a mitad de camino.",
             details=resultado.to_dict())
     if resultado.existia:
+        resultado.previous_state = _estado_archivo(destino, con_hash=True)
         resultado.backup = _respaldar(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     return resultado
@@ -233,19 +238,54 @@ def _respaldar(destino: Path) -> Path:
 
     raiz = Path(get_settings().backups_dir) / "pbix_export"
     raiz.mkdir(parents=True, exist_ok=True)
-    copia = raiz / f"{destino.stem}_{int(time.time())}{destino.suffix}"
+    # Segundos no alcanzan: dos exportaciones concurrentes al mismo basename
+    # acababan apuntando al mismo respaldo. UUID conserva una copia por intento.
+    copia = raiz / (f"{destino.stem}_{time.time_ns()}_"
+                    f"{uuid.uuid4().hex[:10]}{destino.suffix}")
     shutil.copy2(destino, copia)
     log.info("Respaldo del destino en %s", copia)
     return copia
 
 
+def _estado_archivo(ruta: Path, *, con_hash: bool = False
+                    ) -> Optional[Dict[str, Any]]:
+    """Huella estable de un destino; None si no existe."""
+    try:
+        stat = ruta.stat()
+        estado: Dict[str, Any] = {
+            "size": stat.st_size, "mtime_ns": stat.st_mtime_ns,
+            "inode": getattr(stat, "st_ino", None),
+        }
+        if con_hash and ruta.is_file():
+            estado["sha256"] = sha256_de(ruta)
+        return estado
+    except OSError:
+        return None
+
+
 def _restaurar(preflight_: Preflight) -> Dict[str, Any]:
-    """Devuelve el destino a como estaba. Si no puede, lo DICE."""
+    """Devuelve el destino a como estaba y relee el resultado."""
+    if not preflight_.existia:
+        try:
+            preflight_.output_pbix.unlink(missing_ok=True)
+            return {"restored": not preflight_.output_pbix.exists(),
+                    "target_state": "absent"}
+        except OSError as exc:
+            return {"restored": False, "target_state": "absent",
+                    "error": f"{type(exc).__name__}: {exc}"}
     if not preflight_.backup or not preflight_.backup.is_file():
         return {"restored": False, "reason": "no habia respaldo que restaurar"}
+    temporal: Optional[Path] = None
     try:
-        shutil.copy2(preflight_.backup, preflight_.output_pbix)
-        return {"restored": True, "from": str(preflight_.backup)}
+        temporal = preflight_.output_pbix.with_name(
+            f".{preflight_.output_pbix.name}.{uuid.uuid4().hex}.restore.tmp")
+        shutil.copy2(preflight_.backup, temporal)
+        os.replace(temporal, preflight_.output_pbix)
+        esperado = sha256_de(preflight_.backup)
+        actual = sha256_de(preflight_.output_pbix)
+        return {"restored": actual == esperado, "from": str(preflight_.backup),
+                "sha256_verified": actual == esperado,
+                "restored_sha256": actual}
     except OSError as exc:
         return {"restored": False, "from": str(preflight_.backup),
                 "error": f"{type(exc).__name__}: {exc}",
@@ -253,6 +293,32 @@ def _restaurar(preflight_: Preflight) -> Dict[str, Any]:
                     "El destino quedo reemplazado y la restauracion fallo. La "
                     "copia original sigue en la ruta de 'from': recuperala a "
                     "mano antes de seguir.")}
+    finally:
+        if temporal is not None:
+            try:
+                temporal.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _esperar_quietud_compensacion(ruta: Path, *, timeout: float = 5.0,
+                                  stable_seconds: float = 1.0
+                                  ) -> Dict[str, Any]:
+    """Exige una ventana estable antes de restaurar sobre un guardado fallido."""
+    limite = time.monotonic() + max(0.0, timeout)
+    anterior = _estado_archivo(ruta)
+    estable_desde = time.monotonic()
+    while time.monotonic() < limite:
+        time.sleep(0.25)
+        actual = _estado_archivo(ruta)
+        if actual == anterior:
+            if time.monotonic() - estable_desde >= stable_seconds:
+                return {"quiet": True, "state": actual}
+        else:
+            anterior = actual
+            estable_desde = time.monotonic()
+    return {"quiet": False, "state": anterior,
+            "reason": "el destino no permanecio estable antes de compensar"}
 
 
 # ------------------------------------------------------------------ refresh --
@@ -333,20 +399,81 @@ def _inspeccionar_plantilla(destino: Path, *,
         with zipfile.ZipFile(destino) as zf:
             nombres = zf.namelist()
             tamanos = {n: zf.getinfo(n).file_size for n in nombres}
+            if any(Path(n.replace("\\", "/")).is_absolute() or ".." in
+                   Path(n.replace("\\", "/")).parts for n in nombres):
+                raise PbixExportNotVerified(
+                    "La plantilla contiene rutas de partes no seguras.",
+                    details={"output_pbix": str(destino),
+                             "reason": "template_unsafe_parts"})
+            # Si el origen tenia modelo, la ausencia de su esquema es el fallo
+            # mas especifico y accionable, incluso si el contenedor tambien
+            # omite metadatos secundarios.
+            tiene_esquema_previo = any(
+                n == "DataModelSchema" or n.startswith("DataModelSchema")
+                for n in nombres)
+            if espera_modelo and not tiene_esquema_previo:
+                raise PbixExportNotVerified(
+                    "El proyecto tiene modelo semantico y la plantilla "
+                    "guardada no lleva su definicion (DataModelSchema).",
+                    details={"output_pbix": str(destino),
+                             "reason": "template_without_model_schema"})
+            version = None
+            if tamanos.get("Version", 0) > 0:
+                version_raw = zf.read("Version")
+                try:
+                    version = version_raw.decode("utf-16-le").strip(
+                        "\x00\ufeff \r\n")
+                except UnicodeDecodeError:
+                    version = None
+                if not version:
+                    raise PbixExportNotVerified(
+                        "La parte Version de la plantilla no se puede interpretar.",
+                        details={"output_pbix": str(destino),
+                                 "reason": "template_invalid_version"})
+
+            pbir = "Report/definition/report.json"
+            paginas = "Report/definition/pages/pages.json"
+            es_pbir = pbir in tamanos
+            es_layout = tamanos.get("Report/Layout", 0) > 0
+            if es_pbir:
+                try:
+                    report_json = json.loads(zf.read(pbir))
+                except (KeyError, UnicodeDecodeError, ValueError) as exc:
+                    raise PbixExportNotVerified(
+                        "La definicion PBIR de la plantilla no es legible.",
+                        details={"output_pbix": str(destino),
+                                 "reason": "template_invalid_pbir"}) from exc
+                if not isinstance(report_json, dict):
+                    raise PbixExportNotVerified(
+                        "La definicion PBIR de la plantilla no tiene objetos JSON.",
+                        details={"output_pbix": str(destino),
+                                 "reason": "template_invalid_pbir"})
+                if paginas in tamanos:
+                    try:
+                        pages_json = json.loads(zf.read(paginas))
+                    except (UnicodeDecodeError, ValueError) as exc:
+                        raise PbixExportNotVerified(
+                            "El indice de paginas PBIR no es legible.",
+                            details={"output_pbix": str(destino),
+                                     "reason": "template_invalid_pbir"}) from exc
+                    if not isinstance(pages_json, dict):
+                        raise PbixExportNotVerified(
+                            "El indice de paginas PBIR no es un objeto JSON.",
+                            details={"output_pbix": str(destino),
+                                     "reason": "template_invalid_pbir"})
     except zipfile.BadZipFile as exc:
         raise PbixExportNotVerified(
             "El archivo existe pero no es un contenedor de Power BI valido.",
             details={"output_pbix": str(destino),
                      "cause": f"{type(exc).__name__}: {exc}"[:200]}) from exc
-    tiene_informe = any(n.startswith("Report/") for n in nombres)
+    tiene_informe = es_pbir or es_layout
     modelo_datos = tamanos.get("DataModel", 0)
     tiene_esquema = any(n in ("DataModelSchema",) or n.startswith("DataModelSchema")
                         for n in nombres)
     resumen = {
         "path": str(destino),
-        "report_format": ("pbir" if any(n.startswith("Report/definition/")
-                                        for n in nombres)
-                          else "layout" if "Report/Layout" in nombres
+        "report_format": ("pbir" if es_pbir
+                          else "layout" if es_layout
                           else "none"),
         "has_data_model": modelo_datos > 0,
         "data_model_size": modelo_datos,
@@ -354,7 +481,10 @@ def _inspeccionar_plantilla(destino: Path, *,
         "parts": len(nombres),
         "template": True,
         "warnings": [],
+        "version": version,
     }
+    if version is None:
+        resumen["warnings"].append("version_part_not_present")
     if not tiene_informe:
         raise PbixExportNotVerified(
             "La plantilla guardada no contiene ningun informe.",
@@ -380,7 +510,7 @@ def _inspeccionar_plantilla(destino: Path, *,
 
 
 def verificar_salida(destino: Path, *, desde: float,
-                     antes: Optional[Dict[str, float]] = None,
+                     antes: Optional[Dict[str, Any]] = None,
                      formato: str = FORMATO_PBIX,
                      espera_modelo: Optional[bool] = None) -> Dict[str, Any]:
     """Que el archivo existe, es del formato pedido y es de ESTA ejecucion."""
@@ -415,6 +545,16 @@ def verificar_salida(destino: Path, *, desde: float,
             "ahi no lo escribio este guardado.",
             details={"output_pbix": str(destino), "checks": comprobaciones,
                      "started_at": desde})
+    if antes is not None:
+        despues = _estado_archivo(destino, con_hash=True)
+        comprobaciones["changed_from_preflight"] = despues != antes
+        if not comprobaciones["changed_from_preflight"]:
+            raise PbixExportNotVerified(
+                "El destino conserva exactamente la huella anterior al "
+                "guardado. Su fecha cercana no demuestra que esta llamada lo "
+                "haya escrito.",
+                details={"output_pbix": str(destino), "checks": comprobaciones,
+                         "reason": "output_unchanged_from_preflight"})
 
     if formato == FORMATO_PBIT:
         resumen = _inspeccionar_plantilla(destino, espera_modelo=espera_modelo)
@@ -469,7 +609,8 @@ def esperar_escritura_terminada(destino: Path, *, timeout: float,
                                 excluir: Optional[List[int]] = None,
                                 origen: Optional[Path] = None,
                                 gracia: float = GRACIA_APARICION,
-                                desde: Optional[float] = None
+                                desde: Optional[float] = None,
+                                antes: Optional[Dict[str, Any]] = None,
                                 ) -> Dict[str, Any]:
     """Espera a que el archivo APAREZCA y termine de escribirse.
 
@@ -516,7 +657,19 @@ def esperar_escritura_terminada(destino: Path, *, timeout: float,
                              "output_pbix": str(destino)})
         if destino.is_file():
             visto = True
-            tamano = destino.stat().st_size
+            estado_actual = _estado_archivo(destino)
+            # Un destino preexistente no cuenta como "aparecido" hasta que su
+            # identidad de archivo cambie. Sin esto se estabilizaba durante
+            # 1.5 s y el servicio aceptaba el archivo viejo antes de que
+            # Desktop empezara siquiera a reemplazarlo.
+            if (antes is not None and estado_actual is not None
+                    and all(estado_actual.get(k) == antes.get(k)
+                            for k in ("size", "mtime_ns", "inode"))):
+                if time.monotonic() > tope_aparicion:
+                    break
+                time.sleep(0.5)
+                continue
+            tamano = int((estado_actual or {}).get("size", 0))
             if tamano > 0 and tamano == ultimo_tamano:
                 if estable_desde is None:
                     estable_desde = time.monotonic()
@@ -743,6 +896,14 @@ def _identidad_verificada(abierto: Any, objetivo: Path, *,
             "el intervalo de lanzamiento.",
             details={"path": str(objetivo), "identity": identidad,
                      "reason": "desktop_serves_other_document"})
+    if (getattr(abierto, "launched_by_us", None) is False
+            and identidad.get("identity_confidence") != desktop_identity.HIGH):
+        raise PbixExportError(
+            "La ventana coincide solo por el titulo. Eso no distingue dos "
+            "proyectos homonimos en carpetas diferentes, asi que no se "
+            "reutiliza para Guardar como.",
+            details={"path": str(objetivo), "identity": identidad,
+                     "reason": "desktop_reuse_path_unverified"})
     return identidad
 
 
@@ -751,7 +912,8 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                   origen: Optional[Path] = None,
                   formato: str = FORMATO_PBIX,
                   desde: Optional[float] = None,
-                  overwrite: bool = False) -> Dict[str, Any]:
+                  overwrite: bool = False,
+                  antes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """El flujo oficial, paso a paso y sin aceptar nada por defecto.
 
     El adaptador real ofrece `save_as_completo`, que hace toda la interaccion
@@ -796,8 +958,23 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
 
         espera = esperar_escritura_terminada(
             destino, timeout=timeout, adapter=adapter, pid=pid, origen=origen,
-            desde=desde)
+            desde=desde, antes=antes)
         if not espera.get("stable"):
+            actual = _estado_archivo(destino, con_hash=True)
+            if antes is not None and actual == antes:
+                if desde is not None and destino.stat().st_mtime < desde - 2:
+                    raise PbixExportNotVerified(
+                        "El archivo del destino es ANTERIOR a esta ejecucion: "
+                        "lo que hay ahi no lo escribio este guardado.",
+                        details={"reason": "output_predates_export",
+                                 "phase": "guardar_como",
+                                 "output_pbix": str(destino), **espera})
+                raise PbixExportNotVerified(
+                    "El destino conserva exactamente la huella anterior al "
+                    "guardado; esta llamada no produjo una salida nueva.",
+                    details={"reason": "output_unchanged_from_preflight",
+                             "phase": "guardar_como",
+                             "output_pbix": str(destino), **espera})
             raise PbixExportError(
                 "El cuadro de guardado se cerro pero la escritura no termino: "
                 f"{espera.get('wait_reason')}. No se declara entregado lo que "
@@ -855,8 +1032,24 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
     # El dialogo se cerro: ahora empieza la escritura de verdad.
     espera = esperar_escritura_terminada(
         destino, timeout=timeout, adapter=adapter, pid=pid,
-        excluir=list(previos) + [dialogo.hwnd])
+        excluir=list(previos) + [dialogo.hwnd], origen=origen,
+        desde=desde, antes=antes)
     if not espera.get("stable"):
+        actual = _estado_archivo(destino, con_hash=True)
+        if antes is not None and actual == antes:
+            if desde is not None and destino.stat().st_mtime < desde - 2:
+                raise PbixExportNotVerified(
+                    "El archivo del destino es ANTERIOR a esta ejecucion: "
+                    "lo que hay ahi no lo escribio este guardado.",
+                    details={"reason": "output_predates_export",
+                             "phase": "guardar_como",
+                             "output_pbix": str(destino), **espera})
+            raise PbixExportNotVerified(
+                "El destino conserva exactamente la huella anterior al "
+                "guardado; esta llamada no produjo una salida nueva.",
+                details={"reason": "output_unchanged_from_preflight",
+                         "phase": "guardar_como",
+                         "output_pbix": str(destino), **espera})
         raise PbixExportError(
             "El cuadro de guardado se cerro pero la escritura no termino: "
             f"{espera.get('wait_reason')}. No se declara entregado lo que "
@@ -1041,6 +1234,34 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
            timeout: int = 600, confirm_reuse: bool = False,
            adapter: Optional[Any] = None,
            format: str = FORMATO_PBIX) -> Dict[str, Any]:
+    """Serializa el flujo UI completo, tambien entre procesos MCP."""
+    from horizun_pbi_mcp.config import get_settings
+    from horizun_pbi_mcp.services import cerrojo
+
+    lock_path = Path(get_settings().backups_dir) / "pbix_export" / ".export.lock"
+
+    def _agotado(segundos: float) -> Exception:
+        return PbixExportError(
+            "Otra exportacion esta conduciendo Power BI Desktop. No se abren "
+            "dos cuadros Guardar como ni se comparten respaldos.",
+            details={"reason": "export_in_progress",
+                     "lock_timeout_seconds": segundos})
+
+    with cerrojo.exclusion(lock_path, timeout=max(1.0, float(timeout)),
+                           al_agotarse=_agotado):
+        return _export_unlocked(
+            session, pbip_path=pbip_path, out_path=out_path,
+            overwrite=overwrite, refresh=refresh, leave_open=leave_open,
+            timeout=timeout, confirm_reuse=confirm_reuse, adapter=adapter,
+            format=format)
+
+
+def _export_unlocked(session: Session, *, pbip_path: Optional[str] = None,
+                     out_path: Optional[str] = None, overwrite: bool = False,
+                     refresh: str = REFRESH_AUTO, leave_open: bool = True,
+                     timeout: int = 600, confirm_reuse: bool = False,
+                     adapter: Optional[Any] = None,
+                     format: str = FORMATO_PBIX) -> Dict[str, Any]:
     """PBIP -> PBIX (o PBIT) por `Guardar como`, verificado a los dos lados.
 
     Con `format='pbit'` se produce una PLANTILLA: el mismo `Guardar como`,
@@ -1096,11 +1317,11 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
             started=identidad.get("desktop_process_started"),
             destino=destino, timeout=float(timeout),
             origen=previo.source_pbip, formato=formato, desde=inicio,
-            overwrite=overwrite)
+            overwrite=overwrite, antes=previo.previous_state)
         salida.update(guardado)
 
         verificacion = verificar_salida(
-            destino, desde=inicio, formato=formato,
+            destino, desde=inicio, antes=previo.previous_state, formato=formato,
             espera_modelo=bool((previo.validation or {}).get("tmdl_valid")
                                is not None))
         salida.update({k: v for k, v in verificacion.items()
@@ -1116,13 +1337,68 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
                 "de la carpeta de destino; revisa "
                 "'collateral_files_touched'.")
     except BaseException as fallo:
-        restauracion = _restaurar(previo)
+        # Primero se detiene solamente la ventana que abrio esta llamada. Un
+        # guardado asincrono puede seguir escribiendo despues del error; copiar
+        # el respaldo encima en ese instante producia una falsa restauracion.
+        cleanup: Dict[str, Any] = {
+            "desktop_pid": getattr(abierto, "desktop_pid", None),
+            "desktop_started": getattr(abierto, "desktop_started", None),
+            "launched_by_us": bool(getattr(abierto, "launched_by_us", False)),
+        }
+        if cleanup["launched_by_us"]:
+            try:
+                from horizun_pbi_mcp.powerbi import desktop_launcher
+
+                cleanup["close"] = desktop_launcher.close(abierto)
+            except Exception as exc:                      # noqa: BLE001
+                cleanup["close"] = {"closed": False,
+                                    "error": f"{type(exc).__name__}: {exc}"}
+        else:
+            cleanup["close"] = {
+                "closed": False,
+                "reason": "la ventana reutilizada pertenece al usuario"}
+        cierre = cleanup["close"]
+        cierre_verificado = bool(
+            isinstance(cierre, dict) and cierre.get("closed") is True)
+        escritura_terminada = bool(
+            isinstance(salida.get("write_wait"), dict)
+            and salida["write_wait"].get("stable") is True)
+        # Una ventana propia se puede detener y verificar antes de restaurar.
+        # Una ventana reutilizada no se cierra: solo se compensa si el guardado
+        # ya habia alcanzado la evidencia fuerte de escritura estable, y aun
+        # entonces se exige otra ventana conservadora sin cambios.
+        puede_compensar = (cierre_verificado if cleanup["launched_by_us"]
+                           else escritura_terminada)
+        quietud = _esperar_quietud_compensacion(
+            destino, timeout=5.0,
+            stable_seconds=1.0 if cleanup["launched_by_us"] else 3.0)
+        cleanup["write_quiescence"] = quietud
+        cleanup["compensation_preconditions"] = {
+            "close_verified": cierre_verificado,
+            "write_completed_before_failure": escritura_terminada,
+        }
+        actual_con_hash = _estado_archivo(destino, con_hash=True)
+        sigue_original = (
+            (not previo.existia and actual_con_hash is None)
+            or (previo.previous_state is not None
+                and actual_con_hash == previo.previous_state))
+        restauracion = ({
+            "restored": True,
+            "target_state": ("unchanged_from_preflight"
+                             if previo.existia else "absent"),
+            "sha256_verified": True,
+        } if sigue_original else _restaurar(previo)
+                        if puede_compensar and quietud.get("quiet") else {
+            "restored": False,
+            "reason": "no se restaura mientras un guardado tardio puede seguir activo",
+            "action_required": "espera a que Desktop termine y recupera el respaldo",
+        })
         salida["restore"] = restauracion
-        if previo.existia and not restauracion.get("restored"):
+        salida["cleanup"] = cleanup
+        if not restauracion.get("restored"):
             raise PbixRestoreFailed(
-                "La exportacion fallo y el destino que existia NO se pudo "
-                "restaurar. Requiere intervencion: la copia original esta en "
-                "el respaldo.",
+                "La exportacion fallo y no se pudo demostrar que el destino "
+                "volviera a su estado anterior. Requiere intervencion.",
                 details={**salida,
                          "cause": str(getattr(fallo, "message", fallo))[:300]}
             ) from fallo
@@ -1135,7 +1411,8 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
                              "restore": restauracion,
                              "output_pbix": str(destino),
                              "source_pbip": str(previo.source_pbip),
-                             "target_existed": previo.existia}
+                             "target_existed": previo.existia,
+                             "cleanup": cleanup}
         raise
 
     salida["final_state"] = _estado_final(
@@ -1159,7 +1436,7 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
 def finalize_delivery(session: Session, *, path: Optional[str] = None,
                       format: str = "pbix", out_path: Optional[str] = None,
                       refresh: str = REFRESH_AUTO, overwrite: bool = False,
-                      leave_open: bool = True,
+                      leave_open: bool = True, confirm_reuse: bool = False,
                       adapter: Optional[Any] = None) -> Dict[str, Any]:
     """De un archivo cualquiera al entregable, en una sola llamada.
 
@@ -1187,7 +1464,8 @@ def finalize_delivery(session: Session, *, path: Optional[str] = None,
 
     exportado = export(session, pbip_path=pbip, out_path=out_path,
                        overwrite=overwrite, refresh=refresh,
-                       leave_open=leave_open, adapter=adapter,
+                       leave_open=leave_open, confirm_reuse=confirm_reuse,
+                       adapter=adapter,
                        format=formato)
     salida.update(exportado)
     salida["delivered"] = bool(exportado.get("saved_as_verified"))

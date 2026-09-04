@@ -308,7 +308,17 @@ def _pid_por_titulo_de_ventana(stem: str,
     """
     pids = [p.pid for p in _procesos_desktop()]
     if objetivo is not None:
-        pids = [pid for pid in pids if not _sirve_otro_proyecto(pid, objetivo)]
+        from horizun_pbi_mcp.services import project_resolver
+
+        # Para REUTILIZAR una ventana el titulo solo da el nombre. Se exige
+        # ademas que la linea de comandos nombre la ruta exacta; si no hay esa
+        # evidencia, dos `Demo.pbip` de carpetas distintas son indistinguibles
+        # y se falla cerrado en vez de conducir el homonimo.
+        pids = [
+            pid for pid in pids
+            if any(project_resolver.misma_ruta(d, objetivo)
+                   for d in _documentos_de_la_linea_de_comandos(pid))
+        ]
     return coincidencias_por_titulo(stem, pids).inequivoca
 
 
