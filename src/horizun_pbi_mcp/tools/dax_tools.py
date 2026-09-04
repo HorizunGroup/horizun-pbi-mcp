@@ -173,7 +173,8 @@ def register(mcp) -> None:
                                     refresh: bool = False,
                                     refresh_timeout_seconds: Optional[int] = None,
                                     pbip_path: Optional[str] = None,
-                                    project_path: Optional[str] = None) -> Dict[str, Any]:
+                                    project_path: Optional[str] = None,
+                                    confirm_reuse: bool = False) -> Dict[str, Any]:
         """Abre un .pbip/.pbix y captura su ventana real sin depender del foco.
 
         Es la comprobacion visual automatizable que complementa al validador
@@ -202,12 +203,16 @@ def register(mcp) -> None:
         "Ajustar a la pagina" para que salga el lienzo COMPLETO y no el tercio
         superior al zoom guardado. Con el proyecto CERRADO (.pbip) ambos se
         aplican como una vista temporal en disco que se restaura byte a byte
-        al terminar. Con la ventana YA ABIERTA -o con un .pbix- se hacen en
-        la propia interfaz: se elige la pestaña y el zoom por UI Automation y
-        se VERIFICA el resultado (`navigation`). Si la pagina no se pudo
-        demostrar, la tool falla en vez de capturar otra; si el zoom no se
-        pudo demostrar, lo dice en `warnings`. Nunca toca `pages.json` de un
-        proyecto abierto.
+        al terminar. Con la ventana YA ABIERTA -que es del usuario- se hacen
+        en la propia interfaz, pero SOLO con `confirm_reuse=true`: elegir una
+        pestaña y cambiar el zoom mueven esa ventana, y una captura que solo
+        debia observar no lo hace por su cuenta. Sin `confirm_reuse`, `page`
+        sobre una sesion abierta es un error y `fit_to_page` degrada a un
+        aviso (se captura al zoom actual). Con el, se elige la pestaña y el
+        zoom por UI Automation y se VERIFICA el resultado (`navigation`): si
+        la pagina no se pudo demostrar, la tool falla en vez de capturar
+        otra; si el zoom no se pudo demostrar, lo dice en `warnings`. Nunca
+        toca `pages.json` de un proyecto abierto.
 
         La captura separa cuatro señales que no son la misma cosa:
         `capture.identity_settled` (la ventana muestra ESTE documento),
@@ -246,7 +251,8 @@ def register(mcp) -> None:
                         "no se puede preparar sin editarlo.",
                         details={"path": str(pbix), "page": page})
                 if pid:
-                    navegacion = {"page": page, "fit_to_page": fit_to_page}
+                    navegacion = _navegacion_autorizada(
+                        pbix, pid, page, fit_to_page, confirm_reuse, avisos)
                 else:
                     avisos.append("fit_to_page solo aplica a .pbip; la "
                                   "captura sale al zoom guardado del .pbix.")
@@ -254,8 +260,10 @@ def register(mcp) -> None:
                 pid = desktop_launcher.proceso_con_archivo_abierto(pbix)
                 if pid:
                     # Sesion reutilizada: no se toca `pages.json` de un
-                    # proyecto abierto. Se navega en la interfaz.
-                    navegacion = {"page": page, "fit_to_page": fit_to_page}
+                    # proyecto abierto. Se navega en la interfaz, y solo si
+                    # quien llama autorizo mover esa ventana.
+                    navegacion = _navegacion_autorizada(
+                        pbix, pid, page, fit_to_page, confirm_reuse, avisos)
                 else:
                     vista = desktop_capture.planificar_vista_de_captura(
                         pbix, page=page, fit_to_page=fit_to_page)
@@ -273,6 +281,32 @@ def register(mcp) -> None:
                     tool="pbi_validate_desktop_render"))
             with pila:
                 return _con_desktop(pbix, vista, avisos, navegacion)
+
+        def _navegacion_autorizada(pbix, pid, page, fit_to_page, confirm_reuse,
+                                   avisos):
+            """Que se navega en una ventana que NO abrio esta llamada.
+
+            Elegir pestaña o zoom mueve la ventana del usuario. Sin
+            `confirm_reuse`, una pagina pedida es un error claro y el zoom por
+            defecto degrada al aviso de siempre: la captura observa, no toca.
+            """
+            if confirm_reuse:
+                return {"page": page, "fit_to_page": fit_to_page,
+                        "authorized_by": "confirm_reuse"}
+            if page:
+                raise ValidationError(
+                    "El proyecto ya esta abierto en Desktop y elegir la "
+                    "pagina mueve esa ventana, que es del usuario. Pasa "
+                    "confirm_reuse=true para navegar en ella, o cierra la "
+                    "sesion (pbi_close_desktop) y reintenta con el proyecto "
+                    "cerrado.",
+                    details={"path": str(pbix), "pid": pid, "page": page,
+                             "reason": "desktop_open_page_needs_confirm"})
+            avisos.append(
+                "Sesion reutilizada: no se fuerza 'Ajustar a la pagina' en "
+                "una ventana del usuario sin confirm_reuse=true; la captura "
+                "sale al zoom actual de Desktop.")
+            return None
 
         def _con_desktop(pbix, vista, avisos, navegacion=None):
             from horizun_pbi_mcp.powerbi import (desktop_capture, desktop_launcher,

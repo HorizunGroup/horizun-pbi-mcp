@@ -97,11 +97,18 @@ def test_planificar_vista_rechaza_pagina_inexistente(pbip_sintetico):
 
 
 def test_render_con_page_exige_pbip(monkeypatch, tmp_path):
-    """Un .pbix compilado no se puede preparar sin editarlo."""
+    """Un .pbix compilado no se puede preparar sin editarlo.
+
+    La guarda tiene que saltar ANTES de abrir nada: si desaparece, esta
+    prueba falla al instante en vez de lanzar un Desktop real y esperar
+    300 s, que es lo que paso una vez.
+    """
     mcp = _McpCaptura()
     dax_tools.register(mcp)
     pbix = tmp_path / "Ventas.pbix"
     pbix.write_bytes(b"pbix")
+    monkeypatch.setattr(desktop_launcher, "open_pbix",
+                        lambda *a, **k: pytest.fail("se intento abrir Desktop"))
 
     r = mcp.tools["pbi_validate_desktop_render"](str(pbix), page="Portada")
     assert r["ok"] is False
@@ -128,7 +135,8 @@ def test_render_con_sesion_abierta_y_page_no_demostrada_falla_claro(
     monkeypatch.setattr(desktop_capture, "capture_opened",
                         lambda *a, **k: capturas.append(1))
 
-    r = mcp.tools["pbi_validate_desktop_render"](str(pbip), page="Portada")
+    r = mcp.tools["pbi_validate_desktop_render"](str(pbip), page="Portada",
+                                                 confirm_reuse=True)
     assert r["ok"] is False
     assert r["details"]["reason"] == "desktop_open_page_unverified"
     assert capturas == []

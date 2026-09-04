@@ -301,7 +301,8 @@ def test_con_sesion_abierta_la_pagina_se_elige_en_la_ventana(proyecto, monkeypat
                             "page": {"verified": True, "visual_count": 1},
                             "fit_to_page": {"verified": True}})
 
-    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto), page="page01")
+    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto), page="page01",
+                                                 confirm_reuse=True)
 
     assert r["ok"] is True
     assert r["navigation"]["page"]["verified"] is True
@@ -319,11 +320,31 @@ def test_una_pagina_no_demostrada_no_produce_una_captura(proyecto, monkeypatch):
                             "page": {"verified": False, "reason": "sin IsSelected"}})
 
     r = mcp.tools["pbi_validate_desktop_render"](str(proyecto), page="page01",
-                                                 fit_to_page=False)
+                                                 fit_to_page=False,
+                                                 confirm_reuse=True)
 
     assert r["ok"] is False
     assert r["details"]["reason"] == "desktop_open_page_unverified"
     assert capturas == [], "se capturo otra pagina en silencio"
+
+
+def test_sin_confirm_reuse_no_se_navega_en_la_ventana_del_usuario(
+        proyecto, monkeypatch):
+    """Una captura que solo debia observar no mueve la ventana ajena."""
+    mcp = _render_montado(monkeypatch, proyecto)
+    llamadas = []
+    monkeypatch.setattr(desktop_navigation, "navegar",
+                        lambda *a, **k: llamadas.append(k) or {})
+
+    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto))
+    assert r["ok"] is True
+    assert llamadas == [], "se navego sin confirm_reuse"
+    assert any("confirm_reuse" in w for w in r["warnings"])
+
+    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto), page="page01")
+    assert r["ok"] is False
+    assert r["details"]["reason"] == "desktop_open_page_needs_confirm"
+    assert llamadas == []
 
 
 def test_un_zoom_no_demostrado_degrada_a_aviso(proyecto, monkeypatch):
@@ -333,7 +354,8 @@ def test_un_zoom_no_demostrado_degrada_a_aviso(proyecto, monkeypatch):
                             "fit_to_page": {"verified": False,
                                             "reason": "sin Toggle"}})
 
-    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto))
+    r = mcp.tools["pbi_validate_desktop_render"](str(proyecto),
+                                                 confirm_reuse=True)
 
     assert r["ok"] is True
     assert any("Ajustar a la pagina" in w for w in r["warnings"])

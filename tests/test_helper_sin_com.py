@@ -154,7 +154,7 @@ def test_la_ruta_se_relee_del_campo_antes_de_seguir(monkeypatch):
     escrito = {}
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
-                        lambda t: escrito.__setitem__("texto", t))
+                        lambda t, **kw: escrito.__setitem__("texto", t))
     ruta = "C:\\entrega\\Informe.pbix"
     uia = _UiaFalso(valor_nombre=ruta)
 
@@ -168,7 +168,8 @@ def test_la_ruta_se_relee_del_campo_antes_de_seguir(monkeypatch):
 def test_si_el_campo_no_quedo_con_la_ruta_se_para(monkeypatch):
     """Fue el sintoma del `INPUT` recreado: no se tecleaba nada."""
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
     uia = _UiaFalso(valor_nombre="")
 
@@ -488,7 +489,8 @@ def test_el_nombre_se_acepta_aunque_la_aplicacion_vaya_con_retraso(monkeypatch):
     era la sincronizacion, no el tecleo.
     """
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     ruta = r"C:\entrega\Informe.pbix"
 
     class _CampoLento(_UiaFalso):
@@ -513,7 +515,8 @@ def test_el_nombre_se_acepta_aunque_la_aplicacion_vaya_con_retraso(monkeypatch):
 
 def test_si_el_campo_nunca_se_llena_se_dice_cuanto_se_espero(monkeypatch):
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
 
     with pytest.raises(uia_helper.HelperError) as fallo:

@@ -48,6 +48,9 @@ _SUFIJO_TITULO = re.compile(r"\s*[-–—]\s*power bi(\s+desktop)?\s*$",
 _TITULOS_PROVISIONALES = frozenset({
     "", "sin titulo", "sin título", "untitled", "sans titre", "ohne titel",
     "senza titolo", "sem titulo", "sem título", "sense titol", "sense títol",
+    # El nombre del producto a secas: la ventana de arranque y los dialogos
+    # genericos de Desktop se titulan asi. No nombran ningun documento.
+    "power bi desktop", "power bi",
 })
 
 #: Estados del sondeo de identidad de una ventana.
@@ -151,7 +154,9 @@ def clasificar_titulos(titulos: List[str], objetivo: Path) -> str:
         return IDENTIDAD_SIN_TITULO
     if _titulo_coincide(titulos, objetivo):
         return IDENTIDAD_ASENTADA
-    if all(titulo_provisional(t) for t in titulos):
+    if any(titulo_provisional(t) for t in titulos):
+        # Un Desktop sirve UN documento; si su ventana aun dice "cargando",
+        # los demas titulos son dialogos, no otro documento.
         return IDENTIDAD_PROVISIONAL
     return IDENTIDAD_OTRO_DOCUMENTO
 

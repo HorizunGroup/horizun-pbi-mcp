@@ -536,7 +536,9 @@ def candidatos_de_seleccion() -> List[Dict[str, Any]]:
 
 
 def recuperar_sesion(session: Session, *, previo: ActiveModel,
-                     status: Dict[str, Any]) -> ActiveModel:
+                     status: Dict[str, Any],
+                     active_pbip: Any = None,
+                     for_mutation: bool = False) -> ActiveModel:
     """Reconecta una sesion caducada con la MISMA regla que `pbi_select_model`.
 
     Al reiniciar Power BI Desktop, `session.json` conserva un puerto muerto y
@@ -554,6 +556,12 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
     cualquier otra. Y NO reproduce ninguna operacion: solo deja la sesion
     apuntando a un modelo demostrable para que la operacion en curso se
     ejecute una sola vez sobre el.
+
+    Y no cambia de DOCUMENTO por ser la unica instancia viva: con un proyecto
+    activo, la candidata tiene que servir ese proyecto (descriptor o titulo de
+    ventana, via `desktop_identity`); si no coincide, `stale_session` con la
+    evidencia. Sin proyecto activo, una MUTACION no se reconecta a ciegas: no
+    hay contra que verificar el destino y se exige seleccion explicita.
     """
     instancias = discover_instances()
     candidatas = _candidatas_de_recuperacion(instancias)
@@ -585,6 +593,39 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
                      "recovery": "ambiguous", "candidates": opciones,
                      "ports": [i["port"] for i in candidatas]})
     elegida = candidatas[0]
+    evidencia_documento: Optional[Dict[str, Any]] = None
+    if active_pbip is not None:
+        from horizun_pbi_mcp.powerbi import desktop_identity
+
+        evidencia_documento = desktop_identity.identify(
+            elegida, target=getattr(active_pbip, "pbip_path", None))
+        if evidencia_documento.get("path_match") is not True:
+            raise StaleSessionError(
+                f"La sesion guardada ya no es valida: {motivo} La unica "
+                "instancia viva no sirve demostrablemente el proyecto activo "
+                f"'{getattr(active_pbip, 'report_name', None) or ''}', asi que "
+                "no se reconecta a ella. Abre el proyecto en Desktop "
+                "(pbi_open_in_desktop) o elige el modelo con "
+                "pbi_select_model(port=...).",
+                details={"status": status.get("status"), "recorded": grabado,
+                         "recovery": "document_mismatch",
+                         "candidate": {"port": elegida["port"],
+                                       "model_name": elegida.get("model_name")},
+                         "identity": evidencia_documento,
+                         "active_project": getattr(active_pbip, "pbip_path",
+                                                   None)})
+    elif for_mutation:
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} Hay una instancia "
+            "viva, pero sin proyecto activo no se puede demostrar que sirva "
+            "el mismo documento, y una escritura no se redirige a ciegas. "
+            f"Confirmalo con pbi_select_model(port={elegida['port']}).",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "explicit_selection_required",
+                     "candidates": [{
+                         "port": elegida["port"],
+                         "model_name": elegida.get("model_name"),
+                         "select_with": f"pbi_select_model(port={elegida['port']})"}]})
     modelo = _activar(session, elegida)
     nota = {
         "recovered": True,
@@ -595,6 +636,13 @@ def recuperar_sesion(session: Session, *, previo: ActiveModel,
                      "catalog": modelo.catalog,
                      "model_name": modelo.model_name},
         "rule": "unica instancia viva y verificable, como pbi_select_model",
+        "document_evidence": (
+            {"path_match": evidencia_documento.get("path_match"),
+             "identity_confidence": evidencia_documento.get("identity_confidence"),
+             "desktop_window_title": evidencia_documento.get("desktop_window_title")}
+            if evidencia_documento else
+            {"path_match": None, "detail": "sin proyecto activo contra el que "
+                                           "verificar; solo lectura"}),
     }
     anotar = getattr(session, "note_recovery", None)
     if anotar is not None:

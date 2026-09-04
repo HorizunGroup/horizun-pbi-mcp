@@ -333,6 +333,16 @@ def register(mcp) -> None:
                 from horizun_pbi_mcp.powerbi.desktop_discovery import verify_model
 
                 estado = verify_model(modelo)
+                if estado["status"] == "stale":
+                    # La misma recuperacion que el resto de tools: si hay una
+                    # sola instancia viva que sirva el proyecto, se reconecta
+                    # y `session_recovery` lo cuenta; si no, se explica.
+                    try:
+                        modelo = session.require_active_model()
+                        estado = verify_model(modelo)
+                    except PowerBIMCPError as exc:
+                        estado = {"status": "stale", "reason": exc.message,
+                                  "details": exc.details}
                 live_ok = estado["status"] == "ok" and hay_dlls
                 live_motivo = (estado.get("reason") if estado["status"] != "ok"
                                else ("faltan las DLLs de Analysis Services"

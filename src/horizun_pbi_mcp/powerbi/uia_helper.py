@@ -79,6 +79,25 @@ UIA_TIPO_MENUITEM = 50011
 UIA_TIPO_RADIOBUTTON = 50013
 UIA_TIPO_SPLITBUTTON = 50031
 UIA_TIPO_TABITEM = 50019
+UIA_TIPO_TEXT = 50020
+#: IDYES del cuadro de confirmacion de reemplazo del dialogo comun.
+AUTOMATION_ID_SI = "6"
+#: GetWindow(GW_OWNER) y GetAncestor(GA_ROOT).
+GW_OWNER = 4
+GA_ROOT = 2
+
+#: HRESULT de UI Automation/COM que significan "la interfaz cambio debajo":
+#: elemento ya no disponible, servidor ocupado o llamada RPC caida. Solo esos
+#: se reintentan; cualquier otro error COM es definitivo y un error de
+#: programacion no se disfraza de transitorio.
+HRESULT_TRANSITORIOS = frozenset({
+    0x80040201,   # UIA_E_ELEMENTNOTAVAILABLE
+    0x80131505,   # UIA_E_TIMEOUT
+    0x8001010A,   # RPC_E_SERVERCALL_RETRYLATER
+    0x800706BA,   # RPC_S_SERVER_UNAVAILABLE
+    0x800706BE,   # RPC_S_CALL_FAILED
+})
+NOMBRE_BOTON_SI = re.compile(r"^(s[ií]|yes)$", re.I)
 UIA_PAT_INVOCAR = 10000
 UIA_PAT_VALOR = 10002
 UIA_PAT_EXPANDIR = 10005
@@ -122,7 +141,12 @@ MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE = 0x0001, 0x8000
 #: Nombres de los controles de la interfaz de Power BI Desktop que se buscan
 #: por texto. Dependen del idioma: se cubren español e ingles, que son los que
 #: se han visto en maquinas reales. Si el idioma es otro, el error lo dice.
-NOMBRE_PESTANA_VISTA = re.compile(r"^(vista|view)$", re.I)
+#: La pestaña de cinta se llama "Ver" en español y "View" en ingles: se
+#: comprobo contra Power BI Desktop real, donde el arbol UIA publica "Ver".
+#: "Vista" a secas NO existe -"Vista de informe" o "Vista de tabla" son
+#: botones de modo, no la pestaña-, y exigirlo dejaba el camino de respaldo
+#: sin encontrar nada.
+NOMBRE_PESTANA_VISTA = re.compile(r"^(ver|vista|view)$", re.I)
 NOMBRE_VISTA_DE_PAGINA = re.compile(r"vista de p[aá]gina|page view", re.I)
 NOMBRE_AJUSTAR_A_PAGINA = re.compile(r"ajustar a la p[aá]gina|fit to page",
                                      re.I)
@@ -249,20 +273,34 @@ def _caracter(letra: str, arriba: bool = False):
     return entrada
 
 
-def escribir_texto_real(texto: str) -> None:
+#: Cadencia del tecleo por INTENTO: (eventos por tanda, pausa entre tandas).
+#: Dos eventos por caracter, asi que 40 eventos son 20 caracteres. La primera
+#: cadencia es la rapida de siempre; las siguientes van mas despacio porque
+#: el sintoma medido contra Power BI Desktop real fue perder caracteres: se
+#: pidieron 133 y llegaron 26. El cuadro los consume a su ritmo y `SendInput`
+#: no espera a nadie.
+CADENCIAS_TECLEO = ((40, 0.01), (16, 0.05), (8, 0.12))
+
+
+def escribir_texto_real(texto: str, *, tanda: int = 40,
+                        pausa: float = 0.01) -> None:
     """Teclea el texto como lo hace una persona, caracter a caracter.
 
     Se usa `KEYEVENTF_UNICODE` en vez de codigos de tecla: asi el resultado no
     depende de la distribucion del teclado, que es justo lo que rompe un
     automatismo cuando cambia de maquina.
+
+    `tanda` y `pausa` regulan la velocidad. Existen porque teclear tan rapido
+    como permite `SendInput` pierde caracteres en el cuadro de guardado, y la
+    ruta queda a medias.
     """
     eventos: List[Any] = []
     for letra in texto:
         eventos.append(_caracter(letra))
         eventos.append(_caracter(letra, arriba=True))
-    for i in range(0, len(eventos), 40):        # tandas: SendInput tiene tope
-        _enviar_teclas(eventos[i:i + 40])
-        time.sleep(0.01)
+    for i in range(0, len(eventos), tanda):     # tandas: SendInput tiene tope
+        _enviar_teclas(eventos[i:i + tanda])
+        time.sleep(pausa)
 
 
 def seleccionar_todo() -> None:
@@ -293,6 +331,61 @@ def _duenio_de_ventana(hwnd: int) -> int:
     duenio = wintypes.DWORD()
     user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), ctypes.byref(duenio))
     return int(duenio.value)
+
+
+def _propietaria(hwnd: int) -> int:
+    """La ventana que POSEE a esta (un MessageBox la tiene). 0 si ninguna."""
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
+
+    user32 = _user32()
+    user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetWindow.restype = wintypes.HWND
+    return int(user32.GetWindow(wintypes.HWND(hwnd), GW_OWNER) or 0)
+
+
+def _pertenece_al_cuadro(hwnd: int, cuadro_hwnd: int) -> bool:
+    """True si `hwnd` es el cuadro o una ventana que el cuadro posee.
+
+    Es lo que distingue el "¿reemplazar?" que abrio NUESTRO cuadro de
+    guardado de cualquier otro dialogo del mismo proceso: solo sobre el
+    primero se puede pulsar algo, y solo si quien llama lo autorizo.
+    """
+    actual = int(hwnd)
+    for _ in range(5):
+        if actual == int(cuadro_hwnd):
+            return True
+        actual = _propietaria(actual)
+        if not actual:
+            return False
+    return False
+
+
+def _raiz_de(hwnd: int) -> int:
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
+
+    user32 = _user32()
+    user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetAncestor.restype = wintypes.HWND
+    return int(user32.GetAncestor(wintypes.HWND(hwnd), GA_ROOT) or hwnd)
+
+
+def _primer_plano_es_el_cuadro(cuadro_hwnd: int) -> bool:
+    """Si la ventana con el foco es ESTE cuadro (o un hijo suyo).
+
+    Que el primer plano sea del mismo proceso no basta: la ventana principal
+    de Desktop tambien lo es, y teclear ahi mete la ruta en el lienzo.
+    """
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
+
+    user32 = _user32()
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    frente = user32.GetForegroundWindow()
+    if not frente:
+        return False
+    return _raiz_de(int(frente)) == int(cuadro_hwnd)
 
 
 def _primer_plano_es_de(pid: int) -> bool:
@@ -370,6 +463,27 @@ def clic_dinamico(punto, dialogo_hwnd: int, pid_esperado: int) -> Dict[str, Any]
 
 
 # --------------------------------------------------------------------- UIA --
+def _coleccion(buscar) -> List[Any]:
+    """Materializa un `FindAll` tolerando el puntero NULO de UI Automation."""
+    try:
+        encontrados = buscar()
+    except Exception:                                     # noqa: BLE001
+        return []
+    if not encontrados:
+        return []
+    try:
+        total = int(encontrados.Length)
+    except Exception:                                     # noqa: BLE001
+        return []
+    salida = []
+    for i in range(total):
+        try:
+            salida.append(encontrados.GetElement(i))
+        except Exception:                                 # noqa: BLE001
+            break
+    return salida
+
+
 class Uia:
     CLSID = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
 
@@ -386,15 +500,36 @@ class Uia:
         return self.auto.ElementFromHandle(hwnd)
 
     def por_id(self, raiz, automation_id: str, tipo: int):
+        """El control con ese id, o **None** cuando no hay ninguno.
+
+        `FindFirst` no devuelve `None` al no encontrar nada: devuelve un
+        puntero COM NULO, que no es `None` y revienta al usarlo. Costo una
+        exportacion a `.pbit` entera: el dialogo de plantilla no pone
+        AutomationId a sus botones, `por_id` devolvia ese nulo, el `is None`
+        de quien llamaba no lo veia y el `Invoke` moria con
+        `ValueError: NULL COM pointer access`. Se normaliza aqui, una vez.
+        """
         condicion = self.auto.CreateAndCondition(
             self.auto.CreatePropertyCondition(UIA_PROP_AUTOID, automation_id),
             self.auto.CreatePropertyCondition(UIA_PROP_CONTROLTYPE, tipo))
-        return raiz.FindFirst(UIA_SCOPE_DESC, condicion)
+        try:
+            encontrado = raiz.FindFirst(UIA_SCOPE_DESC, condicion)
+        except Exception:                                 # noqa: BLE001
+            return None
+        return encontrado if encontrado else None
 
     def todos_de_tipo(self, raiz, tipo: int) -> List[Any]:
-        condicion = self.auto.CreatePropertyCondition(UIA_PROP_CONTROLTYPE, tipo)
-        encontrados = raiz.FindAll(UIA_SCOPE_DESC, condicion)
-        return [encontrados.GetElement(i) for i in range(encontrados.Length)]
+        """Todos los elementos de ese tipo. Lista vacia si no hay ninguno.
+
+        `FindAll` puede devolver un puntero COM NULO cuando no encuentra
+        nada, y tocarlo revienta con `ValueError: NULL COM pointer access`.
+        Paso contra Power BI Desktop real al buscar el boton del dialogo de
+        plantilla, y tumbo la exportacion despues de haber guardado. "No hay
+        ninguno" es la lectura correcta, no un error.
+        """
+        return _coleccion(lambda: raiz.FindAll(
+            UIA_SCOPE_DESC,
+            self.auto.CreatePropertyCondition(UIA_PROP_CONTROLTYPE, tipo)))
 
     def por_nombre(self, raiz, patron: "re.Pattern[str]",
                    tipos: Optional[List[int]] = None) -> List[Any]:
@@ -420,6 +555,30 @@ class Uia:
             return str(elemento.CurrentName or "")
         except Exception:                                 # noqa: BLE001
             return ""
+
+    def textos(self, raiz, maximo: int = 400) -> str:
+        """El texto estatico de un dialogo (para clasificarlo), acotado."""
+        try:
+            partes = [self.nombre(e) for e in self.todos_de_tipo(raiz, UIA_TIPO_TEXT)]
+        except Exception:                                 # noqa: BLE001
+            return ""
+        return " ".join(p for p in partes if p)[:maximo]
+
+    def foco_dentro_de(self, elemento) -> Optional[bool]:
+        """Si el elemento con foco es `elemento` o cuelga de el. None si no se sabe."""
+        try:
+            enfocado = self.auto.GetFocusedElement()
+            caminante = self.auto.ControlViewWalker
+            actual = enfocado
+            for _ in range(8):
+                if actual is None:
+                    return False
+                if self.auto.CompareElements(actual, elemento):
+                    return True
+                actual = caminante.GetParentElement(actual)
+            return False
+        except Exception:                                 # noqa: BLE001
+            return None
 
     def valor(self, elemento) -> Optional[str]:
         try:
@@ -473,22 +632,39 @@ class Uia:
             return None
 
     def items(self, combo) -> List[Any]:
-        condicion = self.auto.CreatePropertyCondition(
-            UIA_PROP_CONTROLTYPE, UIA_TIPO_LISTITEM)
-        encontrados = combo.FindAll(UIA_SCOPE_DESC, condicion)
-        return [encontrados.GetElement(i) for i in range(encontrados.Length)]
+        return _coleccion(lambda: combo.FindAll(
+            UIA_SCOPE_DESC, self.auto.CreatePropertyCondition(
+                UIA_PROP_CONTROLTYPE, UIA_TIPO_LISTITEM)))
 
     def invocar(self, elemento) -> str:
-        """Invoke -> DoDefaultAction. Devuelve por cual salio."""
+        """Invoke -> DoDefaultAction. Devuelve por cual salio.
+
+        Los patrones tambien llegan como puntero NULO cuando el elemento no
+        los soporta, asi que se comprueban antes de usarlos en vez de
+        confiar en que la excepcion sea de un tipo concreto.
+        """
+        patron = None
         try:
-            elemento.GetCurrentPattern(UIA_PAT_INVOCAR).QueryInterface(
-                self.modulo.IUIAutomationInvokePattern).Invoke()
-            return "invoke"
+            patron = elemento.GetCurrentPattern(UIA_PAT_INVOCAR)
         except Exception:                                 # noqa: BLE001
-            elemento.GetCurrentPattern(UIA_PAT_LEGACY).QueryInterface(
-                self.modulo.IUIAutomationLegacyIAccessiblePattern
-            ).DoDefaultAction()
-            return "legacy_default_action"
+            patron = None
+        if patron:
+            try:
+                patron.QueryInterface(
+                    self.modulo.IUIAutomationInvokePattern).Invoke()
+                return "invoke"
+            except Exception:                             # noqa: BLE001
+                pass
+        legado = elemento.GetCurrentPattern(UIA_PAT_LEGACY)
+        if not legado:
+            raise HelperError(
+                "interfaz", "El control no admite ninguna forma de activarse "
+                "(ni Invoke ni la accion por defecto).",
+                reason="element_not_invokable")
+        legado.QueryInterface(
+            self.modulo.IUIAutomationLegacyIAccessiblePattern
+        ).DoDefaultAction()
+        return "legacy_default_action"
 
     def seleccionar(self, elemento) -> str:
         """SelectionItem.Select -> Invoke -> DoDefaultAction, en ese orden."""
@@ -591,8 +767,12 @@ def ventanas_de(pid: int) -> List[Dict[str, Any]]:
         user32.GetClassNameW(hwnd, clase, 256)
         titulo = ctypes.create_unicode_buffer(512)
         user32.GetWindowTextW(hwnd, titulo, 512)
+        rect = wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
         salida.append({"hwnd": int(hwnd), "class": clase.value,
-                       "title": titulo.value})
+                       "title": titulo.value,
+                       "width": int(rect.right - rect.left),
+                       "height": int(rect.bottom - rect.top)})
         return True
 
     user32.EnumWindows(visita, 0)
@@ -698,6 +878,29 @@ def _hasta_que(condicion, *, plazo: float, cada: float = 0.05):
         time.sleep(cada)
 
 
+def _error_com_como_helper(exc: BaseException, fase: str) -> Optional[HelperError]:
+    """Traduce un `COMError` a HelperError; los transitorios se reintentan.
+
+    Solo los HRESULT de la lista se marcan transitorios. Un COMError distinto
+    sigue siendo HelperError -para que el cuadro se limpie y el padre reciba
+    fase y detalle- pero NO se reintenta. Cualquier otra excepcion no se
+    toca: un fallo de programacion no se disfraza de carrera.
+    """
+    hresult = getattr(exc, "hresult", None)
+    if hresult is None or type(exc).__name__ != "COMError":
+        return None
+    codigo = int(hresult) & 0xFFFFFFFF
+    transitorio = codigo in HRESULT_TRANSITORIOS
+    return HelperError(
+        fase,
+        "La interfaz cambio debajo de la automatizacion (elemento no "
+        "disponible)." if transitorio else
+        f"UI Automation devolvio un error COM (0x{codigo:08X}).",
+        transitoria=transitorio,
+        reason="ui_element_gone" if transitorio else "ui_com_error",
+        hresult=f"0x{codigo:08X}", cause=str(exc)[:160])
+
+
 def _con_intentos(fase: str, intento: Callable[[int], Dict[str, Any]], *,
                   intentos: int = INTENTOS_POR_FASE,
                   plazo: float = PLAZO_POR_FASE) -> Dict[str, Any]:
@@ -715,7 +918,15 @@ def _con_intentos(fase: str, intento: Callable[[int], Dict[str, Any]], *,
     for numero in range(1, max(1, intentos) + 1):
         arranque = time.monotonic()
         try:
-            resultado = intento(numero)
+            try:
+                resultado = intento(numero)
+            except HelperError:
+                raise
+            except Exception as exc:                      # noqa: BLE001
+                traducido = _error_com_como_helper(exc, fase)
+                if traducido is None:
+                    raise
+                raise traducido from exc
         except HelperError as exc:
             registro.append({
                 "attempt": numero, "ok": False, "transient": exc.transitoria,
@@ -837,6 +1048,97 @@ def _leer_campo(uia: Uia, campo) -> str:
     return (uia.valor(campo) or "").strip('"')
 
 
+#: Identificador del `Edit` del nombre dentro del ComboBox del cuadro comun.
+IDC_NOMBRE_EDIT = 0x03E9
+
+
+def _edit_del_nombre(dialogo_hwnd: int) -> Optional[int]:
+    """El `Edit` id 1001 que cuelga de un `ComboBox`: el campo de verdad.
+
+    El identificador solo no basta -la barra de direcciones tiene otro `Edit`
+    dentro de otro `ComboBox`-, y la pareja (id 1001 + padre ComboBox) es
+    unica en el cuadro.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = _user32()
+    # `_user32()` devuelve una WinDLL nueva en cada llamada, asi que los
+    # tipos se declaran aqui: sin ellos ctypes adivina, y un HWND de 64 bits
+    # no cabe en el `int` que supone por defecto.
+    user32.EnumChildWindows.argtypes = [
+        wintypes.HWND, ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND,
+                                          wintypes.LPARAM), wintypes.LPARAM]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR,
+                                     ctypes.c_int]
+    user32.GetDlgCtrlID.argtypes = [wintypes.HWND]
+    user32.GetDlgCtrlID.restype = ctypes.c_int
+    user32.GetParent.argtypes = [wintypes.HWND]
+    user32.GetParent.restype = wintypes.HWND
+    callback = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    hijos: List[Dict[str, Any]] = []
+
+    @callback
+    def visita(handle, _lparam):
+        clase = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(handle, clase, 256)
+        hijos.append({"hwnd": int(handle), "class": clase.value,
+                      "id": int(user32.GetDlgCtrlID(handle)),
+                      "parent": int(user32.GetParent(handle) or 0)})
+        return True
+
+    user32.EnumChildWindows(wintypes.HWND(dialogo_hwnd), visita, 0)
+    combos = {c["hwnd"] for c in hijos if c["class"] == "ComboBox"}
+    for control in hijos:
+        if (control["class"] == "Edit" and control["id"] == IDC_NOMBRE_EDIT
+                and control["parent"] in combos):
+            return control["hwnd"]
+    return None
+
+
+def _texto_win32(hwnd: int) -> str:
+    """`WM_GETTEXT` sobre un control, con los tipos DECLARADOS.
+
+    Sin `argtypes`, ctypes convierte el puntero del buffer con su suposicion
+    por defecto y en 64 bits revienta con `int too long to convert`. Se vio
+    en la primera prueba contra Desktop real.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = _user32()
+    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                    wintypes.WPARAM, wintypes.LPARAM]
+    user32.SendMessageW.restype = wintypes.LPARAM
+    largo = int(user32.SendMessageW(wintypes.HWND(hwnd), 0x000E, 0, 0))
+    if largo <= 0:
+        return ""
+    buffer = ctypes.create_unicode_buffer(largo + 1)
+    user32.SendMessageW(wintypes.HWND(hwnd), 0x000D, largo + 1,
+                        ctypes.cast(buffer, ctypes.c_void_p).value)
+    return buffer.value
+
+
+def _nombre_comprometido(dialogo_hwnd: int, ruta: str) -> Optional[bool]:
+    """Si el `Edit` del cuadro CONTIENE la ruta, leido por Win32.
+
+    Es la lectura mas cercana al cuadro que se puede hacer desde fuera, pero
+    **no demuestra por si sola que el cuadro vaya a guardar ahi**: se midio
+    contra Power BI Desktop real que `ValuePattern.SetValue` deja el texto en
+    el `Edit` -UIA y `WM_GETTEXT` devolvian los 133 caracteres pedidos- y aun
+    asi el guardado salio con el nombre y la carpeta por defecto. El cuadro
+    moderno lleva su propio estado y solo lo actualiza con las notificaciones
+    que genera la escritura real.
+
+    Por eso esta lectura solo se usa DESPUES de teclear, que es lo que si
+    produce esas notificaciones. `None` = no se pudo leer el control.
+    """
+    edit = _edit_del_nombre(dialogo_hwnd)
+    if edit is None:
+        return None
+    return _texto_win32(edit).strip('"') == ruta
+
+
 def _colapsar(uia: Uia, combo) -> None:
     """Deja la lista cerrada antes de reintentar, si el cliente lo permite."""
     colapsar = getattr(uia, "colapsar", None)
@@ -846,54 +1148,76 @@ def _colapsar(uia: Uia, combo) -> None:
 
 def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
                    pid: Optional[int] = None) -> Dict[str, Any]:
-    """Ruta ABSOLUTA en el campo del nombre, y releida para comprobar.
+    """Ruta ABSOLUTA en el campo del nombre, TECLEADA y releida.
 
-    Primero `ValuePattern.SetValue`, que no pasa por el teclado ni depende del
-    foco. Solo si el control no lo admite -o lo que quedo no es la ruta- se
-    teclea, y para teclear se exige antes que el foco este en ESTE proceso:
-    las teclas van a quien lo tenga, y con varias ventanas abiertas eso
-    cambia de manos a mitad de la ruta. Un campo a medias es transitorio y se
-    reintenta localizando el control de nuevo.
+    Por que solo se teclea
+    ----------------------
+    `ValuePattern.SetValue` parecia la via limpia -no depende del foco ni de
+    la cola de teclado- y **no sirve**: contra Power BI Desktop real deja el
+    texto en el `Edit` (UIA y `WM_GETTEXT` devolvieron los 133 caracteres
+    pedidos) y el cuadro guarda igualmente con SU nombre y SU carpeta por
+    defecto. Se midio: se pidio la ruta larga de otra carpeta y
+    aparecio `Demo.pbix` junto al proyecto. El cuadro moderno lleva su propio
+    estado y solo lo actualiza con las notificaciones que produce la
+    escritura real. Es el mismo fallo que `CB_SETCURSEL` con el tipo, y por
+    eso se resuelve igual: no se usa.
+
+    Lo que si falla del tecleo es la VELOCIDAD. Teclear tan rapido como
+    permite `SendInput` pierde caracteres -133 pedidos, 26 recibidos, medido
+    en vivo-, que es el `expected_len=182, actual_len=30` del informe. Cada
+    intento teclea mas despacio que el anterior.
+
+    Y no se teclea a ciegas: hace falta el foco en ESTE cuadro -no en otra
+    ventana del mismo proceso- y, si UIA lo expone, en ESTE campo.
     """
 
-    def intento(_numero: int) -> Dict[str, Any]:
+    def intento(numero: int) -> Dict[str, Any]:
         campo = _localizar(uia, dialogo_hwnd, AUTOMATION_ID_NOMBRE,
                            UIA_TIPO_COMBOBOX, fase="nombre",
                            que="el campo del nombre")
-        metodos: List[str] = []
+        metodos: List[str] = ["keyboard"]
 
-        fijar = getattr(uia, "fijar_valor", None)
-        if fijar is not None and fijar(campo, ruta):
-            metodos.append("value_pattern")
-            escrito = _hasta_que(
-                lambda: (True if _leer_campo(uia, campo) == ruta else None),
-                plazo=min(2.0, ESPERA_INTERFAZ))
-            if escrito:
-                return {"filename_verified": True, "length": len(ruta),
-                        "method": "value_pattern", "methods_tried": metodos}
-
-        # Respaldo: teclear. Solo con el foco en el proceso verificado.
-        if pid is not None and not _primer_plano_es_de(pid):
-            if not traer_al_frente(dialogo_hwnd, pid):
+        if pid is not None and not _primer_plano_es_el_cuadro(dialogo_hwnd):
+            traer_al_frente(dialogo_hwnd, pid)
+            if not _primer_plano_es_el_cuadro(dialogo_hwnd):
                 raise HelperError(
-                    "nombre", "El cuadro de guardado perdio el foco y no se "
-                    "pudo recuperar; no se teclea en la ventana de otro "
-                    "proceso.", transitoria=True, reason="focus_lost",
-                    methods_tried=metodos + ["keyboard"])
-        metodos.append("keyboard")
+                    "nombre", "El cuadro de guardado no tiene el foco y no se "
+                    "pudo recuperar; no se teclea en otra ventana, ni siquiera "
+                    "en la principal de Desktop.", transitoria=True,
+                    reason="focus_lost", methods_tried=metodos)
         uia.enfocar(campo)
         time.sleep(0.3)
+        foco_en_campo = getattr(uia, "foco_dentro_de", lambda e: None)(campo)
+        if foco_en_campo is False:
+            raise HelperError(
+                "nombre", "El foco no quedo en el campo del nombre; no se "
+                "teclea la ruta en otro control.", transitoria=True,
+                reason="field_focus_lost", methods_tried=metodos)
+        tanda, pausa = CADENCIAS_TECLEO[min(numero - 1,
+                                            len(CADENCIAS_TECLEO) - 1)]
         seleccionar_todo()
-        escribir_texto_real(ruta)
+        escribir_texto_real(ruta, tanda=tanda, pausa=pausa)
 
         # Las teclas sinteticas llegan a la cola del sistema al instante, pero
         # la aplicacion las consume a su ritmo. Se espera a que el campo
-        # CONTENGA la ruta, en vez de a que pase medio segundo.
-        escrito = _hasta_que(
-            lambda: (True if _leer_campo(uia, campo) == ruta else None),
-            plazo=ESPERA_INTERFAZ)
+        # CONTENGA la ruta, en vez de a que pase medio segundo. La lectura
+        # que manda es la de Win32 -lo que el cuadro usara al confirmar-; la
+        # de UIA solo se acepta si el `Edit` no se pudo localizar.
+        fuente = {"quien": "uia"}
+
+        def _quedo() -> Optional[bool]:
+            por_win32 = _nombre_comprometido(dialogo_hwnd, ruta)
+            if por_win32 is not None:
+                fuente["quien"] = "win32"
+                return True if por_win32 else None
+            fuente["quien"] = "uia"
+            return True if _leer_campo(uia, campo) == ruta else None
+
+        escrito = _hasta_que(_quedo, plazo=ESPERA_INTERFAZ)
         if escrito is None:
-            parcial = _leer_campo(uia, campo)
+            edit = _edit_del_nombre(dialogo_hwnd)
+            parcial = (_texto_win32(edit).strip('"') if edit
+                       else _leer_campo(uia, campo))
             a_medias = bool(parcial) and ruta.startswith(parcial) \
                 and len(parcial) < len(ruta)
             raise HelperError(
@@ -901,9 +1225,11 @@ def _escribir_ruta(uia: Uia, dialogo_hwnd: int, ruta: str,
                 transitoria=True,
                 reason="partial_write" if a_medias else "value_mismatch",
                 expected_len=len(ruta), actual_len=len(parcial),
+                verified_by=fuente["quien"], typing_batch=tanda,
                 waited=ESPERA_INTERFAZ, methods_tried=metodos)
         return {"filename_verified": True, "length": len(ruta),
-                "method": "keyboard", "methods_tried": metodos}
+                "method": "keyboard", "verified_by": fuente["quien"],
+                "typing_batch": tanda, "methods_tried": metodos}
 
     return _con_intentos("nombre", intento)
 
@@ -993,27 +1319,82 @@ def _estado_del_guardado(hwnd: int, ruta: str, desde: float) -> Dict[str, Any]:
             "file_appeared": _archivo_aparecio(ruta, desde)}
 
 
+def _aceptar_reemplazo(uia: Uia, modal: Dict[str, Any]) -> Dict[str, Any]:
+    """Pulsa 'Si' en el "¿reemplazar?" que abrio NUESTRO cuadro.
+
+    Solo se llama con `overwrite=true` del padre -que ya respaldo el destino-
+    y con un modal clasificado como confirmacion de reemplazo y poseido por
+    el cuadro de esta operacion. Se busca el boton por su id (IDYES) o por su
+    nombre; nunca se hace un clic por coordenadas sobre un modal.
+    """
+    elemento = uia.desde_hwnd(modal["hwnd"])
+    boton = uia.por_id(elemento, AUTOMATION_ID_SI, UIA_TIPO_BUTTON)
+    if boton is None:
+        candidatos = uia.por_nombre(elemento, NOMBRE_BOTON_SI, [UIA_TIPO_BUTTON])
+        boton = candidatos[0] if candidatos else None
+    if boton is None:
+        return {"accepted": False, "hwnd": modal["hwnd"],
+                "note": "el cuadro de reemplazo no expone su boton Si"}
+    via = uia.invocar(boton)
+    return {"accepted": True, "hwnd": modal["hwnd"], "via": via,
+            "modal_closed": _esperar_cierre(modal["hwnd"], 5.0)}
+
+
 def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
-                                ruta: str, *, plazo: float,
-                                desde: float) -> Dict[str, Any]:
+                                ruta: str, *, plazo: float, desde: float,
+                                overwrite: bool = False,
+                                excluir: Optional[List[int]] = None
+                                ) -> Dict[str, Any]:
     """Pulsa Guardar y espera el cierre; repite SOLO si nada ocurrio.
 
     Una confirmacion de resultado incierto no se repite a ciegas: antes de
-    volver a pulsar se comprueba si el cuadro ya se cerro o si el archivo ya
-    aparecio. Pulsar Guardar dos veces sobre un cuadro que ya esta guardando
-    es lo que produce el dialogo de "reemplazar" que nadie pidio.
+    volver a pulsar se comprueba si el cuadro ya se cerro, si el archivo ya
+    aparecio y si hay un DIALOGO abierto. Con un dialogo abierto no se pulsa
+    nada mas: es la explicacion, y pulsar Guardar otra vez -con el clic real
+    de respaldo- podia caer sobre ese dialogo y confirmar lo que nadie pidio.
+
+    La unica excepcion es el "¿reemplazar?" del propio cuadro cuando el padre
+    llamo con `overwrite=true`: ese si se acepta, y se deja constancia.
     """
     limite = time.monotonic() + plazo
+    # El cuadro propio va PRIMERO: es contra el que `_modales` decide que
+    # dialogos le pertenecen.
+    fuera = [dialogo_hwnd] + [h for h in (excluir or []) if h != dialogo_hwnd]
     intentos: List[Dict[str, Any]] = []
     confirmacion: Dict[str, Any] = {}
     ya_ocurrio: Optional[Dict[str, Any]] = None
     evidencia: Optional[Dict[str, Any]] = None
+    bloqueo: Optional[List[Dict[str, Any]]] = None
+    reemplazo: Optional[Dict[str, Any]] = None
+
+    def _estado_o_modales(numero: int) -> Optional[str]:
+        """'done' si ya paso algo, 'blocked' si hay un dialogo, None si nada."""
+        nonlocal evidencia, bloqueo, reemplazo
+        estado = _estado_del_guardado(dialogo_hwnd, ruta, desde)
+        if estado["dialog_closed"] or estado["file_appeared"]:
+            evidencia = {"attempt": numero, **estado}
+            return "done"
+        modales = _modales(uia, pid, fuera)
+        if not modales:
+            return None
+        propios = [m for m in modales
+                   if m.get("owned_by_dialog") and m.get("kind") == "confirm_replace"]
+        if overwrite and len(propios) == 1 and reemplazo is None:
+            reemplazo = _aceptar_reemplazo(uia, propios[0])
+            if reemplazo.get("accepted"):
+                return None                     # se sigue esperando el cierre
+        bloqueo = modales
+        return "blocked"
+
     for numero in range(1, INTENTOS_POR_FASE + 1):
         if numero > 1:
-            # Solo se REPITE si consta que la pulsacion anterior no hizo nada.
-            estado = _estado_del_guardado(dialogo_hwnd, ruta, desde)
-            if estado["dialog_closed"] or estado["file_appeared"]:
-                ya_ocurrio = {"attempt": numero, **estado}
+            # Solo se REPITE si consta que la pulsacion anterior no hizo nada
+            # y no hay ningun dialogo en medio.
+            veredicto = _estado_o_modales(numero)
+            if veredicto == "done":
+                ya_ocurrio = evidencia
+                break
+            if veredicto == "blocked":
                 break
         confirmacion = _confirmar(uia, dialogo_hwnd, pid)
         intentos.append({"attempt": numero, **confirmacion})
@@ -1026,9 +1407,8 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
             evidencia = {"attempt": numero, "dialog_closed": True,
                          "file_appeared": _archivo_aparecio(ruta, desde)}
             break
-        estado = _estado_del_guardado(dialogo_hwnd, ruta, desde)
-        if estado["dialog_closed"] or estado["file_appeared"]:
-            evidencia = {"attempt": numero, **estado}
+        veredicto = _estado_o_modales(numero)
+        if veredicto == "done" or veredicto == "blocked":
             break
     cerrado = _esperar_cierre(dialogo_hwnd, max(0.0, limite - time.monotonic()))
     return {
@@ -1037,6 +1417,8 @@ def _confirmar_con_verificacion(uia: Uia, dialogo_hwnd: int, pid: int,
         "attempts_total": len(intentos),
         "commit_evidence": evidencia,
         "already_committed": ya_ocurrio,
+        "blocking_modals": bloqueo,
+        "overwrite_confirmed": reemplazo,
         "dialog_closed": cerrado,
     }
 
@@ -1075,18 +1457,46 @@ def _cancelar_cuadro(uia: Uia, dialogo_hwnd: int, pid: int) -> Dict[str, Any]:
 
 
 def _modales(uia: Uia, pid: int, excluir: List[int]) -> List[Dict[str, Any]]:
+    """Dialogos abiertos del proceso, con quien los posee y que dicen.
+
+    Se miran TODAS las ventanas visibles con titulo del proceso, no solo las
+    de clase `#32770`: los dialogos propios de Power BI Desktop son WPF y no
+    llevan esa clase. Quedan fuera las ventanas de `excluir` -la principal y
+    el cuadro de guardado- y cualquier otro cuadro de guardado.
+    """
+    from horizun_pbi_mcp.powerbi.desktop_ui import clasificar_modal
+
     fuera = set(excluir)
+    # Por convencion, el PRIMER excluido es el cuadro de guardado de esta
+    # operacion: solo contra el se decide `owned_by_dialog`.
+    cuadro = excluir[0] if excluir else None
     salida = []
     for ventana in ventanas_de(pid):
-        if ventana["class"].casefold() != CLASE_DIALOGO.casefold():
+        if ventana["hwnd"] in fuera or not (ventana.get("title") or "").strip():
             continue
-        if ventana["hwnd"] in fuera:
+        es_comun = ventana["class"].casefold() == CLASE_DIALOGO.casefold()
+        # Un dialogo WPF de Desktop (plantilla, credenciales) es una ventana
+        # POSEIDA por la principal; la principal no tiene propietaria y no
+        # es un modal por mucho que tenga titulo.
+        if not es_comun and not _propietaria(ventana["hwnd"]):
             continue
-        elemento = uia.desde_hwnd(ventana["hwnd"])
-        if uia.por_id(elemento, AUTOMATION_ID_TIPO, UIA_TIPO_COMBOBOX):
-            continue                        # es otro cuadro de guardado
+        try:
+            elemento = uia.desde_hwnd(ventana["hwnd"])
+            if uia.por_id(elemento, AUTOMATION_ID_TIPO, UIA_TIPO_COMBOBOX):
+                continue                    # es otro cuadro de guardado
+            texto = uia.textos(elemento) if hasattr(uia, "textos") else ""
+        except Exception:                                 # noqa: BLE001
+            texto = ""
+        clase, _accion = clasificar_modal(ventana["title"], texto)
         salida.append({"hwnd": ventana["hwnd"],
-                       "title": _redactar(ventana["title"], 120)})
+                       "title": _redactar(ventana["title"], 120),
+                       "text": _redactar(texto, 200),
+                       "class": ventana["class"],
+                       "kind": clase,
+                       # Solo cuenta la cadena hasta EL cuadro de guardado de
+                       # esta operacion; la ventana principal posee de todo.
+                       "owned_by_dialog": bool(cuadro) and _pertenece_al_cuadro(
+                           ventana["hwnd"], int(cuadro))})
     return salida
 
 
@@ -1094,10 +1504,11 @@ def _atender_dialogo_de_plantilla(uia: Uia, pid: int, excluir: List[int],
                                   plazo: float) -> Dict[str, Any]:
     """Al guardar como `.pbit`, Desktop pide la descripcion de la plantilla.
 
-    Es un cuadro propio de Power BI -no del sistema- con un texto opcional y
-    un boton Aceptar. Se reconoce por su titulo, se pulsa Aceptar sin escribir
-    descripcion, y se comprueba que se cierre. Cualquier OTRO dialogo que
-    aparezca no se toca: se devuelve como modal para que lo decida el padre.
+    Es un cuadro propio de Power BI -WPF, no un dialogo comun del sistema-
+    con un texto opcional y un boton Aceptar. Se reconoce por su titulo en
+    cualquier clase de ventana, se pulsa Aceptar sin escribir descripcion, y
+    se comprueba que se cierre. Cualquier OTRO dialogo que aparezca no se
+    toca: se devuelve como modal para que lo decida el padre.
     """
     salida: Dict[str, Any] = {"seen": False, "accepted": False,
                               "dialog_closed": None, "waited": 0.0}
@@ -1105,20 +1516,29 @@ def _atender_dialogo_de_plantilla(uia: Uia, pid: int, excluir: List[int],
     limite = inicio + plazo
     while time.monotonic() < limite:
         for ventana in ventanas_de(pid):
-            if ventana["class"].casefold() != CLASE_DIALOGO.casefold():
-                continue
+            # Es un dialogo PROPIO de Desktop (WPF), no un cuadro comun: se
+            # reconoce por el titulo, sea cual sea su clase de ventana.
             if ventana["hwnd"] in excluir:
                 continue
             if not NOMBRE_DIALOGO_PLANTILLA.search(ventana["title"] or ""):
                 continue
             salida["seen"] = True
             salida["title"] = _redactar(ventana["title"], 80)
-            elemento = uia.desde_hwnd(ventana["hwnd"])
-            boton = uia.por_id(elemento, AUTOMATION_ID_GUARDAR, UIA_TIPO_BUTTON)
-            if boton is None:
-                candidatos = uia.por_nombre(elemento, NOMBRE_BOTON_ACEPTAR,
-                                            [UIA_TIPO_BUTTON])
-                boton = candidatos[0] if candidatos else None
+            salida["class"] = ventana["class"]
+            try:
+                elemento = uia.desde_hwnd(ventana["hwnd"])
+                boton = uia.por_id(elemento, AUTOMATION_ID_GUARDAR,
+                                   UIA_TIPO_BUTTON)
+                if boton is None:
+                    candidatos = uia.por_nombre(elemento, NOMBRE_BOTON_ACEPTAR,
+                                                [UIA_TIPO_BUTTON])
+                    boton = candidatos[0] if candidatos else None
+            except Exception as exc:                      # noqa: BLE001
+                # La ventana pudo cerrarse entre enumerarla y abrirla.
+                salida["note"] = f"no se pudo inspeccionar: {type(exc).__name__}"
+                salida["dialog_closed"] = not _cuadro_sigue_abierto(ventana["hwnd"])
+                salida["waited"] = round(time.monotonic() - inicio, 1)
+                return salida
             if boton is None:
                 salida["note"] = "el dialogo de plantilla no expone Aceptar"
                 salida["waited"] = round(time.monotonic() - inicio, 1)
@@ -1160,16 +1580,21 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
     cuadro = _esperar_cuadro(uia, pid, float(peticion.get("dialog_timeout", 60)))
     pasos.append({"phase": "cuadro", "hwnd": cuadro["hwnd"]})
 
+    fuera = [cuadro["hwnd"], principal["hwnd"]]
+    fase_actual = "tipo"
     try:
         tipo = _elegir_tipo(uia, cuadro["hwnd"], extension)
         pasos.append({"phase": "tipo", **tipo})
 
+        fase_actual = "nombre"
         nombre = _escribir_ruta(uia, cuadro["hwnd"], ruta, pid)
         pasos.append({"phase": "nombre", **nombre})
 
+        fase_actual = "guardar"
         confirmacion = _confirmar_con_verificacion(
             uia, cuadro["hwnd"], pid, ruta,
-            plazo=float(peticion.get("save_timeout", 120)), desde=desde)
+            plazo=float(peticion.get("save_timeout", 120)), desde=desde,
+            overwrite=bool(peticion.get("overwrite")), excluir=fuera)
         pasos.append({"phase": "guardar", **confirmacion})
     except HelperError as exc:
         # El cuadro que abrio ESTA operacion no se deja colgado: se intenta
@@ -1177,15 +1602,37 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
         exc.detalles["cleanup"] = _cancelar_cuadro(uia, cuadro["hwnd"], pid)
         exc.detalles["steps"] = pasos
         raise
+    except Exception as exc:
+        # Un fallo no previsto tampoco deja el cuadro abierto. No se disfraza
+        # de nada: viaja con su tipo y su fase, y con la limpieza hecha.
+        raise HelperError(
+            fase_actual, f"{type(exc).__name__}: {exc}", reason="unexpected",
+            cleanup=_cancelar_cuadro(uia, cuadro["hwnd"], pid),
+            steps=pasos) from exc
 
     cerrado = confirmacion["dialog_closed"]
     plantilla = None
-    if cerrado and extension.casefold() == ".pbit":
-        plantilla = _atender_dialogo_de_plantilla(
-            uia, pid, [cuadro["hwnd"]],
-            plazo=min(30.0, float(peticion.get("save_timeout", 120))))
-        pasos.append({"phase": "plantilla", **plantilla})
-    modales = _modales(uia, pid, [cuadro["hwnd"]])
+    try:
+        fase_actual = "plantilla"
+        if cerrado and extension.casefold() == ".pbit":
+            plantilla = _atender_dialogo_de_plantilla(
+                uia, pid, fuera,
+                plazo=min(30.0, float(peticion.get("save_timeout", 120))))
+            pasos.append({"phase": "plantilla", **plantilla})
+        fase_actual = "cierre"
+        modales = list(confirmacion.get("blocking_modals") or []) or \
+            _modales(uia, pid, fuera)
+    except HelperError as exc:
+        exc.detalles["steps"] = pasos
+        raise
+    except Exception as exc:
+        # Lo de despues del guardado tambien cuenta: un fallo aqui dejaba la
+        # exportacion sin fase y sin evidencia -paso con un puntero COM nulo
+        # al mirar el dialogo de plantilla, con el archivo ya escrito-.
+        raise HelperError(
+            fase_actual, f"{type(exc).__name__}: {exc}",
+            reason="unexpected_after_save", steps=pasos,
+            dialog_closed=cerrado) from exc
     pasos.append({"phase": "cierre", "dialog_closed": cerrado,
                   "modals": modales})
 
@@ -1197,8 +1644,10 @@ def guardar_como(peticion: Dict[str, Any]) -> Dict[str, Any]:
         "expand_state_after": tipo["expand_state_after"],
         "filename_verified": nombre["filename_verified"],
         "filename_method": nombre.get("method"),
+        "filename_verified_by": nombre.get("verified_by"),
         "dialog_closed": cerrado,
         "modals": modales,
+        "overwrite_confirmed": confirmacion.get("overwrite_confirmed"),
         "template_dialog": plantilla,
         "steps": pasos,
     }
@@ -1230,15 +1679,29 @@ def seleccionar_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
         raiz = uia.desde_hwnd(principal["hwnd"])
         pestanas = uia.todos_de_tipo(raiz, UIA_TIPO_TABITEM)
         nombres = [uia.nombre(p) for p in pestanas]
-        objetivo = next((p for p in pestanas
-                         if uia.nombre(p).strip().casefold() == nombre.casefold()),
-                        None)
-        if objetivo is None:
+        # Las pestañas de PAGINA y las de la CINTA son el mismo tipo de
+        # control: contra Desktop real conviven "Inicio", "Ver", "Ayuda" y
+        # "Page 1" en la misma lista. Una pagina llamada como una pestaña de
+        # la cinta produce dos candidatas, y ahi no se elige: seleccionar la
+        # de la cinta daria `IsSelected` verdadero y una captura de otra
+        # pagina con aspecto de exito.
+        coincidencias = [p for p in pestanas
+                         if uia.nombre(p).strip().casefold() == nombre.casefold()]
+        if not coincidencias:
             raise HelperError(
                 "pagina", "No hay ninguna pestaña con ese nombre en la "
                 "ventana de Power BI Desktop.", transitoria=True,
                 reason="page_tab_not_found", page=nombre,
                 tabs_seen=[n for n in nombres if n][:40])
+        if len(coincidencias) > 1:
+            raise HelperError(
+                "pagina", f"Hay {len(coincidencias)} pestañas llamadas "
+                f"'{nombre}' en la ventana -la cinta usa el mismo tipo de "
+                "control que las paginas- y no se elige ninguna.",
+                reason="page_tab_ambiguous", page=nombre,
+                matches=len(coincidencias),
+                tabs_seen=[n for n in nombres if n][:40])
+        objetivo = coincidencias[0]
         ya = uia.esta_seleccionado(objetivo)
         via = "already_selected" if ya else uia.seleccionar(objetivo)
         estado = _hasta_que(

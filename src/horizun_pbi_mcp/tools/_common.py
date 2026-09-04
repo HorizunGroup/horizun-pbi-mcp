@@ -195,6 +195,9 @@ def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
     op = operation or _infer_operation()
     rid = request_id or envelope.new_request_id()
     timer = envelope.Timer()
+    # Una nota que quedara de una llamada anterior no es evidencia de ESTA:
+    # se descarta antes de ejecutar nada.
+    _nota_de_recuperacion()
 
     with timer:
         try:
@@ -229,6 +232,9 @@ def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
             salida = envelope.failure(
                 "unexpected", str(exc), None, operation=op, request_id=rid,
                 duration_ms=timer.ms, exc_type=type(exc).__name__)
+            recuperacion = _nota_de_recuperacion()
+            if recuperacion:
+                salida["session_recovery"] = recuperacion
             telemetry.log_operation(
                 log, operation=op, request_id=rid, duration_ms=timer.ms,
                 status=salida["status"], ok=False, error_code="unexpected")

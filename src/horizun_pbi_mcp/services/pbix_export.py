@@ -313,12 +313,18 @@ def _refrescar(session: Session, modo: str,
 
 
 # ------------------------------------------------------------- verificacion --
-def _inspeccionar_plantilla(destino: Path) -> Dict[str, Any]:
-    """Estructura de un `.pbit`: informe y definicion, y SIN modelo de datos.
+def _inspeccionar_plantilla(destino: Path, *,
+                            espera_modelo: Optional[bool] = None
+                            ) -> Dict[str, Any]:
+    """Estructura de un `.pbit`: informe, definicion del modelo, y SIN datos.
 
-    Una plantilla es el mismo contenedor que un `.pbix` pero sin `DataModel`
-    ni `SecurityBindings`. No se fabrica quitandolos de un zip: se lee lo que
-    Desktop escribio y se comprueba que tenga la forma de plantilla. Y no se
+    Una plantilla es el mismo contenedor que un `.pbix` pero con la
+    definicion del modelo (`DataModelSchema`) en lugar del modelo cargado
+    (`DataModel`). No se fabrica quitandolos de un zip: se lee lo que Desktop
+    escribio y se comprueba que tenga esa forma. `espera_modelo` dice si el
+    ORIGEN tenia modelo: entonces la plantilla tiene que llevar su
+    definicion, y si no la lleva no es la plantilla de ese proyecto. Un
+    informe sin modelo propio no la lleva, y eso no es un fallo. Nunca se
     afirma que lleve datos, porque una plantilla nunca los lleva.
     """
     import zipfile
@@ -362,12 +368,21 @@ def _inspeccionar_plantilla(destino: Path) -> Dict[str, Any]:
             ".pbit; comprueba el tipo elegido en el cuadro.",
             details={"output_pbix": str(destino), "summary": resumen,
                      "reason": "template_has_data_model"})
+    if espera_modelo and not tiene_esquema:
+        raise PbixExportNotVerified(
+            "El proyecto tiene modelo semantico y la plantilla guardada no "
+            "lleva su definicion (DataModelSchema): no es la plantilla de "
+            "este proyecto.",
+            details={"output_pbix": str(destino), "summary": resumen,
+                     "reason": "template_without_model_schema"})
+    resumen["model_schema_expected"] = espera_modelo
     return resumen
 
 
 def verificar_salida(destino: Path, *, desde: float,
                      antes: Optional[Dict[str, float]] = None,
-                     formato: str = FORMATO_PBIX) -> Dict[str, Any]:
+                     formato: str = FORMATO_PBIX,
+                     espera_modelo: Optional[bool] = None) -> Dict[str, Any]:
     """Que el archivo existe, es del formato pedido y es de ESTA ejecucion."""
     from horizun_pbi_mcp.pbip import pbix_reader
 
@@ -402,7 +417,7 @@ def verificar_salida(destino: Path, *, desde: float,
                      "started_at": desde})
 
     if formato == FORMATO_PBIT:
-        resumen = _inspeccionar_plantilla(destino)
+        resumen = _inspeccionar_plantilla(destino, espera_modelo=espera_modelo)
         comprobaciones["report_format"] = resumen.get("report_format")
         comprobaciones["has_data_model"] = resumen.get("has_data_model")
         comprobaciones["template"] = True
@@ -453,7 +468,8 @@ def esperar_escritura_terminada(destino: Path, *, timeout: float,
                                 adapter: Any = None, pid: Optional[int] = None,
                                 excluir: Optional[List[int]] = None,
                                 origen: Optional[Path] = None,
-                                gracia: float = GRACIA_APARICION
+                                gracia: float = GRACIA_APARICION,
+                                desde: Optional[float] = None
                                 ) -> Dict[str, Any]:
     """Espera a que el archivo APAREZCA y termine de escribirse.
 
@@ -524,13 +540,13 @@ def esperar_escritura_terminada(destino: Path, *, timeout: float,
     # La clave es `wait_reason` y no `reason` a proposito: quien fusiona este
     # diccionario en el error ya tiene su propio `reason`, y machacarlo
     # cambiaba el codigo de fallo por una frase.
-    extraviado = artefacto_extraviado(destino, origen)
+    extraviado = artefacto_extraviado(destino, origen, desde=desde)
     if extraviado:
         raise PbixWrongFormatError(
             "Power BI Desktop guardo el archivo en la carpeta del PROYECTO en "
             f"vez de en la carpeta pedida: aparecio '{extraviado['found']}'. "
-            "Pasa cuando el cuadro recibe solo un nombre y no una ruta "
-            "completa: la carpeta que estuviera abierta manda.",
+            "Pasa cuando el cuadro no llego a recibir la ruta completa: su "
+            "nombre y su carpeta por defecto mandan.",
             details={"reason": "saved_in_source_folder",
                      "requested": str(destino), **extraviado})
 
@@ -583,8 +599,9 @@ def artefacto_de_otro_formato(destino: Path) -> Optional[Dict[str, Any]]:
             "found": sorted(set(encontrados))}
 
 
-def artefacto_extraviado(destino: Path,
-                         origen: Optional[Path]) -> Optional[Dict[str, Any]]:
+def artefacto_extraviado(destino: Path, origen: Optional[Path], *,
+                         desde: Optional[float] = None
+                         ) -> Optional[Dict[str, Any]]:
     """Busca el archivo pedido en la carpeta del .pbip, y SOLO alli.
 
     No se rastrea el disco: se mira el basename exacto de esta ejecucion en
@@ -592,6 +609,13 @@ def artefacto_extraviado(destino: Path,
     ya se comprobo, y la del proyecto de origen-. Buscar mas ancho es como
     aceptar cualquier archivo con nombre parecido: encontraria el de otra
     ejecucion y lo daria por bueno.
+
+    Con `desde` se anade una segunda pasada por esa MISMA carpeta: archivos
+    de la extension pedida escritos DURANTE esta ejecucion, aunque se llamen
+    de otra forma. Hace falta porque el cuadro puede guardar con su nombre y
+    su carpeta por defecto -paso en una prueba real: se pidio una ruta larga
+    en otra carpeta y aparecio `Demo.pbix` junto al proyecto-, y entonces
+    "el archivo nunca aparecio" es cierto y deja basura sin explicar.
     """
     if origen is None:
         return None
@@ -602,10 +626,26 @@ def artefacto_extraviado(destino: Path,
     except OSError:                                       # pragma: no cover
         return None
     candidato = carpeta / destino.name
-    if not candidato.is_file():
+    if candidato.is_file():
+        return {"found": str(candidato), "source_folder": str(carpeta),
+                "size": candidato.stat().st_size, "same_name": True}
+    if desde is None:
         return None
-    return {"found": str(candidato), "source_folder": str(carpeta),
-            "size": candidato.stat().st_size}
+    try:
+        recientes = [p for p in carpeta.iterdir()
+                     if p.is_file()
+                     and p.suffix.casefold() == destino.suffix.casefold()
+                     and p.stat().st_mtime >= desde - 2]
+    except OSError:                                       # pragma: no cover
+        return None
+    if not recientes:
+        return None
+    elegido = max(recientes, key=lambda p: p.stat().st_mtime)
+    return {"found": str(elegido), "source_folder": str(carpeta),
+            "size": elegido.stat().st_size, "same_name": False,
+            "requested_name": destino.name,
+            "detail": ("el cuadro guardo con SU nombre por defecto en la "
+                       "carpeta del proyecto, no con el que se le pidio")}
 
 
 def _vecinos(carpeta: Path) -> Dict[str, float]:
@@ -710,7 +750,8 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                   destino: Path, timeout: float,
                   origen: Optional[Path] = None,
                   formato: str = FORMATO_PBIX,
-                  desde: Optional[float] = None) -> Dict[str, Any]:
+                  desde: Optional[float] = None,
+                  overwrite: bool = False) -> Dict[str, Any]:
     """El flujo oficial, paso a paso y sin aceptar nada por defecto.
 
     El adaptador real ofrece `save_as_completo`, que hace toda la interaccion
@@ -723,9 +764,12 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
 
     extension = f".{formato}"
     if hasattr(adapter, "save_as_completo"):
+        # `overwrite` solo viaja cuando es cierto: es la autorizacion para
+        # aceptar el "¿reemplazar?" del propio cuadro, y nada mas.
+        extra = {"overwrite": True} if overwrite else {}
         respuesta = adapter.save_as_completo(
             pid=pid, started=started, destino=str(destino),
-            extension=extension, timeout=timeout)
+            extension=extension, timeout=timeout, **extra)
         plantilla = respuesta.get("template_dialog")
         if formato == FORMATO_PBIT and plantilla and plantilla.get("seen") \
                 and not plantilla.get("accepted"):
@@ -751,7 +795,8 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                          "helper": respuesta.get("steps")})
 
         espera = esperar_escritura_terminada(
-            destino, timeout=timeout, adapter=adapter, pid=pid, origen=origen)
+            destino, timeout=timeout, adapter=adapter, pid=pid, origen=origen,
+            desde=desde)
         if not espera.get("stable"):
             raise PbixExportError(
                 "El cuadro de guardado se cerro pero la escritura no termino: "
@@ -765,6 +810,7 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
                 "commit_method": respuesta.get("commit_method"),
                 "dialog_closed": respuesta.get("dialog_closed"),
                 "filename_method": respuesta.get("filename_method"),
+                "overwrite_confirmed": respuesta.get("overwrite_confirmed"),
                 "template_dialog": plantilla,
                 "helper_steps": respuesta.get("steps"),
                 "write_wait": espera}
@@ -822,8 +868,26 @@ def _guardar_como(adapter: Any, *, pid: int, started: Optional[float],
 
 
 def _estado_final(session: Session, *, abierto: Any, destino: Path,
-                  leave_open: bool, timeout: int) -> Dict[str, Any]:
-    """Deja abierto EXACTAMENTE el .pbix generado, o cierra solo lo nuestro."""
+                  leave_open: bool, timeout: int,
+                  formato: str = FORMATO_PBIX,
+                  origen: Optional[Path] = None) -> Dict[str, Any]:
+    """Deja abierto EXACTAMENTE el archivo generado, o cierra solo lo nuestro.
+
+    Lo que se AFIRMA sale de la evidencia que hay, y de ninguna otra parte:
+
+    - descriptor abierto sobre el destino: la ventana siguio al archivo
+      (confianza alta, `opened_path_verified`);
+    - titulo de la ventana igual al nombre del destino, con un nombre
+      DISTINTO al del proyecto: siguio (confianza media, no verificado);
+    - mismo nombre que el proyecto y sin descriptor: el titulo no distingue
+      el `.pbip` del `.pbix` y no se afirma nada; tampoco se abre otra
+      ventana con esa duda;
+    - plantilla `.pbit`: Desktop no cambia de documento al guardarla, asi que
+      la ventana sigue sirviendo el proyecto de origen.
+
+    `desktop_session` dice que documento sirve la ventana con la confianza
+    que corresponde, o `null` con los candidatos cuando no se sabe.
+    """
     from horizun_pbi_mcp.powerbi import (desktop_discovery, desktop_identity,
                                          desktop_launcher)
 
@@ -840,67 +904,125 @@ def _estado_final(session: Session, *, abierto: Any, destino: Path,
         salida["opened_path_verified"] = False
         return salida
 
-    # Normalmente `Guardar como` reapunta la MISMA ventana al archivo. Se
-    # verifica en vez de darlo por hecho: primero por descriptor abierto y,
-    # si no lo hay -Desktop trabaja sobre su copia de TempSaves y no deja
-    # ninguno sobre el destino-, por el titulo de la ventana, que tras un
-    # `Guardar como` pasa a ser el nombre del archivo guardado.
     pid = abierto.desktop_pid
-    abierto_ahora = desktop_launcher.proceso_con_archivo_abierto(destino)
-    seguimiento = None
-    if not abierto_ahora and pid:
-        seguimiento = desktop_identity.esperar_identidad_de_ventana(
-            pid, destino, timeout=30.0)
-        if seguimiento.get("settled"):
-            abierto_ahora = int(pid)
-    salida["same_window_followed"] = bool(
-        abierto_ahora and int(abierto_ahora) == int(pid or -1))
-    if seguimiento is not None:
-        salida["window_follow"] = seguimiento
+    instancia = abierto.instance
+    identidad: Dict[str, Any]
+    documento: Optional[str] = None
+    confianza = desktop_identity.UNKNOWN
+    candidatos: List[str] = []
 
-    if not abierto_ahora:
-        # No siguio: se abre explicitamente el entregable. La ventana anterior
-        # solo se cierra si la lanzamos nosotros y su identidad sigue valiendo.
-        if abierto.launched_by_us:
-            salida["closed_previous"] = desktop_launcher.close(abierto)
-        else:
-            salida["closed_previous"] = {
-                "closed": False,
-                "reason": "la ventana anterior es del usuario; no se cierra"}
-        nuevo = desktop_launcher.open_pbix(str(destino), timeout=timeout,
-                                           reuse_open=True)
-        identidad = desktop_identity.identify(nuevo.instance, target=destino)
-        salida["reopened"] = True
-        salida["desktop_pid"] = nuevo.desktop_pid
-        salida["identity"] = identidad
-        salida["opened_path_verified"] = identidad.get("path_match") is True
-        instancia = nuevo.instance
+    if formato == FORMATO_PBIT:
+        # Guardar una plantilla no reapunta la ventana: sigue en el origen.
+        identidad = desktop_identity.identify(
+            abierto.instance, target=origen) if origen else {}
+        salida.update({
+            "same_window_followed": False, "reopened": False,
+            "desktop_pid": pid, "identity": identidad,
+            "opened_path_verified": False,
+            "window_follow": {
+                "status": "not_applicable",
+                "detail": "una plantilla no reemplaza al documento abierto; "
+                          "la ventana sigue sirviendo el proyecto de origen"},
+        })
+        documento = str(origen) if origen else None
+        confianza = str(identidad.get("identity_confidence") or desktop_identity.UNKNOWN)
     else:
-        identidad = desktop_identity.identify(abierto.instance, target=destino)
-        if identidad.get("path_match") is None and seguimiento \
-                and seguimiento.get("settled"):
-            identidad["path_match"] = True
-            identidad["identity_confidence"] = desktop_identity.MEDIUM
-        salida["reopened"] = False
-        salida["desktop_pid"] = abierto_ahora
-        salida["identity"] = identidad
-        salida["opened_path_verified"] = True
-        instancia = abierto.instance
+        abierto_ahora = desktop_launcher.proceso_con_archivo_abierto(destino)
+        evidencia = "open_file" if abierto_ahora else None
+        seguimiento: Optional[Dict[str, Any]] = None
+        if not abierto_ahora and pid:
+            if origen is not None and destino.stem.casefold() == origen.stem.casefold():
+                seguimiento = {
+                    "status": "inconclusive",
+                    "detail": "el destino se llama como el proyecto: el "
+                              "titulo de la ventana no distingue el .pbip "
+                              "del .pbix, y no hay descriptor sobre el "
+                              "destino"}
+            else:
+                seguimiento = desktop_identity.esperar_identidad_de_ventana(
+                    pid, destino, timeout=30.0)
+                if seguimiento.get("settled"):
+                    abierto_ahora = int(pid)
+                    evidencia = "window_title"
+        salida["same_window_followed"] = bool(
+            abierto_ahora and int(abierto_ahora) == int(pid or -1))
+        if seguimiento is not None:
+            salida["window_follow"] = seguimiento
 
-    # Referencia UTILIZABLE por `pbi_close_desktop`: la ventana que queda
-    # abierta ya no responde a la ruta del .pbip original, y por el nombre del
-    # .pbix tampoco siempre. PID + hora de arranque la identifican sin
-    # adivinar, y protegen frente a un PID reutilizado.
-    pid_final = salida.get("desktop_pid")
+        if not abierto_ahora and seguimiento is not None \
+                and seguimiento.get("status") == "inconclusive":
+            # Con la duda no se lanza otra ventana ni se afirma nada.
+            identidad = desktop_identity.identify(abierto.instance, target=destino)
+            salida.update({"reopened": False, "desktop_pid": pid,
+                           "identity": identidad,
+                           "opened_path_verified": False,
+                           "follow_note": (
+                               "No se pudo demostrar si la ventana siguio al "
+                               "archivo exportado; no se abrio otra. Cierra "
+                               "por identidad con `desktop_session` si hace "
+                               "falta.")})
+            candidatos = [str(origen), str(destino)] if origen else [str(destino)]
+        elif not abierto_ahora:
+            # No siguio: se abre explicitamente el entregable. La ventana
+            # anterior solo se cierra si la lanzamos nosotros y su identidad
+            # sigue valiendo.
+            if abierto.launched_by_us:
+                salida["closed_previous"] = desktop_launcher.close(abierto)
+            else:
+                salida["closed_previous"] = {
+                    "closed": False,
+                    "reason": "la ventana anterior es del usuario; no se cierra"}
+            nuevo = desktop_launcher.open_pbix(str(destino), timeout=timeout,
+                                               reuse_open=True)
+            identidad = desktop_identity.identify(nuevo.instance, target=destino)
+            salida["reopened"] = True
+            salida["desktop_pid"] = nuevo.desktop_pid
+            pid = nuevo.desktop_pid
+            salida["identity"] = identidad
+            instancia = nuevo.instance
+            confianza = str(identidad.get("identity_confidence") or desktop_identity.UNKNOWN)
+            salida["opened_path_verified"] = (
+                identidad.get("path_match") is True
+                and confianza == desktop_identity.HIGH)
+            documento = str(destino) if identidad.get("path_match") is True else None
+        else:
+            identidad = desktop_identity.identify(abierto.instance, target=destino)
+            if evidencia == "window_title" and identidad.get("path_match") is None:
+                identidad["path_match"] = True
+                identidad["identity_confidence"] = desktop_identity.MEDIUM
+            salida["reopened"] = False
+            salida["desktop_pid"] = abierto_ahora
+            salida["identity"] = identidad
+            # La confianza la fija la EVIDENCIA con la que se decidio el
+            # seguimiento, no lo que diga una identificacion posterior.
+            confianza = (desktop_identity.HIGH if evidencia == "open_file"
+                         else desktop_identity.MEDIUM)
+            # Solo un descriptor abierto DEMUESTRA la ruta. Un titulo igual
+            # es una coincidencia de nombre, no una ruta.
+            salida["opened_path_verified"] = evidencia == "open_file"
+            documento = str(destino)
+        salida["path_evidence"] = evidencia
+        salida["opened_path_confidence"] = confianza
+
+    # Referencia UTILIZABLE por `pbi_close_desktop`: PID + hora de arranque
+    # identifican la ventana sin adivinar y protegen frente a un PID
+    # reutilizado. `document` es lo que la ventana sirve segun la evidencia,
+    # o null con los candidatos si no se pudo determinar.
     salida["desktop_session"] = {
-        "desktop_pid": pid_final,
-        "desktop_started": desktop_launcher._process_started(pid_final),  # noqa: SLF001
-        "document": str(destino),
+        "desktop_pid": pid,
+        "desktop_started": desktop_launcher._process_started(pid),  # noqa: SLF001
+        "document": documento,
+        "document_confidence": confianza if documento else None,
+        "document_candidates": candidatos or None,
         "window_title": (salida.get("identity") or {}).get(
             "desktop_window_title"),
-        "close_with": (f"pbi_close_desktop(desktop_pid={pid_final}, "
+        "close_with": (f"pbi_close_desktop(desktop_pid={pid}, "
                        "desktop_started=<desktop_started>, confirm=true)"),
     }
+    recordar = getattr(session, "recordar_exportacion", None)
+    if recordar is not None and pid:
+        recordar({**salida["desktop_session"], "source": str(origen) if origen else None,
+                  "output": str(destino)})
 
     try:
         modelo = desktop_discovery.select_model(
@@ -973,11 +1095,14 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
             adapter, pid=identidad["desktop_pid"],
             started=identidad.get("desktop_process_started"),
             destino=destino, timeout=float(timeout),
-            origen=previo.source_pbip, formato=formato, desde=inicio)
+            origen=previo.source_pbip, formato=formato, desde=inicio,
+            overwrite=overwrite)
         salida.update(guardado)
 
-        verificacion = verificar_salida(destino, desde=inicio,
-                                        formato=formato)
+        verificacion = verificar_salida(
+            destino, desde=inicio, formato=formato,
+            espera_modelo=bool((previo.validation or {}).get("tmdl_valid")
+                               is not None))
         salida.update({k: v for k, v in verificacion.items()
                        if k != "checks"})
         salida["verification"] = verificacion["checks"]
@@ -1015,11 +1140,17 @@ def export(session: Session, *, pbip_path: Optional[str] = None,
 
     salida["final_state"] = _estado_final(
         session, abierto=abierto, destino=destino, leave_open=leave_open,
-        timeout=timeout)
+        timeout=timeout, formato=formato, origen=previo.source_pbip)
     salida["opened_path_verified"] = bool(
         salida["final_state"].get("opened_path_verified"))
     if salida["final_state"].get("desktop_session"):
         salida["desktop_session"] = salida["final_state"]["desktop_session"]
+    if salida["final_state"].get("follow_note"):
+        salida["warnings"].append(salida["final_state"]["follow_note"])
+    if formato == FORMATO_PBIT and leave_open:
+        salida["warnings"].append(
+            "La ventana sigue sirviendo el proyecto de origen: guardar una "
+            "plantilla no la reapunta al .pbit, y el .pbit no queda abierto.")
     log.info("Exportado %s -> %s (%s bytes)", previo.source_pbip.name,
              destino.name, salida.get("output_size"))
     return salida

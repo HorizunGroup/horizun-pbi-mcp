@@ -32,8 +32,8 @@ def sin_teclado(monkeypatch):
     tecleado = []
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
-                        lambda t: tecleado.append(t))
-    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
+                        lambda t, **kw: tecleado.append(t))
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
     return tecleado
 
 
@@ -53,29 +53,51 @@ class _ConValuePattern(_UiaFalso):
         return self.acepta
 
 
-def test_la_ruta_se_pone_por_value_pattern_sin_tocar_el_teclado(sin_teclado):
-    """`SetValue` no depende del foco ni de la cola de teclado."""
+def test_el_nombre_NUNCA_se_pone_por_value_pattern(sin_teclado):
+    """`SetValue` no compromete el nombre: no se usa, se teclea.
+
+    Medido contra Power BI Desktop real: tras `SetValue`, UIA y `WM_GETTEXT`
+    devolvian los 133 caracteres pedidos y el cuadro guardo igualmente con su
+    nombre y su carpeta por defecto -aparecio `Demo.pbix` junto al proyecto-.
+    Aceptarlo como escritura verificada es entregar un guardado en el sitio
+    equivocado con aspecto de exito.
+    """
     ruta = r"C:\entrega\Informe.pbix"
-    uia = _ConValuePattern()
+    uia = _ConValuePattern(valor_nombre=ruta)
 
     paso = uia_helper._escribir_ruta(uia, 22, ruta, 4321)   # noqa: SLF001
 
     assert paso["filename_verified"] is True
-    assert paso["method"] == "value_pattern"
-    assert uia.fijados == [ruta]
-    assert sin_teclado == [], "se tecleo habiendo funcionado SetValue"
-    assert paso["attempts_total"] == 1
-
-
-def test_si_set_value_no_se_admite_se_teclea(sin_teclado):
-    ruta = r"C:\entrega\Informe.pbix"
-    uia = _ConValuePattern(acepta=False, valor_nombre=ruta)
-
-    paso = uia_helper._escribir_ruta(uia, 22, ruta, 4321)   # noqa: SLF001
-
     assert paso["method"] == "keyboard"
-    assert paso["methods_tried"] == ["keyboard"]
+    assert uia.fijados == [], "se volvio a usar SetValue para el nombre"
     assert sin_teclado == [ruta]
+
+
+def test_cada_intento_teclea_mas_despacio_que_el_anterior(monkeypatch):
+    """133 caracteres pedidos y 26 recibidos: el cuadro no sigue el ritmo."""
+    ruta = r"C:\entrega\Informe_con_nombre_largo.pbix"
+    cadencias = []
+    monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
+
+    estado = {"n": 0}
+
+    def _teclear(texto, *, tanda=40, pausa=0.01):
+        cadencias.append((tanda, pausa))
+        estado["n"] += 1
+
+    monkeypatch.setattr(uia_helper, "escribir_texto_real", _teclear)
+
+    class _LentoAlPrincipio(_UiaFalso):
+        def valor(self, elemento):
+            # Las dos primeras cadencias pierden caracteres; la tercera no.
+            return ruta if estado["n"] >= 3 else ruta[:26]
+
+    paso = uia_helper._escribir_ruta(_LentoAlPrincipio(), 22, ruta, 4321)  # noqa: SLF001
+
+    assert paso["filename_verified"] is True
+    assert cadencias == list(uia_helper.CADENCIAS_TECLEO)
+    assert paso["typing_batch"] == uia_helper.CADENCIAS_TECLEO[-1][0]
 
 
 def test_una_escritura_parcial_se_reintenta_localizando_el_campo_de_nuevo(
@@ -140,8 +162,8 @@ def test_con_el_foco_en_otro_proceso_no_se_teclea(monkeypatch):
     tecleado = []
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
-                        lambda t: tecleado.append(t))
-    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: False)
+                        lambda t, **kw: tecleado.append(t))
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: False)
     monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: False)
 
     with pytest.raises(uia_helper.HelperError) as fallo:
@@ -158,11 +180,14 @@ def test_si_el_foco_se_recupera_se_teclea_y_se_verifica(monkeypatch):
     tecleado = []
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
-                        lambda t: tecleado.append(t))
-    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: False)
+                        lambda t, **kw: tecleado.append(t))
+    estado = {"frente": False}
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro",
+                        lambda h: estado["frente"])
     frentes = []
     monkeypatch.setattr(uia_helper, "traer_al_frente",
-                        lambda h, p: frentes.append((h, p)) or True)
+                        lambda h, p: frentes.append((h, p)) or
+                        estado.update(frente=True) or True)
 
     paso = uia_helper._escribir_ruta(_UiaFalso(valor_nombre=ruta), 22,  # noqa: SLF001
                                      ruta, 4321)
@@ -398,7 +423,8 @@ def test_no_se_cancela_un_cuadro_que_ya_no_es_del_proceso(monkeypatch):
 def test_la_respuesta_lleva_los_intentos_de_cada_fase(monkeypatch, sin_teclado):
     ruta = r"C:\entrega\a.pbix"
     uia = _ConValuePattern(valor_tipo="Archivo de Power BI (*.pbix)",
-                           estado_tras=uia_helper.ESTADO_CERRADO)
+                           estado_tras=uia_helper.ESTADO_CERRADO,
+                           valor_nombre=ruta)
     _secuencia(monkeypatch, uia)
     monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: False)
     monkeypatch.setattr(uia_helper, "_esperar_cierre", lambda h, p: True)
@@ -409,10 +435,10 @@ def test_la_respuesta_lleva_los_intentos_de_cada_fase(monkeypatch, sin_teclado):
 
     fases = {p["phase"]: p for p in salida["steps"]}
     assert fases["tipo"]["attempts_total"] == 1
-    assert fases["nombre"]["method"] == "value_pattern"
+    assert fases["nombre"]["method"] == "keyboard"
     assert fases["nombre"]["attempts"][0]["ok"] is True
     assert fases["guardar"]["attempts_total"] == 1
-    assert salida["filename_method"] == "value_pattern"
+    assert salida["filename_method"] == "keyboard"
     assert salida["template_dialog"] is None
 
 

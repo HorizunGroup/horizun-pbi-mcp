@@ -801,7 +801,45 @@ def close_desktop_by_identity(desktop_pid: int,
     return salida
 
 
-def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
+def _pid_del_documento_guardado(pbix: Path) -> Dict[str, Any]:
+    """Correlacion por titulo para un .pbix/.pbit SIN descriptor abierto.
+
+    Un archivo recien guardado con `Guardar como` no deja descriptor sobre el
+    destino y la ventana se lanzo con OTRA ruta en su linea de comandos (el
+    .pbip de origen), asi que el filtro de "su cmdline nombra otro proyecto"
+    lo descartaba siempre. Aqui el filtro es distinto y no mas debil: la
+    ventana vale solo si su titulo es exactamente el nombre del archivo, es
+    la UNICA con ese titulo, y lo que nombra su linea de comandos -si nombra
+    algo- vive en la MISMA carpeta que el archivo pedido. Dos homonimos en
+    carpetas distintas producen ambiguedad, no un cierre.
+    """
+    from horizun_pbi_mcp.services import project_resolver
+
+    pids = [p.pid for p in _procesos_desktop()]
+    ventanas = coincidencias_por_titulo(pbix.stem, pids)
+    if ventanas.error and not ventanas.pids:
+        return {"pid": None, "reason": "window_enumeration_failed",
+                "detail": ventanas.error}
+    if not ventanas.pids:
+        return {"pid": None, "reason": "no_window_with_that_title"}
+    compatibles = []
+    for pid in ventanas.pids:
+        documentos = _documentos_de_la_linea_de_comandos(pid)
+        misma_carpeta = all(
+            project_resolver.misma_ruta(Path(d).parent, pbix.parent)
+            for d in documentos) if documentos else True
+        compatibles.append({"pid": pid, "cmdline_documents": len(documentos),
+                            "same_folder": misma_carpeta})
+    validos = [c for c in compatibles if c["same_folder"]]
+    if len(validos) == 1 and len(ventanas.pids) == 1:
+        return {"pid": validos[0]["pid"], "reason": "window_title",
+                "candidates": compatibles}
+    return {"pid": None, "reason": "ambiguous_window",
+            "candidates": compatibles}
+
+
+def close_desktop_by_path(pbix_path: str | Path, *,
+                          session: Any = None) -> Dict[str, Any]:
     """Cierra SOLO la instancia de Desktop que tiene abierto ese archivo.
 
     Existe porque el ciclo real de trabajo -editar, abrir, mirar, editar-
@@ -821,14 +859,40 @@ def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
             details={"path": str(pbix), "extension": pbix.suffix})
 
     pid = proceso_con_archivo_abierto(pbix)
-    por_titulo = False
+    matched_by = "open_file"
     if not pid and pbix.suffix.casefold() != ".pbip":
         # Un .pbix recien guardado por `Guardar como` no deja descriptor
-        # sobre el destino -Desktop trabaja sobre su copia de TempSaves-, asi
-        # que se cae a la ventana titulada exactamente como el archivo, igual
-        # que ya se hacia con un .pbip. El resultado lo dice (`matched_by`).
-        pid = _pid_por_titulo_de_ventana(pbix.stem, pbix)
-        por_titulo = pid is not None
+        # sobre el destino -Desktop trabaja sobre su copia de TempSaves-.
+        # Primero la evidencia de la propia exportacion (pid + hora de
+        # arranque registrados al exportar); si no la hay, el titulo, con
+        # ambiguedad declarada cuando no distingue.
+        if session is None:
+            # La sesion del servidor, si ya existe. No se crea aqui: cerrar
+            # una ventana no es motivo para leer session.json.
+            from horizun_pbi_mcp import config as _config
+
+            session = getattr(_config, "_session", None)
+        registro = session.exportacion_de(str(pbix)) if session is not None \
+            and hasattr(session, "exportacion_de") else None
+        if registro and registro.get("desktop_pid"):
+            resultado = close_desktop_by_identity(
+                int(registro["desktop_pid"]), registro.get("desktop_started"),
+                expected_document=pbix)
+            resultado["path"] = str(pbix)
+            resultado["matched_by"] = "export_session"
+            resultado["verified_closed"] = bool(resultado.get("verified_closed"))
+            return resultado
+        correlacion = _pid_del_documento_guardado(pbix)
+        pid = correlacion.get("pid")
+        matched_by = "window_title"
+        if not pid and correlacion.get("reason") == "ambiguous_window":
+            return {"closed": False, "was_open": None,
+                    "reason": "ambiguous_window", "path": str(pbix),
+                    "candidates": correlacion.get("candidates"),
+                    "hint": ("hay mas de una ventana compatible y ninguna "
+                             "prueba cual sirve este archivo; cierra por "
+                             "identidad con `desktop_session` de la "
+                             "exportacion")}
     if not pid:
         return {"closed": False, "was_open": False,
                 "reason": "el archivo no esta abierto en ningun Desktop",
@@ -843,7 +907,7 @@ def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
     resultado = close(abierto, force=True)
     resultado["path"] = str(pbix)
     resultado["was_open"] = True
-    resultado["matched_by"] = "window_title" if por_titulo else "open_file"
+    resultado["matched_by"] = matched_by
 
     # Verificacion real: el archivo ya no puede estar abierto en NINGUN pid.
     todavia = proceso_con_archivo_abierto(pbix)

@@ -82,11 +82,16 @@ def test_si_la_ventana_siguio_por_titulo_no_se_reabre(entorno, monkeypatch):  # 
 
     salida = pbix_export.export(
         entorno["session"], adapter=_AdaptadorFalso(), timeout=5,
-        out_path=str(entorno["tmp"] / "salida" / "Demo.pbix"))
+        out_path=str(entorno["tmp"] / "salida" / "Entrega.pbix"))
 
     assert salida["final_state"]["same_window_followed"] is True
     assert salida["final_state"]["reopened"] is False
     assert salida["final_state"]["window_follow"]["settled"] is True
+    # Un titulo igual es una coincidencia de nombre, no una ruta demostrada.
+    assert salida["opened_path_verified"] is False
+    assert salida["final_state"]["opened_path_confidence"] == "medium"
+    assert salida["desktop_session"]["document"].endswith("Entrega.pbix")
+    assert salida["desktop_session"]["document_confidence"] == "medium"
     assert reaperturas == []
 
 
@@ -218,21 +223,89 @@ def test_la_tool_por_pid_sigue_exigiendo_confirm(monkeypatch, session):
 
 
 # ==================== 4) por ruta, un .pbix se encuentra por titulo =========
-def test_un_pbix_sin_descriptor_se_cierra_por_titulo_y_lo_dice(monkeypatch, tmp_path):
-    pbix = tmp_path / "Demo.pbix"
-    pbix.write_bytes(b"PK")
+def _ventanas_por_titulo(monkeypatch, *, pids, cmdline):
+    """Procesos de Desktop con su titulo y su linea de comandos falsos."""
     monkeypatch.setattr(dl, "proceso_con_archivo_abierto", lambda p: None)
-    monkeypatch.setattr(dl, "_pid_por_titulo_de_ventana",
-                        lambda stem, objetivo=None: 4242)
+    monkeypatch.setattr(dl, "_procesos_desktop",
+                        lambda: [type("P", (), {"pid": p})() for p in pids])
+    monkeypatch.setattr(dl, "_documentos_de_la_linea_de_comandos",
+                        lambda pid: list(cmdline.get(pid, [])))
+    monkeypatch.setattr(dl, "coincidencias_por_titulo",
+                        lambda stem, candidatos: dl.CoincidenciaPorTitulo(
+                            pids=tuple(candidatos)))
     monkeypatch.setattr(dl, "_process_started", lambda pid: 123.0)
     monkeypatch.setattr(dl, "close", lambda a, force=False: {
         "closed": True, "pid": a.desktop_pid, "killed": 0, "children": 0,
         "survivors": []})
 
+
+def test_el_pbix_exportado_se_cierra_por_titulo_aunque_la_cmdline_nombre_el_pbip(
+        monkeypatch, tmp_path):
+    """El fallo de la auditoria: el filtro de cmdline mataba el respaldo.
+
+    La ventana se lanzo con `Demo.pbip`; tras `Guardar como` sirve
+    `Demo.pbix` en la MISMA carpeta. Eso es compatible con la exportacion,
+    y es distinto de un homonimo en otra carpeta.
+    """
+    pbix = tmp_path / "Demo.pbix"
+    pbix.write_bytes(b"PK")
+    _ventanas_por_titulo(monkeypatch, pids=[4242],
+                         cmdline={4242: [str(tmp_path / "Demo.pbip")]})
+
     r = dl.close_desktop_by_path(pbix)
 
     assert r["was_open"] is True
     assert r["matched_by"] == "window_title"
+
+
+def test_un_homonimo_en_otra_carpeta_es_ambiguedad_no_cierre(monkeypatch, tmp_path):
+    pbix = tmp_path / "Demo.pbix"
+    pbix.write_bytes(b"PK")
+    otra = tmp_path / "otra" / "Demo.pbip"
+    _ventanas_por_titulo(monkeypatch, pids=[4242], cmdline={4242: [str(otra)]})
+    monkeypatch.setattr(dl, "close",
+                        lambda *a, **k: pytest.fail("se cerro un homonimo"))
+
+    r = dl.close_desktop_by_path(pbix)
+
+    assert r["closed"] is False and r["was_open"] is None
+    assert r["reason"] == "ambiguous_window"
+
+
+def test_dos_ventanas_con_el_mismo_titulo_son_ambiguedad(monkeypatch, tmp_path):
+    pbix = tmp_path / "Demo.pbix"
+    pbix.write_bytes(b"PK")
+    _ventanas_por_titulo(monkeypatch, pids=[1, 2], cmdline={})
+    monkeypatch.setattr(dl, "close",
+                        lambda *a, **k: pytest.fail("se eligio una al azar"))
+
+    r = dl.close_desktop_by_path(pbix)
+
+    assert r["reason"] == "ambiguous_window"
+    assert len(r["candidates"]) == 2
+
+
+def test_la_evidencia_de_la_exportacion_manda_sobre_el_titulo(
+        monkeypatch, tmp_path, session):
+    """Exportar -> desktop_session -> cerrar por RUTA: el recorrido completo."""
+    pbix = tmp_path / "Demo.pbix"
+    pbix.write_bytes(b"PK")
+    session.recordar_exportacion({"desktop_pid": 4242, "desktop_started": 123.0,
+                                  "document": str(pbix)})
+    monkeypatch.setattr(dl, "proceso_con_archivo_abierto", lambda p: None)
+    monkeypatch.setattr(dl, "_pid_del_documento_guardado",
+                        lambda p: pytest.fail("con evidencia no se adivina"))
+    recibido = {}
+    monkeypatch.setattr(
+        dl, "close_desktop_by_identity",
+        lambda pid, started, expected_document=None: recibido.update(
+            pid=pid, started=started, doc=str(expected_document)) or {
+                "closed": True, "was_open": True, "verified_closed": True})
+
+    r = dl.close_desktop_by_path(pbix, session=session)
+
+    assert recibido == {"pid": 4242, "started": 123.0, "doc": str(pbix)}
+    assert r["matched_by"] == "export_session" and r["closed"] is True
 
 
 def test_un_pbip_no_abierto_sigue_siendo_no_op_con_pista(monkeypatch, tmp_path):

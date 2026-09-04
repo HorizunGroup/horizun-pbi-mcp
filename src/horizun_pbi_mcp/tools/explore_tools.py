@@ -140,6 +140,9 @@ def register(mcp) -> None:
         """
         def _impl():
             s = (source or "live").lower()
+            if s not in _FUENTES:
+                raise ValidationError(
+                    f"source invalido: '{source}'. Usa live|pbip.")
             if s == "live":
                 from horizun_pbi_mcp.services import live_query
 

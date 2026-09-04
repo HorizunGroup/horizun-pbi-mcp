@@ -262,6 +262,34 @@ class Session:
         self._recuperacion: Optional[Dict[str, Any]] = None
         self._load_persisted()
 
+    # -- evidencia de la ultima exportacion (en memoria, no se persiste) --
+    def recordar_exportacion(self, registro: Dict[str, Any]) -> None:
+        """Guarda que ventana quedo sirviendo que archivo tras exportar.
+
+        Es la evidencia que permite cerrar por RUTA el .pbix exportado: la
+        ventana no deja descriptor sobre el destino y su titulo no distingue
+        homonimos, pero el pid y la hora de arranque de la exportacion si.
+        """
+        with self._lock:
+            self._exportaciones = [r for r in getattr(self, "_exportaciones", [])
+                                   if r.get("desktop_pid") != registro.get("desktop_pid")]
+            self._exportaciones.append(dict(registro))
+            self._exportaciones = self._exportaciones[-8:]
+
+    def exportacion_de(self, documento: str) -> Optional[Dict[str, Any]]:
+        """El registro de exportacion cuyo documento es esa ruta, si lo hay."""
+        from horizun_pbi_mcp.services import project_resolver
+
+        with self._lock:
+            registros = list(getattr(self, "_exportaciones", []))
+        for registro in reversed(registros):
+            candidatos = [registro.get("document")] + list(
+                registro.get("document_candidates") or [])
+            if any(c and project_resolver.misma_ruta(c, documento)
+                   for c in candidatos):
+                return dict(registro)
+        return None
+
     # -- recuperacion de sesion caducada --
     def note_recovery(self, nota: Dict[str, Any]) -> None:
         with self._lock:
@@ -322,7 +350,8 @@ class Session:
         self._verified_identity = None
         self._verified_at_monotonic = None
 
-    def require_active_model(self, verify: bool = True) -> ActiveModel:
+    def require_active_model(self, verify: bool = True, *,
+                             for_mutation: bool = False) -> ActiveModel:
         """Devuelve el modelo activo, comprobando que la sesion siga siendo la misma.
 
         No basta con que el puerto vuelva a estar abierto: Power BI Desktop
@@ -386,7 +415,9 @@ class Session:
                 StaleSessionError, candidatos_de_seleccion, recuperar_sesion)
 
             if status["status"] == "stale":
-                return recuperar_sesion(self, previo=model, status=status)
+                return recuperar_sesion(self, previo=model, status=status,
+                                        active_pbip=self.active_pbip,
+                                        for_mutation=for_mutation)
             raise StaleSessionError(
                 f"La sesion guardada ya no es valida: {status['reason']} "
                 "El puerto lo ocupa otra instancia y no se reconecta a ciegas: "
@@ -423,7 +454,9 @@ class Session:
         escrituras TOM, sin bloquear PBIP ni lecturas DAX concurrentes.
         """
         with self._model_operation_lock:
-            model = self.require_active_model()
+            # Una mutacion no se redirige a otro documento por recuperacion:
+            # solo se reconecta si el destino se puede demostrar.
+            model = self.require_active_model(for_mutation=True)
             yield model
 
     # -- proyecto pbip activo --

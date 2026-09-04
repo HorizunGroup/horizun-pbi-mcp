@@ -212,6 +212,10 @@ _POR_QUE_NO_WIN32 = (
 )
 
 LIMITE_HELPER = 120.0
+#: Lo que pueden consumir, en el peor caso, las fases de tipo y nombre con
+#: sus tres intentos (`uia_helper.PLAZO_POR_FASE` por fase). Se declara aqui
+#: para no importar el helper en el proceso del servidor.
+PRESUPUESTO_FASES = 50.0
 
 #: COM ya no se toca en ESTE proceso. Conducir el cuadro es cosa de
 #: `uia_helper`, que corre aparte: una llamada COM bloqueada no se puede
@@ -711,7 +715,8 @@ class Win32UIAdapter:
 
     def save_as_completo(self, *, pid: int, started: Optional[float],
                          destino: str, extension: str = ".pbix",
-                         timeout: float = 180.0) -> Dict[str, Any]:
+                         timeout: float = 180.0,
+                         overwrite: bool = False) -> Dict[str, Any]:
         """TODO el guardado, conducido desde un PROCESO APARTE.
 
         Es el camino real, y sustituye a la secuencia paso a paso de arriba
@@ -731,18 +736,30 @@ class Win32UIAdapter:
         """
         from horizun_pbi_mcp.powerbi import desktop_helper
 
+        # El presupuesto del helper y el plazo con que se le mata tienen que
+        # cuadrar: antes `save_timeout` heredaba el plazo global (600 s) y el
+        # proceso se terminaba a los 180 s, asi que un cierre lento se
+        # reportaba como "helper sin respuesta". Ahora el cierre del cuadro
+        # dispone de lo que queda tras abrirlo y recorrer las fases con sus
+        # reintentos; la ESCRITURA del archivo la espera el padre con el
+        # plazo completo.
+        plazo_proceso = min(timeout, LIMITE_HELPER) + 60.0
+        dialog_timeout = min(60.0, float(timeout))
+        save_timeout = max(20.0, plazo_proceso - dialog_timeout
+                           - PRESUPUESTO_FASES - 15.0)
         return desktop_helper.ejecutar({
             "action": "save_as",
             "desktop_pid": int(pid),
             "desktop_started": started,
             "out_path": str(destino),
             "extension": extension,
-            "dialog_timeout": min(60.0, timeout),
-            "save_timeout": timeout,
+            "overwrite": bool(overwrite),
+            "dialog_timeout": dialog_timeout,
+            "save_timeout": save_timeout,
             # Para que el helper distinga "el archivo ya aparecio en ESTA
             # ejecucion" de un destino que existia de antes.
             "started_at": time.time(),
-        }, timeout=min(timeout, LIMITE_HELPER) + 60.0)
+        }, timeout=plazo_proceso)
 
     def seleccionar_pagina(self, *, pid: int, started: Optional[float],
                            page_name: str,
