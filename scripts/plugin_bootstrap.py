@@ -100,7 +100,14 @@ def paths(base: Path | None = None, cache: Path | None = None) -> dict[str, Path
         # En la RAIZ, no en la cache: un cerrojo dentro de la carpeta que la
         # promocion renombra no protege la promocion.
         "lock": root / _cerrojos.NOMBRE,
-        "log": cache / "install.log",
+        # En la RAIZ por la MISMA razon, y esta costo una instalacion. El
+        # lanzador abre este archivo y se lo pasa al instalador detachado como
+        # stdout, asi que el proceso lo tiene abierto de principio a fin.
+        # Estando dentro de `cache`, la promocion intentaba renombrar la
+        # carpeta que contenia el stdout del propio proceso que renombraba: en
+        # Windows eso es ERROR_ACCESS_DENIED siempre, no a veces. La
+        # instalacion manual no lo veia porque ahi el stdout es la consola.
+        "log": root / "install.log",
         "libs": cache / "libs",
         "schemas": cache / "schemas" / "pbir",
         "validator": cache / "validator",

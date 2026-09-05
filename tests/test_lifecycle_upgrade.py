@@ -180,6 +180,52 @@ def test_la_promocion_conserva_el_anterior_y_publica_el_nuevo(bootstrap, tmp_pat
     assert (conservados[0] / "runtime").is_dir()
 
 
+def test_el_log_del_instalador_no_vive_en_la_carpeta_que_se_promueve(bootstrap,
+                                                                     tmp_path):
+    """INSTALL-015. El cerrojo ya estaba fuera por esto; el log no.
+
+    `plugin_launcher._start_install()` abre este archivo y se lo pasa al
+    instalador detachado como stdout, asi que el proceso lo mantiene abierto de
+    principio a fin. Cualquier archivo abierto DENTRO de un directorio impide
+    renombrarlo en Windows, y la promocion renombra exactamente ese directorio.
+    """
+    p = bootstrap.paths(tmp_path / "datos")
+    assert p["cache"] not in p["log"].parents, (
+        f"el log vive en {p['log']}, dentro de {p['cache']}, que es la carpeta "
+        "que la promocion renombra")
+    assert p["cache"] not in p["lock"].parents, "el cerrojo tampoco puede"
+
+
+def test_con_el_log_abierto_como_lo_deja_el_lanzador_la_promocion_funciona(
+        bootstrap, tmp_path):
+    """La reproduccion exacta del fallo del primer arranque en Claude Desktop.
+
+    Medido dos veces desde el bundle, con directorios de datos nuevos y sin
+    nada sondeando: `state: failed`, `step: promotion`, "no se pudo apartar el
+    runtime vigente ([WinError 5] Access is denied)". No era el antivirus ni
+    una carrera: era el instalador renombrando la carpeta donde estaba su
+    propio stdout.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    p = bootstrap.paths(raiz)
+    p["log"].parent.mkdir(parents=True, exist_ok=True)
+    registro = open(p["log"], "a", encoding="utf-8")   # noqa: SIM115
+    try:
+        registro.write("instalando")
+        registro.flush()
+        prom.promover(raiz, staging, destino)
+    finally:
+        registro.close()
+
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N"
+
+
 def _bloqueo_de_windows(veces: int, monkeypatch, prom):
     """Hace que los primeros `veces` renombrados fallen como los bloquea Windows.
 
