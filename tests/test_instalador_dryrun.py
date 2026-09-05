@@ -40,6 +40,22 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+
+def _version_declarada() -> str:
+    """La version se LEE del proyecto; no se copia aqui.
+
+    Estaba escrita a mano -`v2.1.0`- y la subida a 2.1.1 puso la suite en rojo
+    acusando al instalador de un defecto que no tenia: `instalar.ps1` fija
+    dentro el `ref` del marketplace que escribe, asi que ESE numero cambia en
+    cada version por diseño. Un numero copiado a una prueba es el mismo
+    duplicado que el hash del instalador copiado a la documentacion.
+    """
+    import re
+
+    texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    return re.search(r'^version = "([^"]+)"', texto, re.M).group(1)
+
 INSTALADOR = RAIZ / "scripts" / "instalar.ps1"
 
 pytestmark = pytest.mark.skipif(
@@ -356,7 +372,7 @@ def test_registro_chatgpt_preserva_el_marketplace_y_es_idempotente(tmp_path):
     assert data["interface"]["displayName"] == "Mis plugins"
     assert [item["name"] for item in data["plugins"]] == ["otro", "horizun-pbi-mcp"]
     horizun = data["plugins"][-1]
-    assert horizun["source"]["ref"] == "v2.1.0"
+    assert horizun["source"]["ref"] == f"v{_version_declarada()}"
     backups = list(target.parent.glob("marketplace.json.bak-*"))
     assert len(backups) == 1
 
