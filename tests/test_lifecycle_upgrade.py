@@ -180,6 +180,100 @@ def test_la_promocion_conserva_el_anterior_y_publica_el_nuevo(bootstrap, tmp_pat
     assert (conservados[0] / "runtime").is_dir()
 
 
+def _bloqueo_de_windows(veces: int, monkeypatch, prom):
+    """Hace que los primeros `veces` renombrados fallen como los bloquea Windows.
+
+    Renombrar un DIRECTORIO da ERROR_ACCESS_DENIED (5) mientras cualquier
+    archivo suyo siga abierto. Devuelve la cuenta de llamadas reales.
+    """
+    real = os.rename
+    cuenta = {"n": 0}
+
+    def falso(origen, destino):
+        cuenta["n"] += 1
+        if cuenta["n"] <= veces:
+            error = OSError(13, "Access is denied")
+            error.winerror = 5
+            raise error
+        return real(origen, destino)
+
+    monkeypatch.setattr(prom.os, "rename", falso)
+    return cuenta
+
+
+def test_un_bloqueo_transitorio_al_promover_no_tumba_la_instalacion(
+        bootstrap, tmp_path, monkeypatch):
+    """INSTALL-014. Un handle que se suelta en 100 ms costaba la instalacion.
+
+    `promover()` hacia UN `os.rename` por paso. En Windows ese renombrado falla
+    con ERROR_ACCESS_DENIED si el antivirus esta escaneando el runtime recien
+    escrito, el indexador lo esta leyendo o un handle del paso anterior no se
+    solto. Es justo el instante que sigue a escribir un entorno entero, asi que
+    no es raro: se observo al instalar desde el bundle de Claude Desktop, y
+    dejaba `state: failed` con un mensaje que pide reintentar A MANO -en el
+    primer arranque de la extension, que es donde menos se puede pedir eso-.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    cuenta = _bloqueo_de_windows(2, monkeypatch, prom)
+    prom.promover(raiz, staging, destino)
+
+    assert cuenta["n"] > 2, "no reintento"
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N"
+    assert len(prom.anteriores(raiz)) == 1, "se perdio el N-1"
+
+
+def test_un_bloqueo_que_no_cede_sigue_fallando_y_conserva_el_anterior(
+        bootstrap, tmp_path, monkeypatch):
+    """El reintento no cambia el desenlace: solo le da tiempo a Windows.
+
+    Si nadie suelta el directorio, la promocion tiene que fallar igual que
+    antes y dejar el runtime vigente en su sitio. Un reintento que acabara
+    tragandose el error seria peor que no tenerlo.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    _bloqueo_de_windows(9999, monkeypatch, prom)
+    with pytest.raises(prom.PromocionError):
+        prom.promover(raiz, staging, destino)
+
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N-1"
+
+
+def test_un_error_que_no_es_bloqueo_falla_a_la_primera(
+        bootstrap, tmp_path, monkeypatch):
+    """Reintentar un error real seria esconderlo detras de dos segundos."""
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    cuenta = {"n": 0}
+
+    def falso(origen, destino_):
+        cuenta["n"] += 1
+        error = OSError(2, "No such file or directory")
+        error.winerror = 2          # ERROR_FILE_NOT_FOUND: no es transitorio
+        raise error
+
+    monkeypatch.setattr(prom.os, "rename", falso)
+    with pytest.raises(prom.PromocionError):
+        prom.promover(raiz, staging, destino)
+    assert cuenta["n"] == 1, "reintento un error que no es un bloqueo"
+
+
 def test_se_puede_volver_al_ultimo_runtime_bueno(bootstrap, tmp_path):
     prom = bootstrap._promocion
     raiz = tmp_path / "datos"
