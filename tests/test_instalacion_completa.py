@@ -157,7 +157,8 @@ def test_con_todo_presente_se_declara_operativa(isolated_settings, monkeypatch,
     libs = tmp_path / "libs"
     libs.mkdir()
     for n in ("Microsoft.AnalysisServices.dll", "Microsoft.AnalysisServices.Core.dll",
-              "Microsoft.AnalysisServices.AdomdClient.dll"):
+              "Microsoft.AnalysisServices.AdomdClient.dll",
+              "Microsoft.AnalysisServices.Tabular.dll"):
         (libs / n).write_bytes(b"dll")
     esquemas = tmp_path / "esquemas"
     esquemas.mkdir()

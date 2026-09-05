@@ -180,6 +180,208 @@ def test_la_promocion_conserva_el_anterior_y_publica_el_nuevo(bootstrap, tmp_pat
     assert (conservados[0] / "runtime").is_dir()
 
 
+def test_el_log_del_instalador_no_vive_en_la_carpeta_que_se_promueve(bootstrap,
+                                                                     tmp_path):
+    """INSTALL-015. El cerrojo ya estaba fuera por esto; el log no.
+
+    `plugin_launcher._start_install()` abre este archivo y se lo pasa al
+    instalador detachado como stdout, asi que el proceso lo mantiene abierto de
+    principio a fin. Cualquier archivo abierto DENTRO de un directorio impide
+    renombrarlo en Windows, y la promocion renombra exactamente ese directorio.
+    """
+    p = bootstrap.paths(tmp_path / "datos")
+    assert p["cache"] not in p["log"].parents, (
+        f"el log vive en {p['log']}, dentro de {p['cache']}, que es la carpeta "
+        "que la promocion renombra")
+    assert p["cache"] not in p["lock"].parents, "el cerrojo tampoco puede"
+
+
+def test_con_el_log_abierto_como_lo_deja_el_lanzador_la_promocion_funciona(
+        bootstrap, tmp_path):
+    """La reproduccion exacta del fallo del primer arranque en Claude Desktop.
+
+    Medido dos veces desde el bundle, con directorios de datos nuevos y sin
+    nada sondeando: `state: failed`, `step: promotion`, "no se pudo apartar el
+    runtime vigente ([WinError 5] Access is denied)". No era el antivirus ni
+    una carrera: era el instalador renombrando la carpeta donde estaba su
+    propio stdout.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    p = bootstrap.paths(raiz)
+    p["log"].parent.mkdir(parents=True, exist_ok=True)
+    registro = open(p["log"], "a", encoding="utf-8")   # noqa: SIM115
+    try:
+        registro.write("instalando")
+        registro.flush()
+        prom.promover(raiz, staging, destino)
+    finally:
+        registro.close()
+
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N"
+
+
+def _launcher():
+    """El lanzador, como modulo: es quien abre el registro de instalacion."""
+    spec = importlib.util.spec_from_file_location(
+        "lanzador_bajo_prueba", RAIZ / "scripts" / "plugin_launcher.py")
+    modulo = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    try:
+        spec.loader.exec_module(modulo)
+    finally:
+        sys.path.remove(str(RAIZ / "scripts"))
+    return modulo
+
+
+def test_la_limpieza_no_se_lleva_el_registro_vivo(bootstrap, tmp_path):
+    """INSTALL-015b. Sacar el log a la raiz lo puso en la lista de barrido.
+
+    En la raiz habia restos del diseño viejo -`install.log` entre ellos- y la
+    limpieza que corre al final de CADA instalacion con exito los borraba. Al
+    mover ahi el registro vivo, esa lista paso a apuntar al archivo que
+    `pbi_install_status` anuncia como `log`: la instalacion terminaba bien y se
+    llevaba por delante el diagnostico de la vuelta anterior, que es justo el
+    que hace falta cuando algo fallo antes.
+    """
+    p = bootstrap.paths(tmp_path / "datos")
+    p["cache"].mkdir(parents=True)
+    (p["cache"] / "runtime").mkdir()
+    p["log"].write_text("por que fallo la vez anterior", encoding="utf-8")
+
+    bootstrap._limpiar_huerfanos(p)
+
+    assert p["log"].exists(), "la limpieza borro el registro que el status anuncia"
+
+
+def test_el_registro_no_crece_sin_fin_y_conserva_una_vuelta(tmp_path):
+    """Un unico archivo compartido por todas las versiones crece para siempre.
+
+    Se rota al superar el tope y se conserva UNA vuelta: la instalacion que
+    falla se suele explicar en la de antes.
+    """
+    lanzador = _launcher()
+    log = tmp_path / "install.log"
+    log.write_bytes(b"x" * (lanzador.LIMITE_LOG + 1))
+
+    lanzador._rotar_log(log)
+
+    assert not log.exists() or log.stat().st_size == 0
+    anterior = log.with_name(log.name + ".anterior")
+    assert anterior.is_file() and anterior.stat().st_size > lanzador.LIMITE_LOG
+
+
+def test_un_registro_pequeno_no_se_rota(tmp_path):
+    """Rotar por sistema tiraria el contexto de la instalacion en curso."""
+    lanzador = _launcher()
+    log = tmp_path / "install.log"
+    log.write_text("dos lineas", encoding="utf-8")
+
+    lanzador._rotar_log(log)
+
+    assert log.read_text(encoding="utf-8") == "dos lineas"
+    assert not log.with_name(log.name + ".anterior").exists()
+
+
+def _bloqueo_de_windows(veces: int, monkeypatch, prom):
+    """Hace que los primeros `veces` renombrados fallen como los bloquea Windows.
+
+    Renombrar un DIRECTORIO da ERROR_ACCESS_DENIED (5) mientras cualquier
+    archivo suyo siga abierto. Devuelve la cuenta de llamadas reales.
+    """
+    real = os.rename
+    cuenta = {"n": 0}
+
+    def falso(origen, destino):
+        cuenta["n"] += 1
+        if cuenta["n"] <= veces:
+            error = OSError(13, "Access is denied")
+            error.winerror = 5
+            raise error
+        return real(origen, destino)
+
+    monkeypatch.setattr(prom.os, "rename", falso)
+    return cuenta
+
+
+def test_un_bloqueo_transitorio_al_promover_no_tumba_la_instalacion(
+        bootstrap, tmp_path, monkeypatch):
+    """INSTALL-014. Un handle que se suelta en 100 ms costaba la instalacion.
+
+    `promover()` hacia UN `os.rename` por paso. En Windows ese renombrado falla
+    con ERROR_ACCESS_DENIED si el antivirus esta escaneando el runtime recien
+    escrito, el indexador lo esta leyendo o un handle del paso anterior no se
+    solto. Es justo el instante que sigue a escribir un entorno entero, asi que
+    no es raro: se observo al instalar desde el bundle de Claude Desktop, y
+    dejaba `state: failed` con un mensaje que pide reintentar A MANO -en el
+    primer arranque de la extension, que es donde menos se puede pedir eso-.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    cuenta = _bloqueo_de_windows(2, monkeypatch, prom)
+    prom.promover(raiz, staging, destino)
+
+    assert cuenta["n"] > 2, "no reintento"
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N"
+    assert len(prom.anteriores(raiz)) == 1, "se perdio el N-1"
+
+
+def test_un_bloqueo_que_no_cede_sigue_fallando_y_conserva_el_anterior(
+        bootstrap, tmp_path, monkeypatch):
+    """El reintento no cambia el desenlace: solo le da tiempo a Windows.
+
+    Si nadie suelta el directorio, la promocion tiene que fallar igual que
+    antes y dejar el runtime vigente en su sitio. Un reintento que acabara
+    tragandose el error seria peor que no tenerlo.
+    """
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    _bloqueo_de_windows(9999, monkeypatch, prom)
+    with pytest.raises(prom.PromocionError):
+        prom.promover(raiz, staging, destino)
+
+    assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N-1"
+
+
+def test_un_error_que_no_es_bloqueo_falla_a_la_primera(
+        bootstrap, tmp_path, monkeypatch):
+    """Reintentar un error real seria esconderlo detras de dos segundos."""
+    prom = bootstrap._promocion
+    raiz = tmp_path / "datos"
+    destino = raiz / bootstrap.VERSION
+    _sembrar_runtime(destino, bootstrap, marca="#N-1")
+    staging = prom.crear_staging(raiz, bootstrap.VERSION)
+    _sembrar_runtime(staging, bootstrap, marca="#N")
+
+    cuenta = {"n": 0}
+
+    def falso(origen, destino_):
+        cuenta["n"] += 1
+        error = OSError(2, "No such file or directory")
+        error.winerror = 2          # ERROR_FILE_NOT_FOUND: no es transitorio
+        raise error
+
+    monkeypatch.setattr(prom.os, "rename", falso)
+    with pytest.raises(prom.PromocionError):
+        prom.promover(raiz, staging, destino)
+    assert cuenta["n"] == 1, "reintento un error que no es un bloqueo"
+
+
 def test_se_puede_volver_al_ultimo_runtime_bueno(bootstrap, tmp_path):
     prom = bootstrap._promocion
     raiz = tmp_path / "datos"

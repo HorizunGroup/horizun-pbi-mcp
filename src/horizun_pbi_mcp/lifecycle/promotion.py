@@ -61,6 +61,42 @@ FASES_RECUPERABLES = ("preparada", "anterior-apartado")
 CONSERVAR_ANTERIORES = 1
 
 
+#: Codigos de Windows que significan "ahora mismo no, vuelve a intentarlo":
+#: 5 ERROR_ACCESS_DENIED y 32 ERROR_SHARING_VIOLATION. Renombrar un DIRECTORIO
+#: falla asi si cualquier archivo suyo esta abierto, y justo despues de escribir
+#: un runtime entero eso es lo normal: el antivirus lo esta escaneando, el
+#: indexador lo esta leyendo, o un handle del paso anterior aun no se solto.
+#: Son decimas de segundo.
+_WINERROR_TRANSITORIOS = (5, 32)
+
+#: Cuanto se insiste antes de rendirse. Corto a proposito: si en dos segundos
+#: nadie solto el directorio, no es el antivirus pasando, es alguien usandolo.
+_ESPERAS_DE_RENOMBRADO = (0.1, 0.2, 0.4, 0.8)
+
+
+def _renombrar(origen: Path, destino: Path) -> None:
+    """`os.rename` que tolera el bloqueo TRANSITORIO de Windows.
+
+    No cambia el desenlace ni las garantias: agotadas las esperas vuelve a
+    lanzar el mismo `OSError` y quien llama decide igual que antes. Lo unico
+    que cambia es que un handle que se suelta en 100 ms deje de convertir una
+    instalacion correcta en un `failed` que obliga a reintentar a mano.
+
+    Solo reintenta los codigos de bloqueo. Un destino que ya existe o una ruta
+    que no esta siguen fallando a la primera: reintentarlos seria esconder un
+    error real detras de dos segundos de espera.
+    """
+    for espera in (*_ESPERAS_DE_RENOMBRADO, None):
+        try:
+            os.rename(origen, destino)
+            return
+        except OSError as exc:
+            transitorio = getattr(exc, "winerror", None) in _WINERROR_TRANSITORIOS
+            if espera is None or not transitorio:
+                raise
+            time.sleep(espera)
+
+
 class PromocionError(RuntimeError):
     """Algo impidio publicar el staging. El destino vigente sigue intacto."""
 
@@ -306,7 +342,7 @@ def promover(root: Path, staging: Path, destino: Path) -> dict[str, Any]:
     apartado = None
     if destino.exists():
         try:
-            os.rename(destino, anterior)
+            _renombrar(destino, anterior)
         except OSError as exc:
             _borrar_journal(root)
             raise PromocionError(
@@ -318,14 +354,14 @@ def promover(root: Path, staging: Path, destino: Path) -> dict[str, Any]:
                           anterior=anterior.name, ts=time.time())
 
     try:
-        os.rename(staging, destino)
+        _renombrar(staging, destino)
     except OSError as exc:
         # Deshacer: devolver el anterior a su sitio. Si esto tambien falla, el
         # estado queda descrito en el journal y `recuperar()` lo reintenta al
         # siguiente arranque en vez de dejarlo mudo.
         if apartado is not None:
             try:
-                os.rename(apartado, destino)
+                _renombrar(apartado, destino)
             except OSError:
                 raise PromocionError(
                     f"no se pudo publicar el staging ({exc}) NI devolver el "

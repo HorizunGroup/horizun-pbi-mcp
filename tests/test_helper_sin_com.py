@@ -154,7 +154,7 @@ def test_la_ruta_se_relee_del_campo_antes_de_seguir(monkeypatch):
     escrito = {}
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
     monkeypatch.setattr(uia_helper, "escribir_texto_real",
-                        lambda t: escrito.__setitem__("texto", t))
+                        lambda t, **kw: escrito.__setitem__("texto", t))
     ruta = "C:\\entrega\\Informe.pbix"
     uia = _UiaFalso(valor_nombre=ruta)
 
@@ -168,7 +168,8 @@ def test_la_ruta_se_relee_del_campo_antes_de_seguir(monkeypatch):
 def test_si_el_campo_no_quedo_con_la_ruta_se_para(monkeypatch):
     """Fue el sintoma del `INPUT` recreado: no se tecleaba nada."""
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
     uia = _UiaFalso(valor_nombre="")
 
@@ -205,7 +206,8 @@ def test_sin_boton_de_guardar_no_se_inventa_donde_pulsar():
 def test_si_no_se_puede_poner_al_frente_no_se_pulsa_a_ciegas(monkeypatch):
     """Un clic sin el cuadro al frente cae en la aplicacion de otra persona."""
     monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: True)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: False)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: False)
     clics = []
     monkeypatch.setattr(uia_helper, "clic_dinamico",
                         lambda *a, **k: clics.append(a))
@@ -393,7 +395,7 @@ def test_una_accion_desconocida_dice_cuales_valen(monkeypatch):
 
     assert codigo == 2
     datos = json.loads(salida)
-    assert datos["valid"] == ["save_as"]
+    assert datos["valid"] == ["fit_to_page", "save_as", "select_page"]
     assert "volar" in datos["error"]
 
 
@@ -488,7 +490,8 @@ def test_el_nombre_se_acepta_aunque_la_aplicacion_vaya_con_retraso(monkeypatch):
     era la sincronizacion, no el tecleo.
     """
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     ruta = r"C:\entrega\Informe.pbix"
 
     class _CampoLento(_UiaFalso):
@@ -513,7 +516,8 @@ def test_el_nombre_se_acepta_aunque_la_aplicacion_vaya_con_retraso(monkeypatch):
 
 def test_si_el_campo_nunca_se_llena_se_dice_cuanto_se_espero(monkeypatch):
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     monkeypatch.setattr(uia_helper, "ESPERA_INTERFAZ", 0.2)
 
     with pytest.raises(uia_helper.HelperError) as fallo:

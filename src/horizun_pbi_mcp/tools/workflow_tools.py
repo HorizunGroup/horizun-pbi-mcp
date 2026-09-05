@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import get_session, get_settings
 from horizun_pbi_mcp.services import workflows
-from horizun_pbi_mcp.tools._common import guard, guard_mutation
+from horizun_pbi_mcp.tools._common import alias_unico, guard, guard_mutation
 from horizun_pbi_mcp.tools.visual_tools import _model_data
 from horizun_pbi_mcp.utils.file_utils import atomic_write_text, timestamp
 
@@ -35,7 +35,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_dashboard(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, preset=preset, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_build_executive_page(measures: List[str],
@@ -48,7 +49,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_executive_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_build_evm_page(measures: List[str], name: str = "EVM",
@@ -63,7 +65,8 @@ def register(mcp) -> None:
         ejecutar = lambda: workflows.build_evm_page(  # noqa: E731
             _active(), _model_data(), name=name, measures=measures,
             category=category, seed=seed, dry_run=dry_run)
-        return guard(ejecutar) if dry_run else guard_mutation(ejecutar)
+        return (guard(ejecutar, request_id=request_id) if dry_run
+                else guard_mutation(ejecutar))
 
     @mcp.tool()
     def pbi_repair_broken_references(mapping: Optional[Dict[str, str]] = None,
@@ -132,8 +135,10 @@ def register(mcp) -> None:
                         overwrite: bool = False, refresh: str = "auto",
                         leave_open: bool = True, timeout: int = 600,
                         confirm_reuse: bool = False,
-                        request_id: str = "") -> Dict[str, Any]:
-        """Exporta el proyecto .pbip a un archivo .pbix de verdad.
+                        request_id: str = "",
+                        format: str = "pbix",
+                        project_path: str = "") -> Dict[str, Any]:
+        """Exporta el proyecto .pbip a un archivo .pbix (o .pbit) de verdad.
 
         Microsoft no publica ninguna API para convertir el formato, asi que
         esto automatiza el flujo OFICIAL: abre el proyecto en Power BI Desktop
@@ -158,7 +163,23 @@ def register(mcp) -> None:
 
         `leave_open=true` (por defecto) deja abierto exactamente el .pbix
         generado y lo selecciona como modelo activo. Nunca cierra una ventana
-        que no abrio esta operacion.
+        que no abrio esta operacion. La respuesta trae `desktop_session`
+        (`desktop_pid` + `desktop_started`): es lo que acepta
+        `pbi_close_desktop` para cerrar ESA ventana despues, porque ya no
+        responde a la ruta del .pbip original.
+
+        `format`: 'pbix' (por defecto) o 'pbit'. Con 'pbit' se elige el tipo
+        de PLANTILLA en el mismo `Guardar como`, se atiende el dialogo de
+        descripcion que Desktop abre despues y se verifica que el archivo
+        tenga forma de plantilla: informe y definicion del modelo, SIN datos.
+        No se fabrica quitando partes de un .pbix.
+
+        Antes de conducir la ventana se espera a que su titulo muestre el
+        documento pedido (hasta 90 s): `Sin titulo` es Desktop cargando, no
+        otra ventana. Un titulo estable de OTRO documento se rechaza.
+
+        `project_path` es un alias de `pbip_path`; si llegan distintos, la
+        tool devuelve un conflicto en vez de elegir uno.
 
         Requiere Windows, Power BI Desktop instalado y el extra `export`
         (`pip install "horizun-pbi-mcp[export]"`). El cuadro de guardado se
@@ -170,17 +191,21 @@ def register(mcp) -> None:
         from horizun_pbi_mcp.services import pbix_export
 
         return guard_mutation(lambda: pbix_export.export(
-            get_session(), pbip_path=pbip_path or None,
+            get_session(),
+            pbip_path=alias_unico(pbip_path=pbip_path,
+                                  project_path=project_path),
             out_path=out_path or None, overwrite=overwrite, refresh=refresh,
             leave_open=leave_open, timeout=timeout,
-            confirm_reuse=confirm_reuse))
+            confirm_reuse=confirm_reuse, format=format))
 
     @mcp.tool()
     def pbi_finalize_delivery(path: str = "", format: str = "pbix",
                               out_path: str = "", refresh: str = "auto",
                               overwrite: bool = False,
                               leave_open: bool = True,
-                              request_id: str = "") -> Dict[str, Any]:
+                              request_id: str = "",
+                              project_path: str = "",
+                              confirm_reuse: bool = False) -> Dict[str, Any]:
         """El ULTIMO paso de una construccion: del proyecto al entregable.
 
         Hace de extremo a extremo lo que hasta ahora eran cinco llamadas y un
@@ -192,13 +217,21 @@ def register(mcp) -> None:
         Una sola respuesta verificable: `output_pbix`, `output_sha256`,
         `output_size`, `saved_as_verified` y `opened_path_verified`.
 
-        `path` se puede omitir para usar el proyecto activo. `format` solo
-        acepta 'pbix' por ahora, y se declara asi en vez de fingir que hay
-        mas. Requiere Windows con Power BI Desktop instalado.
+        `path` (o su alias `project_path`) se puede omitir para usar el
+        proyecto activo. `format`: 'pbix' o 'pbit' (plantilla: informe y
+        definicion del modelo, sin datos; producida por el propio `Guardar
+        como` de Desktop, nunca fabricada a mano). Requiere Windows con Power
+        BI Desktop instalado.
+
+        `confirm_reuse=true` autoriza conducir una ventana que ya estaba
+        abierta por el usuario. Sin esa autorizacion el flujo falla cerrado,
+        igual que `pbi_export_pbix`.
         """
         from horizun_pbi_mcp.services import pbix_export
 
         return guard_mutation(lambda: pbix_export.finalize_delivery(
-            get_session(), path=path or None, format=format,
+            get_session(),
+            path=alias_unico(path=path, project_path=project_path),
+            format=format,
             out_path=out_path or None, refresh=refresh, overwrite=overwrite,
-            leave_open=leave_open))
+            leave_open=leave_open, confirm_reuse=confirm_reuse))

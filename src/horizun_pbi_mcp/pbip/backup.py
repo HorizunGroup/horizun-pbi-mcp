@@ -170,10 +170,29 @@ def _verify_zip(path: Path, manifest: Dict[str, Any]) -> None:
     import hashlib
 
     with zipfile.ZipFile(path, "r") as zf:
-        nombres = {n.replace("\\", "/"): n for n in zf.namelist()}
+        lista = [n.replace("\\", "/") for n in zf.namelist()
+                 if not n.endswith("/") and n.replace("\\", "/") != MANIFEST_NAME]
+        esperados = [str(e["path"]).replace("\\", "/")
+                     for e in manifest["files"]]
+        if len({n.casefold() for n in lista}) != len(lista):
+            raise BackupError(
+                "El ZIP de backup contiene entradas duplicadas; no se publica.")
+        if len({n.casefold() for n in esperados}) != len(esperados):
+            raise BackupError("El manifiesto del backup contiene rutas duplicadas.")
+        extras = sorted(set(n.casefold() for n in lista)
+                        - set(n.casefold() for n in esperados))
+        faltantes = sorted(set(n.casefold() for n in esperados)
+                           - set(n.casefold() for n in lista))
+        if extras or faltantes:
+            raise BackupError(
+                "El conjunto de archivos del ZIP no coincide exactamente con "
+                "su manifiesto; no se publica.",
+                details={"unexpected": extras, "missing": faltantes})
+        nombres = {n.casefold(): real for n, real in
+                   ((n.replace("\\", "/"), n) for n in zf.namelist())}
         for entry in manifest["files"]:
             clave = str(entry["path"]).replace("\\", "/")
-            real = nombres.get(clave)
+            real = nombres.get(clave.casefold())
             if real is None:
                 raise BackupError(
                     "El ZIP de backup quedo incompleto; no se publica.",
@@ -227,12 +246,31 @@ def verify_backup(backup_dir: Path) -> Dict[str, Any]:
     except ValueError as exc:
         raise BackupError(f"Manifiesto ilegible: {exc}") from exc
 
+    entries = manifest.get("files", [])
+    if not isinstance(entries, list):
+        raise BackupError("El manifiesto no contiene una lista valida de archivos.")
+
     results: List[Dict[str, Any]] = []
-    for entry in manifest.get("files", []):
-        rel = entry["path"]
+    esperados: Dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise BackupError("El manifiesto contiene una entrada de archivo invalida.")
+        rel = entry["path"].replace("\\", "/")
+        try:
+            candidate = safe_paths.ensure_contained(
+                bdir, bdir / rel, kind="archivo manifestado del backup")
+        except Exception as exc:                         # noqa: BLE001
+            raise BackupError(
+                "El manifiesto contiene una ruta fuera del backup.",
+                details={"path": rel}) from exc
+        clave = rel.casefold()
+        if clave in esperados:
+            raise BackupError(
+                "El manifiesto contiene rutas duplicadas.",
+                details={"path": rel, "other": esperados[clave]})
+        esperados[clave] = rel
         # El backup guarda cada carpeta origen por su nombre; el manifiesto usa
         # rutas relativas al proyecto, que empiezan por ese mismo nombre.
-        candidate = bdir / rel
         if not candidate.exists():
             results.append({"path": rel, "status": "missing"})
             continue
@@ -241,6 +279,19 @@ def verify_backup(backup_dir: Path) -> Dict[str, Any]:
             entry.get("state", "present"), entry.get("sha256"), entry.get("size"))
         results.append({"path": rel,
                         "status": "ok" if actual.matches(expected) else "mismatch"})
+
+    actuales: Dict[str, str] = {}
+    for candidate in bdir.rglob("*"):
+        if not candidate.is_file() or candidate == manifest_path:
+            continue
+        rel = candidate.relative_to(bdir).as_posix()
+        clave = rel.casefold()
+        if clave in actuales:
+            results.append({"path": rel, "status": "unexpected"})
+        else:
+            actuales[clave] = rel
+    for clave in sorted(set(actuales) - set(esperados)):
+        results.append({"path": actuales[clave], "status": "unexpected"})
 
     by_status: Dict[str, int] = {}
     for r in results:

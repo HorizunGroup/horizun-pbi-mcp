@@ -280,28 +280,58 @@ class Transaction:
     # -- planificacion ------------------------------------------------------
     def plan(self, targets: Iterable[Path]) -> None:
         """Fingerprint inicial de cada objetivo y snapshot en el journal."""
-        self.files_dir.mkdir(parents=True, exist_ok=True)
+        # Primero se resuelve y se lee TODO el lote. Antes se creaba el journal
+        # y se iban copiando originales mientras aun podia aparecer un objetivo
+        # invalido al final del iterable. Ese fallo dejaba un journal parcial,
+        # sin manifiesto, que recovery no podia interpretar.
+        planned: Dict[str, FileRecord] = {}
         for target in targets:
             resolved = safe_paths.ensure_contained(
                 self.project_dir, target, kind="objetivo de escritura")
             key = safe_paths.relative_key(self.project_dir, resolved)
-            if key in self.records:
+            if key in planned:
                 continue
             fp = fingerprint(resolved)
-            self.records[key] = FileRecord(key=key, path=resolved, initial=fp)
-            if fp.state == "absent":
-                self._note_missing_dirs(resolved.parent)
-            if fp.state == "present":
-                dest = self.files_dir / key
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(resolved, dest)
-                copia = fingerprint(dest)
-                if not copia.matches(fp):
-                    raise TransactionError(
-                        "El respaldo del journal no coincide con el original; se "
-                        "aborta antes de modificar nada.",
-                        details={"file": key})
-        self._write_manifest(status="open")
+            planned[key] = FileRecord(key=key, path=resolved, initial=fp)
+
+        if self.journal_dir.exists():
+            raise TransactionError(
+                "El identificador de la transaccion ya tiene un journal; no se "
+                "mezclan dos operaciones.",
+                details={"journal": str(self.journal_dir)})
+
+        try:
+            self.files_dir.mkdir(parents=True, exist_ok=False)
+            self.records = planned
+            for key, rec in planned.items():
+                resolved, fp = rec.path, rec.initial
+                if fp.state == "absent":
+                    self._note_missing_dirs(resolved.parent)
+                if fp.state == "present":
+                    dest = self.files_dir / key
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(resolved, dest)
+                    copia = fingerprint(dest)
+                    if not copia.matches(fp):
+                        raise TransactionError(
+                            "El respaldo del journal no coincide con el original; se "
+                            "aborta antes de modificar nada.",
+                            details={"file": key})
+            self._write_manifest(status="open")
+        except BaseException:
+            # Este arbol solo contiene copias creadas por ESTE plan. Se valida
+            # de nuevo porque incluso la limpieza de un fallo debe resistir un
+            # reparse point cambiado entre comprobacion y uso.
+            try:
+                if self.journal_dir.exists():
+                    safe_paths.assert_still_contained(
+                        self.backup_root, self.journal_dir,
+                        kind="journal parcial de transaccion")
+                    shutil.rmtree(self.journal_dir)
+            except Exception:                           # noqa: BLE001
+                log.warning("No se pudo retirar journal parcial: %s",
+                            self.journal_dir, exc_info=True)
+            raise
 
     def _note_missing_dirs(self, directory: Path) -> None:
         """Apunta los directorios inexistentes que habra que retirar al revertir."""
@@ -323,14 +353,24 @@ class Transaction:
     def _remove_created_dirs(self) -> List[str]:
         """Retira los directorios que creamos, si quedaron vacios."""
         retirados: List[str] = []
+        fallos: List[Dict[str, str]] = []
         for d in sorted(self._created_dirs, key=lambda p: len(p.parts), reverse=True):
             try:
+                safe_paths.assert_still_contained(
+                    self.project_dir, d,
+                    kind="directorio creado por la transaccion")
                 if d.exists() and d.is_dir() and not any(d.iterdir()):
+                    safe_paths.assert_still_contained(
+                        self.project_dir, d,
+                        kind="directorio creado por la transaccion")
                     d.rmdir()
                     retirados.append(str(d))
-            except OSError:                            # pragma: no cover
+            except (OSError, PowerBIMCPError) as exc:
                 # Si alguien dejo algo dentro, se respeta: no es nuestro.
+                fallos.append({"directory": str(d),
+                               "error": f"{type(exc).__name__}: {exc}"})
                 continue
+        self._dir_cleanup_failures = fallos
         return retirados
 
     # -- escritura ----------------------------------------------------------
@@ -541,14 +581,23 @@ class Transaction:
                 continue
 
             try:
+                safe_paths.assert_still_contained(
+                    self.project_dir, rec.path,
+                    kind="objetivo de rollback")
                 if rec.initial.state == "absent":
                     # Lo creamos nosotros y sigue siendo nuestro: se elimina.
                     if rec.path.exists():
+                        safe_paths.assert_still_contained(
+                            self.project_dir, rec.path,
+                            kind="objetivo de rollback")
                         rec.path.unlink()
                     rec.outcome = RESTORED
                     rec.detail = "Archivo creado por la transaccion: eliminado."
                 else:
                     origen = self.files_dir / rec.key
+                    safe_paths.assert_still_contained(
+                        self.journal_dir, origen,
+                        kind="respaldo de rollback")
                     if not origen.exists():
                         rec.outcome = ROLLBACK_FAILED
                         rec.detail = "Falta el respaldo en el journal."
@@ -557,7 +606,13 @@ class Transaction:
                     # propia transaccion (al borrar el ultimo visual de una
                     # carpeta). Sin recrearlo, copy2 falla y el rollback deja
                     # el archivo perdido.
+                    safe_paths.assert_still_contained(
+                        self.project_dir, rec.path.parent,
+                        kind="directorio de rollback")
                     rec.path.parent.mkdir(parents=True, exist_ok=True)
+                    safe_paths.assert_still_contained(
+                        self.project_dir, rec.path,
+                        kind="objetivo de rollback")
                     shutil.copy2(origen, rec.path)
                     restaurado = fingerprint(rec.path)
                     if restaurado.matches(rec.initial):
@@ -567,7 +622,7 @@ class Transaction:
                         rec.outcome = ROLLBACK_FAILED
                         rec.detail = (
                             "La restauracion no coincide con el original.")
-            except OSError as exc:
+            except (OSError, PowerBIMCPError) as exc:
                 rec.outcome = ROLLBACK_FAILED
                 rec.detail = f"{type(exc).__name__}: {exc}"
 
@@ -587,7 +642,8 @@ class Transaction:
             by_outcome.setdefault(rec.outcome or "unknown", []).append(rec.key)
         conflicts = by_outcome.get(ROLLBACK_CONFLICT, [])
         failures = by_outcome.get(ROLLBACK_FAILED, [])
-        clean = not conflicts and not failures
+        dir_failures = getattr(self, "_dir_cleanup_failures", [])
+        clean = not conflicts and not failures and not dir_failures
         salida = {
             "request_id": self.request_id,
             "tool": self.tool,
@@ -598,6 +654,8 @@ class Transaction:
             "files": [r.to_dict() for r in self.records.values()],
             "removed_dirs": getattr(self, "_removed_dirs", []),
         }
+        if dir_failures:
+            salida["directory_cleanup_failures"] = dir_failures
         if self.esquemas_sin_comprobar:
             salida["schema_unchecked"] = self.esquemas_sin_comprobar
         # `by_outcome` solo cuando DIAGNOSTICA algo: en una transaccion limpia
@@ -967,24 +1025,37 @@ def parche_temporal(active, cambios: Dict[Path, bytes], *, tool: str,
     for destino, datos in (cambios or {}).items():
         planeados[ensure_within_base(raiz, destino)] = datos
 
-    txn_obj = Transaction(raiz, project_backup_root(active), tool=tool,
-                          request_id=request_id)
-    txn_obj.plan(planeados.keys())
-    try:
-        # Orden estable: el mismo journal para la misma operacion.
-        for destino in sorted(planeados):
-            txn_obj.write_bytes(destino, planeados[destino], _json_validator)
-        yield txn_obj
-    finally:
-        resultado = txn_obj.rollback(cause=f"parche temporal de {tool}")
-        # `clean` es False si algun archivo quedo en ROLLBACK_FAILED o en
-        # ROLLBACK_CONFLICT: en los dos casos el proyecto NO esta como estaba.
-        if not resultado.get("clean"):
-            raise TemporaryPatchNotRestored(
-                "El parche temporal de la captura se aplico y no se pudo "
-                "deshacer entero. El proyecto NO esta como estaba: revisa el "
-                "journal antes de volver a escribir.",
-                details={"intervention_required": True,
-                         "rollback": resultado,
-                         "journal": resultado.get("journal"),
-                         "tool": tool})
+    backup_root = project_backup_root(active)
+    cerrojo = _cerrojo.exclusion(
+        backup_root / ".project.lock",
+        timeout=LOCK_PROYECTO_SEGUNDOS,
+        al_agotarse=lambda t: TransactionError(
+            f"Otro cliente lleva mas de {t:.0f}s escribiendo en este proyecto "
+            "y no se ha podido tomar el turno. No se aplico el parche temporal.",
+            details={"project_dir": str(raiz),
+                     "lock_timeout_seconds": t}))
+    # El lock cubre tambien el tiempo durante el que Desktop consume el parche.
+    # Soltarlo tras escribir permitia que otra transaccion viera el estado
+    # temporal como si fuera el original y lo confirmara permanentemente.
+    with cerrojo:
+        txn_obj = Transaction(raiz, backup_root, tool=tool,
+                              request_id=request_id)
+        txn_obj.plan(planeados.keys())
+        try:
+            # Orden estable: el mismo journal para la misma operacion.
+            for destino in sorted(planeados):
+                txn_obj.write_bytes(destino, planeados[destino], _json_validator)
+            yield txn_obj
+        finally:
+            resultado = txn_obj.rollback(cause=f"parche temporal de {tool}")
+            # `clean` es False si algun archivo quedo en ROLLBACK_FAILED o en
+            # ROLLBACK_CONFLICT: en los dos casos el proyecto NO esta como estaba.
+            if not resultado.get("clean"):
+                raise TemporaryPatchNotRestored(
+                    "El parche temporal de la captura se aplico y no se pudo "
+                    "deshacer entero. El proyecto NO esta como estaba: revisa el "
+                    "journal antes de volver a escribir.",
+                    details={"intervention_required": True,
+                             "rollback": resultado,
+                             "journal": resultado.get("journal"),
+                             "tool": tool})

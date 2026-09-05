@@ -211,10 +211,16 @@ def _secuencia_montada(monkeypatch, uia):
     monkeypatch.setattr(uia_helper, "_esperar_cuadro",
                         lambda u, pid, plazo: {"hwnd": 22})
     monkeypatch.setattr(uia_helper, "seleccionar_todo", lambda: None)
-    monkeypatch.setattr(uia_helper, "escribir_texto_real", lambda t: None)
+    monkeypatch.setattr(uia_helper, "escribir_texto_real",
+                        lambda t, **kw: None)
     monkeypatch.setattr(uia_helper, "_cuadro_sigue_abierto", lambda h: False)
     monkeypatch.setattr(uia_helper, "_esperar_cierre", lambda h, p: True)
     monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [])
+    # El primer plano es de la ventana que se conduce: lo que se prueba
+    # aqui es la secuencia, no el forcejeo por el foco.
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_de", lambda pid: True)
+    # El cuadro tiene el foco: lo que se prueba aqui es la secuencia.
+    monkeypatch.setattr(uia_helper, "_primer_plano_es_el_cuadro", lambda h: True)
 
 
 def test_la_secuencia_completa_deja_evidencia_de_cada_fase(monkeypatch):
@@ -223,7 +229,8 @@ def test_la_secuencia_completa_deja_evidencia_de_cada_fase(monkeypatch):
     uia = _UiaFalso(valor_tipo="Archivo de Power BI (*.pbix)",
                     estado_tras=uia_helper.ESTADO_CERRADO, valor_nombre=ruta)
     _secuencia_montada(monkeypatch, uia)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
 
     salida = uia_helper.guardar_como({
         "desktop_pid": 4321, "desktop_started": 1.0, "out_path": ruta})
@@ -240,7 +247,8 @@ def test_la_secuencia_completa_deja_evidencia_de_cada_fase(monkeypatch):
 def test_si_no_se_puede_poner_desktop_al_frente_no_se_pulsa_F12(monkeypatch):
     """Una tecla enviada sin foco acaba en la ventana de otro programa."""
     _secuencia_montada(monkeypatch, _UiaFalso())
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: False)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: False)
     teclas = []
     monkeypatch.setattr(uia_helper, "_enviar_teclas",
                         lambda e: teclas.append(e))
@@ -259,7 +267,8 @@ def test_un_modal_al_cerrar_viaja_en_la_respuesta(monkeypatch):
     uia = _UiaFalso(valor_tipo="Archivo de Power BI (*.pbix)",
                     estado_tras=uia_helper.ESTADO_CERRADO, valor_nombre=ruta)
     _secuencia_montada(monkeypatch, uia)
-    monkeypatch.setattr(uia_helper, "traer_al_frente", lambda h, p: True)
+    monkeypatch.setattr(uia_helper, "traer_al_frente",
+                        lambda h, p, **kw: True)
     monkeypatch.setattr(uia_helper, "_modales", lambda u, pid, ex: [
         {"hwnd": 99, "title": "Ya existe"}])
 

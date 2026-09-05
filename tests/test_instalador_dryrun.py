@@ -31,6 +31,7 @@ Sin ese rojo, estas pruebas solo demostrarian que el arnes no mira.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -39,6 +40,22 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+
+def _version_declarada() -> str:
+    """La version se LEE del proyecto; no se copia aqui.
+
+    Estaba escrita a mano -`v2.1.0`- y la subida a 2.1.1 puso la suite en rojo
+    acusando al instalador de un defecto que no tenia: `instalar.ps1` fija
+    dentro el `ref` del marketplace que escribe, asi que ESE numero cambia en
+    cada version por diseño. Un numero copiado a una prueba es el mismo
+    duplicado que el hash del instalador copiado a la documentacion.
+    """
+    import re
+
+    texto = (RAIZ / "pyproject.toml").read_text(encoding="utf-8")
+    return re.search(r'^version = "([^"]+)"', texto, re.M).group(1)
+
 INSTALADOR = RAIZ / "scripts" / "instalar.ps1"
 
 pytestmark = pytest.mark.skipif(
@@ -315,10 +332,67 @@ def test_dry_run_sale_cero_aunque_falten_dependencias(sandbox):
         "con PATH minimo tienen que faltar dependencias")
 
 
-def test_dry_run_declara_a_codex_fuera_de_alcance(sandbox):
-    """CLI-001 sigue abierta: el plan no puede insinuar que cubre Codex."""
+def test_dry_run_registra_el_marketplace_compartido_de_chatgpt_y_codex(sandbox):
     res = _correr(sandbox, INSTALADOR, seco=True)
-    assert "Codex: fuera del alcance de este instalador" in res.stdout
+    assert "registrar horizun-pbi-mcp en ~/.agents/plugins/marketplace.json" in res.stdout
+    assert "ChatGPT Desktop: se registraria el marketplace personal" in res.stdout
+    assert "Codex: cubierto por el marketplace personal de ChatGPT" in res.stdout
+
+
+def _invocar_registro_chatgpt(tmp_path: Path, home: Path):
+    """Carga solo las funciones del instalador y ejecuta el registrador."""
+    texto = INSTALADOR.read_text(encoding="ascii")
+    prefijo = texto.split("# --- 1. Politica de ejecucion", 1)[0]
+    script = tmp_path / "registrar-chatgpt.ps1"
+    script.write_text(
+        prefijo + "\n"
+        + f"$env:USERPROFILE = '{str(home).replace(chr(39), chr(39) * 2)}'\n"
+        + "$r = RegistrarMarketplaceChatGPT\n"
+        + "$r | ConvertTo-Json -Compress\n",
+        encoding="ascii")
+    return subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        capture_output=True, text=True, timeout=30)
+
+
+def test_registro_chatgpt_preserva_el_marketplace_y_es_idempotente(tmp_path):
+    home = tmp_path / "home"
+    target = home / ".agents" / "plugins" / "marketplace.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps({
+        "name": "mi-marketplace",
+        "interface": {"displayName": "Mis plugins"},
+        "plugins": [{"name": "otro", "source": "./plugins/otro"}],
+    }), encoding="utf-8")
+
+    first = _invocar_registro_chatgpt(tmp_path, home)
+    assert first.returncode == 0, first.stderr
+    data = json.loads(target.read_text(encoding="utf-8"))
+    assert data["name"] == "mi-marketplace"
+    assert data["interface"]["displayName"] == "Mis plugins"
+    assert [item["name"] for item in data["plugins"]] == ["otro", "horizun-pbi-mcp"]
+    horizun = data["plugins"][-1]
+    assert horizun["source"]["ref"] == f"v{_version_declarada()}"
+    backups = list(target.parent.glob("marketplace.json.bak-*"))
+    assert len(backups) == 1
+
+    second = _invocar_registro_chatgpt(tmp_path, home)
+    assert second.returncode == 0, second.stderr
+    assert len(list(target.parent.glob("marketplace.json.bak-*"))) == 1, (
+        "un segundo registro identico no debe volver a escribir ni respaldar")
+
+
+def test_registro_chatgpt_no_pisa_un_json_invalido(tmp_path):
+    home = tmp_path / "home"
+    target = home / ".agents" / "plugins" / "marketplace.json"
+    target.parent.mkdir(parents=True)
+    original = b'{"plugins": [ roto'
+    target.write_bytes(original)
+
+    result = _invocar_registro_chatgpt(tmp_path, home)
+    assert result.returncode != 0 or "JSON valido" in (result.stdout + result.stderr)
+    assert target.read_bytes() == original
+    assert not list(target.parent.glob("marketplace.json.bak-*"))
 
 
 # ------------------------------------------------ la puerta unica ------------

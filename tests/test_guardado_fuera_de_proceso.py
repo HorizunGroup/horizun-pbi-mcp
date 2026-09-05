@@ -350,7 +350,8 @@ def test_un_helper_que_no_responde_se_termina_de_verdad(monkeypatch):
 def test_el_helper_solo_declara_las_acciones_que_sabe_hacer():
     from horizun_pbi_mcp.powerbi import uia_helper
 
-    assert sorted(uia_helper.ACCIONES) == ["save_as"]
+    assert sorted(uia_helper.ACCIONES) == ["fit_to_page", "save_as",
+                                            "select_page"]
 
 
 def test_una_respuesta_que_no_es_json_se_dice_tal_cual(monkeypatch):

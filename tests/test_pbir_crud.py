@@ -359,6 +359,31 @@ def test_eliminar_pagina_actualiza_metadatos(proyecto):
     assert dp["page_id"] not in meta["pageOrder"]
 
 
+def test_eliminar_pagina_restaura_subdirectorios_vacios_si_falla_commit(
+        proyecto, monkeypatch):
+    active, project, _s = proyecto
+    dp = pbir_edit.duplicate_page(active, P, "Segunda")
+    page_dir = (project / "Demo.Report" / "definition" / "pages" /
+                dp["page_id"])
+    vacio = page_dir / "metadata" / "reservado"
+    vacio.mkdir(parents=True)
+    archivos_antes = huella(project)
+    dirs_antes = {p.relative_to(project).as_posix()
+                  for p in project.rglob("*") if p.is_dir()}
+
+    def commit_roto(self):
+        raise OSError("fallo de commit inyectado")
+
+    monkeypatch.setattr(txn_service.Transaction, "commit", commit_roto)
+    with pytest.raises(OSError, match="fallo de commit"):
+        pbir_edit.delete_page(active, dp["page_id"], confirm=True)
+
+    assert huella(project) == archivos_antes
+    assert {p.relative_to(project).as_posix()
+            for p in project.rglob("*") if p.is_dir()} == dirs_antes
+    assert vacio.is_dir()
+
+
 def test_eliminar_la_pagina_activa_reasigna(proyecto):
     active, project, _s = proyecto
     dp = pbir_edit.duplicate_page(active, P, "Segunda")

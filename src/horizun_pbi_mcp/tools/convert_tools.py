@@ -72,7 +72,9 @@ def register(mcp) -> None:
         conexion en vivo, y cuantas paginas, recursos y visuales personalizados
         tiene. Sirve para saber que esperar antes de lanzar la conversion.
 
-        `path`: ruta al archivo .pbix.
+        `path`: ruta al archivo .pbix. Es el UNICO nombre del parametro: no
+        hay alias `pbix_path`, porque `path` es obligatorio en el contrato
+        congelado y un alias no podria sustituirlo.
         """
         return guard(lambda: pbix_reader.read_pbix(path).summary())
 
@@ -103,7 +105,10 @@ def register(mcp) -> None:
 
         `path`: un .pbix o una CARPETA (`recursive` incluye subcarpetas).
         `out_dir`: carpeta donde crear el proyecto; se crea una subcarpeta por
-        informe. `include_model=false` genera solo la mitad del informe, sin
+        informe. Los dos son obligatorios y esos son sus nombres: `pbix_path`
+        y `output_dir` NO existen como alias, porque un parametro obligatorio
+        del contrato congelado no se puede sustituir por otro nombre.
+        `include_model=false` genera solo la mitad del informe, sin
         tocar Desktop. `dataset_connection_string` es obligatorio para informes
         con conexion en vivo (los que no llevan modelo propio).
 

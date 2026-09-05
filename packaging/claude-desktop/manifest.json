@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "horizun-pbi-mcp",
+  "display_name": "Horizun PBI MCP",
+  "version": "2.1.1",
+  "description": "Build, audit, diagnose and repair local Power BI Desktop models and PBIP reports.",
+  "long_description": "Local Power BI engineering through MCP: DAX and DMV queries, TOM and TMDL model work, PBIR report authoring, validation, backups, Desktop refresh, screenshots and verified PBIX or PBIT export.",
+  "author": {
+    "name": "HorizunGroup",
+    "url": "https://github.com/HorizunGroup"
+  },
+  "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp",
+  "documentation": "https://github.com/HorizunGroup/horizun-pbi-mcp/blob/main/docs/INSTALL.md",
+  "support": "https://github.com/HorizunGroup/horizun-pbi-mcp/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "payload/scripts/plugin_launcher.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${__dirname}",
+        "python",
+        "${__dirname}/payload/scripts/plugin_launcher.py"
+      ]
+    }
+  },
+  "tools_generated": true,
+  "keywords": ["power-bi", "powerbi", "dax", "pbip", "pbir", "tmdl", "business-intelligence"],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["win32"]
+  }
+}

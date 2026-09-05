@@ -29,16 +29,30 @@ ROLLBACK_INCOMPLETE = "rollback_incomplete"
 #: Codigos de error que representan un choque con el estado externo, no un fallo
 #: de la peticion en si. Se distinguen para que un cliente pueda reintentar.
 _CONFLICT_CODES = {
+    "active_model_project_mismatch",
+    "idempotency_attempt_superseded",
+    "idempotency_conflict",
+    "page_conflict",
+    "plan_expired",
+    "plan_operation_mismatch",
+    "plan_payload_tampered",
+    "plan_project_mismatch",
     "project_open_in_desktop",
+    "recovery_conflict",
+    "request_in_progress",
+    "request_outcome_unknown",
     "stale_session",
-    "transaction_failed",
     "dual_mode_not_safely_available",
     "measure_exists",
     "plan_token_stale",
     "request_id_conflict",
 }
 
-_ROLLBACK_CODES = {"rollback_incomplete", "bulk_partially_applied"}
+_ROLLBACK_CODES = {
+    "rollback_incomplete",
+    "bulk_partially_applied",
+    "temporary_patch_not_restored",
+}
 
 
 def new_request_id() -> str:
@@ -65,7 +79,7 @@ def _status_for_success(payload: Dict[str, Any]) -> str:
     return SUCCESS
 
 
-def _side_effects(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _side_effects(payload: Dict[str, Any], operation: str) -> List[Dict[str, Any]]:
     """Resume que se toco, para que el cliente no tenga que adivinarlo."""
     efectos: List[Dict[str, Any]] = []
     txn = payload.get("transaction")
@@ -83,8 +97,50 @@ def _side_effects(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         efectos.append({"kind": "live_model",
                         "persisted": False,
                         "note": live["note"]})
-    if payload.get("output_path"):
-        efectos.append({"kind": "artifact", "path": payload["output_path"]})
+    rutas_artefacto = []
+    for clave in ("output_path", "output_pbix"):
+        ruta = payload.get(clave)
+        if ruta and ruta not in rutas_artefacto:
+            rutas_artefacto.append(ruta)
+    captura = payload.get("capture")
+    if isinstance(captura, dict) and captura.get("path"):
+        rutas_artefacto.append(captura["path"])
+    for ruta in rutas_artefacto:
+        efectos.append({"kind": "artifact", "path": ruta})
+
+    # Los efectos de Desktop y refresh no dejan necesariamente una transaccion
+    # ni un output_path. Sin estas entradas, las tools mas visibles parecian no
+    # haber tocado nada pese a abrir/cerrar una aplicacion o mutar el modelo en
+    # memoria. Solo se anuncian cuando el payload acredita que ocurrieron.
+    if operation in {"pbi_open_in_desktop", "pbi_open_and_refresh",
+                     "pbi_validate_desktop_render"} and payload.get("desktop_pid"):
+        efectos.append({
+            "kind": "desktop",
+            "action": ("opened" if payload.get("launched_by_us") else "reused"),
+            "pid": payload.get("desktop_pid"),
+        })
+    sesion_desktop = payload.get("desktop_session")
+    if operation in {"pbi_export_pbix", "pbi_finalize_delivery"} \
+            and isinstance(sesion_desktop, dict):
+        efectos.append({
+            "kind": "desktop",
+            "action": "left_open" if sesion_desktop.get("closable") else "used",
+            "pid": sesion_desktop.get("desktop_pid"),
+        })
+    if operation == "pbi_close_desktop" and payload.get("was_open"):
+        efectos.append({
+            "kind": "desktop",
+            "action": "closed" if payload.get("verified_closed") else "close_attempted",
+            "pid": payload.get("desktop_pid") or payload.get("pid"),
+        })
+    refresco = payload if operation == "pbi_refresh_model" else payload.get("refresh")
+    if isinstance(refresco, dict) and refresco.get("status") == "ok":
+        efectos.append({
+            "kind": "live_model",
+            "action": "refresh",
+            "persisted": False,
+            "refresh_type": refresco.get("refresh_type"),
+        })
     return efectos
 
 
@@ -117,17 +173,27 @@ def success(payload: Dict[str, Any], *, operation: str, request_id: str,
         payload = {"result": payload}
     out: Dict[str, Any] = {"ok": True}
     out.update(payload)                      # los campos originales, intactos
+    # `status` y `operation` tambien son nombres del envelope. Antes se
+    # perdian silenciosamente cuando un servicio los usaba para su resultado
+    # de negocio (p.ej. apply_plan: no_change/applied). Se preservan de forma
+    # aditiva con nombres sin colision; los nombres publicos del envelope
+    # conservan su significado y compatibilidad.
+    if "status" in payload:
+        out["result_status"] = payload["status"]
+    if "operation" in payload:
+        out["target_operation"] = payload["operation"]
     out["status"] = _status_for_success(payload)
     out["request_id"] = request_id
     out["operation"] = operation
     out["duration_ms"] = round(duration_ms, 1)
     out.setdefault("warnings", [])
     out["warnings"] = _dedupe_warnings(out["warnings"])
-    efectos = _side_effects(payload)
-    if efectos:
-        out["side_effects"] = efectos
-    else:
-        out.setdefault("side_effects", [])
+    efectos_existentes = out.get("side_effects")
+    acumulados = list(efectos_existentes) if isinstance(efectos_existentes, list) else []
+    for efecto in _side_effects(payload, operation):
+        if efecto not in acumulados:
+            acumulados.append(efecto)
+    out["side_effects"] = acumulados
     return out
 
 

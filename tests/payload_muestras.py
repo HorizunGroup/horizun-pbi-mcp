@@ -59,6 +59,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CODIGOS_MODELO_VIVO = {"no_active_model", "adomd_not_installed",
                        "tom_not_installed", "clr_not_available"}
 
+# Su anotacion refleja el efecto MAXIMO (`refresh=true`), pero la llamada sin
+# argumentos usa `refresh=false` y no muta el modelo. Se conserva esa muestra
+# de error: cambiar la clasificacion de riesgo no cambia el payload de la tool.
+DESTRUCTIVAS_SEGURAS_POR_DEFECTO = {"pbi_validate_desktop_render"}
+
 
 def _proyecto_sintetico(raiz: Path) -> Path:
     """Un `.pbip` mínimo con la forma que el servidor sabe leer."""
@@ -373,7 +378,8 @@ def recorrer() -> Tuple[Dict[str, Any], Dict[str, Any]]:
                     if esquema.get("required"):
                         continue                  # sin argumentos no hay payload
                     anotacion = annotations_for(nombre)
-                    if anotacion.get("destructiveHint"):
+                    if (anotacion.get("destructiveHint")
+                            and nombre not in DESTRUCTIVAS_SEGURAS_POR_DEFECTO):
                         continue                  # nunca a ciegas
                     if (escenario == "con-proyecto"
                             and not anotacion.get("readOnlyHint")):

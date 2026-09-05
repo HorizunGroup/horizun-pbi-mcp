@@ -922,6 +922,25 @@ def convert_many(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Convierte varios .pbix. Un fallo no detiene al resto del lote."""
+    # Todos los destinos viven como hermanos bajo out_dir. Dos fuentes
+    # recursivas con el mismo stem (o un project_name explicito para un lote)
+    # producirian la misma carpeta: con overwrite=true la segunda borraba la
+    # primera y aun asi se informaban dos exitos. Se rechaza el lote completo
+    # antes de leer, abrir Desktop o crear staging.
+    por_destino: Dict[str, List[str]] = {}
+    project_name = kwargs.get("project_name")
+    for source in pbix_paths:
+        pbix = Path(source).expanduser().resolve()
+        nombre = _nombre_proyecto(pbix, project_name)
+        por_destino.setdefault(nombre.casefold(), []).append(str(pbix))
+    colisiones = [fuentes for fuentes in por_destino.values()
+                  if len(fuentes) > 1]
+    if colisiones:
+        raise PbixConversionError(
+            "El lote contiene archivos que producirian la misma carpeta de "
+            "destino; no se inicio ninguna conversion.",
+            details={"collisions": colisiones, "out_dir": str(Path(out_dir))})
+
     resultados: List[Dict[str, Any]] = []
     fallos: List[Dict[str, Any]] = []
     for pbix in pbix_paths:

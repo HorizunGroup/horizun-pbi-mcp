@@ -3,7 +3,7 @@
   "name": "io.github.HorizunGroup/horizun-pbi-mcp",
   "title": "Horizun PBI MCP",
   "description": "Build, audit and repair Power BI Desktop models and PBIP reports with DAX, TMDL and PBIR.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "repository": {
     "url": "https://github.com/HorizunGroup/horizun-pbi-mcp",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "horizun-pbi-mcp",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "transport": {"type": "stdio"}
     }
   ]

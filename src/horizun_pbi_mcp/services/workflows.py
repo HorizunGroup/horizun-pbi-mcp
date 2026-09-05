@@ -521,11 +521,79 @@ def _reemplazar_ref_dax(texto: str, viejo: str, nuevo: str):
     calificadas que referencien de verdad a la medida las recoge el barrido
     final y salen como aviso con su ubicacion, nunca en silencio.
     """
-    import re
+    # Un regex no conoce el lenguaje: antes reemplazaba dentro de
+    # `"Etiqueta [Medida]"`, comentarios y nombres que contienen `]`. Este
+    # escaner pequeno reconoce justo las regiones que DAX permite ignorar y
+    # decodifica `]]` dentro de un identificador entre corchetes.
+    salida: List[str] = []
+    reemplazos = 0
+    i = 0
+    n = len(texto)
+    while i < n:
+        ch = texto[i]
 
-    patron = re.compile(r"(?<![\w'\]])\[" + re.escape(viejo) + r"\]",
-                        re.IGNORECASE)
-    return patron.subn(f"[{nuevo}]", texto)
+        # Cadenas y nombres de tabla citados; ambos duplican su delimitador.
+        if ch in {'"', "'"}:
+            delim = ch
+            j = i + 1
+            while j < n:
+                if texto[j] == delim:
+                    if j + 1 < n and texto[j + 1] == delim:
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            salida.append(texto[i:j])
+            i = j
+            continue
+
+        # Comentarios DAX de linea y bloque.
+        if texto.startswith("//", i) or texto.startswith("--", i):
+            j = texto.find("\n", i + 2)
+            if j < 0:
+                salida.append(texto[i:])
+                break
+            salida.append(texto[i:j])
+            i = j
+            continue
+        if texto.startswith("/*", i):
+            j = texto.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            salida.append(texto[i:j])
+            i = j
+            continue
+
+        if ch == "[":
+            j = i + 1
+            nombre: List[str] = []
+            cerrado = False
+            while j < n:
+                if texto[j] == "]":
+                    if j + 1 < n and texto[j + 1] == "]":
+                        nombre.append("]")
+                        j += 2
+                        continue
+                    cerrado = True
+                    j += 1
+                    break
+                nombre.append(texto[j])
+                j += 1
+            previo = texto[i - 1] if i else ""
+            no_calificada = not (previo and
+                                  (previo.isalnum() or previo in "_']"))
+            if (cerrado and no_calificada
+                    and "".join(nombre).casefold() == viejo.casefold()):
+                salida.append("[" + nuevo.replace("]", "]]") + "]")
+                reemplazos += 1
+            else:
+                salida.append(texto[i:j])
+            i = j
+            continue
+
+        salida.append(ch)
+        i += 1
+    return "".join(salida), reemplazos
 
 
 def _barrido_de_restos(active, table: str, old_name: str) -> List[str]:

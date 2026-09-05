@@ -471,6 +471,19 @@ def select_model(
                      "ports": [i["port"] for i in instances]},
         )
 
+    return _activar(session, chosen, catalog=catalog)
+
+
+def _activar(session: Session, chosen: Dict[str, Any], *,
+             catalog: Optional[str] = None,
+             persist: bool = True) -> ActiveModel:
+    """Convierte una instancia descubierta en el modelo activo de la sesion.
+
+    Es la UNICA forma de activar un modelo: la seleccion explicita y la
+    recuperacion de una sesion caducada pasan por aqui, con la misma
+    identidad (pid, hora de arranque, workspace, huella) para que despues se
+    pueda detectar un puerto reutilizado por otro proceso.
+    """
     if chosen["status"] != "ok":
         raise ModelDiscoveryError(
             f"La instancia en el puerto {chosen['port']} no responde.",
@@ -491,6 +504,156 @@ def select_model(
         workspace=chosen.get("workspace"),
         session_fingerprint=chosen.get("session_fingerprint"),
     )
-    session.set_active_model(model)
+    session.set_active_model(model, persist=persist)
     log.info("Modelo activo: puerto %s catalogo %s", model.port, model.catalog)
     return model
+
+
+def _candidatas_de_recuperacion(instances: List[Dict[str, Any]]
+                                ) -> List[Dict[str, Any]]:
+    """Instancias VIVAS y verificables: responden y tienen catalogo.
+
+    Un archivo de puerto huerfano (`status='unreachable'`) no es candidato, y
+    tampoco lo es el puerto viejo por el hecho de estar otra vez abierto: lo
+    que se elige sale de la foto NUEVA, con el pid y la hora de arranque de
+    quien lo ocupa ahora.
+    """
+    return [i for i in instances
+            if i.get("status") == "ok" and i.get("catalog")]
+
+
+def candidatos_de_seleccion() -> List[Dict[str, Any]]:
+    """Instancias vivas con la llamada exacta para elegir cada una."""
+    try:
+        vivas = _candidatas_de_recuperacion(discover_instances())
+    except Exception as exc:                              # noqa: BLE001
+        log.debug("No se pudieron listar candidatos: %s", exc)
+        return []
+    return [{"port": i["port"], "model_name": i.get("model_name"),
+             "table_count": i.get("table_count"),
+             "tables_sample": i.get("tables_sample") or [],
+             "select_with": f"pbi_select_model(port={i['port']})"}
+            for i in vivas]
+
+
+def recuperar_sesion(session: Session, *, previo: ActiveModel,
+                     status: Dict[str, Any],
+                     active_pbip: Any = None,
+                     for_mutation: bool = False,
+                     persist_recovery: bool = True) -> ActiveModel:
+    """Reconecta una sesion caducada con la MISMA regla que `pbi_select_model`.
+
+    Al reiniciar Power BI Desktop, `session.json` conserva un puerto muerto y
+    cada tool -hasta `pbi_capabilities`- fallaba con esa sesion. En vez de
+    hacer que cada una lo resuelva a su manera, la regla vive aqui, una vez:
+
+    - exactamente UNA instancia viva y verificable -> se selecciona, y la
+      respuesta de la tool lo declara en `session_recovery`;
+    - varias -> `stale_session` con los candidatos y la llamada exacta, sin
+      elegir ninguna a ciegas;
+    - ninguna -> `stale_session` accionable.
+
+    Nunca reconecta al puerto guardado por el hecho de estar abierto: si lo
+    ocupa otro proceso, es otra instancia y entra por la foto nueva como
+    cualquier otra. Y NO reproduce ninguna operacion: solo deja la sesion
+    apuntando a un modelo demostrable para que la operacion en curso se
+    ejecute una sola vez sobre el.
+
+    Una LECTURA sigue la misma regla publica de `pbi_select_model`: si solo hay
+    una instancia viva, la selecciona aunque el proyecto PBIP activo sea otro,
+    y declara esa diferencia en `document_evidence`. Eso cubre el caso normal
+    tras exportar un PBIP, cerrar Desktop y reabrir el PBIX resultante. Una
+    MUTACION conserva la barrera estricta: solo se reconecta si puede demostrar
+    que la candidata sirve el proyecto activo; sin esa prueba exige seleccion
+    explicita.
+    """
+    instancias = discover_instances()
+    candidatas = _candidatas_de_recuperacion(instancias)
+    grabado = previo.to_dict()
+    motivo = str(status.get("reason") or "la sesion guardada ya no es valida")
+    if not candidatas:
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} No hay ninguna "
+            "instancia viva de Power BI Desktop a la que reconectar. Abre el "
+            "informe en Desktop y ejecuta pbi_list_desktop_models y "
+            "pbi_select_model.",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "no_instances",
+                     "instances_seen": len(instancias)})
+    if len(candidatas) > 1:
+        opciones = [
+            {"port": i["port"], "model_name": i.get("model_name"),
+             "table_count": i.get("table_count"),
+             "tables_sample": i.get("tables_sample") or [],
+             "select_with": f"pbi_select_model(port={i['port']})"}
+            for i in candidatas]
+        puertos = ", ".join(str(i["port"]) for i in candidatas)
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} Hay "
+            f"{len(candidatas)} instancias vivas y no se elige ninguna a "
+            f"ciegas. Llama pbi_select_model(port=...) con uno de estos "
+            f"puertos: {puertos}.",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "ambiguous", "candidates": opciones,
+                     "ports": [i["port"] for i in candidatas]})
+    elegida = candidatas[0]
+    evidencia_documento: Optional[Dict[str, Any]] = None
+    if active_pbip is not None:
+        from horizun_pbi_mcp.powerbi import desktop_identity
+
+        evidencia_documento = desktop_identity.identify(
+            elegida, target=getattr(active_pbip, "pbip_path", None))
+        if (for_mutation
+                and (evidencia_documento.get("path_match") is not True
+                     or evidencia_documento.get("identity_confidence")
+                     != desktop_identity.HIGH)):
+            raise StaleSessionError(
+                f"La sesion guardada ya no es valida: {motivo} La unica "
+                "instancia viva no sirve demostrablemente el proyecto activo "
+                f"'{getattr(active_pbip, 'report_name', None) or ''}', asi que "
+                "no se reconecta a ella. Abre el proyecto en Desktop "
+                "(pbi_open_in_desktop) o elige el modelo con "
+                "pbi_select_model(port=...).",
+                details={"status": status.get("status"), "recorded": grabado,
+                         "recovery": "document_mismatch",
+                         "candidate": {"port": elegida["port"],
+                                       "model_name": elegida.get("model_name")},
+                         "identity": evidencia_documento,
+                         "active_project": getattr(active_pbip, "pbip_path",
+                                                   None)})
+    elif for_mutation:
+        raise StaleSessionError(
+            f"La sesion guardada ya no es valida: {motivo} Hay una instancia "
+            "viva, pero sin proyecto activo no se puede demostrar que sirva "
+            "el mismo documento, y una escritura no se redirige a ciegas. "
+            f"Confirmalo con pbi_select_model(port={elegida['port']}).",
+            details={"status": status.get("status"), "recorded": grabado,
+                     "recovery": "explicit_selection_required",
+                     "candidates": [{
+                         "port": elegida["port"],
+                         "model_name": elegida.get("model_name"),
+                         "select_with": f"pbi_select_model(port={elegida['port']})"}]})
+    modelo = _activar(session, elegida, persist=persist_recovery)
+    nota = {
+        "recovered": True,
+        "reason": motivo,
+        "previous": {"port": previo.port, "pid": previo.pid,
+                     "catalog": previo.catalog},
+        "selected": {"port": modelo.port, "pid": modelo.pid,
+                     "catalog": modelo.catalog,
+                     "model_name": modelo.model_name},
+        "rule": "unica instancia viva y verificable, como pbi_select_model",
+        "document_evidence": (
+            {"path_match": evidencia_documento.get("path_match"),
+             "identity_confidence": evidencia_documento.get("identity_confidence"),
+             "desktop_window_title": evidencia_documento.get("desktop_window_title")}
+            if evidencia_documento else
+            {"path_match": None, "detail": "sin proyecto activo contra el que "
+                                           "verificar; solo lectura"}),
+    }
+    anotar = getattr(session, "note_recovery", None)
+    if anotar is not None:
+        anotar(nota)
+    log.info("Sesion caducada recuperada: puerto %s -> %s",
+             previo.port, modelo.port)
+    return modelo

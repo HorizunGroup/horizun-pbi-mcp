@@ -103,36 +103,83 @@ def _es_seguro_reintentar(salida: Dict[str, Any]) -> bool:
     return salida.get("status") not in ("rollback_incomplete", "partial_failure")
 
 
+def alias_unico(**candidatos: Any) -> Optional[Any]:
+    """UN valor entre varios nombres equivalentes de un mismo parametro.
+
+    Las tools admiten alias -`path`, `pbip_path`, `project_path`; `name` y
+    `object_name`- porque son los nombres que uno escribe de forma natural.
+    Lo que no se hace es ADIVINAR: si llegan dos con valores distintos, se
+    devuelve un conflicto claro. Ignorar uno en silencio es como no aplicar
+    un filtro y contestar con todo el modelo.
+    """
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+
+    dados = {nombre: valor for nombre, valor in candidatos.items()
+             if valor is not None and str(valor).strip() != ""}
+    if not dados:
+        return None
+    valores = {str(v).strip() for v in dados.values()}
+    if len(valores) > 1:
+        nombres = " y ".join(f"`{n}`" for n in dados)
+        raise ValidationError(
+            f"{nombres} son el mismo parametro y llegaron distintos; no se "
+            "adivina cual vale.",
+            details={"conflict": {n: str(v) for n, v in dados.items()},
+                     "reason": "alias_conflict"})
+    return next(iter(dados.values()))
+
+
 def ruta_de_proyecto(path: Optional[str] = None,
-                     pbip_path: Optional[str] = None):
-    """La ruta del proyecto sobre la que operar, con los dos nombres y el activo.
+                     pbip_path: Optional[str] = None,
+                     project_path: Optional[str] = None):
+    """La ruta del proyecto sobre la que operar, con sus alias y el activo.
 
     `pbi_session_info` devuelve `active_pbip.pbip_path`, asi que ese es el
     nombre que uno escribe despues; pero las tools de Desktop lo llamaban
-    `path` y rechazaban el otro con un error de validacion. Se aceptan los dos
-    -y ninguno: entonces se usa el proyecto activo, que el servidor ya conoce-.
+    `path` y rechazaban el otro con un error de validacion. Se aceptan los
+    tres nombres -y ninguno: entonces se usa el proyecto activo, que el
+    servidor ya conoce-. Una CARPETA de proyecto se resuelve con la misma
+    regla que `pbi_prepare_project`: un unico `.pbip` vale; con varios se
+    dice cuales hay, y no se elige uno por orden alfabetico.
     """
     from pathlib import Path
 
     from horizun_pbi_mcp.config import get_session
     from horizun_pbi_mcp.powerbi.errors import ValidationError
 
-    elegida = next((p for p in (path, pbip_path) if p and str(p).strip()), None)
+    elegida = alias_unico(path=path, pbip_path=pbip_path,
+                          project_path=project_path)
     if elegida is None:
         activo = get_session().active_pbip
         if activo is None:
             raise ValidationError(
                 "No se indico proyecto y no hay ninguno activo. Pasa `path` "
-                "(o `pbip_path`), o abre uno con pbi_open_pbip_project.",
+                "(o `pbip_path` / `project_path`), o abre uno con "
+                "pbi_open_pbip_project.",
                 details={"parameter": "path"})
         elegida = activo.pbip_path
-    if (path and pbip_path
-            and str(path).strip() != str(pbip_path).strip()):
-        raise ValidationError(
-            "`path` y `pbip_path` son el mismo parametro y llegaron distintos; "
-            "no se adivina cual vale.",
-            details={"path": path, "pbip_path": pbip_path})
-    return Path(str(elegida)).expanduser().resolve()
+    ruta = Path(str(elegida)).expanduser()
+    if ruta.is_dir():
+        from horizun_pbi_mcp.services import project_resolver
+
+        ruta, _motivo = project_resolver.resolver_entrada(ruta)
+    return ruta.resolve()
+
+
+def _nota_de_recuperacion() -> Optional[Dict[str, Any]]:
+    """La recuperacion de sesion que ocurrio DURANTE esta tool, si la hubo.
+
+    Se lee del singleton sin crearlo: `guard()` corre tambien en pruebas y en
+    tools que no tocan la sesion, y crearla aqui leeria `session.json` de
+    quien ejecuta la suite.
+    """
+    from horizun_pbi_mcp import config
+
+    sesion = getattr(config, "_session", None)
+    if sesion is None:
+        return None
+    tomar = getattr(sesion, "consume_recovery", None)
+    return tomar() if callable(tomar) else None
 
 
 def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
@@ -148,11 +195,19 @@ def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
     op = operation or _infer_operation()
     rid = request_id or envelope.new_request_id()
     timer = envelope.Timer()
+    # Una nota que quedara de una llamada anterior no es evidencia de ESTA:
+    # se descarta antes de ejecutar nada.
+    _nota_de_recuperacion()
 
     with timer:
         try:
             resultado = fn()
             payload = resultado if isinstance(resultado, dict) else {"result": resultado}
+            recuperacion = _nota_de_recuperacion()
+            if recuperacion:
+                # La tool reconecto una sesion caducada por el camino: se
+                # dice en la respuesta, no solo en el log.
+                payload = {**payload, "session_recovery": recuperacion}
             salida = envelope.success(payload, operation=op, request_id=rid,
                                       duration_ms=timer.ms)
             telemetry.log_operation(
@@ -164,6 +219,9 @@ def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
             salida = envelope.failure(exc.code, exc.message, exc.details,
                                       operation=op, request_id=rid,
                                       duration_ms=timer.ms)
+            recuperacion = _nota_de_recuperacion()
+            if recuperacion:
+                salida["session_recovery"] = recuperacion
             telemetry.log_operation(
                 log, operation=op, request_id=rid, duration_ms=timer.ms,
                 status=salida["status"], ok=False, error_code=exc.code)
@@ -174,6 +232,9 @@ def guard(fn: Callable[[], Any], *, operation: Optional[str] = None,
             salida = envelope.failure(
                 "unexpected", str(exc), None, operation=op, request_id=rid,
                 duration_ms=timer.ms, exc_type=type(exc).__name__)
+            recuperacion = _nota_de_recuperacion()
+            if recuperacion:
+                salida["session_recovery"] = recuperacion
             telemetry.log_operation(
                 log, operation=op, request_id=rid, duration_ms=timer.ms,
                 status=salida["status"], ok=False, error_code="unexpected")

@@ -231,13 +231,18 @@ def coincidencias_por_titulo(stem: str,
         return CoincidenciaPorTitulo(
             error=f"no se pudo cargar la enumeracion de ventanas: {exc}")
 
+    from horizun_pbi_mcp.powerbi.desktop_identity import nombre_de_documento
+
     objetivo = str(stem).strip().casefold()
     coincidencias: List[int] = []
     sin_titulos: List[int] = []
     fallos: List[str] = []
     for pid in pids:
         try:
-            titulos = [w.title.strip().casefold()
+            # El sufijo del producto (` - Power BI Desktop`) no es parte del
+            # nombre: una ventana recien cargada lo lleva y la misma ventana
+            # un rato despues no. Se compara el NOMBRE del documento.
+            titulos = [nombre_de_documento(w.title)
                        for w in _enumerate_windows(pid)
                        if w.title and w.title.strip()]
         except Exception as exc:               # noqa: BLE001
@@ -303,7 +308,17 @@ def _pid_por_titulo_de_ventana(stem: str,
     """
     pids = [p.pid for p in _procesos_desktop()]
     if objetivo is not None:
-        pids = [pid for pid in pids if not _sirve_otro_proyecto(pid, objetivo)]
+        from horizun_pbi_mcp.services import project_resolver
+
+        # Para REUTILIZAR una ventana el titulo solo da el nombre. Se exige
+        # ademas que la linea de comandos nombre la ruta exacta; si no hay esa
+        # evidencia, dos `Demo.pbip` de carpetas distintas son indistinguibles
+        # y se falla cerrado en vez de conducir el homonimo.
+        pids = [
+            pid for pid in pids
+            if any(project_resolver.misma_ruta(d, objetivo)
+                   for d in _documentos_de_la_linea_de_comandos(pid))
+        ]
     return coincidencias_por_titulo(stem, pids).inequivoca
 
 
@@ -378,19 +393,43 @@ def _process_started(pid: Optional[int]) -> Optional[float]:
         return None
 
 
-def open_pbix(pbix_path: str | Path, timeout: int = 300,
-              reuse_open: bool = True) -> OpenedPbix:
-    """Deja el .pbix servido por un motor local y devuelve esa instancia."""
-    timeout = validate_limit(timeout, "timeout", MAX_TIMEOUT_PERMITIDO)
-    assert timeout is not None  # el parametro no es opcional
-    pbix = Path(pbix_path).expanduser().resolve()
+def resolver_documento(ruta: str | Path) -> Path:
+    """El archivo EXACTO que Desktop va a abrir, con el error que corresponde.
+
+    Una carpeta de proyecto se resuelve con la misma regla que el resto del
+    servidor (`project_resolver`): UN `.pbip` inequivoco vale; con varios se
+    dice cuales hay y no se elige. Y el mensaje de "no existe" nombra el tipo
+    real de lo que se pidio: decir "el archivo .pbix no existe" cuando se paso
+    un `.pbip` -o una carpeta- mandaba a buscar el archivo equivocado.
+    """
+    from horizun_pbi_mcp.services import project_resolver
+
+    pedido = Path(str(ruta)).expanduser()
+    if pedido.is_dir():
+        resuelto, _motivo = project_resolver.resolver_entrada(pedido)
+        pedido = resuelto
+    pbix = pedido.resolve()
     if not pbix.is_file():
-        raise DesktopNotFoundError(f"El archivo .pbix no existe: {pbix}")
+        tipo = pbix.suffix.casefold() or "(sin extension)"
+        raise DesktopNotFoundError(
+            f"El archivo {tipo} no existe: {pbix}. Pasa la ruta exacta de "
+            "un .pbip o .pbix, o la carpeta que contenga un unico .pbip.",
+            details={"path": str(pbix), "extension": pbix.suffix,
+                     "reason": "document_not_found"})
     if pbix.suffix.casefold() not in {".pbix", ".pbip"}:
         raise ValidationError(
             "Power BI Desktop solo puede abrir aqui archivos .pbix o .pbip.",
             details={"path": str(pbix), "extension": pbix.suffix},
         )
+    return pbix
+
+
+def open_pbix(pbix_path: str | Path, timeout: int = 300,
+              reuse_open: bool = True) -> OpenedPbix:
+    """Deja el .pbix servido por un motor local y devuelve esa instancia."""
+    timeout = validate_limit(timeout, "timeout", MAX_TIMEOUT_PERMITIDO)
+    assert timeout is not None  # el parametro no es opcional
+    pbix = resolver_documento(pbix_path)
 
     # Se comprueba SIEMPRE, tambien cuando reuse_open=False. Antes ese modo
     # lanzaba otro PBIDesktop y la correlacion por archivo podia devolver la
@@ -690,7 +729,127 @@ def close(opened: OpenedPbix, force: bool = False) -> Dict[str, Any]:
             "survivors": [p.pid for p in supervivientes]}
 
 
-def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
+def _identidad_del_proceso(desktop_pid: int,
+                           desktop_started: Optional[float]) -> Dict[str, Any]:
+    """Comprueba que ese PID sigue siendo EL Desktop que se registro."""
+    import psutil
+
+    if desktop_started is None:
+        return {"ok": False, "reason": "desktop_identity_unverifiable",
+                "detail": "sin hora de arranque no se distingue un PID "
+                          "reciclado; pasa desktop_started tal cual lo "
+                          "devolvio la exportacion"}
+    try:
+        proceso = psutil.Process(int(desktop_pid))
+        nombre = (proceso.name() or "").casefold()
+        creado = float(proceso.create_time())
+    except psutil.NoSuchProcess:
+        return {"ok": False, "reason": "process_gone"}
+    except (psutil.AccessDenied, OSError, ValueError):
+        return {"ok": False, "reason": "desktop_identity_unverifiable"}
+    if nombre != "pbidesktop.exe":
+        return {"ok": False, "reason": "desktop_pid_reused",
+                "actual_process": nombre}
+    if abs(creado - float(desktop_started)) > 1.0:
+        return {"ok": False, "reason": "desktop_pid_reused",
+                "expected_started": desktop_started, "actual_started": creado}
+    return {"ok": True, "pid": int(desktop_pid), "create_time": creado}
+
+
+def close_desktop_by_identity(desktop_pid: int,
+                              desktop_started: Optional[float], *,
+                              expected_document: Optional[str | Path] = None
+                              ) -> Dict[str, Any]:
+    """Cierra la instancia identificada por PID + hora de arranque.
+
+    Existe porque tras `pbi_export_pbix(leave_open=true)` la ventana queda
+    sobre el `.pbix` recien guardado -que Desktop mantiene en su TempSaves- y
+    buscarla por la ruta del `.pbip` original devolvia `was_open=false`. La
+    exportacion devuelve `desktop_session` con estos dos datos, y con ellos se
+    cierra exactamente esa ventana sin adivinar nada por el nombre.
+
+    Nunca termina otro proceso: si el PID se reciclo, si ya no es Desktop o
+    si no hay hora de arranque que lo demuestre, se niega y lo dice. Si se
+    pasa `expected_document`, ademas se exige que la ventana NO este sirviendo
+    demostrablemente otro archivo.
+    """
+    identidad = _identidad_del_proceso(int(desktop_pid), desktop_started)
+    salida: Dict[str, Any] = {"desktop_pid": int(desktop_pid),
+                              "identity": identidad, "was_open": None}
+    if identidad.get("reason") == "process_gone":
+        salida.update({"closed": True, "was_open": False,
+                       "reason": "el proceso ya no existia"})
+        return salida
+    if not identidad.get("ok"):
+        salida.update({"closed": False, "was_open": None,
+                       "reason": identidad.get("reason")})
+        return salida
+
+    from horizun_pbi_mcp.powerbi import desktop_identity
+
+    titulos = desktop_identity.titulos_de_ventana(int(desktop_pid))
+    salida["window_titles"] = titulos[:5]
+    if expected_document is not None:
+        estado = desktop_identity.clasificar_titulos(
+            titulos, Path(str(expected_document)))
+        salida["document_match"] = estado
+        if estado == desktop_identity.IDENTIDAD_OTRO_DOCUMENTO:
+            salida.update({"closed": False, "was_open": True,
+                           "reason": "desktop_serves_other_document"})
+            return salida
+
+    abierto = OpenedPbix(str(expected_document or ""), {}, int(desktop_pid),
+                         False, 0.0, desktop_started=desktop_started)
+    salida.update(close(abierto, force=True))
+    salida["was_open"] = True
+    salida["verified_closed"] = (
+        _identidad_del_proceso(int(desktop_pid), desktop_started).get("reason")
+        == "process_gone")
+    if not salida["verified_closed"]:
+        salida["closed"] = False
+        salida["reason"] = "el proceso sigue vivo tras pedirle que termine"
+    return salida
+
+
+def _pid_del_documento_guardado(pbix: Path) -> Dict[str, Any]:
+    """Correlacion por titulo para un .pbix/.pbit SIN descriptor abierto.
+
+    Un archivo recien guardado con `Guardar como` no deja descriptor sobre el
+    destino y la ventana se lanzo con OTRA ruta en su linea de comandos (el
+    .pbip de origen), asi que el filtro de "su cmdline nombra otro proyecto"
+    lo descartaba siempre. Aqui el filtro es distinto y no mas debil: la
+    ventana vale solo si su titulo es exactamente el nombre del archivo, es
+    la UNICA con ese titulo, y lo que nombra su linea de comandos -si nombra
+    algo- vive en la MISMA carpeta que el archivo pedido. Dos homonimos en
+    carpetas distintas producen ambiguedad, no un cierre.
+    """
+    from horizun_pbi_mcp.services import project_resolver
+
+    pids = [p.pid for p in _procesos_desktop()]
+    ventanas = coincidencias_por_titulo(pbix.stem, pids)
+    if ventanas.error and not ventanas.pids:
+        return {"pid": None, "reason": "window_enumeration_failed",
+                "detail": ventanas.error}
+    if not ventanas.pids:
+        return {"pid": None, "reason": "no_window_with_that_title"}
+    compatibles = []
+    for pid in ventanas.pids:
+        documentos = _documentos_de_la_linea_de_comandos(pid)
+        misma_carpeta = all(
+            project_resolver.misma_ruta(Path(d).parent, pbix.parent)
+            for d in documentos) if documentos else True
+        compatibles.append({"pid": pid, "cmdline_documents": len(documentos),
+                            "same_folder": misma_carpeta})
+    validos = [c for c in compatibles if c["same_folder"]]
+    if len(validos) == 1 and len(ventanas.pids) == 1:
+        return {"pid": validos[0]["pid"], "reason": "window_title",
+                "candidates": compatibles}
+    return {"pid": None, "reason": "ambiguous_window",
+            "candidates": compatibles}
+
+
+def close_desktop_by_path(pbix_path: str | Path, *,
+                          session: Any = None) -> Dict[str, Any]:
     """Cierra SOLO la instancia de Desktop que tiene abierto ese archivo.
 
     Existe porque el ciclo real de trabajo -editar, abrir, mirar, editar-
@@ -710,16 +869,55 @@ def close_desktop_by_path(pbix_path: str | Path) -> Dict[str, Any]:
             details={"path": str(pbix), "extension": pbix.suffix})
 
     pid = proceso_con_archivo_abierto(pbix)
+    matched_by = "open_file"
+    if not pid and pbix.suffix.casefold() != ".pbip":
+        # Un .pbix recien guardado por `Guardar como` no deja descriptor
+        # sobre el destino -Desktop trabaja sobre su copia de TempSaves-.
+        # Primero la evidencia de la propia exportacion (pid + hora de
+        # arranque registrados al exportar); si no la hay, el titulo, con
+        # ambiguedad declarada cuando no distingue.
+        if session is None:
+            # La sesion del servidor, si ya existe. No se crea aqui: cerrar
+            # una ventana no es motivo para leer session.json.
+            from horizun_pbi_mcp import config as _config
+
+            session = getattr(_config, "_session", None)
+        registro = session.exportacion_de(str(pbix)) if session is not None \
+            and hasattr(session, "exportacion_de") else None
+        if registro and registro.get("desktop_pid"):
+            resultado = close_desktop_by_identity(
+                int(registro["desktop_pid"]), registro.get("desktop_started"),
+                expected_document=pbix)
+            resultado["path"] = str(pbix)
+            resultado["matched_by"] = "export_session"
+            resultado["verified_closed"] = bool(resultado.get("verified_closed"))
+            return resultado
+        correlacion = _pid_del_documento_guardado(pbix)
+        pid = correlacion.get("pid")
+        matched_by = "window_title"
+        if not pid and correlacion.get("reason") == "ambiguous_window":
+            return {"closed": False, "was_open": None,
+                    "reason": "ambiguous_window", "path": str(pbix),
+                    "candidates": correlacion.get("candidates"),
+                    "hint": ("hay mas de una ventana compatible y ninguna "
+                             "prueba cual sirve este archivo; cierra por "
+                             "identidad con `desktop_session` de la "
+                             "exportacion")}
     if not pid:
         return {"closed": False, "was_open": False,
                 "reason": "el archivo no esta abierto en ningun Desktop",
-                "path": str(pbix)}
+                "path": str(pbix),
+                "hint": ("si la ventana quedo sobre un archivo exportado, "
+                         "cierra por identidad: pbi_close_desktop("
+                         "desktop_pid=..., desktop_started=..., "
+                         "confirm=true) con los datos de `desktop_session`")}
 
     abierto = OpenedPbix(str(pbix), {}, pid, False, 0.0,
                          desktop_started=_process_started(pid))
     resultado = close(abierto, force=True)
     resultado["path"] = str(pbix)
     resultado["was_open"] = True
+    resultado["matched_by"] = matched_by
 
     # Verificacion real: el archivo ya no puede estar abierto en NINGUN pid.
     todavia = proceso_con_archivo_abierto(pbix)

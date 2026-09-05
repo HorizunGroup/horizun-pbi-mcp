@@ -19,7 +19,7 @@ from typing import Any
 #: Duplicada a proposito: el bootstrap corre ANTES de que el paquete
 #: exista, asi que no puede importar `branding`. Una prueba compara
 #: las dos y falla si se separan, que es como se caza este olvido.
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -100,7 +100,14 @@ def paths(base: Path | None = None, cache: Path | None = None) -> dict[str, Path
         # En la RAIZ, no en la cache: un cerrojo dentro de la carpeta que la
         # promocion renombra no protege la promocion.
         "lock": root / _cerrojos.NOMBRE,
-        "log": cache / "install.log",
+        # En la RAIZ por la MISMA razon, y esta costo una instalacion. El
+        # lanzador abre este archivo y se lo pasa al instalador detachado como
+        # stdout, asi que el proceso lo tiene abierto de principio a fin.
+        # Estando dentro de `cache`, la promocion intentaba renombrar la
+        # carpeta que contenia el stdout del propio proceso que renombraba: en
+        # Windows eso es ERROR_ACCESS_DENIED siempre, no a veces. La
+        # instalacion manual no lo veia porque ahi el stdout es la consola.
+        "log": root / "install.log",
         "libs": cache / "libs",
         "schemas": cache / "schemas" / "pbir",
         "validator": cache / "validator",
@@ -111,12 +118,36 @@ def paths(base: Path | None = None, cache: Path | None = None) -> dict[str, Path
     }
 
 
+class EstadoStatusCorrupto(RuntimeError):
+    """El status existe, pero reescribirlo destruiria evidencia diagnostica."""
+
+
 def read_status(base: Path | None = None) -> dict[str, Any]:
     p = paths(base)
     try:
         result = json.loads(p["status"].read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
+    except FileNotFoundError:
         result = {"state": "not_installed", "ready": False, "version": VERSION}
+    except OSError as exc:
+        result = {
+            "state": "unreadable", "ready": False, "version": VERSION,
+            "message": (f"No se pudo leer {p['status']}: {type(exc).__name__}. "
+                        "El archivo se conserva intacto para diagnostico."),
+        }
+    except (ValueError, TypeError) as exc:
+        result = {
+            "state": "corrupt", "ready": False, "version": VERSION,
+            "message": (f"{p['status']} no contiene JSON valido "
+                        f"({type(exc).__name__}). El archivo se conserva "
+                        "intacto; inspeccionalo o apartalo antes de reinstalar."),
+        }
+    if not isinstance(result, dict):
+        result = {
+            "state": "corrupt", "ready": False, "version": VERSION,
+            "message": (f"{p['status']} no contiene un objeto JSON. El archivo "
+                        "se conserva intacto; inspeccionalo o apartalo antes de "
+                        "reinstalar."),
+        }
     result["data_dir"] = str(p["root"])
     result["runtime_dir"] = str(p["cache"])
     result["log"] = str(p["log"])
@@ -286,7 +317,7 @@ def seleccionar_runtime(base: Path | None = None, *,
 
     try:
         status = _status_crudo(p)
-    except OSError:                                          # pragma: no cover
+    except (OSError, EstadoStatusCorrupto):                  # pragma: no cover
         status = {}
 
     # `excluir` lleva las carpetas que el preflight ya rechazo en este mismo
@@ -342,18 +373,40 @@ def _status_crudo(p: dict[str, Path]) -> dict[str, Any]:
     """
     try:
         datos = json.loads(p["status"].read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
+    except FileNotFoundError:
         datos = {"state": "not_installed", "ready": False, "version": VERSION}
-    return datos if isinstance(datos, dict) else {}
+    except (ValueError, TypeError) as exc:
+        raise EstadoStatusCorrupto(
+            f"{p['status']} existe pero no contiene JSON valido; se conserva "
+            "intacto para diagnostico"
+        ) from exc
+    if not isinstance(datos, dict):
+        raise EstadoStatusCorrupto(
+            f"{p['status']} existe pero no contiene un objeto JSON; se conserva "
+            "intacto para diagnostico"
+        )
+    return datos
 
 
 def _write_status(p: dict[str, Path], **values: Any) -> None:
     p["cache"].mkdir(parents=True, exist_ok=True)
     current = _status_crudo(p)
     current.update(values, version=VERSION, updated=time.time())
-    tmp = p["status"].with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, p["status"])
+    tmp = p["status"].with_name(
+        f".{p['status'].name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as archivo:
+            archivo.write(json.dumps(current, indent=2, ensure_ascii=False))
+            archivo.flush()
+            os.fsync(archivo.fileno())
+        os.replace(tmp, p["status"])
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            # No se oculta el resultado publicado por un fallo de limpieza;
+            # el nombre unico evita que este vestigio pise otro intento.
+            pass
 
 
 def runtime_env(p: dict[str, Path]) -> dict[str, str]:
@@ -750,7 +803,13 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
     for viejo in viejas:
         if _borrar(viejo):
             borrados.append(str(viejo))
-    for nombre in (*CACHE, "install-status.json", "install.lock", "install.log"):
+    # `install.log` NO esta en esta lista aunque sea un resto del diseño viejo:
+    # desde que el registro vivo se saco de la carpeta que se promueve, ese
+    # nombre en la raiz es el archivo que `pbi_install_status` anuncia como
+    # `log`. Barrerlo aqui -al final de cada instalacion CON EXITO- se llevaba
+    # el diagnostico de la vuelta anterior, que es exactamente el que hace
+    # falta cuando la de antes fallo. Su tamaño lo acota el lanzador al abrirlo.
+    for nombre in (*CACHE, "install-status.json", "install.lock"):
         resto = p["root"] / nombre
         if resto.exists() and _borrar(resto):
             borrados.append(str(resto))
@@ -888,6 +947,15 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
             # escribe. `read_status()` devuelve el estado real del dueño, que es
             # justo lo que quiere ver quien pregunte.
             return 0
+
+        # Un status que existe pero no parsea no equivale a "sin instalar".
+        # Se valida antes de recuperar promociones, adoptar runtimes o crear un
+        # staging: abortar aqui garantiza que el intento no deja ningun efecto.
+        try:
+            _status_crudo(p)
+        except EstadoStatusCorrupto as exc:
+            print(f"bootstrap: {exc}", file=sys.stderr)
+            return 1
 
         # INSTALL-011. Esto va DENTRO del cerrojo, y el orden no es un detalle:
         # `recuperar()` renombra el runtime vigente. Hacerlo antes de adquirir

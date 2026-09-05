@@ -39,6 +39,53 @@ def _exigir_purga_completa(resultado: Dict[str, Any]) -> Dict[str, Any]:
 log = get_logger("ops_tools")
 
 
+def _estado_dlls_analysis_services(settings) -> Dict[str, Any]:
+    """Comprueba las DLL por nombre contra el manifiesto versionado.
+
+    Contar tres ``*.dll`` cualesquiera daba un falso positivo con binarios que
+    no eran de Analysis Services. El manifiesto es la fuente de verdad de esta
+    version y permite separar ADOMD (DAX) de TOM (modelo tabular).
+    """
+    try:
+        from horizun_pbi_mcp.completado import libs as libs_service
+
+        manifiesto = libs_service.leer_manifiesto()
+        requeridas = [str(n) for n in manifiesto.get("required_dlls", [])]
+        archivos = manifiesto.get("files") or {}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "available": False,
+            "manifest_ok": False,
+            "reason": f"no se pudo leer el manifiesto de DLL: {exc}",
+            "adomd": {"available": False, "required": [], "missing": []},
+            "tom": {"available": False, "required": [], "missing": []},
+        }
+
+    adomd = [n for n in requeridas
+             if "adomdclient" in str((archivos.get(n) or {}).get("package", "")).casefold()
+             or "adomdclient" in n.casefold()]
+    tom = [n for n in requeridas if n not in adomd]
+    # Un manifiesto sin alguno de los dos grupos tambien es incompleto: una
+    # lista vacia no puede pasar por vacuidad.
+    def grupo(nombres: List[str]) -> Dict[str, Any]:
+        faltan = [n for n in nombres if not (settings.libs_dir / n).is_file()]
+        return {"available": bool(nombres) and not faltan,
+                "required": nombres, "missing": faltan}
+
+    estado_adomd, estado_tom = grupo(adomd), grupo(tom)
+    disponible = estado_adomd["available"] and estado_tom["available"]
+    return {
+        "available": disponible,
+        "manifest_ok": bool(requeridas and adomd and tom),
+        "manifest_version": manifiesto.get("manifest_version"),
+        "required": requeridas,
+        "missing": estado_adomd["missing"] + estado_tom["missing"],
+        "adomd": estado_adomd,
+        "tom": estado_tom,
+        "reason": "disponible" if disponible else "faltan DLL requeridas por el manifiesto",
+    }
+
+
 def _pbip_activo_seguro():
     """Proyecto activo, o None. No lanza: estas tools son de diagnostico."""
     try:
@@ -153,14 +200,15 @@ def _completitud(settings) -> Dict[str, Any]:
     """
     faltan: List[Dict[str, Any]] = []
 
-    libs = settings.libs_dir
-    if not (libs.exists() and len(list(libs.glob("*.dll"))) >= 3):
+    estado_dlls = _estado_dlls_analysis_services(settings)
+    if not estado_dlls["available"]:
         faltan.append({
             "component": "analysis_services_dlls",
             "required": True,
             "impact": "la capa EN VIVO no funciona: nada que hable con el "
                       "modelo de Power BI Desktop",
             "fix": "horizun-pbi-completar",
+            "details": estado_dlls,
         })
 
     try:
@@ -236,9 +284,15 @@ def register(mcp) -> None:
             add("platform", platform.system() == "Windows",
                 platform.system(), requerido=False)
 
-            libs = settings.libs_dir
-            dlls = sorted(p.name for p in libs.glob("*.dll")) if libs.exists() else []
-            add("analysis_services_dlls", len(dlls) >= 3, f"{len(dlls)} DLL")
+            estado_dlls = _estado_dlls_analysis_services(settings)
+            add("analysis_services_dlls", estado_dlls["available"],
+                estado_dlls["reason"])
+            add("analysis_services_adomd", estado_dlls["adomd"]["available"],
+                ("disponible" if estado_dlls["adomd"]["available"] else
+                 f"faltan {estado_dlls['adomd']['missing']}"))
+            add("analysis_services_tom", estado_dlls["tom"]["available"],
+                ("disponible" if estado_dlls["tom"]["available"] else
+                 f"faltan {estado_dlls['tom']['missing']}"))
 
             # Solo un fallo REAL avisa. Que el runtime aun no este cargado es
             # el estado normal de un servidor recien arrancado -se carga en la
@@ -325,18 +379,38 @@ def register(mcp) -> None:
             modelo = session.active_model
             pbip = session.active_pbip
 
-            libs = settings.libs_dir
-            hay_dlls = libs.exists() and len(list(libs.glob("*.dll"))) >= 3
+            estado_dlls = _estado_dlls_analysis_services(settings)
+            hay_adomd = estado_dlls["adomd"]["available"]
+            hay_tom = estado_dlls["tom"]["available"]
 
-            live_ok, live_motivo = False, "sin modelo activo"
+            live_motivo = "sin modelo activo"
             if modelo is not None:
                 from horizun_pbi_mcp.powerbi.desktop_discovery import verify_model
 
                 estado = verify_model(modelo)
-                live_ok = estado["status"] == "ok" and hay_dlls
-                live_motivo = (estado.get("reason") if estado["status"] != "ok"
-                               else ("faltan las DLLs de Analysis Services"
-                                     if not hay_dlls else "disponible"))
+                if estado["status"] == "stale":
+                    # La misma recuperacion que el resto de tools: si hay una
+                    # sola instancia viva que sirva el proyecto, se reconecta
+                    # y `session_recovery` lo cuenta; si no, se explica.
+                    try:
+                        modelo = session.require_active_model()
+                        estado = verify_model(modelo)
+                    except PowerBIMCPError as exc:
+                        estado = {"status": "stale", "reason": exc.message,
+                                  "details": exc.details}
+                sesion_ok = estado["status"] == "ok"
+                live_motivo = (estado.get("reason") if not sesion_ok
+                               else "disponible")
+
+            sesion_ok = bool(modelo is not None and estado["status"] == "ok")
+            dax_live_ok = sesion_ok and hay_adomd
+            tom_live_ok = sesion_ok and hay_tom
+            motivo_adomd = (live_motivo if not sesion_ok else
+                            ("disponible" if hay_adomd else
+                             "faltan las DLLs ADOMD requeridas por el manifiesto"))
+            motivo_tom = (live_motivo if not sesion_ok else
+                          ("disponible" if hay_tom else
+                           "faltan las DLLs TOM requeridas por el manifiesto"))
 
             pbir_ok, pbir_motivo = False, "sin proyecto .pbip activo"
             estado_proyecto = None
@@ -357,9 +431,10 @@ def register(mcp) -> None:
             return {
                 "server": branding.identity(),
                 "capabilities": {
-                    "dax_query": {"available": live_ok, "reason": live_motivo},
-                    "model_read_live": {"available": live_ok, "reason": live_motivo},
-                    "model_write_live": {"available": live_ok, "reason": live_motivo},
+                    "dax_query": {"available": dax_live_ok, "reason": motivo_adomd},
+                    "model_read_live": {"available": tom_live_ok, "reason": motivo_tom},
+                    "model_write_live": {"available": tom_live_ok, "reason": motivo_tom},
+                    "analysis_services_dlls": estado_dlls,
                     "model_read_tmdl": {
                         "available": bool(pbip and pbip.has_tmdl),
                         "reason": "disponible" if (pbip and pbip.has_tmdl)
@@ -385,7 +460,8 @@ def register(mcp) -> None:
                         "reason": "No implementado en esta version (sin autenticacion).",
                         "unsupported": True},
                 },
-                "modes": {"live": live_ok, "pbip": tmdl_ok or pbir_ok, "both": False},
+                "modes": {"live": dax_live_ok and tom_live_ok,
+                          "pbip": tmdl_ok or pbir_ok, "both": False},
                 "project_state": estado_proyecto.to_dict() if estado_proyecto else None,
                 "planned_operations": planning.operaciones_disponibles(),
             }

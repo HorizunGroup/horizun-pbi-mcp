@@ -51,8 +51,8 @@ tools registered.
 | `pbi_list_desktop_models` | Open Power BI Desktop instances |
 | `pbi_select_model` | Sets the active model (requires a port if there are several) |
 | `pbi_test_connection` | Validates the connection |
-| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; only closes Desktop if the tool opened it |
-| `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open |
+| `pbi_validate_desktop_render` | Captures the report's exact window by PID, without focus; waits for the window identity to settle and reports `identity_settled`, `frame_settled`, `frame_uniform` and `capture_representative` separately; on an open session selects `page`/`fit_to_page` through the UI only with `confirm_reuse=true` (that window belongs to the user) and verifies it (`navigation`: the page by `IsSelected` — a page named like a ribbon tab is told apart by its tab container — and the zoom by Power BI's own zoom-level announcement, since its control exposes no state; a mere pixel change is reported as `visual_change`, not as verification, and `verified_means` says how far the zoom's proof reaches — the level changed, not that the resulting mode is fit-to-page); only closes Desktop if the tool opened it |
+| `pbi_close_desktop` | **Destructive** (`confirm`): closes ONLY the Desktop instance serving that file, verifies identity by name+start time, re-checks the file is no longer open. Also accepts `desktop_pid` + `desktop_started` (from the export's `desktop_session`) to close the window an export left open; refuses a recycled PID |
 | `pbi_list_pending_journals` | Journals of operations left half-done |
 | `pbi_inspect_journal` | Compares a journal with the current state (read-only) |
 
@@ -68,7 +68,7 @@ tools registered.
 | `pbi_measure_dependencies` | What it depends on and who uses it |
 | `pbi_column_dependencies` | What breaks if you touch a column |
 | `pbi_list_tables` · `pbi_list_measures` · `pbi_list_relationships` | Inventories |
-| `pbi_list_hierarchies` · `pbi_list_roles` · `pbi_list_perspectives` · `pbi_list_partitions` | Secondary objects |
+| `pbi_list_hierarchies` · `pbi_list_roles` · `pbi_list_perspectives` · `pbi_list_partitions` | Secondary objects. Partitions are read live from `TMSCHEMA_PARTITIONS` (with shared expressions from `TMSCHEMA_EXPRESSIONS`) or from the TMDL |
 | `pbi_document_model` | Markdown documentation of the model |
 
 ## Model modification
@@ -83,7 +83,7 @@ tools registered.
 | `pbi_set_column_visibility` · `pbi_hide_columns` | No |
 | `pbi_set_relationship_direction` · `pbi_disable_auto_date_time` | No |
 | `pbi_refresh_model` | Irreversible. Devuelve `rows_by_table`: un refresh puede terminar en 'ok' y cargar CERO filas |
-| `pbi_open_and_refresh` | Irreversible. Abre en Desktop y refresca en una llamada: un `.pbip` recien abierto trae el modelo SIN datos |
+| `pbi_open_and_refresh` | Irreversible. Abre en Desktop y refresca en una llamada: un `.pbip` recien abierto trae el modelo SIN datos. Optional `page`/`fit_to_page` select the tab and zoom in the open window and report `verified` per action, plus `verified_means` for how far the zoom's proof reaches |
 
 ## Project and plans
 
@@ -120,7 +120,7 @@ tools registered.
 | `pbi_create_calculated_column` | DAX calculated column, declared before the partition |
 | `pbi_create_relationship` | Relationship between columns, in `relationships.tmdl` |
 | `pbi_create_hierarchy` | Hierarchy over columns of the same table |
-| `pbi_get_power_query` | Reads the M of a partition or a named expression, with its SHA-256. The M has no file of its own: it lives inside the TMDL |
+| `pbi_get_power_query` | Reads the M of a partition or a named expression, with its SHA-256, from the TMDL (`source='pbip'`) or from the live engine via `TMSCHEMA_PARTITIONS`/`TMSCHEMA_EXPRESSIONS` (`source='live'`); `object_name` is an alias of `name` |
 | `pbi_update_power_query` | Replaces that M in full — block located by structure, never by regex. `dry_run` defaults to true and `expected_sha256` rejects a stale write. `m_engine_checked` is always false: no M engine runs outside Desktop |
 
 ## File selection and delivery
@@ -128,8 +128,8 @@ tools registered.
 | Tool | What it does |
 |---|---|
 | `pbi_prepare_project` | Resolves EXACTLY the file you pass — `.pbip`, `.pbix` (converted first) or a folder with a single candidate — and activates it. Two `.pbip` in one folder fail with `ambiguous_pbip_project` instead of picking the alphabetically first one |
-| `pbi_export_pbix` | PBIP -> PBIX through Power BI Desktop's own `File > Save As`. Preflight before opening any window, file type chosen (never inherited: `.pbit` is a template), and the saved file verified — existence, extension, size, mtime, and openable by the .pbix reader |
-| `pbi_finalize_delivery` | The normal last step of a build: resolve, prepare, validate, export, inspect and leave exactly the deliverable open and selected |
+| `pbi_export_pbix` | PBIP -> PBIX (or PBIT with `format='pbit'`) through Power BI Desktop's own `File > Save As`. Preflight before opening any window, window identity polled until it settles, file type chosen (never inherited), path **typed** (measured live: `ValuePattern.SetValue` leaves the text in the control and the dialog still saves under its default name) with the dialog and its field focused and a slower cadence on each attempt (three per transient phase, six for the file name), no second Save while a dialog is open, the replace prompt accepted only under `overwrite=true`, and the saved file verified — existence, extension, size, mtime, and openable by the .pbix reader. Returns `desktop_session` for `pbi_close_desktop` |
+| `pbi_finalize_delivery` | The normal last step of a build: resolve, prepare, validate, export (`pbix` or `pbit`), inspect and leave exactly the deliverable open and selected |
 
 ## Proposals and data quality
 

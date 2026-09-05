@@ -128,30 +128,53 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def pbi_list_partitions(source: str = "live") -> Dict[str, Any]:
-        """Lista las particiones por tabla (modo de almacenamiento y origen)."""
+        """Lista las particiones por tabla (modo de almacenamiento y origen).
+
+        Con `source='live'` se leen del motor (DMV `TMSCHEMA_PARTITIONS`):
+        tabla, nombre, tipo de origen (m, calculated...), modo (import,
+        directQuery, dual...), estado y hora del ultimo refresco. Aparte, en
+        `expressions`, las consultas COMPARTIDAS (`TMSCHEMA_EXPRESSIONS`:
+        parametros y funciones M), que no pertenecen a ninguna tabla. Con
+        `source='pbip'` se leen del TMDL en disco. El texto M no viaja aqui:
+        lo da `pbi_get_power_query`.
+        """
         def _impl():
-            md = load_model(source)
-            particiones = []
-            for t in md.get("tables", []):
-                for p in t.get("partitions", []) or []:
-                    particiones.append({"table": t["name"], **p})
-            # "No se pudo leer" y "no hay ninguna" son cosas distintas y el
-            # mensaje anterior las confundia: con una conexion viva las
-            # particiones no se exponen, y la respuesta se leia como que el
-            # modelo no tenia. Se sigue el mismo criterio que perspectivas.
-            soportado = any("partitions" in t for t in md.get("tables", []))
-            if not soportado:
-                avisos = ["Las particiones no estan disponibles en esta fuente "
-                          f"(source='{source}'). Se reporta como NO SOPORTADO, "
-                          "no como ausencia: el modelo puede tenerlas. Para "
-                          "leerlas usa source='pbip' sobre el proyecto en disco."]
-            elif not particiones:
-                avisos = ["La fuente expone particiones y este modelo no "
-                          "declara ninguna."]
-            else:
-                avisos = []
+            s = (source or "live").lower()
+            if s not in _FUENTES:
+                raise ValidationError(
+                    f"source invalido: '{source}'. Usa live|pbip.")
+            if s == "live":
+                from horizun_pbi_mcp.services import live_query
+
+                leido = live_query.list_partitions(get_session())
+                particiones = leido["partitions"]
+                avisos = list(leido["warnings"])
+                if not particiones:
+                    avisos.append("El motor expone particiones y este modelo "
+                                  "no declara ninguna.")
+                return {"count": len(particiones), "partitions": particiones,
+                        "supported": True, "source": "live",
+                        "expressions": leido["expressions"],
+                        "expressions_supported": leido["expressions_supported"],
+                        "warnings": avisos}
+
+            from horizun_pbi_mcp.services import power_query
+
+            activo = get_session().require_active_pbip()
+            inventario = power_query.list_objects(activo)
+            particiones = [dict(p) for p in inventario["partitions"]]
+            avisos = []
+            if inventario.get("unreadable_files"):
+                avisos.append(
+                    f"{len(inventario['unreadable_files'])} archivo(s) TMDL no "
+                    "se pudieron leer: el listado es parcial.")
+            if not particiones and not avisos:
+                avisos.append("El proyecto no declara ninguna particion.")
             return {"count": len(particiones), "partitions": particiones,
-                    "supported": soportado, "warnings": avisos}
+                    "supported": True, "source": "pbip",
+                    "expressions": inventario["expressions"],
+                    "expressions_supported": True,
+                    "warnings": avisos}
         return guard(_impl)
 
     @mcp.tool()

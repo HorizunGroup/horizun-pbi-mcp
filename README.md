@@ -9,9 +9,17 @@
 Ask in plain language; the server runs the DAX, edits the model, writes the
 report pages — and checks its own work afterwards.
 
+### No licence, no API key, no paid plan
+
+It runs as a **local process on your own Windows machine**, so the free apps are
+enough: install it in **ChatGPT Desktop** or **Claude Desktop** on their free
+tiers and start asking. No OpenAI or Anthropic API key, no subscription, no
+server of ours in the middle — and Power BI Desktop is free as well. One click
+installs it and it prepares its own runtime: no Python, no JSON to edit.
+
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
-**v2.1.0** · 139 tools · Windows · Python 3.10+ · Claude Code, Codex, any MCP client
+**v2.1.1** · 139 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
 
 New to the project? Start with [what this Power BI MCP is, when to use it, and
 what it deliberately does not do](docs/POWER_BI_MCP.md).
@@ -20,6 +28,21 @@ what it deliberately does not do](docs/POWER_BI_MCP.md).
 
 No repository clone, manual DLL download or `.mcp.json` editing is required.
 Pick the line that matches you.
+
+### ChatGPT Desktop Free
+
+Run the verified one-paste installer from [`docs/INSTALL.md`](docs/INSTALL.md),
+restart ChatGPT Desktop, then open **Plugins → Personal** and install
+**Horizun PBI MCP**. No OpenAI API key is required.
+
+### Claude Desktop Free
+
+Download the `.mcpb` from the
+[latest release](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest)
+and double-click it. Claude Desktop supplies the bootstrap runtime; no Claude
+Code install or JSON editing is required. It will say the extension is **not
+verified by Anthropic** — what it says about anything installed outside its own
+directory — and let you continue.
 
 ### Claude Code
 
@@ -37,25 +60,16 @@ codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
 Then open `/plugins`, pick the **Horizun** marketplace and install
 `horizun-pbi-mcp`.
 
-### Or just ask the agent — easiest of all
+### Desktop or Code?
 
-Paste this into Claude Code or Codex and let it install itself:
+Same server, same 139 tools, same local runtime — install both and they share
+it. Pick by what you are doing: **Claude Desktop** to *use* Power BI, in chat,
+one click, free tier. **Claude Code** to *build* — it adds the terminal, git
+and your repo, and loads tool schemas on demand instead of all at once.
 
-> Install Horizun PBI MCP from `HorizunGroup/horizun-pbi-mcp`. Complete the runtime
-> setup, watch `pbi_install_status` until it reports `ready`, restart the session,
-> and confirm the 139 `pbi_*` tools are available.
-
-### A brand-new Windows PC
-
-One paste in PowerShell installs the prerequisites first — version-pinned and
-SHA-256 verified, no administrator rights. See [`docs/INSTALL.md`](docs/INSTALL.md).
-
-### Finishing up
-
-The first setup downloads the runtime and takes a few minutes. Run
-`pbi_install_status` until it says `ready`, then restart your client once so the
-tools load. If anything looks stuck, [`docs/INSTALL.md`](docs/INSTALL.md) covers
-repair and offline installs.
+On a new PC, the [verified one-paste installer](docs/INSTALL.md) prepares the
+prerequisites without administrator rights. First setup takes a few minutes:
+run `pbi_install_status` until `ready`, restart once, and confirm the 139 `pbi_*` tools appear.
 
 ## Your first minute
 

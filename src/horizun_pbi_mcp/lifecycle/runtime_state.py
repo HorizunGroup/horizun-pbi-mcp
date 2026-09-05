@@ -48,6 +48,10 @@ ESQUEMA = 1
 RESULTADOS = ("ok", "failed")
 
 
+class EstadoRuntimeCorrupto(RuntimeError):
+    """El estado existe, pero no puede reescribirse sin destruir evidencia."""
+
+
 def vacio() -> dict[str, Any]:
     return {"esquema": ESQUEMA, "activo": None, "last_known_good": None,
             "ultimo_intento": None, "degradado": None}
@@ -111,9 +115,31 @@ def escribir(root: Path, estado: dict[str, Any]) -> None:
     root.mkdir(parents=True, exist_ok=True)
     estado = dict(estado, esquema=ESQUEMA)
     destino = root / NOMBRE
-    tmp = destino.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(estado, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, destino)
+    if destino.exists():
+        try:
+            json.loads(destino.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise EstadoRuntimeCorrupto(
+                f"{destino} existe pero no contiene JSON legible; se conserva "
+                "intacto para diagnostico"
+            ) from exc
+
+    # Nombre unico: un temporal fijo podia pisar el vestigio de otra escritura
+    # interrumpida antes de que el cerrojo llegara a diagnosticarla.
+    tmp = destino.with_name(f".{destino.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as archivo:
+            archivo.write(json.dumps(estado, indent=2, ensure_ascii=False))
+            archivo.flush()
+            os.fsync(archivo.fileno())
+        os.replace(tmp, destino)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            # El replace ya decidio el resultado; este temporal unico queda
+            # como evidencia recuperable si Windows mantiene un handle abierto.
+            pass
 
 
 def registrar_promocion(root: Path, *, nuevo: dict[str, Any],

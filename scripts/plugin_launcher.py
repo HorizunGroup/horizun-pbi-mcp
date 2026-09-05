@@ -10,7 +10,52 @@ from typing import Any
 
 import plugin_bootstrap as bootstrap
 
-PROTOCOL_VERSION = "2025-11-25"
+#: Versiones del protocolo MCP que este launcher sabe hablar, de la mas vieja
+#: a la mas nueva. Se escriben a mano y NO se importan del SDK a proposito: el
+#: bootstrap del bundle corre con cero dependencias -su pyproject declara
+#: `dependencies = []`- y un `import mcp` aqui lo dejaria sin arrancar justo en
+#: el primer inicio. Quien vigila que no se queden atras es
+#: `tests/test_mcpb_distribution.py`, comparandolas con las del SDK.
+#:
+#: Aceptarlas todas es honesto: los cuatro metodos que implementa este servidor
+#: -initialize, tools/list, tools/call y ping- son identicos en las cuatro.
+VERSIONES_SOPORTADAS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+
+#: La que se ofrece cuando no se puede hablar la que pidieron.
+PROTOCOL_VERSION = VERSIONES_SOPORTADAS[-1]
+
+
+def negociar_version(pedida: Any) -> str:
+    """La version del protocolo que se responde a `initialize`.
+
+    La especificacion es explicita: si el servidor soporta la que pidio el
+    cliente DEBE responder esa misma, y solo si no puede ofrece otra suya. Un
+    cliente que recibe una version que no pidio ni entiende deberia cortar la
+    conexion, asi que contestar siempre la propia -como se hacia- convierte un
+    cliente perfectamente compatible en una extension que no arranca.
+    """
+    return pedida if pedida in VERSIONES_SOPORTADAS else PROTOCOL_VERSION
+
+
+#: Tope del registro de instalacion antes de rotarlo. Existe porque el registro
+#: es UNO para todas las versiones -tiene que vivir fuera de la carpeta que la
+#: promocion renombra- y se abre en modo append: sin tope crece para siempre.
+LIMITE_LOG = 2 * 1024 * 1024
+
+
+def _rotar_log(log: Path) -> None:
+    """Acota el registro conservando UNA vuelta anterior.
+
+    Se guarda la anterior en vez de truncar porque la instalacion que falla se
+    suele explicar en la de antes. Un registro que no se puede rotar no puede
+    impedir instalar: eso seria cambiar un archivo grande por una extension que
+    no arranca.
+    """
+    try:
+        if log.is_file() and log.stat().st_size > LIMITE_LOG:
+            os.replace(log, log.with_name(log.name + ".anterior"))
+    except OSError as exc:                                    # pragma: no cover
+        print(f"launcher: no se pudo rotar el registro: {exc}", file=sys.stderr)
 
 
 def _reply(payload: dict[str, Any]) -> None:
@@ -30,6 +75,10 @@ def _tool_text(data: dict[str, Any], *, error: bool = False) -> dict[str, Any]:
 
 def _start_install() -> dict[str, Any]:
     status = bootstrap.read_status()
+    if status.get("state") in {"corrupt", "unreadable"}:
+        # No se repara sobrescribiendo evidencia. La tool devuelve un error
+        # util y deja el archivo exacto para que pueda inspeccionarse/apartarse.
+        return status
     # `installing` a secas no basta: un instalador matado a media faena deja
     # ese estado escrito para siempre y nadie reintentaria.
     if bootstrap.instalacion_en_curso(status=status):
@@ -39,6 +88,7 @@ def _start_install() -> dict[str, Any]:
     bootstrap._write_status(  # noqa: SLF001 - coordinacion del launcher hermano
         p, state="installing", ready=False, step="starting",
         message="Iniciando la preparación automática del runtime.")
+    _rotar_log(p["log"])
     log = open(p["log"], "a", encoding="utf-8")
     command = [sys.executable, str(Path(__file__).with_name("plugin_bootstrap.py"))]
     kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": log,
@@ -97,7 +147,8 @@ def bootstrap_server() -> int:
             method = request.get("method")
             request_id = request.get("id")
             if method == "initialize":
-                _result(request_id, {"protocolVersion": PROTOCOL_VERSION,
+                pedida = (request.get("params") or {}).get("protocolVersion")
+                _result(request_id, {"protocolVersion": negociar_version(pedida),
                                      "capabilities": {"tools": {}},
                                      "serverInfo": {"name": "horizun-pbi-mcp-installer",
                                                     "version": bootstrap.VERSION}})
@@ -106,10 +157,15 @@ def bootstrap_server() -> int:
             elif method == "tools/call":
                 name = request.get("params", {}).get("name")
                 if name == "pbi_install_runtime":
-                    _result(request_id, _tool_text(_start_install()))
+                    status = _start_install()
+                    _result(request_id, _tool_text(
+                        status, error=status.get("state") in
+                        {"failed", "corrupt", "unreadable"}))
                 elif name == "pbi_install_status":
                     status = bootstrap.read_status()
-                    _result(request_id, _tool_text(status, error=status.get("state") == "failed"))
+                    _result(request_id, _tool_text(
+                        status, error=status.get("state") in
+                        {"failed", "corrupt", "unreadable"}))
                 else:
                     _reply({"jsonrpc": "2.0", "id": request_id,
                             "error": {"code": -32601, "message": "Tool desconocida"}})

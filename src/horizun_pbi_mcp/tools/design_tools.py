@@ -38,7 +38,7 @@ def register(mcp) -> None:
         """
         def _impl():
             return guide.situacion(get_session())
-        return guard(_impl)
+        return guard(_impl, request_id=request_id)
 
     # -------------------------------------------------------- capa de diseno --
     @mcp.tool()
@@ -70,7 +70,7 @@ def register(mcp) -> None:
             except Exception:                            # noqa: BLE001
                 pass
             return salida
-        return guard(_impl)
+        return guard(_impl, request_id=request_id)
 
     @mcp.tool()
     def pbi_apply_design_system(system: str,
@@ -164,7 +164,8 @@ def register(mcp) -> None:
                     "warnings": avisos + list(resultado.get("warnings") or []),
                     **{k: v for k, v in resultado.items() if k != "warnings"}}
 
-        return guard(_impl) if dry_run else guard_mutation(_impl)
+        return (guard(_impl, request_id=request_id) if dry_run
+                else guard_mutation(_impl))
 
     @mcp.tool()
     def pbi_define_brief(purpose: str, audience: str,
@@ -237,7 +238,7 @@ def register(mcp) -> None:
             return {"defined": True, "brief": datos,
                     "recommended_design_system":
                         brief_service.recommended_system(datos)}
-        return guard(_impl)
+        return guard(_impl, request_id=request_id)
 
     @mcp.tool()
     def pbi_reflow_pages(system: str, pages: Optional[List[str]] = None,

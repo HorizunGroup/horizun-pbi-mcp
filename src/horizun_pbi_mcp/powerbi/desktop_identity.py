@@ -22,6 +22,8 @@ Nada de lo que hay aqui escribe, cierra ni toca ningun proceso: es lectura.
 from __future__ import annotations
 
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +36,45 @@ DOCUMENTOS = (".pbix", ".pbit", ".pbip")
 
 #: Confianzas posibles de la identificacion.
 HIGH, MEDIUM, LOW, UNKNOWN = "high", "medium", "low", "unknown"
+
+#: Sufijo que Power BI Desktop pone al nombre del documento en el titulo de
+#: la ventana. Se quita antes de comparar: el nombre del documento es lo que
+#: identifica, y el sufijo cambia con el idioma y con el producto.
+_SUFIJO_TITULO = re.compile(r"\s*[-–—]\s*power bi(\s+desktop)?\s*$",
+                            re.IGNORECASE)
+
+#: Titulos que Desktop muestra MIENTRAS carga o cuando aun no hay documento.
+#: No identifican nada: verlos significa "todavia no", no "es otro".
+_TITULOS_PROVISIONALES = frozenset({
+    "", "sin titulo", "sin título", "untitled", "sans titre", "ohne titel",
+    "senza titolo", "sem titulo", "sem título", "sense titol", "sense títol",
+    # El nombre del producto a secas: la ventana de arranque y los dialogos
+    # genericos de Desktop se titulan asi. No nombran ningun documento.
+    "power bi desktop", "power bi",
+})
+
+#: Estados del sondeo de identidad de una ventana.
+IDENTIDAD_ASENTADA = "settled_match"
+IDENTIDAD_PROVISIONAL = "provisional"
+IDENTIDAD_OTRO_DOCUMENTO = "mismatch"
+IDENTIDAD_SIN_TITULO = "no_window"
+IDENTIDAD_TIMEOUT = "timeout"
+
+
+def nombre_de_documento(titulo: str) -> str:
+    """El nombre del documento que hay en un titulo de ventana, normalizado.
+
+    `Demo - Power BI Desktop` y `Demo` son la misma ventana en dos momentos:
+    con el sufijo mientras arranca la interfaz y sin el despues. Comparar el
+    titulo entero hacia que una ventana ya cargada pareciera OTRO documento
+    solo por el sufijo.
+    """
+    return _SUFIJO_TITULO.sub("", str(titulo or "").strip()).strip().casefold()
+
+
+def titulo_provisional(titulo: str) -> bool:
+    """True si el titulo dice 'cargando', no 'este documento'."""
+    return nombre_de_documento(titulo) in _TITULOS_PROVISIONALES
 
 
 def _normalizar(valor: str | Path) -> str:
@@ -69,8 +110,29 @@ def documentos_abiertos(pid: Optional[int]) -> List[str]:
         proceso = psutil.Process(int(pid))
         return sorted({a.path for a in proceso.open_files()
                        if Path(a.path).suffix.casefold() in DOCUMENTOS})
-    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError,
+            AttributeError):
         return []
+
+
+def documentos_en_linea_de_comandos(pid: Optional[int]) -> List[str]:
+    """Rutas de documentos nombradas por el proceso de Desktop.
+
+    Un `.pbip` no deja un descriptor abierto, pero cuando Desktop se lanzo con
+    una ruta esa ruta permanece en su linea de comandos. A diferencia del
+    titulo, esto distingue dos `Demo.pbip` ubicados en carpetas diferentes.
+    """
+    if not pid:
+        return []
+    import psutil
+
+    try:
+        argumentos = psutil.Process(int(pid)).cmdline() or []
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError,
+            AttributeError):
+        return []
+    return sorted({str(a) for a in argumentos
+                   if Path(str(a)).suffix.casefold() in DOCUMENTOS})
 
 
 def titulos_de_ventana(pid: Optional[int]) -> List[str]:
@@ -94,10 +156,77 @@ def _titulo_coincide(titulos: List[str], objetivo: Path) -> bool:
     """Coincidencia EXACTA con el nombre del proyecto, sin extension.
 
     Parcial no vale: un titulo que solo CONTIENE el nombre puede ser otro
-    informe, y equivocarse aqui significa escribir sobre el que no era.
+    informe, y equivocarse aqui significa escribir sobre el que no era. Lo
+    unico que se tolera es el sufijo del producto, que no es parte del nombre.
     """
     esperado = objetivo.stem.strip().casefold()
-    return any(t.casefold() == esperado for t in titulos)
+    return any(nombre_de_documento(t) == esperado for t in titulos)
+
+
+def clasificar_titulos(titulos: List[str], objetivo: Path) -> str:
+    """Que dicen los titulos de una ventana sobre el documento pedido.
+
+    Tres respuestas y ninguna se confunde con otra: coincide, es provisional
+    (todavia cargando) o es demostrablemente OTRO documento. Un titulo
+    provisional NO autoriza a actuar, pero tampoco condena: se sigue
+    esperando. Uno distinto y estable si condena.
+    """
+    if not titulos:
+        return IDENTIDAD_SIN_TITULO
+    if _titulo_coincide(titulos, objetivo):
+        return IDENTIDAD_ASENTADA
+    if any(titulo_provisional(t) for t in titulos):
+        # Un Desktop sirve UN documento; si su ventana aun dice "cargando",
+        # los demas titulos son dialogos, no otro documento.
+        return IDENTIDAD_PROVISIONAL
+    return IDENTIDAD_OTRO_DOCUMENTO
+
+
+def esperar_identidad_de_ventana(pid: Optional[int], objetivo: str | Path, *,
+                                 timeout: float = 60.0,
+                                 cada: float = 1.0,
+                                 titulos: Any = None) -> Dict[str, Any]:
+    """Sondea el titulo de la ventana hasta que se ASIENTE, con tope.
+
+    Que el motor tabular responda no significa que la ventana haya terminado
+    de abrir: durante medio minuto el titulo dice `Sin titulo` y despues pasa
+    al nombre del documento. Rechazar en ese intervalo era el fallo real -la
+    misma peticion funcionaba treinta segundos despues-.
+
+    Devuelve SIEMPRE la evidencia: estado final, titulos observados, cuantas
+    lecturas y cuanto se espero. Un titulo estable de OTRO documento termina
+    el sondeo enseguida con `mismatch`: esperar mas no lo va a convertir en el
+    nuestro, y actuar sobre el seria escribir en el informe equivocado.
+    """
+    leer = titulos or titulos_de_ventana
+    destino = Path(objetivo)
+    inicio = time.monotonic()
+    limite = inicio + max(0.0, float(timeout))
+    observados: List[str] = []
+    lecturas = 0
+    while True:
+        actuales = [str(t) for t in (leer(pid) or [])]
+        lecturas += 1
+        for t in actuales:
+            if t not in observados:
+                observados.append(t)
+        estado = clasificar_titulos(actuales, destino)
+        if estado in (IDENTIDAD_ASENTADA, IDENTIDAD_OTRO_DOCUMENTO):
+            break
+        if time.monotonic() >= limite:
+            estado = IDENTIDAD_TIMEOUT
+            break
+        time.sleep(max(0.05, min(cada, limite - time.monotonic())))
+    return {
+        "status": estado,
+        "settled": estado == IDENTIDAD_ASENTADA,
+        "expected_document": destino.stem,
+        "titles_observed": observados[:10],
+        "last_titles": actuales[:10],
+        "polls": lecturas,
+        "waited_seconds": round(time.monotonic() - inicio, 1),
+        "timeout": float(timeout),
+    }
 
 
 def identify(instance: Dict[str, Any], *,
@@ -156,11 +285,18 @@ def identify(instance: Dict[str, Any], *,
         evidencia.append({"signal": "window_title", "status": "unavailable"})
 
     documentos = documentos_abiertos(desktop.pid)
+    fuente_documento = "open_document"
+    if not documentos:
+        documentos = documentos_en_linea_de_comandos(desktop.pid)
+        fuente_documento = "command_line_document"
     if documentos:
         salida["project_path"] = documentos[0]
-        evidencia.append({"signal": "open_document", "status": "ok",
+        evidencia.append({"signal": fuente_documento, "status": "ok",
                           "value": documentos[0],
-                          "detail": "descriptor abierto sobre el archivo"})
+                          "detail": ("descriptor abierto sobre el archivo"
+                                     if fuente_documento == "open_document"
+                                     else "ruta explicita en la linea de "
+                                          "comandos de Power BI Desktop")})
         confianza = HIGH
     else:
         evidencia.append({

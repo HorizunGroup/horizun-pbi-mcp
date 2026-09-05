@@ -21,6 +21,9 @@ Salida (todo bajo --outdir):
     meta/horizun-pbi-mcp-instalar.ps1
                            copia byte a byte de scripts/instalar.ps1, con su
                            SHA-256 comprobado contra downloads_manifest.json
+    meta/horizun-pbi-mcp-<version>.mcpb
+                           bundle local de Claude Desktop, reproducible y
+                           construido solo desde el arbol Git confirmado
     meta/RELEASE_NOTES_<version>.md
     meta/MIGRACION_1x_A_2.0.md
                            las notas que acompanan a la release, COPIADAS AQUI
@@ -44,12 +47,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import build_mcpb
+
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "scripts" / "downloads_manifest.json"
 INSTALADOR = REPO / "scripts" / "instalar.ps1"
 
 #: Nombre del asset en la release. Debe coincidir con el del manifest.
 NOMBRE_ASSET = "horizun-pbi-mcp-instalar.ps1"
+NOMBRE_MCPB = "horizun-pbi-mcp-{version}.mcpb"
 
 #: Las notas que viajan CON la release. `{version}` se sustituye por la que
 #: declara pyproject. Se copian al artefacto en vez de publicarse desde el
@@ -105,6 +111,27 @@ def _version_declarada() -> str:
     import re
     texto = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     return re.search(r'^version = "([^"]+)"', texto, re.M).group(1)
+
+
+def verificar_version_del_bundle(resumen: dict, version: str, nombre: str) -> None:
+    """El bundle sale de HEAD; su NOMBRE, del arbol de trabajo. Que coincidan.
+
+    Son dos fuentes distintas, y con la version subida pero sin confirmar
+    divergen EN SILENCIO: `build_mcpb` lee `pyproject.toml` de HEAD -por diseño,
+    para que un arbol sucio no pueda colar nada- mientras el nombre del asset se
+    formatea con la version del disco. El resultado seria publicar
+    `...-2.1.1.mcpb` con un manifest que dice 2.1.0.
+
+    Paso preparando la 2.1.1 y no lo detuvo nadie: solo se vio leyendo el JSON
+    de salida a mano. Aqui para la construccion.
+    """
+    declarada = resumen.get("version")
+    if declarada != version:
+        raise SystemExit(
+            f"[release_build] {nombre} declara la version {declarada} y la "
+            f"release es {version}. El bundle se construye desde HEAD y el "
+            "nombre del asset sale del arbol de trabajo: confirma el cambio de "
+            "version antes de construir la release.")
 
 
 def construir(outdir: Path) -> dict:
@@ -182,7 +209,15 @@ def construir(outdir: Path) -> dict:
         raise SystemExit(f"[release_build] el manifest llama al asset "
                          f"{entrada['name']!r} y aqui se publica {NOMBRE_ASSET!r}")
 
-    # 5. Las notas. Se copian con el nombre con el que se publican y entran en
+    # 5. Claude Desktop: un bundle local instalable con doble clic. Se
+    # construye desde HEAD, no desde el arbol de trabajo, para que una maquina
+    # con outputs, backups o proyectos reales sin versionar no pueda colarlos
+    # en el asset por accidente.
+    mcpb = meta / NOMBRE_MCPB.format(version=version)
+    resumen_mcpb = build_mcpb.build(mcpb, repo=REPO, ref="HEAD")
+    verificar_version_del_bundle(resumen_mcpb, version, mcpb.name)
+
+    # 6. Las notas. Se copian con el nombre con el que se publican y entran en
     #    SHA256SUMS como cualquier otro publicable. Si falta una, se para aqui:
     #    una release sin notas de migracion en una MAYOR es la que obliga a
     #    leerse el diff para saber que se rompio.
@@ -197,9 +232,9 @@ def construir(outdir: Path) -> dict:
         shutil.copyfile(origen, destino)
         notas.append(destino)
 
-    # 6. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
+    # 7. SHA256SUMS sobre TODO lo publicable. Es lo que cada job consumidor
     #    comprueba antes de usar nada.
-    publicables = [wheels[0], sdists[0], asset, sbom, *notas]
+    publicables = [wheels[0], sdists[0], asset, mcpb, sbom, *notas]
     lineas = []
     for p in publicables:
         rel = p.relative_to(outdir).as_posix()
@@ -212,6 +247,7 @@ def construir(outdir: Path) -> dict:
         "wheel": wheels[0].name,
         "sdist": sdists[0].name,
         "asset_instalador": NOMBRE_ASSET,
+        "asset_claude_desktop": resumen_mcpb,
         "notas": [n.name for n in notas],
         "sbom_componentes": len(componentes),
         "digests": {p.relative_to(outdir).as_posix(): _sha256(p)

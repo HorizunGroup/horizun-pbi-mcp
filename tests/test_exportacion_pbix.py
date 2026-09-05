@@ -467,13 +467,24 @@ def test_leave_open_deja_abierto_exactamente_el_pbix(entorno):
     assert salida["final_state"]["selected"] is True
 
 
-def test_si_la_ventana_no_sigue_al_pbix_se_abre_el_entregable(entorno):
+def test_si_la_ventana_no_sigue_al_pbix_se_abre_el_entregable(entorno,
+                                                              monkeypatch):
     # La ventana se queda en el .pbip: Desktop no siempre reapunta. Y como
-    # el proyecto YA estaba abierto, hace falta permiso explicito.
+    # el proyecto YA estaba abierto, hace falta permiso explicito. El destino
+    # se llama distinto que el proyecto: con el mismo nombre el titulo no
+    # distinguiria nada y no se abriria otra ventana (ver
+    # test_cierre_tras_exportar).
+    from horizun_pbi_mcp.powerbi import desktop_identity
+
     entorno["estado"]["sigue_abierto"] = str(entorno["pbip"])
+    monkeypatch.setattr(desktop_identity, "esperar_identidad_de_ventana",
+                        lambda pid, obj, timeout=60.0, **k: {
+                            "status": desktop_identity.IDENTIDAD_OTRO_DOCUMENTO,
+                            "settled": False, "polls": 1, "waited_seconds": 0.0,
+                            "titles_observed": ["Demo"]})
     salida = pbix_export.export(
         entorno["session"], adapter=_AdaptadorFalso(),
-        out_path=str(entorno["tmp"] / "salida" / "Demo.pbix"),
+        out_path=str(entorno["tmp"] / "salida" / "Entrega.pbix"),
         leave_open=True, confirm_reuse=True, timeout=5)
 
     assert salida["final_state"]["reopened"] is True
@@ -699,12 +710,13 @@ def test_finalize_delivery_entrega_de_extremo_a_extremo(entorno):
     assert salida["prepare"]["path_match"] is True
 
 
-def test_finalize_delivery_solo_acepta_pbix(entorno):
+def test_finalize_delivery_rechaza_un_formato_que_no_existe(entorno):
+    """`pbit` ya se produce de verdad; lo que sigue sin fingirse es lo demas."""
     with pytest.raises(PowerBIMCPError) as exc:
-        pbix_export.finalize_delivery(entorno["session"], format="pbit",
+        pbix_export.finalize_delivery(entorno["session"], format="docx",
                                       adapter=_AdaptadorFalso())
 
-    assert exc.value.details["valid"] == ["pbix"]
+    assert exc.value.details["valid"] == ["pbix", "pbit"]
 
 
 def test_los_defaults_de_la_tool_nueva_son_los_pedidos():

@@ -62,7 +62,10 @@ def register(mcp) -> None:
                              refresh_timeout_seconds: Optional[int] = None,
                              pbip_path: Optional[str] = None,
                              confirm: bool = False,
-                             request_id: str = "") -> Dict[str, Any]:
+                             request_id: str = "",
+                             project_path: Optional[str] = None,
+                             page: Optional[str] = None,
+                             fit_to_page: bool = False) -> Dict[str, Any]:
         """Abre el proyecto en Power BI Desktop y lo refresca, en una llamada.
 
         Es la secuencia real de trabajo y siempre eran dos llamadas de unos
@@ -80,6 +83,15 @@ def register(mcp) -> None:
         cerrarla borraria justo el contexto que hace falta para ver por que
         fallo. Sale en `desktop_left_open`.
 
+        `page` y `fit_to_page` (opcionales) eligen, DESPUES de refrescar, la
+        pestaña de esa pagina y la vista "Ajustar a la pagina" en la propia
+        ventana, por UI Automation, sin tocar `pages.json`. Mueven la ventana
+        igual que el refresh la vacia: los cubre el mismo `confirm=true`. La
+        respuesta trae `navigation` con `verified` por accion y, en el zoom,
+        `verified_means` con lo que esa prueba alcanza: que el nivel de zoom
+        cambio, no que el modo resultante sea el pedido. Lo que no se pudo
+        demostrar se dice en `warnings`, no se da por hecho.
+
         **Exige `confirm=true` desde 2.0.0.** Abre una aplicacion y refresca:
         los dos efectos son visibles y el segundo descarta lo que hubiera en
         memoria sin guardar.
@@ -92,7 +104,7 @@ def register(mcp) -> None:
             from horizun_pbi_mcp.powerbi import desktop_discovery, desktop_launcher
 
             abierto = desktop_launcher.open_pbix(
-                str(ruta_de_proyecto(path, pbip_path)),
+                str(ruta_de_proyecto(path, pbip_path, project_path)),
                 timeout=timeout, reuse_open=reuse_open)
             salida: Dict[str, Any] = {
                 "path": abierto.pbix_path,
@@ -119,5 +131,25 @@ def register(mcp) -> None:
             salida["refresh"] = refresh.refresh_model(
                 session, type, tables, refresh_timeout_seconds)
             salida["desktop_left_open"] = True
+            if page or fit_to_page:
+                from horizun_pbi_mcp.powerbi import desktop_navigation
+
+                navegacion = desktop_navigation.navegar(
+                    abierto, page=page, fit_to_page=fit_to_page)
+                salida["navigation"] = navegacion
+                avisos: List[str] = []
+                bloque = navegacion.get("page")
+                if bloque is not None and not bloque.get("verified"):
+                    avisos.append(
+                        "La pagina pedida no se pudo demostrar en la ventana "
+                        f"abierta ({bloque.get('reason')}); la pagina activa "
+                        "puede ser otra.")
+                bloque = navegacion.get("fit_to_page")
+                if bloque is not None and not bloque.get("verified"):
+                    avisos.append(
+                        "No se pudo demostrar 'Ajustar a la pagina'; la vista "
+                        f"queda como estuviera. {bloque.get('reason')}.")
+                if avisos:
+                    salida.setdefault("warnings", []).extend(avisos)
             return salida
         return guard_mutation(_impl)

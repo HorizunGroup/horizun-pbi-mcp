@@ -56,9 +56,12 @@ def test_sin_confirm_no_se_cierra_nada(monkeypatch, pbip):
 def test_archivo_no_abierto_es_un_no_op_declarado(monkeypatch, pbip):
     monkeypatch.setattr(dl, "proceso_con_archivo_abierto", lambda _p: None)
     r = dl.close_desktop_by_path(pbip)
-    assert r == {"closed": False, "was_open": False,
-                 "reason": "el archivo no esta abierto en ningun Desktop",
-                 "path": str(pbip.resolve())}
+    assert {k: r[k] for k in ("closed", "was_open", "reason", "path")} == {
+        "closed": False, "was_open": False,
+        "reason": "el archivo no esta abierto en ningun Desktop",
+        "path": str(pbip.resolve())}
+    # La pista de cierre por identidad es ADITIVA: no cambia el veredicto.
+    assert "desktop_pid" in r["hint"]
 
 
 def test_extension_desconocida_se_rechaza(tmp_path):

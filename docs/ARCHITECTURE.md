@@ -1,6 +1,6 @@
 # Horizun PBI MCP architecture
 
-_Verified for 2.1.0. Volatile counts are derived from the frozen MCP contract
+_Verified for 2.1.1. Volatile counts are derived from the frozen MCP contract
 and the code instead of being copied into this document._
 
 ---

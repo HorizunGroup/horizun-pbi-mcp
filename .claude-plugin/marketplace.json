@@ -9,7 +9,7 @@
       "description": "Build, audit and repair local Power BI Desktop models and PBIP reports.",
       "author": {"name": "HorizunGroup"},
       "category": "development",
-      "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "v2.1.0"},
+      "source": {"source": "url", "url": "https://github.com/HorizunGroup/horizun-pbi-mcp.git", "ref": "v2.1.1"},
       "homepage": "https://github.com/HorizunGroup/horizun-pbi-mcp"
     }
   ]
