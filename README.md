@@ -19,7 +19,7 @@ installs it and it prepares its own runtime: no Python, no JSON to edit.
 
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
-**v2.1.0** · 139 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
+**v2.1.1** · 139 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
 
 New to the project? Start with [what this Power BI MCP is, when to use it, and
 what it deliberately does not do](docs/POWER_BI_MCP.md).
@@ -43,9 +43,6 @@ and double-click it. Claude Desktop supplies the bootstrap runtime; no Claude
 Code install or JSON editing is required. It will say the extension is **not
 verified by Anthropic** — what it says about anything installed outside its own
 directory — and let you continue.
-
-The bundle ships from the first release cut after `v2.1.0`; the published
-`v2.1.0` predates it and does not carry the asset.
 
 ### Claude Code
 

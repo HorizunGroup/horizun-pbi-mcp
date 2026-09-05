@@ -19,7 +19,7 @@ from typing import Any
 #: Duplicada a proposito: el bootstrap corre ANTES de que el paquete
 #: exista, asi que no puede importar `branding`. Una prueba compara
 #: las dos y falla si se separan, que es como se caza este olvido.
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 

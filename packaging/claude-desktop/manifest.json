@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "horizun-pbi-mcp",
   "display_name": "Horizun PBI MCP",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Build, audit, diagnose and repair local Power BI Desktop models and PBIP reports.",
   "long_description": "Local Power BI engineering through MCP: DAX and DMV queries, TOM and TMDL model work, PBIR report authoring, validation, backups, Desktop refresh, screenshots and verified PBIX or PBIT export.",
   "author": {

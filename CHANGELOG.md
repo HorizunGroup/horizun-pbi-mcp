@@ -5,7 +5,7 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [2.1.1] — 2026-09-04
 
 Driving Power BI Desktop from the outside, made honest. The batch started from
 an intensive real session — about forty calls through edit -> validate -> open

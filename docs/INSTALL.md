@@ -39,18 +39,16 @@ yours refuses the file, that is the first thing to check.
 1. Download `horizun-pbi-mcp-<version>.mcpb` from the
    [latest release](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest)
    and check its SHA-256 against the `SHA256SUMS` published beside it.
+   `v2.1.1` is the first release that carries the bundle; `v2.1.0` predates it.
 
-   **Until the next release, that asset does not exist yet.** `v2.1.0` was
-   published before the bundle did, so it does not carry it. From a clone you
-   can build the identical file in one command — it is built only from
-   committed history, so the same commit always yields the same bytes:
+   From a clone you can also build the identical file in one command. It is
+   built only from committed history, so the same commit always yields the same
+   bytes — that reproducibility is what the release relies on, and you can
+   check it yourself:
 
    ```powershell
-   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.0.mcpb
+   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.1.mcpb
    ```
-
-   It prints the SHA-256 it produced. Two runs from the same commit print the
-   same one; that is the property the release relies on.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation.
    Claude Desktop says the extension is **not verified by Anthropic** — what it
@@ -139,8 +137,8 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-instalar.ps1'
-$sha = '1d92ed68b805af3dbb95614ac918008b1fe4c328a11bb8ccefba1d75cf581582'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.1/horizun-pbi-mcp-instalar.ps1'
+$sha = 'd58916465bfb8af1c12da85e6d626e8d35ce62a2efdf7c3d5c7481fe9343b3ef'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una
