@@ -9,6 +9,14 @@
 Ask in plain language; the server runs the DAX, edits the model, writes the
 report pages — and checks its own work afterwards.
 
+### No licence, no API key, no paid plan
+
+It runs as a **local process on your own Windows machine**, so the free apps are
+enough: install it in **ChatGPT Desktop** or **Claude Desktop** on their free
+tiers and start asking. No OpenAI or Anthropic API key, no subscription, no
+server of ours in the middle — and Power BI Desktop is free as well. One click
+installs it and it prepares its own runtime: no Python, no JSON to edit.
+
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
 **v2.1.0** · 139 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
@@ -29,10 +37,15 @@ restart ChatGPT Desktop, then open **Plugins → Personal** and install
 
 ### Claude Desktop Free
 
-Download and double-click
-[`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb).
-Claude Desktop supplies the bootstrap runtime; no Claude Code install or JSON
-editing is required.
+Download the `.mcpb` from the
+[latest release](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest)
+and double-click it. Claude Desktop supplies the bootstrap runtime; no Claude
+Code install or JSON editing is required. It will say the extension is **not
+verified by Anthropic** — what it says about anything installed outside its own
+directory — and let you continue.
+
+The bundle ships from the first release cut after `v2.1.0`; the published
+`v2.1.0` predates it and does not carry the asset.
 
 ### Claude Code
 

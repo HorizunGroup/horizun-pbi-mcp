@@ -36,9 +36,11 @@ its server starts and answers real tool calls. Both `manifest_version: 0.4` and
 *experimental* — were accepted as declared. Older builds may not accept 0.4; if
 yours refuses the file, that is the first thing to check.
 
-1. Download
-   [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb)
-   and check its SHA-256 against the `SHA256SUMS` published with the release.
+1. Download `horizun-pbi-mcp-<version>.mcpb` from the
+   [latest release](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest)
+   and check its SHA-256 against the `SHA256SUMS` published beside it. The
+   bundle ships from the first release cut after `v2.1.0`: that release was
+   published before the bundle existed and does not carry the asset.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation.
    Claude Desktop says the extension is **not verified by Anthropic** — what it

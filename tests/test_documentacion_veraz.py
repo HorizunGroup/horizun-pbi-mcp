@@ -61,10 +61,21 @@ def test_codex_documenta_el_navegador_oficial_de_plugins():
         assert "codex plugin add horizun-pbi-mcp@horizun" not in texto
 
 
+#: Cuanto cuenta como "portada" al medir que la instalacion corta va arriba.
+#:
+#: Era 3000 y `## What it provides` caia en 2902: 98 caracteres de margen, o
+#: sea que la guarda prohibia añadir NADA al encabezado, incluida la frase que
+#: dice que el producto no necesita licencias -que es de lo que vive su
+#: distribucion-. El presupuesto es un sustituto de "va arriba"; lo que fija de
+#: verdad el orden son las dos comparaciones de indice de abajo, y esas no se
+#: tocan. Se ensancha el sustituto, no la regla.
+PORTADA = 4000
+
+
 def test_el_readme_abre_con_la_ruta_corta_para_codex_y_claude():
     """La instalación filmable debe aparecer antes del bootstrap avanzado."""
     texto = (RAIZ / "README.md").read_text(encoding="utf-8")
-    portada = texto[:3000]
+    portada = texto[:PORTADA]
     from tests.test_tool_contract import EXPECTED_COUNT
 
     for frase in ("## Codex", "## Claude Code", "pbi_install_status",
