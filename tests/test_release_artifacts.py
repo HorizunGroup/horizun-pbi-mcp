@@ -222,6 +222,45 @@ def test_un_asset_de_instalador_alterado_para_el_pipeline(copia):
     assert res.returncode != 0, "un instalador alterado paso la verificacion"
 
 
+def test_un_mcpb_alterado_para_el_pipeline(copia):
+    """El bundle es lo que instala la gente con un doble clic.
+
+    Alterarlo despues de firmarlo es la via por la que se publicaria un
+    instalador que nadie probo, bajo un digest que ya no le corresponde.
+    """
+    bundle = next((copia / "meta").glob("*.mcpb"))
+    bundle.write_bytes(bundle.read_bytes() + b"colado")
+
+    res = _verificar(copia)
+    assert res.returncode != 0, "un .mcpb alterado paso la verificacion"
+    assert "digest distinto" in res.stdout + res.stderr
+
+
+def test_un_mcpb_sin_firmar_para_el_pipeline(copia):
+    """Presente en meta/ pero fuera de SHA256SUMS: publicable sin verificar.
+
+    Es distinto de alterarlo. Aqui los bytes son los buenos; lo que falta es la
+    firma, y sin ella nadie comprueba nada al descargarlo.
+    """
+    sumas = copia / "meta" / "SHA256SUMS"
+    lineas = [l for l in sumas.read_text(encoding="ascii").splitlines()
+              if l.strip() and not l.endswith(".mcpb")]
+    sumas.write_text("\n".join(lineas) + "\n", encoding="ascii", newline="\n")
+
+    res = _verificar(copia)
+    assert res.returncode != 0, "se acepto un .mcpb que nadie firmo"
+    assert "sin declarar" in res.stdout + res.stderr
+
+
+def test_un_mcpb_ausente_para_el_pipeline(copia):
+    """Firmado y desaparecido: la release saldria sin instalador de un clic."""
+    next((copia / "meta").glob("*.mcpb")).unlink()
+
+    res = _verificar(copia)
+    assert res.returncode != 0, "se acepto una release sin el bundle firmado"
+    assert "ausente" in res.stdout + res.stderr
+
+
 def test_un_archivo_colado_en_dist_para_el_pipeline(copia):
     """Un publicable que nadie declaro es por donde entraria lo que no se probo."""
     (copia / "dist" / "horizun_pbi_mcp-9.9.9-py3-none-any.whl").write_bytes(b"PK\x03\x04")
