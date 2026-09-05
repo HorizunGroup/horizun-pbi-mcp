@@ -113,6 +113,27 @@ def _version_declarada() -> str:
     return re.search(r'^version = "([^"]+)"', texto, re.M).group(1)
 
 
+def verificar_version_del_bundle(resumen: dict, version: str, nombre: str) -> None:
+    """El bundle sale de HEAD; su NOMBRE, del arbol de trabajo. Que coincidan.
+
+    Son dos fuentes distintas, y con la version subida pero sin confirmar
+    divergen EN SILENCIO: `build_mcpb` lee `pyproject.toml` de HEAD -por diseño,
+    para que un arbol sucio no pueda colar nada- mientras el nombre del asset se
+    formatea con la version del disco. El resultado seria publicar
+    `...-2.1.1.mcpb` con un manifest que dice 2.1.0.
+
+    Paso preparando la 2.1.1 y no lo detuvo nadie: solo se vio leyendo el JSON
+    de salida a mano. Aqui para la construccion.
+    """
+    declarada = resumen.get("version")
+    if declarada != version:
+        raise SystemExit(
+            f"[release_build] {nombre} declara la version {declarada} y la "
+            f"release es {version}. El bundle se construye desde HEAD y el "
+            "nombre del asset sale del arbol de trabajo: confirma el cambio de "
+            "version antes de construir la release.")
+
+
 def construir(outdir: Path) -> dict:
     dist = outdir / "dist"
     meta = outdir / "meta"
@@ -194,6 +215,7 @@ def construir(outdir: Path) -> dict:
     # en el asset por accidente.
     mcpb = meta / NOMBRE_MCPB.format(version=version)
     resumen_mcpb = build_mcpb.build(mcpb, repo=REPO, ref="HEAD")
+    verificar_version_del_bundle(resumen_mcpb, version, mcpb.name)
 
     # 6. Las notas. Se copian con el nombre con el que se publican y entran en
     #    SHA256SUMS como cualquier otro publicable. Si falta una, se para aqui:

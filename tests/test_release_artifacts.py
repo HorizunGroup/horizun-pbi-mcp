@@ -174,6 +174,49 @@ def test_el_bundle_de_claude_desktop_se_publica_y_es_el_reproducible(artefacto):
     assert firmados[bundle.relative_to(artefacto).as_posix()] == _sha256(bundle)
 
 
+def _release_build():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_release_build_bajo_prueba", CONSTRUIR)
+    modulo = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    try:
+        spec.loader.exec_module(modulo)
+    finally:
+        sys.path.remove(str(RAIZ / "scripts"))
+    return modulo
+
+
+def test_un_bundle_de_otra_version_para_la_construccion():
+    """RELEASE-003. El nombre sale del arbol; el contenido, de HEAD.
+
+    `build_mcpb` lee `pyproject.toml` de HEAD a proposito, para que un arbol
+    sucio no cuele nada. El nombre del asset, en cambio, se formatea con la
+    version del disco. Con la version subida y sin confirmar las dos fuentes
+    divergen en silencio y la release publicaria `...-2.1.1.mcpb` con un
+    manifest que dice 2.1.0.
+
+    Ocurrio de verdad preparando la 2.1.1, y ninguna prueba lo detuvo: se vio
+    leyendo el JSON de salida a mano.
+    """
+    rb = _release_build()
+    rb.verificar_version_del_bundle({"version": "9.9.9"}, "9.9.9", "x.mcpb")
+
+    with pytest.raises(SystemExit) as fallo:
+        rb.verificar_version_del_bundle(
+            {"version": "2.1.0"}, "2.1.1", "horizun-pbi-mcp-2.1.1.mcpb")
+    assert "2.1.0" in str(fallo.value) and "2.1.1" in str(fallo.value)
+
+
+def test_el_bundle_publicado_declara_la_version_de_la_release(artefacto):
+    """Y sobre el artefacto real, no solo sobre la funcion aislada."""
+    import zipfile
+
+    version = _version_declarada()
+    bundle = artefacto / "meta" / f"horizun-pbi-mcp-{version}.mcpb"
+    with zipfile.ZipFile(bundle) as z:
+        assert json.loads(z.read("manifest.json").decode("utf-8"))["version"] == version
+
+
 def test_el_bundle_entra_entre_los_assets_publicables(artefacto):
     """Lo firmado y lo que se sube tienen que ser la misma lista."""
     sys.path.insert(0, str(RAIZ / "scripts"))
