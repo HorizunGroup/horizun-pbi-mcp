@@ -10,7 +10,31 @@ from typing import Any
 
 import plugin_bootstrap as bootstrap
 
-PROTOCOL_VERSION = "2025-11-25"
+#: Versiones del protocolo MCP que este launcher sabe hablar, de la mas vieja
+#: a la mas nueva. Se escriben a mano y NO se importan del SDK a proposito: el
+#: bootstrap del bundle corre con cero dependencias -su pyproject declara
+#: `dependencies = []`- y un `import mcp` aqui lo dejaria sin arrancar justo en
+#: el primer inicio. Quien vigila que no se queden atras es
+#: `tests/test_mcpb_distribution.py`, comparandolas con las del SDK.
+#:
+#: Aceptarlas todas es honesto: los cuatro metodos que implementa este servidor
+#: -initialize, tools/list, tools/call y ping- son identicos en las cuatro.
+VERSIONES_SOPORTADAS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
+
+#: La que se ofrece cuando no se puede hablar la que pidieron.
+PROTOCOL_VERSION = VERSIONES_SOPORTADAS[-1]
+
+
+def negociar_version(pedida: Any) -> str:
+    """La version del protocolo que se responde a `initialize`.
+
+    La especificacion es explicita: si el servidor soporta la que pidio el
+    cliente DEBE responder esa misma, y solo si no puede ofrece otra suya. Un
+    cliente que recibe una version que no pidio ni entiende deberia cortar la
+    conexion, asi que contestar siempre la propia -como se hacia- convierte un
+    cliente perfectamente compatible en una extension que no arranca.
+    """
+    return pedida if pedida in VERSIONES_SOPORTADAS else PROTOCOL_VERSION
 
 
 def _reply(payload: dict[str, Any]) -> None:
@@ -101,7 +125,8 @@ def bootstrap_server() -> int:
             method = request.get("method")
             request_id = request.get("id")
             if method == "initialize":
-                _result(request_id, {"protocolVersion": PROTOCOL_VERSION,
+                pedida = (request.get("params") or {}).get("protocolVersion")
+                _result(request_id, {"protocolVersion": negociar_version(pedida),
                                      "capabilities": {"tools": {}},
                                      "serverInfo": {"name": "horizun-pbi-mcp-installer",
                                                     "version": bootstrap.VERSION}})
