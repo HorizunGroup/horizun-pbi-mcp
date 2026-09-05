@@ -44,7 +44,8 @@ from the `.mcpb` built out of this branch. It lands as
 **Horizun PBI MCP 2.1.0**, its server started **without restarting the client**,
 it exposed **139 tools**, and `pbi_capabilities` answered a real call
 (`duration_ms: 1639.8`) reporting the full capability matrix. The bundle is not
-code-signed and that did not prevent installation.
+code-signed — `mcpb info` says so — and on that build the client raised **no
+warning at all**: the install went through clean.
 
 One caveat on that run: the machine already had a prepared runtime under
 `%LOCALAPPDATA%\HorizunPbiMcp\plugin` — the path is deliberately client

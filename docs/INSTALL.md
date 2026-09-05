@@ -41,8 +41,10 @@ yours refuses the file, that is the first thing to check.
    and check its SHA-256 against the `SHA256SUMS` published with the release.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation. The
-   bundle is **not code-signed**, so the client may say so; the digest in
-   `SHA256SUMS` is what proves which bytes you have.
+   bundle is **not code-signed** — `mcpb info` reports `Not signed` — and on
+   1.46388.3 that raised no warning at all: the install simply went through.
+   Don't take that as a promise for every build; what proves which bytes you
+   actually have is the digest in `SHA256SUMS`.
 3. **First run.** Start a new chat. The extension exposes only
    `pbi_install_runtime` and `pbi_install_status` while it prepares its own
    local runtime; preparation starts on its own, and `pbi_install_runtime` is
