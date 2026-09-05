@@ -40,11 +40,14 @@ yours refuses the file, that is the first thing to check.
    [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb)
    and check its SHA-256 against the `SHA256SUMS` published with the release.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
-   Advanced settings → Install Extension**, and approve the installation. The
-   bundle is **not code-signed** — `mcpb info` reports `Not signed` — and on
-   1.46388.3 that raised no warning at all: the install simply went through.
-   Don't take that as a promise for every build; what proves which bytes you
-   actually have is the digest in `SHA256SUMS`.
+   Advanced settings → Install Extension**, and approve the installation.
+   Claude Desktop says the extension is **not verified by Anthropic** — what it
+   says about anything installed outside its own directory — and lets you
+   continue. That notice is about *provenance*, not about signing; separately,
+   this bundle is **not code-signed** either (`mcpb info` reports
+   `Not signed`). On 1.46388.3 neither fact blocked the install, and nothing
+   else was shown. What proves which bytes you actually have is the digest in
+   `SHA256SUMS`.
 3. **First run.** Start a new chat. The extension exposes only
    `pbi_install_runtime` and `pbi_install_status` while it prepares its own
    local runtime; preparation starts on its own, and `pbi_install_runtime` is

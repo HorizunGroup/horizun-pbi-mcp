@@ -43,9 +43,12 @@ from the `.mcpb` built out of this branch. It lands as
 *experimental* by Anthropic's packaging tool. The extension shows as
 **Horizun PBI MCP 2.1.0**, its server started **without restarting the client**,
 it exposed **139 tools**, and `pbi_capabilities` answered a real call
-(`duration_ms: 1639.8`) reporting the full capability matrix. The bundle is not
-code-signed — `mcpb info` says so — and on that build the client raised **no
-warning at all**: the install went through clean.
+(`duration_ms: 1639.8`) reporting the full capability matrix. The client showed
+one notice — that the extension is **not verified by Anthropic**, which is what
+it says about anything installed outside its directory — and let the install
+continue; nothing else appeared. That is a provenance notice, not a signing
+one: the bundle is also unsigned (`mcpb info` reports `Not signed`), and
+neither fact blocked it.
 
 One caveat on that run: the machine already had a prepared runtime under
 `%LOCALAPPDATA%\HorizunPbiMcp\plugin` — the path is deliberately client
