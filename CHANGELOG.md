@@ -34,6 +34,24 @@ The frozen contract is intact: **0 breaking changes, 25 compatible ones**
   extracted launcher is tested through an MCP initialize + tools/list
   handshake before release.
 
+### Verified in Claude Desktop itself
+
+Installed from the UI on **Claude Desktop 1.46388.3** (Microsoft Store build),
+from the `.mcpb` built out of this branch. It lands as
+`local.mcpb.horizungroup.horizun-pbi-mcp`, so `manifest_version: 0.4` and
+`server.type: "uv"` are accepted as declared — the second is still labelled
+*experimental* by Anthropic's packaging tool. The extension shows as
+**Horizun PBI MCP 2.1.0**, its server started **without restarting the client**,
+it exposed **139 tools**, and `pbi_capabilities` answered a real call
+(`duration_ms: 1639.8`) reporting the full capability matrix. The bundle is not
+code-signed and that did not prevent installation.
+
+One caveat on that run: the machine already had a prepared runtime under
+`%LOCALAPPDATA%\HorizunPbiMcp\plugin` — the path is deliberately client
+independent — so the extension reused it and the two-tool bootstrap phase was
+not what the UI showed. That phase is measured separately, from the extracted
+bundle against an isolated data directory.
+
 ### Fixed — the first run of the Claude Desktop bundle
 
 An independent audit ran the extension the way Claude Desktop does — the

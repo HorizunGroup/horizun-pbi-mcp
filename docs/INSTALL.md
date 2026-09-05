@@ -24,12 +24,17 @@ installer does not need an OpenAI API key.
 
 ### Claude Desktop (Free)
 
-**Before you start.** Windows; a Claude Desktop recent enough to install MCPB
-extensions with `manifest_version` **0.4** (the `uv` server type it uses is
-marked *experimental* by Anthropic's own `@anthropic-ai/mcpb` tooling); network
-access on first run; and Power BI Desktop if you want the live layer. You do
-**not** need Claude Code, a preinstalled Python, or an edit to
-`claude_desktop_config.json`.
+**Before you start.** Windows; a Claude Desktop able to install MCPB extensions
+with `manifest_version` **0.4**; network access on first run; and Power BI
+Desktop if you want the live layer. You do **not** need Claude Code, a
+preinstalled Python, or an edit to `claude_desktop_config.json`.
+
+Verified on **Claude Desktop 1.46388.3** (Microsoft Store build): the bundle
+installs from the UI, lands as `local.mcpb.horizungroup.horizun-pbi-mcp`, and
+its server starts and answers real tool calls. Both `manifest_version: 0.4` and
+`server.type: "uv"` — the runtime Anthropic's own packaging tool still labels
+*experimental* — were accepted as declared. Older builds may not accept 0.4; if
+yours refuses the file, that is the first thing to check.
 
 1. Download
    [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb)
