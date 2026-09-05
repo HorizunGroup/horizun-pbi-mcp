@@ -57,7 +57,8 @@ access on first run; and Power BI Desktop if you want the live layer. You do
 | Field | What it tells you |
 |---|---|
 | `state` | `not_installed`, `installing`, `ready`, `failed`, `corrupt` |
-| `log` | Full path of the install log — the actual error is there |
+| `log` | Path of the install log. A successful run leaves it empty — progress is not written there; a crash leaves its traceback in it |
+| `message` | The structured reason. This, not the log, is where a handled failure explains itself |
 | `data_dir` | Where everything lives: `%LOCALAPPDATA%\HorizunPbiMcp\plugin` |
 | `dependencias.source` | `lock` means pinned versions verified by SHA-256 |
 | `validator.state` | `failed_optional` is **not** a failed install (see below) |
