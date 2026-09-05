@@ -126,6 +126,64 @@ def test_sha256sums_cubre_todo_lo_publicable(artefacto):
     assert any(r.endswith(".tar.gz") for r in declarados)
     assert any(r.endswith(".ps1") for r in declarados)
     assert any(r.endswith("sbom.cdx.json") for r in declarados)
+    # El bundle de Claude Desktop se colaba por el hueco de esta lista: si
+    # alguien quitara el paso que lo construye, `release_verify` no diria nada
+    # -solo se queja de lo que SOBRA- y la release saldria sin el instalador de
+    # un clic con todas las pruebas en verde.
+    assert any(r.endswith(".mcpb") for r in declarados), (
+        f"SHA256SUMS no firma ningun .mcpb; declara {sorted(declarados)}")
+
+
+def test_el_bundle_de_claude_desktop_se_publica_y_es_el_reproducible(artefacto):
+    """MCPB-003. Que exista no basta: tiene que ser EL bundle reproducible.
+
+    `release_build` lo construye desde HEAD con `build_mcpb`. Si alguien lo
+    sustituyera por una copia del arbol de trabajo, o por un artefacto de otra
+    version, el digest firmado dejaria de corresponder al que cualquiera puede
+    reconstruir desde el mismo commit.
+    """
+    import importlib.util
+    import zipfile
+
+    version = _version_declarada()
+    bundle = artefacto / "meta" / f"horizun-pbi-mcp-{version}.mcpb"
+    assert bundle.is_file(), (
+        f"la release no lleva el .mcpb; en meta/ hay "
+        f"{sorted(p.name for p in (artefacto / 'meta').iterdir())}")
+
+    # Reconstruido aparte desde el mismo HEAD: mismos bytes.
+    spec = importlib.util.spec_from_file_location(
+        "_build_mcpb_en_release", RAIZ / "scripts" / "build_mcpb.py")
+    constructor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(constructor)
+    aparte = artefacto.parent / "reconstruido.mcpb"
+    constructor.build(aparte, repo=RAIZ, ref="HEAD")
+    assert _sha256(bundle) == _sha256(aparte), (
+        "el .mcpb publicado no es el que sale de build_mcpb desde HEAD")
+
+    with zipfile.ZipFile(bundle) as z:
+        manifiesto = json.loads(z.read("manifest.json").decode("utf-8"))
+    assert manifiesto["version"] == version, (
+        "el manifest del bundle declara otra version que la release")
+
+    # Y firmado con SU digest, no con el de otro archivo.
+    firmados = dict(
+        l.split("  ", 1)[::-1]
+        for l in (artefacto / "meta" / "SHA256SUMS").read_text(encoding="ascii").splitlines()
+        if l.strip())
+    assert firmados[bundle.relative_to(artefacto).as_posix()] == _sha256(bundle)
+
+
+def test_el_bundle_entra_entre_los_assets_publicables(artefacto):
+    """Lo firmado y lo que se sube tienen que ser la misma lista."""
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    try:
+        import release_verify
+    finally:
+        sys.path.remove(str(RAIZ / "scripts"))
+    assets = release_verify.assets_publicables(artefacto)
+    assert any(n.endswith(".mcpb") for n in assets), (
+        f"ningun asset publicable es el bundle: {sorted(assets)}")
 
 
 def test_el_artefacto_recien_construido_se_verifica(artefacto):
