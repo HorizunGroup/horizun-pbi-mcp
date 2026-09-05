@@ -803,7 +803,13 @@ def _limpiar_huerfanos(p: dict[str, Path]) -> list[str]:
     for viejo in viejas:
         if _borrar(viejo):
             borrados.append(str(viejo))
-    for nombre in (*CACHE, "install-status.json", "install.lock", "install.log"):
+    # `install.log` NO esta en esta lista aunque sea un resto del diseño viejo:
+    # desde que el registro vivo se saco de la carpeta que se promueve, ese
+    # nombre en la raiz es el archivo que `pbi_install_status` anuncia como
+    # `log`. Barrerlo aqui -al final de cada instalacion CON EXITO- se llevaba
+    # el diagnostico de la vuelta anterior, que es exactamente el que hace
+    # falta cuando la de antes fallo. Su tamaño lo acota el lanzador al abrirlo.
+    for nombre in (*CACHE, "install-status.json", "install.lock"):
         resto = p["root"] / nombre
         if resto.exists() and _borrar(resto):
             borrados.append(str(resto))

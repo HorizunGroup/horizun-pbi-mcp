@@ -226,6 +226,68 @@ def test_con_el_log_abierto_como_lo_deja_el_lanzador_la_promocion_funciona(
     assert bootstrap.paths(raiz)["python"].read_text(encoding="utf-8") == "#N"
 
 
+def _launcher():
+    """El lanzador, como modulo: es quien abre el registro de instalacion."""
+    spec = importlib.util.spec_from_file_location(
+        "lanzador_bajo_prueba", RAIZ / "scripts" / "plugin_launcher.py")
+    modulo = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    try:
+        spec.loader.exec_module(modulo)
+    finally:
+        sys.path.remove(str(RAIZ / "scripts"))
+    return modulo
+
+
+def test_la_limpieza_no_se_lleva_el_registro_vivo(bootstrap, tmp_path):
+    """INSTALL-015b. Sacar el log a la raiz lo puso en la lista de barrido.
+
+    En la raiz habia restos del diseño viejo -`install.log` entre ellos- y la
+    limpieza que corre al final de CADA instalacion con exito los borraba. Al
+    mover ahi el registro vivo, esa lista paso a apuntar al archivo que
+    `pbi_install_status` anuncia como `log`: la instalacion terminaba bien y se
+    llevaba por delante el diagnostico de la vuelta anterior, que es justo el
+    que hace falta cuando algo fallo antes.
+    """
+    p = bootstrap.paths(tmp_path / "datos")
+    p["cache"].mkdir(parents=True)
+    (p["cache"] / "runtime").mkdir()
+    p["log"].write_text("por que fallo la vez anterior", encoding="utf-8")
+
+    bootstrap._limpiar_huerfanos(p)
+
+    assert p["log"].exists(), "la limpieza borro el registro que el status anuncia"
+
+
+def test_el_registro_no_crece_sin_fin_y_conserva_una_vuelta(tmp_path):
+    """Un unico archivo compartido por todas las versiones crece para siempre.
+
+    Se rota al superar el tope y se conserva UNA vuelta: la instalacion que
+    falla se suele explicar en la de antes.
+    """
+    lanzador = _launcher()
+    log = tmp_path / "install.log"
+    log.write_bytes(b"x" * (lanzador.LIMITE_LOG + 1))
+
+    lanzador._rotar_log(log)
+
+    assert not log.exists() or log.stat().st_size == 0
+    anterior = log.with_name(log.name + ".anterior")
+    assert anterior.is_file() and anterior.stat().st_size > lanzador.LIMITE_LOG
+
+
+def test_un_registro_pequeno_no_se_rota(tmp_path):
+    """Rotar por sistema tiraria el contexto de la instalacion en curso."""
+    lanzador = _launcher()
+    log = tmp_path / "install.log"
+    log.write_text("dos lineas", encoding="utf-8")
+
+    lanzador._rotar_log(log)
+
+    assert log.read_text(encoding="utf-8") == "dos lineas"
+    assert not log.with_name(log.name + ".anterior").exists()
+
+
 def _bloqueo_de_windows(veces: int, monkeypatch, prom):
     """Hace que los primeros `veces` renombrados fallen como los bloquea Windows.
 
