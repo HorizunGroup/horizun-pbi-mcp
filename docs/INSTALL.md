@@ -24,14 +24,59 @@ installer does not need an OpenAI API key.
 
 ### Claude Desktop (Free)
 
+**Before you start.** Windows; a Claude Desktop recent enough to install MCPB
+extensions with `manifest_version` **0.4** (the `uv` server type it uses is
+marked *experimental* by Anthropic's own `@anthropic-ai/mcpb` tooling); network
+access on first run; and Power BI Desktop if you want the live layer. You do
+**not** need Claude Code, a preinstalled Python, or an edit to
+`claude_desktop_config.json`.
+
 1. Download
-   [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb).
+   [`horizun-pbi-mcp-2.1.0.mcpb`](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.0/horizun-pbi-mcp-2.1.0.mcpb)
+   and check its SHA-256 against the `SHA256SUMS` published with the release.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
-   Advanced settings → Install Extension**, and approve the installation.
-3. Start a new chat and query `pbi_install_status`. The MCPB uses Claude
-   Desktop's managed UV/Python bootstrap, so the user does not need to install
-   Claude Code, Python, or edit `claude_desktop_config.json`. When status is
-   `ready`, restart Claude Desktop once.
+   Advanced settings → Install Extension**, and approve the installation. The
+   bundle is **not code-signed**, so the client may say so; the digest in
+   `SHA256SUMS` is what proves which bytes you have.
+3. **First run.** Start a new chat. The extension exposes only
+   `pbi_install_runtime` and `pbi_install_status` while it prepares its own
+   local runtime; preparation starts on its own, and `pbi_install_runtime` is
+   there to restart it if it never began. Ask for `pbi_install_status` until
+   `state` is `ready` — it downloads a private virtual environment, the
+   Analysis Services libraries and the PBIR schemas, so on a normal connection
+   allow a few minutes.
+4. **Restart Claude Desktop once.** Then confirm: a new chat should offer the
+   full `pbi_*` toolset (139 tools, `pbi_start_here` among them). If you still
+   see only the two installer tools, the client is still holding the bootstrap
+   session — reopen it.
+
+#### If something fails
+
+`pbi_install_status` is the diagnosis, not a progress bar. Read these fields:
+
+| Field | What it tells you |
+|---|---|
+| `state` | `not_installed`, `installing`, `ready`, `failed`, `corrupt` |
+| `log` | Full path of the install log — the actual error is there |
+| `data_dir` | Where everything lives: `%LOCALAPPDATA%\HorizunPbiMcp\plugin` |
+| `dependencias.source` | `lock` means pinned versions verified by SHA-256 |
+| `validator.state` | `failed_optional` is **not** a failed install (see below) |
+| `degradacion` / `sirviendo` | Whether it fell back to the last runtime that worked |
+
+The PBIR validator is optional and needs Node. If it reports `failed_optional`
+the server is fully usable; only the extra check of report files against
+Microsoft's official CLI is missing. An install is broken only when `state` is
+`failed` or `corrupt`, and in both cases the file named in `log` says why.
+
+#### What the free plan covers
+
+Everything here. The server runs as a **local process on your machine**,
+launched by Claude Desktop over stdio, which is why it can reach Power BI
+Desktop and your `.pbip` files at all. Local MCP extensions are not a paid
+feature. A paid plan would only matter for a *remote* connector — a server
+Anthropic reaches over the network — and that model could not open your local
+Power BI Desktop, so it is not an upgrade path for this tool but a different
+architecture.
 
 The `.mcpb` is built only from committed files, is included in the release's
 `SHA256SUMS`, and is re-read by the release pipeline before publication. It
