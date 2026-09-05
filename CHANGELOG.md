@@ -34,6 +34,34 @@ The frozen contract is intact: **0 breaking changes, 25 compatible ones**
   extracted launcher is tested through an MCP initialize + tools/list
   handshake before release.
 
+### Fixed — the first run of the Claude Desktop bundle
+
+An independent audit ran the extension the way Claude Desktop does — the
+literal `mcp_config` command against an extracted bundle — and found that path
+broken in two places. Both are first-run only, which is why the manual install
+never showed them.
+
+- **The install always failed at promotion.** The launcher hands the detached
+  installer a log file as its stdout, and that log lived *inside* the version
+  directory the promotion has to rename. On Windows, renaming a directory that
+  holds any open file fails with `ERROR_ACCESS_DENIED`, so the installer was
+  renaming the folder containing its own stdout: `state: failed`,
+  `step: promotion`, every time. The log now lives in the data root, next to
+  the lock, which was already placed there for exactly this reason. Measured:
+  two first runs from the bundle failed before the fix, and reach
+  `ready` with the 139 tools after it.
+- **A promotion rename no longer gives up on the first lock.** Independently of
+  the above, the two renames now retry briefly (0.1–0.8 s) on the Windows
+  sharing codes, so an antivirus scanning the freshly written runtime does not
+  cost the installation. Behaviour is unchanged once the waits run out: the
+  same error, the previous runtime intact.
+- **The bootstrap now negotiates the MCP protocol version.** It answered every
+  `initialize` with its own `2025-11-25`, whatever the client asked for; the
+  spec requires echoing a supported version, and the already-installed server
+  does so through the SDK. The two halves of the same extension disagreed
+  precisely at startup. The test that covered this handshake asked for the same
+  constant the launcher hard-coded, so it could not fail.
+
 ### Fixed — Save As
 
 - **Intermittent failures with the same arguments.** `phase="nombre"` came
