@@ -38,9 +38,19 @@ yours refuses the file, that is the first thing to check.
 
 1. Download `horizun-pbi-mcp-<version>.mcpb` from the
    [latest release](https://github.com/HorizunGroup/horizun-pbi-mcp/releases/latest)
-   and check its SHA-256 against the `SHA256SUMS` published beside it. The
-   bundle ships from the first release cut after `v2.1.0`: that release was
-   published before the bundle existed and does not carry the asset.
+   and check its SHA-256 against the `SHA256SUMS` published beside it.
+
+   **Until the next release, that asset does not exist yet.** `v2.1.0` was
+   published before the bundle did, so it does not carry it. From a clone you
+   can build the identical file in one command — it is built only from
+   committed history, so the same commit always yields the same bytes:
+
+   ```powershell
+   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.0.mcpb
+   ```
+
+   It prints the SHA-256 it produced. Two runs from the same commit print the
+   same one; that is the property the release relies on.
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation.
    Claude Desktop says the extension is **not verified by Anthropic** — what it

@@ -63,6 +63,13 @@ codex plugin marketplace add HorizunGroup/horizun-pbi-mcp
 Then open `/plugins`, pick the **Horizun** marketplace and install
 `horizun-pbi-mcp`.
 
+### Desktop or Code?
+
+Same server, same 139 tools, same local runtime — install both and they share
+it. Pick by what you are doing: **Claude Desktop** to *use* Power BI, in chat,
+one click, free tier. **Claude Code** to *build* — it adds the terminal, git
+and your repo, and loads tool schemas on demand instead of all at once.
+
 On a new PC, the [verified one-paste installer](docs/INSTALL.md) prepares the
 prerequisites without administrator rights. First setup takes a few minutes:
 run `pbi_install_status` until `ready`, restart once, and confirm the 139 `pbi_*` tools appear.
