@@ -16,6 +16,10 @@ def pytest_configure(config):
         "services.project_state y no debe recibir el estado forzado.")
     config.addinivalue_line(
         "markers",
+        "real_canvas: la prueba deja que la lectura del lienzo lance el "
+        "helper de UI Automation real.")
+    config.addinivalue_line(
+        "markers",
         "local_fixture: requiere el fixture local de compatibilidad "
         "(tests/fixtures/local/), que no se versiona.")
     config.addinivalue_line(
@@ -142,6 +146,30 @@ def proyecto_cerrado(monkeypatch, request):
             project_state.CLOSED, "high", "estado forzado por las pruebas"))
     yield
     project_state.invalidate_cache()
+
+
+@pytest.fixture(autouse=True)
+def lienzo_sin_leer(monkeypatch, request):
+    """La lectura del lienzo por UI Automation no sale de las pruebas.
+
+    `pbi_validate_desktop_render` lee la ventana en un proceso aparte. Con los
+    dobles de Desktop de la suite el PID es inventado: lanzar el helper real
+    seria lento y dependeria de la maquina. Aqui la lectura dice `unknown`,
+    que es justo lo que la tool sabe tratar sin afirmar nada. Las pruebas que
+    ejercitan la lectura la sustituyen; las que quieren el helper real se
+    marcan con `@pytest.mark.real_canvas`.
+    """
+    if "real_canvas" in request.keywords:
+        yield
+        return
+    from horizun_pbi_mcp.powerbi import desktop_canvas
+
+    def _sin_lectura(pid, started, timeout):
+        raise desktop_canvas.PowerBIMCPError(
+            "lectura del lienzo desactivada en las pruebas")
+
+    monkeypatch.setattr(desktop_canvas, "_leer_con_helper", _sin_lectura)
+    yield
 
 
 @pytest.fixture

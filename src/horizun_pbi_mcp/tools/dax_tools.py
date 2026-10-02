@@ -231,6 +231,21 @@ def register(mcp) -> None:
         de un solo color: pagina vacia o visuales sin pintar).
         `capture.capture_representative` resume las tres primeras.
 
+        `data_loaded` habla de lo que muestra la VENTANA, no solo del motor:
+        `canvas` lee por UI Automation los avisos de Power BI ("es necesario
+        actualizar manualmente", "datos incompletos") y los valores
+        «(En blanco)». Si Power BI avisa de que faltan datos, `data_loaded` es
+        `false` aunque el motor tenga filas -van en `model_data_loaded`- y la
+        captura deja de ser representativa. Con `refresh=true` se espera a que
+        esos avisos desaparezcan antes de capturar (`canvas.wait_after_refresh`).
+        `canvas.state="no_blank_signals"` no demuestra datos pintados: solo que
+        no se vio lo contrario; `unknown` es que no se pudo leer.
+
+        "Ajustar a la pagina" en una sesion YA ABIERTA no necesita
+        `confirm_reuse` si esa ventana la abrio este mismo servidor (p. ej.
+        con `pbi_open_and_refresh`) o si la llamada trae `refresh=true` y
+        `confirm=true`. `navigation`/`authorized_by` dice cual fue.
+
         Si la tool tuvo que abrir Desktop, lo cierra al terminar (tambien si la
         captura falla) y devuelve la seleccion de modelo a como estaba. Si el
         informe ya estaba abierto, reutiliza esa sesion y nunca cierra la
@@ -304,10 +319,24 @@ def register(mcp) -> None:
             Elegir pestaña o zoom mueve la ventana del usuario. Sin
             `confirm_reuse`, una pagina pedida es un error claro y el zoom por
             defecto degrada al aviso de siempre: la captura observa, no toca.
+
+            Dos casos no son "la ventana del usuario" y no necesitan
+            `confirm_reuse`: la ventana que abrio este mismo servidor (por
+            ejemplo con `pbi_open_and_refresh`), y una llamada con
+            `refresh=true` + `confirm=true`, que ya autoriza vaciar y repintar
+            esa ventana -la misma regla que `pbi_open_and_refresh`-.
             """
-            if confirm_reuse:
+            from horizun_pbi_mcp.powerbi import desktop_launcher
+
+            autorizado_por = (
+                "confirm_reuse" if confirm_reuse
+                else "refresh_confirm" if (refresh and confirm)
+                else "launched_by_this_server"
+                if desktop_launcher.lanzada_por_este_servidor(pid)
+                else None)
+            if autorizado_por:
                 return {"page": page, "fit_to_page": fit_to_page,
-                        "authorized_by": "confirm_reuse"}
+                        "authorized_by": autorizado_por}
             if page:
                 raise ValidationError(
                     "El proyecto ya esta abierto en Desktop y elegir la "
@@ -319,12 +348,14 @@ def register(mcp) -> None:
                              "reason": "desktop_open_page_needs_confirm"})
             avisos.append(
                 "Sesion reutilizada: no se fuerza 'Ajustar a la pagina' en "
-                "una ventana del usuario sin confirm_reuse=true; la captura "
-                "sale al zoom actual de Desktop.")
+                "una ventana del usuario sin confirm_reuse=true (o "
+                "refresh=true con confirm=true); la captura sale al zoom "
+                "actual de Desktop.")
             return None
 
         def _con_desktop(pbix, vista, avisos, navegacion=None):
-            from horizun_pbi_mcp.powerbi import (desktop_capture, desktop_launcher,
+            from horizun_pbi_mcp.powerbi import (desktop_canvas, desktop_capture,
+                                                 desktop_launcher,
                                                  desktop_navigation)
 
             opened = desktop_launcher.open_pbix(
@@ -378,6 +409,15 @@ def register(mcp) -> None:
                 elif vista is not None:
                     visuales_en_pagina = desktop_navigation.contar_visuales(
                         pbix, vista.get("page_id"))
+                espera_lienzo: Optional[Dict[str, Any]] = None
+                if refresh:
+                    # Tras un refresh por XMLA el motor ya tiene filas, pero la
+                    # ventana puede tardar en repintar -o quedarse con el aviso
+                    # de "actualizar manualmente"-. Dos fotogramas iguales no
+                    # lo detectan: se espera a que Power BI deje de decirlo.
+                    espera_lienzo = desktop_canvas.esperar_lienzo(
+                        opened, plazo=min(desktop_canvas.ESPERA_TRAS_REFRESH,
+                                          float(capture_timeout)))
                 capture_kwargs = {
                     "timeout": capture_timeout,
                     # Tras refrescar, Desktop vuelve a lanzar las consultas de
@@ -390,6 +430,17 @@ def register(mcp) -> None:
                 if datos.get("data_loaded") is not None:
                     capture_kwargs["data_loaded"] = datos["data_loaded"]
                 capture = desktop_capture.capture_opened(opened, **capture_kwargs)
+                # Lo que muestra la ventana JUSTO despues de fotografiarla. Es
+                # la evidencia que decide si la captura tiene datos pintados;
+                # las filas del motor son otra pregunta.
+                lienzo = desktop_canvas.leer_lienzo(opened)
+                if espera_lienzo is not None:
+                    lienzo["wait_after_refresh"] = {
+                        k: espera_lienzo.get(k)
+                        for k in ("state", "reads", "waited_seconds",
+                                  "wait_exhausted")}
+                modelo_con_datos = datos.get("data_loaded")
+                en_blanco = lienzo.get("state") == desktop_canvas.NO_PINTADO
                 result = {
                     "path": opened.pbix_path,
                     "instance": opened.instance,
@@ -398,10 +449,36 @@ def register(mcp) -> None:
                     "reused_open_session": not opened.launched_by_us,
                     "waited_seconds": opened.waited_seconds,
                     "capture": capture,
-                    "data_loaded": datos.get("data_loaded"),
+                    # Nunca "datos cargados" con la ventana diciendo lo
+                    # contrario: si Power BI avisa de que faltan datos, la
+                    # captura es de visuales en blanco aunque el motor tenga
+                    # filas. Las filas del motor van aparte.
+                    "data_loaded": False if en_blanco else modelo_con_datos,
+                    "model_data_loaded": modelo_con_datos,
+                    "canvas": lienzo,
                 }
+                if en_blanco:
+                    capture["capture_representative"] = False
+                    avisos.append(
+                        "La ventana muestra los visuales EN BLANCO y Power BI "
+                        "avisa: "
+                        + "; ".join(f"«{a['text']}»" for a in
+                                    lienzo.get("desktop_warnings") or [])
+                        + (". El motor si tiene filas: Desktop no repinto "
+                           "tras el refresh. " if modelo_con_datos else ". ")
+                        + "La captura NO representa el informe: pulsa "
+                        "Actualizar en Desktop o repite la captura con la "
+                        "sesion ya refrescada (refresh=false).")
+                elif lienzo.get("state") == desktop_canvas.VALORES_EN_BLANCO:
+                    avisos.append(
+                        f"La ventana muestra {lienzo.get('blank_values')} "
+                        "valor(es) «(En blanco)» sin aviso de Power BI: puede "
+                        "ser una medida que devuelve BLANK() o datos sin "
+                        "pintar. Revisa la captura.")
                 if nav_result is not None:
-                    result["navigation"] = nav_result
+                    result["navigation"] = {
+                        **nav_result,
+                        "authorized_by": navegacion.get("authorized_by")}
                 if visuales_en_pagina is not None:
                     result["page_visual_count"] = visuales_en_pagina
                 if refresco is not None:

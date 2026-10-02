@@ -2101,9 +2101,45 @@ def ajustar_a_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": True, "phase": "done", **resultado, "steps": pasos}
 
 
+#: Tipos de control cuyo nombre accesible lleva texto visible del lienzo. Los
+#: valores de una tarjeta y los avisos de la ventana no siempre son `Text`:
+#: Chromium expone parte del contenido como grupos o controles propios.
+UIA_TIPOS_CON_TEXTO = (UIA_TIPO_TEXT, 50025, 50026)    # Text, Custom, Group
+#: Tope de elementos leidos: una pagina con tablas grandes expone miles.
+MAX_TEXTOS_LIENZO = 4000
+
+
+def leer_lienzo(peticion: Dict[str, Any]) -> Dict[str, Any]:
+    """Clasifica lo que muestra la ventana: avisos de Power BI y «(En blanco)».
+
+    Solo lectura: no pulsa, no enfoca, no trae la ventana al frente. Devuelve
+    la CLASIFICACION (conteos y avisos reconocidos), no el texto del informe.
+    """
+    from horizun_pbi_mcp.powerbi.desktop_canvas import clasificar_textos
+
+    pid = int(peticion["desktop_pid"])
+    identidad = verificar_proceso(pid, peticion.get("desktop_started"))
+    uia = Uia()
+    principal = _ventana_principal(pid)
+    raiz = uia.desde_hwnd(principal["hwnd"])
+    textos: List[str] = []
+    for tipo in UIA_TIPOS_CON_TEXTO:
+        for elemento in uia.todos_de_tipo(raiz, tipo):
+            if len(textos) >= MAX_TEXTOS_LIENZO:
+                break
+            nombre = uia.nombre(elemento)
+            if nombre:
+                textos.append(nombre)
+    return {"ok": True, "phase": "done", "canvas": clasificar_textos(textos),
+            "truncated": len(textos) >= MAX_TEXTOS_LIENZO,
+            "steps": [{"phase": "identidad", **identidad},
+                      {"phase": "ventana", "hwnd": principal["hwnd"]}]}
+
+
 ACCIONES = {"save_as": guardar_como,
             "select_page": seleccionar_pagina,
-            "fit_to_page": ajustar_a_pagina}
+            "fit_to_page": ajustar_a_pagina,
+            "read_canvas": leer_lienzo}
 
 
 def main() -> int:

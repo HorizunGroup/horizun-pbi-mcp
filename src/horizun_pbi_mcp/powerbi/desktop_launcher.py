@@ -510,9 +510,39 @@ def open_pbix(pbix_path: str | Path, timeout: int = 300,
     # El proceso lanzado suele reexec-ar: el que sirve el modelo es el ancestro
     # real de msmdsrv, no necesariamente el pid que nos devolvio Popen.
     desktop_pid = _desktop_de_instancia(instancia) or proceso.pid
+    arranque = _process_started(desktop_pid)
+    _registrar_lanzada(desktop_pid, arranque)
     return OpenedPbix(
         str(pbix), instancia, desktop_pid, True, round(esperado, 1),
-        desktop_started=_process_started(desktop_pid))
+        desktop_started=arranque)
+
+
+#: Ventanas de Desktop que abrio ESTE proceso servidor: `(pid, arranque)`.
+#: Una sesion "reutilizada" no siempre es del usuario: en la corrida del
+#: «Comite de obra» `pbi_open_and_refresh` abrio la ventana y, un minuto
+#: despues, la captura la trato como ajena y se nego a ajustar el zoom.
+_LANZADAS: set = set()
+
+
+def _registrar_lanzada(pid: Optional[int], arranque: Optional[float]) -> None:
+    if pid and arranque is not None:
+        _LANZADAS.add((int(pid), float(arranque)))
+
+
+def lanzada_por_este_servidor(pid: Optional[int]) -> bool:
+    """Si esa ventana la abrio este servidor (y sigue siendo el mismo proceso).
+
+    Se compara tambien la hora de arranque: Windows recicla los PID, y una
+    ventana del usuario que herede el numero de una nuestra ya cerrada no
+    pasa a ser nuestra.
+    """
+    if not pid:
+        return False
+    actual = _process_started(pid)
+    if actual is None:
+        return False
+    return any(p == int(pid) and abs(arranque - actual) <= 1.0
+               for p, arranque in _LANZADAS)
 
 
 def _estabilizar(instancia: Dict[str, Any]) -> Dict[str, Any]:
