@@ -238,6 +238,9 @@ def register(mcp) -> None:
         `false` aunque el motor tenga filas -van en `model_data_loaded`- y la
         captura deja de ser representativa. Con `refresh=true` se espera a que
         esos avisos desaparezcan antes de capturar (`canvas.wait_after_refresh`).
+        En un .pbip con la pagina conocida se espera ademas a que se vean los
+        titulos de sus visuales: si no aparecen todos, `canvas.state` es
+        `visuals_not_painted` y la captura tampoco es representativa.
         `canvas.state="no_blank_signals"` no demuestra datos pintados: solo que
         no se vio lo contrario; `unknown` es que no se pudo leer.
 
@@ -409,15 +412,29 @@ def register(mcp) -> None:
                 elif vista is not None:
                     visuales_en_pagina = desktop_navigation.contar_visuales(
                         pbix, vista.get("page_id"))
+                # La pagina que se va a fotografiar, si se sabe: sus titulos
+                # son el testigo de que Desktop ya la pinto.
+                pagina_capturada = (
+                    (vista or {}).get("page_id")
+                    or ((nav_result or {}).get("page") or {}).get("page_id"))
+                titulos = desktop_navigation.titulos_de_pagina(
+                    pbix, pagina_capturada)
+
+                def _leer(o):
+                    return desktop_canvas.leer_lienzo(o, titulos=titulos)
+
                 espera_lienzo: Optional[Dict[str, Any]] = None
-                if refresh:
+                if refresh or titulos:
                     # Tras un refresh por XMLA el motor ya tiene filas, pero la
                     # ventana puede tardar en repintar -o quedarse con el aviso
-                    # de "actualizar manualmente"-. Dos fotogramas iguales no
-                    # lo detectan: se espera a que Power BI deje de decirlo.
+                    # de "actualizar manualmente"-, y recien abierta puede no
+                    # haber pintado aun los visuales. Dos fotogramas iguales no
+                    # lo detectan: se espera a que Power BI deje de avisar y a
+                    # que se vean los titulos de la pagina.
                     espera_lienzo = desktop_canvas.esperar_lienzo(
-                        opened, plazo=min(desktop_canvas.ESPERA_TRAS_REFRESH,
-                                          float(capture_timeout)))
+                        opened, leer=_leer,
+                        plazo=min(desktop_canvas.ESPERA_TRAS_REFRESH,
+                                  float(capture_timeout)))
                 capture_kwargs = {
                     "timeout": capture_timeout,
                     # Tras refrescar, Desktop vuelve a lanzar las consultas de
@@ -433,14 +450,14 @@ def register(mcp) -> None:
                 # Lo que muestra la ventana JUSTO despues de fotografiarla. Es
                 # la evidencia que decide si la captura tiene datos pintados;
                 # las filas del motor son otra pregunta.
-                lienzo = desktop_canvas.leer_lienzo(opened)
+                lienzo = _leer(opened)
                 if espera_lienzo is not None:
                     lienzo["wait_after_refresh"] = {
                         k: espera_lienzo.get(k)
                         for k in ("state", "reads", "waited_seconds",
                                   "wait_exhausted")}
                 modelo_con_datos = datos.get("data_loaded")
-                en_blanco = lienzo.get("state") == desktop_canvas.NO_PINTADO
+                en_blanco = lienzo.get("state") in desktop_canvas.EN_BLANCO
                 result = {
                     "path": opened.pbix_path,
                     "instance": opened.instance,
@@ -457,7 +474,15 @@ def register(mcp) -> None:
                     "model_data_loaded": modelo_con_datos,
                     "canvas": lienzo,
                 }
-                if en_blanco:
+                if lienzo.get("state") == desktop_canvas.SIN_VISUALES:
+                    capture["capture_representative"] = False
+                    avisos.append(
+                        f"La pagina declara {lienzo.get('visual_titles_expected')} "
+                        "visual(es) con titulo y la ventana solo muestra "
+                        f"{lienzo.get('visual_titles_seen')}: Desktop aun no "
+                        "pinto la pagina. La captura NO representa el informe; "
+                        "repitela.")
+                elif en_blanco:
                     capture["capture_representative"] = False
                     avisos.append(
                         "La ventana muestra los visuales EN BLANCO y Power BI "

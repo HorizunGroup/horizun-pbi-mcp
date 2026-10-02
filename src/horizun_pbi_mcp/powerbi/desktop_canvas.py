@@ -22,6 +22,10 @@ Lo que se promete y lo que no
   actualizar. Es evidencia fuerte: la captura no representa el informe.
 - `blank_values`: hay valores «(En blanco)» sin aviso. Puede ser legitimo (una
   medida que devuelve BLANK()); se avisa, no se decide.
+- `visuals_not_painted`: la pagina declara visuales con titulo y la ventana
+  aun no muestra todos esos titulos. Medido en vivo: una captura tomada antes
+  de que Desktop pintara la pagina salio como un lienzo vacio, sin avisos ni
+  «(En blanco)» que la delataran.
 - `no_blank_signals`: no se vio ninguna de esas señales. NO demuestra que haya
   datos pintados: solo que no se vio lo contrario.
 - `unknown`: no se pudo leer la ventana. No se afirma nada.
@@ -55,9 +59,12 @@ VALOR_EN_BLANCO = re.compile(r"^\s*\(\s*(en\s+blanco|blank)\s*\)\s*$", re.I)
 
 #: Estados posibles del lienzo, de peor a mejor evidencia.
 NO_PINTADO = "not_rendered"
+SIN_VISUALES = "visuals_not_painted"
 VALORES_EN_BLANCO = "blank_values"
 SIN_SENALES = "no_blank_signals"
 DESCONOCIDO = "unknown"
+#: Estados en los que la ventana NO muestra el informe con datos.
+EN_BLANCO = (NO_PINTADO, SIN_VISUALES)
 
 #: Cuanto se espera, como mucho, a que la ventana deje de mostrar los avisos
 #: despues de un refresh. El plazo real lo recorta `capture_timeout`.
@@ -66,7 +73,8 @@ ESPERA_TRAS_REFRESH = 45.0
 INTERVALO = 1.5
 
 
-def clasificar_textos(textos: Iterable[str]) -> Dict[str, Any]:
+def clasificar_textos(textos: Iterable[str], *, titulos_esperados: int = 0,
+                      titulos_vistos: int = 0) -> Dict[str, Any]:
     """Clasifica los textos accesibles de la ventana. Funcion pura.
 
     Devuelve conteos y los avisos reconocidos (texto recortado), nunca los
@@ -91,16 +99,22 @@ def clasificar_textos(textos: Iterable[str]) -> Dict[str, Any]:
         estado = DESCONOCIDO
     elif avisos:
         estado = NO_PINTADO
+    elif titulos_esperados and titulos_vistos < titulos_esperados:
+        estado = SIN_VISUALES
     elif en_blanco:
         estado = VALORES_EN_BLANCO
     else:
         estado = SIN_SENALES
-    return {"state": estado, "texts_seen": vistos,
-            "blank_values": en_blanco, "desktop_warnings": avisos}
+    salida = {"state": estado, "texts_seen": vistos,
+              "blank_values": en_blanco, "desktop_warnings": avisos}
+    if titulos_esperados:
+        salida["visual_titles_expected"] = titulos_esperados
+        salida["visual_titles_seen"] = titulos_vistos
+    return salida
 
 
-def _leer_con_helper(pid: int, started: Optional[float],
-                     timeout: float) -> Dict[str, Any]:
+def _leer_con_helper(pid: int, started: Optional[float], timeout: float,
+                     titulos: Optional[List[str]] = None) -> Dict[str, Any]:
     """Lee la ventana en el proceso aparte. Puede lanzar."""
     from horizun_pbi_mcp.powerbi import desktop_helper
 
@@ -108,10 +122,12 @@ def _leer_con_helper(pid: int, started: Optional[float],
         "action": "read_canvas",
         "desktop_pid": int(pid),
         "desktop_started": started,
+        "expected_titles": list(titulos or []),
     }, timeout=timeout)
 
 
-def leer_lienzo(opened: Any, *, timeout: float = 20.0) -> Dict[str, Any]:
+def leer_lienzo(opened: Any, *, timeout: float = 20.0,
+                titulos: Optional[List[str]] = None) -> Dict[str, Any]:
     """Estado del lienzo de la ventana de `opened`. Nunca lanza."""
     pid = getattr(opened, "desktop_pid", None)
     if not pid:
@@ -120,7 +136,7 @@ def leer_lienzo(opened: Any, *, timeout: float = 20.0) -> Dict[str, Any]:
     try:
         respuesta = _leer_con_helper(int(pid),
                                      getattr(opened, "desktop_started", None),
-                                     timeout)
+                                     timeout, titulos)
     except PowerBIMCPError as exc:
         return {"state": DESCONOCIDO, "available": False,
                 "reason": f"{exc.code}: {str(exc.message)[:160]}"}
@@ -128,8 +144,8 @@ def leer_lienzo(opened: Any, *, timeout: float = 20.0) -> Dict[str, Any]:
         return {"state": DESCONOCIDO, "available": False,
                 "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
     estado = respuesta.get("canvas") or {}
-    if estado.get("state") not in (NO_PINTADO, VALORES_EN_BLANCO, SIN_SENALES,
-                                   DESCONOCIDO):
+    if estado.get("state") not in (NO_PINTADO, SIN_VISUALES, VALORES_EN_BLANCO,
+                                   SIN_SENALES, DESCONOCIDO):
         return {"state": DESCONOCIDO, "available": False,
                 "reason": "el asistente de interfaz no clasifico el lienzo"}
     return {**estado, "available": estado["state"] != DESCONOCIDO}
@@ -155,8 +171,9 @@ def esperar_lienzo(opened: Any, *, plazo: float,
         estado = leer(opened)
         lecturas += 1
         transcurrido = reloj() - inicio
-        if estado.get("state") != NO_PINTADO or transcurrido >= plazo:
+        pendiente = estado.get("state") in EN_BLANCO
+        if not pendiente or transcurrido >= plazo:
             return {**estado, "reads": lecturas,
                     "waited_seconds": round(transcurrido, 1),
-                    "wait_exhausted": estado.get("state") == NO_PINTADO}
+                    "wait_exhausted": pendiente}
         dormir(min(intervalo, max(0.0, plazo - transcurrido)))

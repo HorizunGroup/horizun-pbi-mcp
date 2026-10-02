@@ -271,7 +271,7 @@ def _lienzo_fijo(monkeypatch, textos_por_lectura):
     lecturas = iter(textos_por_lectura)
     ultimo = {"t": None}
 
-    def _leer(pid, started, timeout):
+    def _leer(pid, started, timeout, titulos=None):
         try:
             ultimo["t"] = next(lecturas)
         except StopIteration:

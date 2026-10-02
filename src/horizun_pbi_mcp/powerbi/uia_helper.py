@@ -1928,6 +1928,12 @@ def _anuncios_de_zoom(uia: Uia, raiz) -> List[str]:
     return sorted(t for t in textos if t and ANUNCIO_DE_ZOOM.search(t))
 
 
+def _nivel_de_zoom(anuncio: str) -> Optional[str]:
+    """El porcentaje que cita un anuncio de zoom ("72"), o None."""
+    encontrado = ANUNCIO_DE_ZOOM.search(anuncio or "")
+    return encontrado.group(1) if encontrado else None
+
+
 def _es_pestana_de_pagina(uia: Uia, pestana) -> bool:
     """True si la pestaña vive en el carrusel de paginas del informe.
 
@@ -2087,10 +2093,16 @@ def ajustar_a_pagina(peticion: Dict[str, Any]) -> Dict[str, Any]:
                             plazo=ESPERA_INTERFAZ)
         despues = _estado(opcion)
         # El anuncio de nivel de zoom es la unica señal ESPECIFICA que hay:
-        # se espera a que aparezca uno nuevo en vez de leerlo una vez.
+        # se espera a que aparezca uno nuevo en vez de leerlo una vez. Cuenta
+        # el NIVEL, no el texto: medido contra Desktop real, la plantilla
+        # «Informe ampliado a 100 %. 10 resultados» pasaba a «... 100 %. No
+        # se ha encontrado ningun resultado» sin que el zoom se moviera, y esa
+        # cadena "nueva" daba el ajuste por verificado.
+        niveles_antes = {_nivel_de_zoom(a) for a in anuncios_antes}
         nuevos = _hasta_que(
             lambda: ([a for a in _anuncios_de_zoom(uia, raiz)
-                      if a not in anuncios_antes] or None),
+                      if a not in anuncios_antes
+                      and _nivel_de_zoom(a) not in niveles_antes] or None),
             plazo=min(4.0, ESPERA_INTERFAZ)) or []
         return {"via": via, "path": camino, "verified": bool(estado),
                 "state_after": despues,
@@ -2129,6 +2141,9 @@ def leer_lienzo(peticion: Dict[str, Any]) -> Dict[str, Any]:
     uia = Uia()
     principal = _ventana_principal(pid)
     raiz = uia.desde_hwnd(principal["hwnd"])
+    esperados = {str(t).strip().casefold()
+                 for t in (peticion.get("expected_titles") or []) if str(t).strip()}
+    vistos_esperados = set()
     textos: List[str] = []
     ocultos = 0
     for tipo in UIA_TIPOS_CON_TEXTO:
@@ -2146,8 +2161,13 @@ def leer_lienzo(peticion: Dict[str, Any]) -> Dict[str, Any]:
                 ocultos += 1
                 continue
             textos.append(nombre)
+            if nombre.strip().casefold() in esperados:
+                vistos_esperados.add(nombre.strip().casefold())
     return {"ok": True, "phase": "done",
-            "canvas": {**clasificar_textos(textos), "offscreen_skipped": ocultos},
+            "canvas": {**clasificar_textos(
+                textos, titulos_esperados=len(esperados),
+                titulos_vistos=len(vistos_esperados)),
+                "offscreen_skipped": ocultos},
             "truncated": len(textos) >= MAX_TEXTOS_LIENZO,
             "steps": [{"phase": "identidad", **identidad},
                       {"phase": "ventana", "hwnd": principal["hwnd"]}]}

@@ -164,7 +164,7 @@ def lienzo_sin_leer(monkeypatch, request):
         return
     from horizun_pbi_mcp.powerbi import desktop_canvas
 
-    def _sin_lectura(pid, started, timeout):
+    def _sin_lectura(pid, started, timeout, titulos=None):
         raise desktop_canvas.PowerBIMCPError(
             "lectura del lienzo desactivada en las pruebas")
 
