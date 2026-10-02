@@ -111,7 +111,7 @@ def version_en_curso() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
-LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*"
+LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?"
                    r"==[A-Za-z0-9][A-Za-z0-9.\-+!]*"
                    r" --hash=sha256:[0-9a-f]{64}$")
 
@@ -167,8 +167,59 @@ def resolver(version: str, plataforma: str) -> Dict[str, Any]:
         return json.loads(destino.read_text(encoding="utf-8"))
 
 
+#: `nombre[extras]` al principio de un requisito de `Requires-Dist`.
+_CON_EXTRAS = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*\[([^\]]+)\]")
+
+
+def _marcador_se_cumple(marcador: str) -> bool:
+    """Si el marcador de entorno aplica a ESTE interprete (el del lock).
+
+    Un requisito marcado `extra == "..."` es opcional del propio paquete y no
+    se instala salvo que se pida: no cuenta. Si el marcador no se puede
+    evaluar, tampoco: fijar un extra que no se instala obligaria a fijar
+    dependencias que no estan en el lock.
+    """
+    marcador = marcador.strip()
+    if not marcador:
+        return True
+    if "extra" in marcador:
+        return False
+    try:
+        from pip._vendor.packaging.markers import Marker
+    except ImportError:                                   # pragma: no cover
+        return False
+    try:
+        return bool(Marker(marcador).evaluate())
+    except Exception:                                     # noqa: BLE001
+        return False
+
+
+def extras_pedidos(reporte: Dict[str, Any]) -> Dict[str, set]:
+    """Que extras de que paquetes piden las dependencias del propio lock.
+
+    Por que existe: `mcp` pide `pyjwt[crypto]>=2.10.1`. El lock fijaba
+    `PyJWT==2.13.0`, y el pip 23.0.1 que trae Python 3.10 trata
+    `pyjwt[crypto]` como OTRO requisito: en cuanto PyPI publico una version
+    mas nueva de PyJWT, `--require-hashes` se nego («all requirements must
+    have their versions pinned with ==») y el lock de 3.10 dejo de instalar.
+    Fijar tambien `pyjwt[crypto]==2.13.0` con el mismo hash lo resuelve, y
+    los pip modernos lo aceptan igual.
+    """
+    pedidos: Dict[str, set] = {}
+    for paquete in reporte.get("install", []):
+        for requisito in (paquete.get("metadata") or {}).get("requires_dist") or []:
+            cuerpo, _, marcador = str(requisito).partition(";")
+            m = _CON_EXTRAS.match(cuerpo)
+            if not m or not _marcador_se_cumple(marcador):
+                continue
+            extras = {e.strip() for e in m.group(2).split(",") if e.strip()}
+            pedidos.setdefault(normalizar(m.group(1)), set()).update(extras)
+    return pedidos
+
+
 def lineas_del_lock(reporte: Dict[str, Any]) -> List[str]:
     entradas = []
+    extras = extras_pedidos(reporte)
     for paquete in reporte.get("install", []):
         meta = paquete["metadata"]
         hashes = ((paquete.get("download_info") or {})
@@ -179,6 +230,10 @@ def lineas_del_lock(reporte: Dict[str, Any]) -> List[str]:
             # linea "quede bonita" seria falsificarla.
             continue
         entradas.append(f"{meta['name']}=={meta['version']} --hash=sha256:{sha}")
+        pedidos = extras.get(normalizar(meta["name"]))
+        if pedidos:
+            entradas.append(f"{normalizar(meta['name'])}[{','.join(sorted(pedidos))}]"
+                            f"=={meta['version']} --hash=sha256:{sha}")
     return sorted(entradas)
 
 
