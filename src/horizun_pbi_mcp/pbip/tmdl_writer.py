@@ -19,7 +19,9 @@ from horizun_pbi_mcp.pbip.tmdl_reader import _first_token, _indent, _unquote, fi
 from horizun_pbi_mcp.services import project_state
 from horizun_pbi_mcp.services import txn as txn_service
 from horizun_pbi_mcp.utils.change_log import record_change
-from horizun_pbi_mcp.utils.validation import tmdl_quote_name, validate_measure_expression, validate_object_name
+from horizun_pbi_mcp.utils.validation import (normalizar_format_string, tmdl_quote_name,
+                                              validate_measure_expression,
+                                              validate_object_name)
 
 log = get_logger("tmdl_writer")
 
@@ -34,6 +36,9 @@ def _build_measure_block(
     description: Optional[str],
     data_category: Optional[str] = None,
 ) -> List[str]:
+    # Un formato que llega como entero (`0`) es falsy: sin esto, el
+    # `if format_string:` de abajo lo descartaba en silencio.
+    format_string = normalizar_format_string(format_string)
     for etiqueta, valor in (("format_string", format_string),
                             ("display_folder", display_folder),
                             ("data_category", data_category)):

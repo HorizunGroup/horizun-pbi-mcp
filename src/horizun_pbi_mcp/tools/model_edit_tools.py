@@ -11,7 +11,7 @@ from horizun_pbi_mcp.powerbi import model_writer
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
 from horizun_pbi_mcp.pbip import model_edit
 from horizun_pbi_mcp.services import dual_mode
-from horizun_pbi_mcp.tools._common import guard, guard_mutation
+from horizun_pbi_mcp.tools._common import FormatString, guard, guard_mutation
 from horizun_pbi_mcp.utils.validation import validate_object_name
 
 log = get_logger("model_edit_tools")
@@ -219,7 +219,7 @@ def register(mcp) -> None:
     @mcp.tool()
     def pbi_create_calculated_column(table: str, name: str, expression: str,
                                      data_type: str = "string",
-                                     format_string: Optional[str] = None,
+                                     format_string: FormatString = None,
                                      display_folder: Optional[str] = None,
                                      description: Optional[str] = None,
                                      summarize_by: str = "none",

@@ -29,7 +29,8 @@ from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
 from horizun_pbi_mcp.pbip.tmdl_reader import (_parse_relationships, find_table_file,
                               parse_table_file)
-from horizun_pbi_mcp.utils.validation import (tmdl_quote_name, validate_measure_expression,
+from horizun_pbi_mcp.utils.validation import (normalizar_format_string,
+                                              tmdl_quote_name, validate_measure_expression,
                               validate_object_name)
 
 log = get_logger("model_author")
@@ -243,6 +244,7 @@ def create_calculated_column(active: ActivePbip, table: str, name: str,
     """Añade una columna calculada (DAX) a una tabla existente."""
     name = validate_object_name(name, "columna")
     expression = validate_measure_expression(expression)
+    format_string = normalizar_format_string(format_string)
     if data_type not in TIPOS:
         raise ModelAuthorError(f"Tipo no soportado: '{data_type}'. Usa {list(TIPOS)}.")
     if summarize_by not in RESUMEN:
