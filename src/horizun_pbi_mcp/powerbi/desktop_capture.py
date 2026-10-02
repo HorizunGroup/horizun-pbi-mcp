@@ -227,7 +227,8 @@ def _enumerate_windows(pid: int) -> list[DesktopWindow]:
         )
 
     import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND,
@@ -381,7 +382,8 @@ def _capture_window_bgra(hwnd: int) -> tuple[int, int, bytes]:
 def _capturar_en_pixeles_fisicos(hwnd: int) -> tuple[int, int, bytes]:
 
     import ctypes
-    from ctypes import wintypes
+    import ctypes.wintypes
+    wintypes = ctypes.wintypes
 
     class BitmapInfoHeader(ctypes.Structure):
         _fields_ = [

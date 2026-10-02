@@ -51,9 +51,9 @@ def test_la_captura_real_en_blanco_se_clasifica_como_no_pintada():
 
 
 def test_los_avisos_en_ingles_tambien_cuentan():
-    r = desktop_canvas.clasificar_textos([
-        "One or more relationships have been modified and need to be "
-        "refreshed manually.", "(Blank)"])
+    aviso = ("One or more relationships have been modified and need to be "
+             "refreshed manually.")
+    r = desktop_canvas.clasificar_textos([aviso, "(Blank)"])
     assert r["state"] == desktop_canvas.NO_PINTADO
     assert r["blank_values"] == 1
 
@@ -155,6 +155,7 @@ class _TextoOculto(_Texto):
 
 class _UiaConOcultos(_UiaLienzo):
     def __init__(self, textos):
+        super().__init__([])
         self.textos = [_TextoOculto(t, o) for t, o in textos]
 
     def fuera_de_pantalla(self, elemento):

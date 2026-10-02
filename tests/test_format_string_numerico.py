@@ -17,7 +17,6 @@ import json
 
 import pytest
 
-from horizun_pbi_mcp.config import ActiveModel
 from horizun_pbi_mcp.pbip import project_locator, tmdl_writer
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.utils.validation import normalizar_format_string
@@ -50,7 +49,7 @@ def servidor(session, tmp_path, monkeypatch):
 
     pbip = synthetic.materialize(tmp_path)
     project_locator.open_project(session, str(pbip))
-    session.set_active_model(ActiveModel(
+    session.set_active_model(cfg.ActiveModel(
         host="localhost", port=1234, connection_string="Data Source=localhost:1234",
         catalog="cat", database_name="cat", model_name="M",
         pid=1, process_started=1.0, session_fingerprint="fp"))
