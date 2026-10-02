@@ -120,7 +120,11 @@ class _Texto:
 
 class _UiaLienzo:
     def __init__(self, textos):
-        self.textos = [_Texto(t) for t in textos]
+        self.textos = [self._elemento(t) for t in textos]
+
+    @staticmethod
+    def _elemento(texto):
+        return _Texto(texto)
 
     def desde_hwnd(self, hwnd):
         return "raiz"
@@ -154,9 +158,12 @@ class _TextoOculto(_Texto):
 
 
 class _UiaConOcultos(_UiaLienzo):
-    def __init__(self, textos):
-        super().__init__([])
-        self.textos = [_TextoOculto(t, o) for t, o in textos]
+    """Recibe pares (texto, oculto)."""
+
+    @staticmethod
+    def _elemento(par):
+        texto, oculto = par
+        return _TextoOculto(texto, oculto)
 
     def fuera_de_pantalla(self, elemento):
         return elemento.oculto
