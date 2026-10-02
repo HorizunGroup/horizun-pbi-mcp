@@ -39,7 +39,11 @@ _MAX_CATALOG_BYTES = 8 * 1024 * 1024
 # effective-properties instalado. Sirve de barrera offline y evita arrancar
 # Node solo para comprobar VCO compartidos como title.show/title.text.
 _SHARED_VCO = {
-    "title": {"show": {"type": "bool"}, "text": {"type": "text"}},
+    # fontColor/fontSize/bold/alignment: el estilo por defecto del titulo de
+    # una plantilla minima (visual_factory._estilo_por_defecto).
+    "title": {"show": {"type": "bool"}, "text": {"type": "text"},
+              "fontColor": {"type": "fill"}, "fontSize": {"type": "formatting"},
+              "bold": {"type": "bool"}, "alignment": {"type": "formatting"}},
     "background": {"show": {"type": "bool"}, "color": {"type": "fill"},
                    "transparency": {"type": "numeric"}},
     "border": {"show": {"type": "bool"}, "color": {"type": "fill"},

@@ -1281,6 +1281,108 @@ def _comprobar_formato_generado(documento: Dict[str, Any], *, completas: bool,
         format_oracle.assert_managed_paths(documento, rutas)
 
 
+#: Tamaño del titulo de una plantilla minima. Doce puntos en seminegrita es lo
+#: que usan los temas del repo (`theme._estilos`): por debajo, en un lienzo de
+#: 1280 px, el titulo se lee como una nota al pie -que es como salieron los
+#: doce visuales del «Comite de obra»-.
+TAMANO_TITULO_POR_DEFECTO = 12
+#: Radio del marco por defecto, en px.
+RADIO_MARCO_POR_DEFECTO = 8
+
+
+def _tokens_de_tema(active: ActivePbip) -> Dict[str, Any]:
+    """Colores y fuente del tema REAL del informe, con el tema Horizun de respaldo.
+
+    Cada token sale del tema activo si lo define; si no -el tema base que
+    escribe `pbi_create_pbip_project` solo trae paleta y fondo/tinta-, del
+    preset "claro" del repo, que comparte esa misma paleta. Ademas dice que
+    grupos ya gobierna el tema en `visualStyles`: ahi no se escribe nada, el
+    tema manda.
+    """
+    from horizun_pbi_mcp.pbip import theme as theme_mod
+
+    respaldo = theme_mod.PRESETS["claro"]["tema"]
+    try:
+        tema = theme_mod.current_theme(active) or {}
+    except Exception:                                      # noqa: BLE001
+        tema = {}
+    estilos = (((tema.get("visualStyles") or {}).get("*") or {}).get("*") or {})
+    gobernado = {g for g in ("title", "background", "border") if estilos.get(g)}
+    # `textClasses.title` es la tipografia de los titulos de visual: si el
+    # tema la define, su tamaño y su color mandan.
+    if (tema.get("textClasses") or {}).get("title"):
+        gobernado.add("title")
+    return {
+        "tinta": tema.get("foreground") or respaldo["foreground"],
+        "fondo": tema.get("background") or respaldo["background"],
+        "linea": (tema.get("secondaryBackground")
+                  or respaldo["secondaryBackground"]),
+        "gobernado_por_tema": gobernado,
+        "tema": tema.get("name") or None,
+    }
+
+
+def _estilo_por_defecto(active: ActivePbip, vis: Dict[str, Any],
+                        actual_type: str, title: Optional[str],
+                        opciones: Dict[str, Any]) -> Dict[str, Any]:
+    """Formato base de un visual que NO tuvo plantilla que clonar.
+
+    Antes salia con lo que Power BI pone por defecto: titulo de 9-10 pt gris
+    claro y sin marco. Aqui se le da el mismo acabado que los temas del repo: titulo de
+    12 pt en seminegrita con la tinta del tema, alineado a la izquierda, y un
+    marco de fondo + borde suave redondeado. Todo con propiedades que el
+    catalogo oficial reconoce (lo comprueba `_comprobar_formato_generado`).
+
+    Lo que pide quien llama (`options`) gana siempre, y lo que el tema ya
+    gobierna en `visualStyles` no se pisa. Devuelve las rutas escritas y el
+    origen de los colores.
+    """
+    tokens = _tokens_de_tema(active)
+    gobernado = tokens["gobernado_por_tema"]
+    contenedor = vis.setdefault("visualContainerObjects", {})
+    rutas: List[tuple] = []
+
+    if title is not None and "title" not in gobernado:
+        props = contenedor["title"][0].setdefault("properties", {})
+        estilo = {
+            "fontSize": {"expr": {"Literal": {
+                "Value": f"{TAMANO_TITULO_POR_DEFECTO}D"}}},
+            "bold": _lit(True),
+            "fontColor": {"solid": {"color": _lit(tokens["tinta"])}},
+            "alignment": _lit("left"),
+        }
+        for clave, valor in estilo.items():
+            if clave not in props:
+                props[clave] = valor
+                rutas.append(("visualContainerObjects", "title", clave))
+
+    if not opciones.get("background_color") and "background" not in gobernado:
+        contenedor["background"] = [{"properties": {
+            "show": _lit(True),
+            "color": {"solid": {"color": _lit(tokens["fondo"])}},
+            "transparency": _lit(0.0)}}]
+        rutas.extend(("visualContainerObjects", "background", p)
+                     for p in ("show", "color", "transparency"))
+    if not opciones.get("border_color") and "border" not in gobernado:
+        contenedor["border"] = [{"properties": {
+            "show": _lit(True),
+            "color": {"solid": {"color": _lit(tokens["linea"])}},
+            "radius": _lit(float(RADIO_MARCO_POR_DEFECTO))}}]
+        rutas.extend(("visualContainerObjects", "border", p)
+                     for p in ("show", "color", "radius"))
+    if not contenedor:
+        vis.pop("visualContainerObjects", None)
+
+    # El contenido de la tarjeta (etiqueta de categoria, tamaño del valor) NO
+    # se toca: es una decision fijada en test_composicion_tipografia -"no se
+    # inventa formato que nadie pidio"-. La etiqueta repetida se apaga con
+    # options.show_category_label=false.
+    return {"rutas": rutas,
+            "applied": sorted({f"{scope}.{grupo}" for scope, grupo, _p in rutas}),
+            "theme": tokens["tema"],
+            "theme_governs": sorted(gobernado)}
+
+
 def find_template(active: ActivePbip, actual_type: str) -> Optional[Path]:
     """Busca un visual existente del mismo tipo para usar como plantilla."""
     pdir = pages_dir(active)
@@ -1431,6 +1533,7 @@ def build_visual(
                          roles_personalizados=roles_custom)
     _validate_role_contract(actual_type, query)
     template = find_template(active, actual_type)
+    estilo_base: Optional[Dict[str, Any]] = None
     if template is not None:
         data = copy.deepcopy(read_json(template))
         data["$schema"] = data.get("$schema", SCHEMA_VISUAL)
@@ -1460,17 +1563,31 @@ def build_visual(
         }
         if title is not None:
             _set_title(vis, title)
+        if not es_personalizado(actual_type):
+            # Va ANTES de las opciones: lo que pide quien llama lo pisa.
+            estilo_base = _estilo_por_defecto(active, vis, actual_type, title,
+                                              options or {})
         if actual_type in ("card", "cardVisual"):
             _aplicar_opciones_de_tarjeta(vis, actual_type, options or {})
         _aplicar_estilo_contenedor(vis, options or {})
         rutas_formato = _aplicar_formato(vis, (options or {}).get("format") or {})
+        if estilo_base is not None:
+            rutas_formato = list(estilo_base["rutas"]) + rutas_formato
         data = {"$schema": SCHEMA_VISUAL, "position": pos, "visual": vis}
         origin = "plantilla minima (validar en Power BI Desktop)"
         warnings.append(
             "No habia un visual de este tipo para clonar; se genero una plantilla "
-            "minima. Verifica el resultado en Power BI Desktop.")
+            "minima con el formato base de Horizun (titulo, marco"
+            + (f", colores del tema '{estilo_base['theme']}'"
+               if estilo_base and estilo_base.get("theme") else "")
+            + "). Verifica el resultado en Power BI Desktop.")
 
     _comprobar_formato_generado(
         data, completas=False, actual_type=actual_type, title=title,
         opciones=options or {}, rutas_extra=rutas_formato)
-    return {"visual": data, "actual_type": actual_type, "origin": origin, "warnings": warnings}
+    salida = {"visual": data, "actual_type": actual_type, "origin": origin,
+              "warnings": warnings}
+    if estilo_base is not None:
+        salida["default_style"] = {k: estilo_base[k] for k in
+                                   ("applied", "theme", "theme_governs")}
+    return salida
