@@ -147,6 +147,70 @@ def test_el_helper_lee_la_ventana_y_solo_devuelve_la_clasificacion(monkeypatch):
     assert "SPI Project" not in repr(r), "el texto del informe salio del helper"
 
 
+class _TextoOculto(_Texto):
+    def __init__(self, nombre, oculto):
+        super().__init__(nombre)
+        self.oculto = oculto
+
+
+class _UiaConOcultos(_UiaLienzo):
+    def __init__(self, textos):
+        self.textos = [_TextoOculto(t, o) for t, o in textos]
+
+    def fuera_de_pantalla(self, elemento):
+        return elemento.oculto
+
+
+def test_un_aviso_que_ya_no_se_ve_no_cuenta(monkeypatch):
+    """Medido en vivo: tras refrescar, la barra «datos incompletos» deja de
+    verse pero sigue en el arbol con IsOffscreen=1. Contarla declaro en
+    blanco una ventana que pintaba los datos."""
+    monkeypatch.setattr(uia_helper, "Uia", lambda: _UiaConOcultos([
+        (AVISO_TABLAS, True), ("0,818", False), ("SPI Project", False)]))
+    monkeypatch.setattr(uia_helper, "verificar_proceso",
+                        lambda pid, arranque: {"pid": pid})
+    monkeypatch.setattr(uia_helper, "_ventana_principal",
+                        lambda pid: {"hwnd": 11, "title": "Comite"})
+
+    r = uia_helper.ACCIONES["read_canvas"]({"desktop_pid": 4321})
+
+    assert r["canvas"]["state"] == desktop_canvas.SIN_SENALES
+    assert r["canvas"]["offscreen_skipped"] == 1
+
+
+def test_un_aviso_visible_si_cuenta(monkeypatch):
+    monkeypatch.setattr(uia_helper, "Uia", lambda: _UiaConOcultos([
+        (AVISO_TABLAS, False), ("SPI Project", False)]))
+    monkeypatch.setattr(uia_helper, "verificar_proceso",
+                        lambda pid, arranque: {"pid": pid})
+    monkeypatch.setattr(uia_helper, "_ventana_principal",
+                        lambda pid: {"hwnd": 11, "title": "Comite"})
+
+    r = uia_helper.ACCIONES["read_canvas"]({"desktop_pid": 4321})
+    assert r["canvas"]["state"] == desktop_canvas.NO_PINTADO
+
+
+def test_la_captura_cambia_el_dpi_solo_del_hilo_y_lo_restaura(monkeypatch):
+    """Medido en vivo (150 %): sin pixeles fisicos, PrintWindow dejaba en el
+    bitmap solo la esquina superior izquierda de la ventana maximizada."""
+    llamadas = []
+
+    def falsa(contexto):
+        llamadas.append(contexto.value)
+        return 0x11 if len(llamadas) == 1 else 0x22
+
+    import ctypes
+    monkeypatch.setattr(ctypes.windll.user32, "SetThreadDpiAwarenessContext",
+                        falsa, raising=False)
+    monkeypatch.setattr(desktop_capture, "_capturar_en_pixeles_fisicos",
+                        lambda hwnd: (2582, 1550, b""))
+
+    assert desktop_capture._capture_window_bgra(1)[:2] == (2582, 1550)
+    # (DPI_AWARENESS_CONTEXT)-4 viaja como puntero: sin signo en c_void_p.
+    assert llamadas[0] == ctypes.c_void_p(desktop_capture._DPI_POR_MONITOR_V2).value
+    assert llamadas[1] == 0x11, "no se restauro el contexto previo del hilo"
+
+
 def test_leer_lienzo_nunca_lanza(monkeypatch):
     abierto = SimpleNamespace(desktop_pid=4321, desktop_started=1.0)
     # La fixture autouse ya hace fallar al helper: se traduce a 'unknown'.

@@ -620,6 +620,13 @@ class Uia:
         except Exception:                                 # noqa: BLE001
             return ""
 
+    def fuera_de_pantalla(self, elemento) -> Optional[bool]:
+        """`IsOffscreen` del elemento. None si no se puede leer."""
+        try:
+            return bool(elemento.CurrentIsOffscreen)
+        except Exception:                                 # noqa: BLE001
+            return None
+
     def textos(self, raiz, maximo: int = 400) -> str:
         """El texto estatico de un dialogo (para clasificarlo), acotado."""
         try:
@@ -2123,14 +2130,24 @@ def leer_lienzo(peticion: Dict[str, Any]) -> Dict[str, Any]:
     principal = _ventana_principal(pid)
     raiz = uia.desde_hwnd(principal["hwnd"])
     textos: List[str] = []
+    ocultos = 0
     for tipo in UIA_TIPOS_CON_TEXTO:
         for elemento in uia.todos_de_tipo(raiz, tipo):
             if len(textos) >= MAX_TEXTOS_LIENZO:
                 break
             nombre = uia.nombre(elemento)
-            if nombre:
-                textos.append(nombre)
-    return {"ok": True, "phase": "done", "canvas": clasificar_textos(textos),
+            if not nombre:
+                continue
+            # Medido contra Desktop real: tras refrescar, la barra «Algunas de
+            # las tablas tienen datos incompletos» deja de verse pero SIGUE en
+            # el arbol, con IsOffscreen=1. Contarla declaraba en blanco una
+            # ventana que ya pintaba los datos.
+            if getattr(uia, "fuera_de_pantalla", lambda e: None)(elemento):
+                ocultos += 1
+                continue
+            textos.append(nombre)
+    return {"ok": True, "phase": "done",
+            "canvas": {**clasificar_textos(textos), "offscreen_skipped": ocultos},
             "truncated": len(textos) >= MAX_TEXTOS_LIENZO,
             "steps": [{"phase": "identidad", **identidad},
                       {"phase": "ventana", "hwnd": principal["hwnd"]}]}

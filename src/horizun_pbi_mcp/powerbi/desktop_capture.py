@@ -12,6 +12,7 @@ conserva la regla de cerrar solo sesiones lanzadas por nosotros.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import struct
@@ -334,11 +335,50 @@ def _choose_window(windows: Iterable[DesktopWindow], report_path: str) -> Deskto
     )
 
 
+#: DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.
+_DPI_POR_MONITOR_V2 = -4
+
+
+@contextlib.contextmanager
+def _hilo_con_pixeles_fisicos():
+    """El hilo trabaja en pixeles FISICOS mientras dura la captura.
+
+    Medido en la PC de Pablo (pantalla 2560x1600 al 150 %): el servidor no
+    declara conciencia de DPI, asi que `GetWindowRect` devolvia la ventana
+    maximizada de Desktop en pixeles logicos (1721x1033 en vez de 2582x1550)
+    y `PrintWindow` -que pinta en fisicos- dejaba en ese bitmap solo la
+    ESQUINA SUPERIOR IZQUIERDA de la ventana. Todas las capturas salian
+    cortadas por la derecha y por abajo, y parecia que "Ajustar a la pagina"
+    no se aplicaba. Se cambia el contexto solo de ESTE hilo y se restaura.
+    """
+    import ctypes
+
+    previo = None
+    funcion = None
+    try:
+        funcion = ctypes.windll.user32.SetThreadDpiAwarenessContext
+        funcion.argtypes = [ctypes.c_void_p]
+        funcion.restype = ctypes.c_void_p
+        previo = funcion(ctypes.c_void_p(_DPI_POR_MONITOR_V2))
+    except (AttributeError, OSError):          # Windows anterior a 10 1607
+        funcion = None
+    try:
+        yield
+    finally:
+        if funcion is not None and previo:
+            funcion(ctypes.c_void_p(previo))
+
+
 def _capture_window_bgra(hwnd: int) -> tuple[int, int, bytes]:
     """Renderiza ``hwnd`` en memoria mediante PrintWindow, sin usar el foco."""
     if os.name != "nt":
         raise DesktopCaptureError(
             "La captura de Power BI Desktop solo esta disponible en Windows.")
+    with _hilo_con_pixeles_fisicos():
+        return _capturar_en_pixeles_fisicos(hwnd)
+
+
+def _capturar_en_pixeles_fisicos(hwnd: int) -> tuple[int, int, bytes]:
 
     import ctypes
     from ctypes import wintypes
