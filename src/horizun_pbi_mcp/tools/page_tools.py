@@ -39,7 +39,9 @@ def normalizar_spec(spec: Any) -> Any:
         return spec
 
     traducido = {k: v for k, v in spec.items() if k not in ("page", "schema_version")}
-    traducido["page_name"] = pagina.get("name")
+    from horizun_pbi_mcp.services.page_spec import nombre_de_pestana
+
+    traducido["page_name"] = nombre_de_pestana(pagina)
     lienzo = {k: pagina[k] for k in ("width", "height") if pagina.get(k)}
     if lienzo and "canvas" not in traducido:
         traducido["canvas"] = lienzo

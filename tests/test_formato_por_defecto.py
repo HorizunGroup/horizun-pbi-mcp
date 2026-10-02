@@ -11,9 +11,8 @@ seminegrita con la tinta del tema y marco con fondo y borde suave. Lo que
 pide quien llama gana; lo que el tema ya gobierna no se pisa; y el informe
 sigue pasando el validador oficial.
 
-La etiqueta repetida de la tarjeta NO se apaga sola: lo prohibe una decision
-ya fijada (test_composicion_tipografia, "no se inventa formato que nadie
-pidio"). Se apaga con options.show_category_label=false.
+Y la etiqueta de la tarjeta que repite el titulo se apaga (decision de
+Pablo, 2026-10-01); `options.show_category_label=true` la conserva.
 """
 from __future__ import annotations
 
@@ -59,7 +58,7 @@ def _valor(prop):
     return prop["expr"]["Literal"]["Value"]
 
 
-def test_la_tarjeta_sale_con_titulo_y_marco(proyecto):
+def test_la_tarjeta_sale_con_titulo_marco_y_sin_etiqueta_repetida(proyecto):
     r = visual_factory.build_visual(
         proyecto, "card", {"values": ["[Total cruces]"]}, POS,
         title="Cruces reales")
@@ -71,8 +70,7 @@ def test_la_tarjeta_sale_con_titulo_y_marco(proyecto):
     # La tinta del tema REAL del informe (HorizunBase), no un color inventado.
     assert _valor(titulo["fontColor"]["solid"]["color"]) == "'#252423'"
     assert _valor(_props(vis, "visualContainerObjects", "border")["show"]) == "true"
-    # El contenido de la tarjeta no se toca sin pedirlo.
-    assert "categoryLabels" not in (vis["visual"].get("objects") or {})
+    assert _valor(_props(vis, "objects", "categoryLabels")["show"]) == "false"
     assert r["default_style"]["theme"] == "HorizunBase"
     assert "plantilla minima" in r["origin"]
 

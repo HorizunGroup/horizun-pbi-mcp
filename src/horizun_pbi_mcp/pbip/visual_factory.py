@@ -1373,10 +1373,19 @@ def _estilo_por_defecto(active: ActivePbip, vis: Dict[str, Any],
     if not contenedor:
         vis.pop("visualContainerObjects", None)
 
-    # El contenido de la tarjeta (etiqueta de categoria, tamaño del valor) NO
-    # se toca: es una decision fijada en test_composicion_tipografia -"no se
-    # inventa formato que nadie pidio"-. La etiqueta repetida se apaga con
-    # options.show_category_label=false.
+    # La etiqueta de categoria de una tarjeta repite el titulo -«SPI (Project)»
+    # encima, «SPI Project» debajo- y compite con el numero. Con titulo propio
+    # se apaga, salvo que `options.show_category_label` diga otra cosa.
+    # Decision de Pablo (2026-10-01) que reemplaza la regla anterior de "no
+    # tocar la tarjeta sin pedirlo"; el tamaño del valor sigue sin tocarse.
+    if (actual_type in ("card", "cardVisual") and title is not None
+            and "show_category_label" not in opciones):
+        etiqueta = "label" if actual_type == "cardVisual" else "categoryLabels"
+        objetos = vis.setdefault("objects", {})
+        if etiqueta not in objetos:
+            objetos[etiqueta] = [{"properties": {"show": _lit(False)}}]
+            rutas.append(("objects", etiqueta, "show"))
+
     return {"rutas": rutas,
             "applied": sorted({f"{scope}.{grupo}" for scope, grupo, _p in rutas}),
             "theme": tokens["tema"],
