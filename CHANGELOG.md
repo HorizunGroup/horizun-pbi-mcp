@@ -5,6 +5,66 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Defects seen on camera on 2026-10-03, while recording a course demo that
+went CSV -> `pbi_create_pbip_project` -> `pbi_add_table_from_file` -> Power BI
+Desktop. In both cases the agent had to edit the TMDL by hand.
+
+The frozen contract is intact: **0 breaking changes, 2 compatible ones** (a new
+optional parameter and a longer description on `pbi_add_table_from_file`).
+
+### Fixed
+
+- **`pbi_create_pbip_project` wrote `database.tmdl` with the name unquoted.** A
+  project called `Tablero Mirador` got `database Tablero Mirador`, which the
+  official serializer rejects ("Unexpected line type: Other"), so Power BI
+  Desktop would not open it. The name is now quoted when TMDL needs it
+  (`database 'Tablero Mirador'`). The static lint (`pbi_validate_tmdl` without
+  the Analysis Services DLLs) let that file through; it now reports
+  `tmdl_database_name_unquoted` for exactly what the serializer rejects —
+  whitespace, `=` or a stray quote — checked against `TmdlSerializer`, so
+  `Demo-1` or `a.b` are not flagged.
+- **`pbi_add_table_from_file` typed code columns as numbers.** A `codigo`
+  column with `1.01`, `2.03`, `2.10` came out `double`: `2.10` became `2.1` and
+  stopped matching the other tables. A column whose header says it is a code
+  (`codigo`, `cod`, `code`, `clave`, `item`, `sku`, `ref`…, accents and case
+  ignored, unless the header also says it is a quantity such as `item_count`)
+  now loads as text, and so does any all-integer column with leading zeros
+  (`007`). Each case is reported in `warnings`.
+- **A model that does not open no longer answers `status: success`.** Tools
+  that write TMDL already rolled back when *their* change introduced an error,
+  but an error that was already there (e.g. a project created before the
+  `database` fix) let every later `pbi_add_table_from_file` /
+  `pbi_create_relationship` answer `status: success` with
+  `model_validation.valid: false` buried in the payload. The envelope now
+  turns any `model_validation.valid: false` into `status: warning` with a
+  warning that says the model will not open and points at the first error;
+  `model_validation` gains `preexisting_errors` and `blocking_errors`
+  (additive keys).
+- **`pbi_create_pbip_project` validates the model before publishing.** It
+  checked the report but never the semantic model, which is how the unquoted
+  `database` line got out. It now runs the TMDL validator (official parser
+  when the DLLs are present) in staging, refuses to publish an invalid model,
+  and returns `model_validation`.
+- **One quoting rule for every TMDL identifier.** The `.pbix` conversion
+  renamed `database` with its own, looser rule (`2026` or `Año` went
+  unquoted); it now uses the same helper as tables, columns, measures,
+  relationships, hierarchies and partitions. Quoting more than the serializer
+  strictly needs is always accepted by it.
+- **Codes no longer decide the culture.** They used to vote in the decimal
+  separator detection: in a `;` file with `codigo` = `1.01` and `valor` =
+  `439,54` the votes tied, `en-US` won, and the values loaded multiplied by a
+  hundred with no error.
+
+### Added
+
+- `pbi_add_table_from_file(text_columns=[...])` forces text on columns the
+  header does not give away (e.g. `partida` with `1.01`). A name that is not in
+  the file is an error, not silently ignored.
+
+---
+
 ## [2.1.1] — 2026-09-04
 
 Driving Power BI Desktop from the outside, made honest. The batch started from

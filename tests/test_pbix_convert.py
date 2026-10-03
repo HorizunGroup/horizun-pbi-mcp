@@ -1067,3 +1067,24 @@ def test_un_informe_que_el_cli_rechaza_no_se_publica(tmp_path):
                for d in exc.value.details["diagnostics"])
     assert not (tmp_path / "out" / "Invalido").exists()
     assert not list((tmp_path / "out").glob(".hz_stage_*"))
+
+
+@pytest.mark.parametrize("nombre, linea", [
+    ("Mi Proyecto", "database 'Mi Proyecto'"),
+    ("Año", "database 'Año'"),
+    ("Obra O'Brien", "database 'Obra O''Brien'"),
+    ("2026", "database '2026'"),
+    ("Demo", "database Demo"),
+])
+def test_rename_database_cita_con_el_mismo_criterio_que_el_resto(
+        tmp_path, nombre, linea):
+    """Tenia su propio criterio de comillas, mas laxo que el del resto del
+    paquete (dejaba `2026` o `Año` sin citar). Un solo criterio para todo."""
+    from horizun_pbi_mcp.powerbi import tmdl_export
+
+    (tmp_path / "database.tmdl").write_text(
+        "database 3f2a\n\tcompatibilityLevel: 1606\n", encoding="utf-8")
+
+    assert tmdl_export.rename_database(tmp_path, nombre) is True
+    texto = (tmp_path / "database.tmdl").read_text(encoding="utf-8")
+    assert texto.splitlines() == [linea, "\tcompatibilityLevel: 1606"]

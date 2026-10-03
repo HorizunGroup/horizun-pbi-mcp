@@ -76,7 +76,41 @@ def _status_for_success(payload: Dict[str, Any]) -> str:
     # Un modo dual que quedo inconsistente no es un exito limpio.
     if payload.get("consistent") is False:
         return WARNING
+    if _aviso_de_modelo_invalido(payload):
+        return WARNING
     return SUCCESS
+
+
+def _aviso_de_modelo_invalido(payload: Dict[str, Any]) -> Optional[str]:
+    """Un cambio aplicado sobre un modelo que Power BI no abre no es un exito.
+
+    Las herramientas que escriben TMDL revierten cuando EL CAMBIO introduce un
+    error. Si el error ya estaba, el cambio se confirma y antes se respondia
+    `status: success` con `model_validation.valid: false` enterrado en el
+    payload: nadie se enteraba de que el proyecto no abre (ensayo del
+    2026-10-03, `database Control Mirador` sin comillas).
+    """
+    validacion = payload.get("model_validation")
+    if not isinstance(validacion, dict) or validacion.get("valid") is not False:
+        return None
+    errores = validacion.get("blocking_errors")
+    if errores is None:
+        errores = [f for f in validacion.get("findings") or []
+                   if isinstance(f, dict) and f.get("severity") == "error"]
+    cuantos = validacion.get("preexisting_errors", len(errores))
+    # `blocking_errors` trae file/line planos; `findings` los trae en `object`.
+    primero = errores[0] if errores else {}
+    objeto = primero.get("object") or {}
+    archivo = primero.get("file") or objeto.get("file")
+    linea = primero.get("line") or objeto.get("line")
+    donde = primero.get("rule") or "error de validacion"
+    if archivo:
+        donde += f" en {archivo}" + (f":{linea}" if linea else "")
+    return (
+        "El cambio se aplico, pero el modelo NO ES VALIDO: tiene "
+        f"{cuantos or 'al menos un'} error(es) que ya estaban antes de esta "
+        "operacion y Power BI Desktop no lo abrira hasta corregirlos "
+        f"(primero: {donde}). Revisalo con pbi_validate_tmdl.")
 
 
 def _side_effects(payload: Dict[str, Any], operation: str) -> List[Dict[str, Any]]:
@@ -187,6 +221,9 @@ def success(payload: Dict[str, Any], *, operation: str, request_id: str,
     out["operation"] = operation
     out["duration_ms"] = round(duration_ms, 1)
     out.setdefault("warnings", [])
+    aviso_modelo = _aviso_de_modelo_invalido(payload)
+    if aviso_modelo and isinstance(out["warnings"], list):
+        out["warnings"] = [*out["warnings"], aviso_modelo]
     out["warnings"] = _dedupe_warnings(out["warnings"])
     efectos_existentes = out.get("side_effects")
     acumulados = list(efectos_existentes) if isinstance(efectos_existentes, list) else []
