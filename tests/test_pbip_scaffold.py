@@ -310,12 +310,16 @@ def test_un_proyecto_con_espacios_lo_abre_el_serializador_oficial(tmp_path):
     settings = config.get_settings()
     anterior = settings.libs_dir
     settings.libs_dir = config.PROJECT_ROOT / "libs"
+    sin_dll = None
+    resultado: dict = {}
     try:
         resultado = tmdl_validate.parse_with_tom(definition)
     except Exception as exc:  # pragma: no cover - depende de DLL locales
-        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+        sin_dll = exc
     finally:
         settings.libs_dir = anterior
+    if sin_dll is not None:  # pragma: no cover
+        pytest.skip(f"TmdlSerializer no disponible: {sin_dll}")
     assert resultado["parsed"] is True, resultado["error"]
 
 
