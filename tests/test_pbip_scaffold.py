@@ -277,3 +277,72 @@ def test_de_rutas_a_tablero_sin_tocar_power_bi(tmp_path, session):
     modelo = (definition / "model.tmdl").read_text(encoding="utf-8-sig")
     assert "ref table Costos" in modelo
     assert "ref table Actividades" in modelo
+
+
+@pytest.mark.parametrize("nombre, linea", [
+    ("Tablero Mirador", "database 'Tablero Mirador'"),
+    ("Obra O'Brien", "database 'Obra O''Brien'"),
+    ("Demo", "database Demo"),
+])
+def test_el_nombre_de_database_va_citado_si_hace_falta(tmp_path, nombre, linea):
+    """`database Tablero Mirador` sin comillas no parsea, y Power BI Desktop
+    no abria el proyecto hasta ponerlas a mano (visto grabando una demo)."""
+    r = pbip_scaffold.crear_proyecto(tmp_path, nombre)
+    database = (Path(r["semantic_model_dir"]) / "definition"
+                / "database.tmdl").read_text(encoding="utf-8")
+
+    assert database.splitlines()[0] == linea
+
+
+def test_un_proyecto_con_espacios_pasa_el_validador(tmp_path):
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Tablero Mirador")
+    definition = Path(r["semantic_model_dir"]) / "definition"
+    resultado = tmdl_validate.validate(definition, use_tom=False)
+
+    assert resultado["valid"] is True, resultado["findings"]
+
+
+def test_un_proyecto_con_espacios_lo_abre_el_serializador_oficial(tmp_path):
+    from horizun_pbi_mcp import config
+
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Tablero Mirador")
+    definition = Path(r["semantic_model_dir"]) / "definition"
+    settings = config.get_settings()
+    anterior = settings.libs_dir
+    settings.libs_dir = config.PROJECT_ROOT / "libs"
+    try:
+        resultado = tmdl_validate.parse_with_tom(definition)
+    except Exception as exc:  # pragma: no cover - depende de DLL locales
+        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+    finally:
+        settings.libs_dir = anterior
+    assert resultado["parsed"] is True, resultado["error"]
+
+
+@pytest.mark.parametrize("linea", [
+    "database Tablero Mirador", "database a=b", "database O'Brien"])
+def test_el_lint_acusa_un_database_sin_comillas(tmp_path, linea):
+    """Sin las DLL, el validador dejaba pasar un proyecto que no abre: es lo
+    que el serializador oficial rechaza ("Unexpected line type: Other")."""
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    definition = Path(r["semantic_model_dir"]) / "definition"
+    (definition / "database.tmdl").write_text(
+        f"{linea}\n\tcompatibilityLevel: 1606\n", encoding="utf-8")
+
+    resultado = tmdl_validate.validate(definition, use_tom=False)
+    reglas = [f["rule"] for f in resultado["findings"]]
+    assert resultado["valid"] is False
+    assert reglas == ["tmdl_database_name_unquoted"]
+
+
+@pytest.mark.parametrize("linea", [
+    "database Demo", "database 'Tablero Mirador'", "database Demo-1",
+    "database a.b", "database 'O''Brien'"])
+def test_el_lint_no_acusa_lo_que_el_serializador_acepta(tmp_path, linea):
+    """Verificado contra TmdlSerializer: estos abren sin comillas."""
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Demo")
+    definition = Path(r["semantic_model_dir"]) / "definition"
+    (definition / "database.tmdl").write_text(
+        f"{linea}\n\tcompatibilityLevel: 1606\n", encoding="utf-8")
+
+    assert tmdl_validate.validate(definition, use_tom=False)["findings"] == []

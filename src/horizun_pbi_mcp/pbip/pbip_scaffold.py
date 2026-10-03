@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
+from horizun_pbi_mcp.utils.validation import tmdl_quote_name
 
 log = get_logger("pbip_scaffold")
 
@@ -157,8 +158,11 @@ def _construir_proyecto(raiz: Path, name: str, *, culture: str,
     definition = model_dir / "definition"
     definition.mkdir(parents=True, exist_ok=True)
     (definition / "tables").mkdir(exist_ok=True)
+    # El nombre va CITADO cuando hace falta: `database Tablero Mirador` sin
+    # comillas no parsea ("Unexpected line type: Other") y Power BI Desktop no
+    # abre el proyecto. El nombre de carpeta admite espacios; TMDL no.
     (definition / "database.tmdl").write_text(
-        f"database {name}\n\tcompatibilityLevel: 1606\n"
+        f"database {tmdl_quote_name(name)}\n\tcompatibilityLevel: 1606\n"
         "\tcompatibilityMode: powerBI\n", encoding="utf-8")
     # Sin `sourceQueryCulture` a proposito: se declara la cultura en cada
     # consulta, que es lo unico que no obliga a suponer como se leen los
