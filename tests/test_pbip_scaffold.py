@@ -282,6 +282,7 @@ def test_de_rutas_a_tablero_sin_tocar_power_bi(tmp_path, session):
 @pytest.mark.parametrize("nombre, linea", [
     ("Tablero Mirador", "database 'Tablero Mirador'"),
     ("Obra O'Brien", "database 'Obra O''Brien'"),
+    ("Año Obra", "database 'Año Obra'"),
     ("Demo", "database Demo"),
 ])
 def test_el_nombre_de_database_va_citado_si_hace_falta(tmp_path, nombre, linea):
@@ -302,10 +303,13 @@ def test_un_proyecto_con_espacios_pasa_el_validador(tmp_path):
     assert resultado["valid"] is True, resultado["findings"]
 
 
-def test_un_proyecto_con_espacios_lo_abre_el_serializador_oficial(tmp_path):
+@pytest.mark.parametrize("nombre", [
+    "Tablero Mirador", "Control Mirador", "Año Obra", "Obra O'Brien"])
+def test_un_proyecto_con_espacios_lo_abre_el_serializador_oficial(tmp_path,
+                                                                  nombre):
     from horizun_pbi_mcp import config
 
-    r = pbip_scaffold.crear_proyecto(tmp_path, "Tablero Mirador")
+    r = pbip_scaffold.crear_proyecto(tmp_path, nombre)
     definition = Path(r["semantic_model_dir"]) / "definition"
     settings = config.get_settings()
     anterior = settings.libs_dir
@@ -350,3 +354,111 @@ def test_el_lint_no_acusa_lo_que_el_serializador_acepta(tmp_path, linea):
         f"{linea}\n\tcompatibilityLevel: 1606\n", encoding="utf-8")
 
     assert tmdl_validate.validate(definition, use_tom=False)["findings"] == []
+
+
+def _parsear_con_tom(definition):
+    from horizun_pbi_mcp import config
+
+    settings = config.get_settings()
+    anterior = settings.libs_dir
+    settings.libs_dir = config.PROJECT_ROOT / "libs"
+    try:
+        return tmdl_validate.parse_with_tom(definition)
+    except Exception as exc:  # pragma: no cover - depende de DLL locales
+        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+    finally:
+        settings.libs_dir = anterior
+
+
+def test_no_publica_un_proyecto_cuyo_modelo_no_valida(tmp_path, monkeypatch):
+    """El esqueleto validaba el informe pero no el modelo: el `database` sin
+    comillas salio de aqui sin que nada lo mirara (ensayo 2026-10-03)."""
+    monkeypatch.setattr(pbip_scaffold, "tmdl_quote_name", lambda nombre: nombre)
+
+    with pytest.raises(pbip_scaffold.ScaffoldError) as exc:
+        pbip_scaffold.crear_proyecto(tmp_path, "Control Mirador")
+
+    reglas = [f["rule"] for f in exc.value.details["findings"]]
+    assert "tmdl_database_name_unquoted" in reglas
+    assert not (tmp_path / "Control Mirador").exists()
+
+
+def test_el_proyecto_creado_informa_su_validacion_de_modelo(tmp_path):
+    r = pbip_scaffold.crear_proyecto(tmp_path, "Control Mirador")
+
+    assert r["model_validation"]["valid"] is True
+
+
+def test_nombres_con_espacio_tilde_y_apostrofo_en_todo_el_modelo(
+        tmp_path, session):
+    """El recorrido del ensayo con nombres reales de obra: proyecto, tablas,
+    columnas, relacion y medida con espacio, tilde y apostrofo. Todo lo que
+    escribe identificadores TMDL tiene que citarlos, no solo `database`."""
+    from horizun_pbi_mcp.pbip import model_author, tmdl_writer
+
+    costos = tmp_path / "costos.csv"
+    costos.write_text("Código Ítem,Valor Total\nA-1,10527.52\nA-2,1795.40\n",
+                      encoding="utf-8")
+    items = tmp_path / "items.csv"
+    items.write_text("Código Ítem,Descripción O'Neil\nA-1,Zapatas\nA-2,Vigas\n",
+                     encoding="utf-8")
+
+    r = pbip_scaffold.crear_proyecto(tmp_path / "salida", "Control Mirador")
+    project_locator.open_project(session, r["pbip_path"])
+    activo = session.require_active_pbip()
+    table_from_file.agregar_tabla(activo, costos, table_name="Costos Obra")
+    table_from_file.agregar_tabla(activo, items, table_name="Ítems O'Brien")
+    rel = model_author.create_relationship(
+        activo, "Costos Obra", "Código Ítem", "Ítems O'Brien", "Código Ítem")
+    tmdl_writer.create_measure_pbip(
+        activo, "Costos Obra", "Total Año O'Brien",
+        "SUM('Costos Obra'[Valor Total])")
+
+    assert rel["model_validation"]["valid"] is True
+    assert rel["model_validation"]["preexisting_errors"] == 0
+    definition = Path(activo.semantic_model_dir) / "definition"
+    resultado = tmdl_validate.validate(definition, use_tom=False)
+    assert resultado["valid"] is True, resultado["findings"]
+    relaciones = (definition / "relationships.tmdl").read_text(
+        encoding="utf-8-sig")
+    assert "fromColumn: 'Costos Obra'.'Código Ítem'" in relaciones
+    assert "toColumn: 'Ítems O''Brien'.'Código Ítem'" in relaciones
+    costos_tmdl = next((definition / "tables").glob("Costos*.tmdl")).read_text(
+        encoding="utf-8-sig")
+    assert "table 'Costos Obra'" in costos_tmdl
+    assert "column 'Valor Total'" in costos_tmdl
+    assert "measure 'Total Año O''Brien' =" in costos_tmdl
+    parseo = _parsear_con_tom(definition)
+    assert parseo["parsed"] is True, parseo["error"]
+
+
+def test_un_error_previo_del_modelo_no_sale_como_success(tmp_path, session):
+    """Defecto 7 del ensayo: con `database Control Mirador` sin comillas cada
+    `pbi_add_table_from_file` devolvia `model_validation.valid: false` y aun
+    asi `status: success`. El cambio no introdujo el error, asi que no se
+    revierte; pero el envelope tiene que decirlo."""
+    from horizun_pbi_mcp.services import envelope
+    from horizun_pbi_mcp.tools._common import guard
+
+    csv = tmp_path / "costos.csv"
+    csv.write_text("Codigo,Valor\nA-1,10\n", encoding="utf-8")
+    r = pbip_scaffold.crear_proyecto(tmp_path / "salida", "Control Mirador")
+    # Un proyecto creado con una version anterior, que ya trae el defecto.
+    database = (Path(r["semantic_model_dir"]) / "definition" / "database.tmdl")
+    database.write_text("database Control Mirador\n\tcompatibilityLevel: 1606\n",
+                        encoding="utf-8")
+    project_locator.open_project(session, r["pbip_path"])
+    activo = session.require_active_pbip()
+
+    respuesta = guard(lambda: table_from_file.agregar_tabla(
+        activo, csv, table_name="Costos"))
+
+    assert respuesta["ok"] is True
+    validacion = respuesta["model_validation"]
+    assert validacion["valid"] is False
+    assert validacion["introduced_errors"] == 0
+    assert validacion["preexisting_errors"] >= 1
+    assert validacion["blocking_errors"][0]["rule"] in (
+        "tmdl_database_name_unquoted", "tmdl_parse_failed")
+    assert respuesta["status"] == envelope.WARNING
+    assert any("NO ES VALIDO" in a for a in respuesta["warnings"])

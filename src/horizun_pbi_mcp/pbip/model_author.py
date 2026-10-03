@@ -136,11 +136,32 @@ def _validar_modelo_sin_errores_nuevos(definicion: Path,
             "El cambio introduce errores en el modelo TMDL. Se revierte la "
             "operacion completa para no dejar un proyecto que Power BI no abra.",
             details={"findings": detalles, "definition": str(definicion)})
+    # Lo que queda son errores que el modelo YA tenia: no bloquean el cambio
+    # (no los introdujo), pero tampoco se callan. Antes salia `valid: false`
+    # con `status: success` y nadie leia que el proyecto no abre (ensayo del
+    # 2026-10-03: `database Control Mirador` sin comillas).
+    previos = [f for f in revision.get("findings", [])
+               if f.get("severity") == "error"]
     return {
         "valid": revision["valid"],
         "parsed": revision.get("parsed"),
         "parse_checked": revision.get("parse_checked", False),
         "introduced_errors": 0,
+        "preexisting_errors": len(previos),
+        "blocking_errors": [resumen_de_error(f) for f in previos[:5]],
+    }
+
+
+def resumen_de_error(finding: Dict[str, Any]) -> Dict[str, Any]:
+    """Lo minimo para saber que arreglar, sin volcar el hallazgo entero."""
+    objeto = finding.get("object") or {}
+    evidencia = finding.get("evidence") or {}
+    return {
+        "rule": finding.get("rule"),
+        "file": objeto.get("file"),
+        "line": objeto.get("line"),
+        "detail": str(evidencia.get("message") or evidencia.get("line")
+                      or finding.get("recommendation") or "")[:300],
     }
 
 

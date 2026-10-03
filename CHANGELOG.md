@@ -7,7 +7,7 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ## [Unreleased]
 
-Two defects seen on camera on 2026-10-03, while recording a course demo that
+Defects seen on camera on 2026-10-03, while recording a course demo that
 went CSV -> `pbi_create_pbip_project` -> `pbi_add_table_from_file` -> Power BI
 Desktop. In both cases the agent had to edit the TMDL by hand.
 
@@ -32,6 +32,26 @@ optional parameter and a longer description on `pbi_add_table_from_file`).
   ignored, unless the header also says it is a quantity such as `item_count`)
   now loads as text, and so does any all-integer column with leading zeros
   (`007`). Each case is reported in `warnings`.
+- **A model that does not open no longer answers `status: success`.** Tools
+  that write TMDL already rolled back when *their* change introduced an error,
+  but an error that was already there (e.g. a project created before the
+  `database` fix) let every later `pbi_add_table_from_file` /
+  `pbi_create_relationship` answer `status: success` with
+  `model_validation.valid: false` buried in the payload. The envelope now
+  turns any `model_validation.valid: false` into `status: warning` with a
+  warning that says the model will not open and points at the first error;
+  `model_validation` gains `preexisting_errors` and `blocking_errors`
+  (additive keys).
+- **`pbi_create_pbip_project` validates the model before publishing.** It
+  checked the report but never the semantic model, which is how the unquoted
+  `database` line got out. It now runs the TMDL validator (official parser
+  when the DLLs are present) in staging, refuses to publish an invalid model,
+  and returns `model_validation`.
+- **One quoting rule for every TMDL identifier.** The `.pbix` conversion
+  renamed `database` with its own, looser rule (`2026` or `Año` went
+  unquoted); it now uses the same helper as tables, columns, measures,
+  relationships, hierarchies and partitions. Quoting more than the serializer
+  strictly needs is always accepted by it.
 - **Codes no longer decide the culture.** They used to vote in the decimal
   separator detection: in a `;` file with `codigo` = `1.01` and `valor` =
   `439,54` the votes tied, `en-US` won, and the values loaded multiplied by a

@@ -97,6 +97,28 @@ def _platform(ruta: Path, tipo: str, nombre: str) -> None:
     })
 
 
+def _revisar_modelo(definition: Path) -> Dict[str, Any]:
+    """Pasa el modelo recien escrito por el validador TMDL antes de publicar.
+
+    `database Control Mirador` sin comillas salio de aqui sin que nada lo
+    mirara (ensayo del 2026-10-03): el proyecto no abria, y cada herramienta
+    posterior lo arrastraba. Con las DLL se parsea con el serializador oficial;
+    sin ellas queda el lint, que acusa ese mismo caso.
+    """
+    from horizun_pbi_mcp.services import tmdl_validate
+
+    resultado = tmdl_validate.validate(definition, use_tom=True)
+    if not resultado["valid"]:
+        errores = [f for f in resultado["findings"]
+                   if f.get("severity") == "error"]
+        raise ScaffoldError(
+            "El modelo generado no pasa la validacion TMDL; no se publica un "
+            "proyecto que Power BI Desktop no abriria.",
+            details={"findings": errores[:5]})
+    return {"valid": True, "parsed": resultado.get("parsed"),
+            "parse_checked": resultado.get("parse_checked", False)}
+
+
 def _revisar_informe(report_dir: Path) -> Dict[str, Any]:
     """Pasa el informe recien escrito por el validador oficial, si lo hay.
 
@@ -233,8 +255,10 @@ def _construir_proyecto(raiz: Path, name: str, *, culture: str,
     # .pbip es el informe. Si el validador oficial esta disponible se usa aqui,
     # que es el unico momento en que el error sale gratis.
     informe = _revisar_informe(report_dir)
+    modelo = _revisar_modelo(definition)
 
-    return {"report_validation": informe, "page_id": page_id}
+    return {"report_validation": informe, "model_validation": modelo,
+            "page_id": page_id}
 
 
 def crear_proyecto(out_dir: Path | str, name: str, *,
@@ -293,6 +317,7 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         "de staging; puede limpiarse manualmente cuando deje de estar en uso."])
     return {
         "report_validation": construido["report_validation"],
+        "model_validation": construido["model_validation"],
         "publication": publicacion,
         "project_dir": str(raiz),
         "pbip_path": str(raiz / f"{name}.pbip"),

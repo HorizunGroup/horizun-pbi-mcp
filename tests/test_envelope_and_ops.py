@@ -45,9 +45,32 @@ def test_el_envelope_es_aditivo():
     ({"warnings": ["algo"]}, envelope.WARNING),
     ({"planned": True}, envelope.PLANNED),
     ({"consistent": False}, envelope.WARNING),
+    ({"model_validation": {"valid": True}}, envelope.SUCCESS),
+    ({"model_validation": {"valid": False}}, envelope.WARNING),
 ])
 def test_estados_de_exito(payload, esperado):
     assert guard(lambda: payload)["status"] == esperado
+
+
+@pytest.mark.parametrize("validacion", [
+    # forma de model_author: errores resumidos y planos
+    {"valid": False, "preexisting_errors": 1, "blocking_errors": [
+        {"rule": "tmdl_parse_failed", "file": "database.tmdl", "line": 1,
+         "detail": "Unexpected line type: Other!"}]},
+    # forma de power_query: el resultado completo del validador
+    {"valid": False, "findings": [
+        {"rule": "tmdl_parse_failed", "severity": "error",
+         "object": {"file": "database.tmdl", "line": 1}}]},
+])
+def test_un_modelo_invalido_tras_escribir_se_avisa(validacion):
+    """Defecto 7 del ensayo 2026-10-03: `valid: false` salia con
+    `status: success` y nadie leia que el proyecto no abre."""
+    res = guard(lambda: {"model_validation": validacion})
+
+    assert res["status"] == envelope.WARNING
+    aviso = next(a for a in res["warnings"] if "NO ES VALIDO" in a)
+    assert "tmdl_parse_failed en database.tmdl:1" in aviso
+    assert "pbi_validate_tmdl" in aviso
 
 
 @pytest.mark.parametrize("code,esperado", [
