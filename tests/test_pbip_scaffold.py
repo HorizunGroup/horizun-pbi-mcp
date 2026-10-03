@@ -362,12 +362,17 @@ def _parsear_con_tom(definition):
     settings = config.get_settings()
     anterior = settings.libs_dir
     settings.libs_dir = config.PROJECT_ROOT / "libs"
+    sin_dll = None
+    resultado = None
     try:
-        return tmdl_validate.parse_with_tom(definition)
+        resultado = tmdl_validate.parse_with_tom(definition)
     except Exception as exc:  # pragma: no cover - depende de DLL locales
-        pytest.skip(f"TmdlSerializer no disponible: {exc}")
+        sin_dll = exc
     finally:
         settings.libs_dir = anterior
+    if sin_dll is not None:  # pragma: no cover
+        pytest.skip(f"TmdlSerializer no disponible: {sin_dll}")
+    return resultado
 
 
 def test_no_publica_un_proyecto_cuyo_modelo_no_valida(tmp_path, monkeypatch):
