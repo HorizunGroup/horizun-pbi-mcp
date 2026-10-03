@@ -66,7 +66,7 @@ dar por hecho al ver 134 filas en verde:
 |---|---|---|---|---|---|---|---|
 | `pbi_add_custom_visual` | escritura | 2 | 0 | — | sí | tipo invalido | `visual_id` |
 | `pbi_add_image_resource` | escritura | 4 | 1 | — | sí | falta un requerido | `path` |
-| `pbi_add_table_from_file` | escritura | 10 | 1 | — | sí | falta un requerido | `path` |
+| `pbi_add_table_from_file` | escritura | 11 | 1 | — | sí | falta un requerido | `path` |
 | `pbi_add_table_from_source` | escritura | 14 | 3 | — | sí | falta un requerido | `columns, source, table_name` |
 | `pbi_align_visuals` | escritura | 4 | 2 | — | sí | falta un requerido | `page, visual_ids` |
 | `pbi_analyze_model_quality` | solo lectura | 1 | 0 | — | sí | tipo invalido | `source` |
