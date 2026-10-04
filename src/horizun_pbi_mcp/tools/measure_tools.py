@@ -19,7 +19,7 @@ from horizun_pbi_mcp.powerbi import model_writer
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
 from horizun_pbi_mcp.pbip import tmdl_writer
 from horizun_pbi_mcp.services import dual_mode
-from horizun_pbi_mcp.tools._common import guard, guard_mutation
+from horizun_pbi_mcp.tools._common import FormatString, guard_mutation
 
 # La normalizacion del modo y la precondicion viven en services.dual_mode: la
 # decision de si `both` es ejecutable es una sola y no puede duplicarse por tool.
@@ -33,7 +33,7 @@ def register(mcp) -> None:
         table: str,
         name: str,
         expression: str,
-        format_string: Optional[str] = None,
+        format_string: FormatString = None,
         description: Optional[str] = None,
         display_folder: Optional[str] = None,
         mode: str = "live",
@@ -75,7 +75,7 @@ def register(mcp) -> None:
         table: str,
         name: str,
         expression: Optional[str] = None,
-        format_string: Optional[str] = None,
+        format_string: FormatString = None,
         description: Optional[str] = None,
         display_folder: Optional[str] = None,
         mode: str = "live",

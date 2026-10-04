@@ -47,7 +47,7 @@ LOCKS = RAIZ / "scripts" / "locks"
 #: dos formas de declararse offline serian dos formas de no probar nada.
 OFFLINE = os.environ.get("PBI_MCP_PACKAGING_OFFLINE") == "1"
 
-LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*"
+LINEA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?"
                    r"==[A-Za-z0-9][A-Za-z0-9.\-+!]*"
                    r" --hash=sha256:[0-9a-f]{64}$")
 
@@ -74,7 +74,9 @@ def _entradas(texto: str) -> list[str]:
 
 
 def _nombre(linea: str) -> str:
-    return linea.split("==", 1)[0].lower().replace("_", "-")
+    # `pyjwt[crypto]==x` fija el MISMO paquete que `PyJWT==x`: `pip freeze`
+    # nunca lista extras, asi que se comparan por el nombre sin ellos.
+    return linea.split("==", 1)[0].split("[", 1)[0].lower().replace("_", "-")
 
 
 def _combinaciones():
@@ -197,6 +199,23 @@ def _reporte(*paquetes: tuple[str, str, str | None]) -> dict:
 def test_lineas_del_lock_fija_nombre_version_y_hash(generar):
     lineas = generar.lineas_del_lock(_reporte(("anyio", "4.14.2", "ab" * 32)))
     assert lineas == [f"anyio==4.14.2 --hash=sha256:{'ab' * 32}"]
+
+
+def test_un_extra_que_pide_otra_dependencia_se_fija_con_el_mismo_hash(generar):
+    """Lo que rompio el lock de 3.10 en CI: `mcp` pide `pyjwt[crypto]` y el
+    pip 23 lo trata como otro requisito, sin fijar, en --require-hashes."""
+    reporte = _reporte(("PyJWT", "2.13.0", "ab" * 32), ("mcp", "1.29.0", "cd" * 32))
+    reporte["install"][1]["metadata"]["requires_dist"] = [
+        "pyjwt[crypto]>=2.10.1",
+        "rich>=13; extra == 'cli'",
+        "pywin32>=310; sys_platform == 'nunca'"]
+
+    lineas = generar.lineas_del_lock(reporte)
+
+    assert f"pyjwt[crypto]==2.13.0 --hash=sha256:{'ab' * 32}" in lineas
+    assert f"PyJWT==2.13.0 --hash=sha256:{'ab' * 32}" in lineas
+    assert not any("rich" in l or "pywin32" in l for l in lineas), (
+        "un extra opcional o con marcador falso no se fija")
 
 
 def test_un_paquete_sin_hash_se_omite_en_vez_de_inventarselo(generar):

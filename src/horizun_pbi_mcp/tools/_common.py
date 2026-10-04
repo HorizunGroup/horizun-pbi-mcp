@@ -11,13 +11,34 @@ tocar las 34 firmas existentes.
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Dict, Optional
+from typing import Annotated, Any, Callable, Dict, Optional
+
+from pydantic import BeforeValidator
 
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
 from horizun_pbi_mcp.services import envelope, telemetry
 
 log = get_logger("tools")
+
+
+def _format_string_en_la_frontera(valor: Any) -> Any:
+    """`normalizar_format_string` con el error que entiende pydantic."""
+    from horizun_pbi_mcp.powerbi.errors import ValidationError
+    from horizun_pbi_mcp.utils.validation import normalizar_format_string
+
+    try:
+        return normalizar_format_string(valor)
+    except ValidationError as exc:
+        raise ValueError(exc.message) from exc
+
+
+#: Tipo de los parametros `format_string` de las tools. El esquema publicado
+#: sigue siendo `string|null` -el contrato no cambia-, pero un formato que
+#: llega como entero JSON (`0`) se acepta como el texto `"0"` en vez de
+#: rechazarse por tipo antes de llegar a la tool.
+FormatString = Annotated[Optional[str],
+                         BeforeValidator(_format_string_en_la_frontera)]
 
 
 def _marco_de_la_tool():

@@ -40,6 +40,22 @@ class UnsupportedSpecFeature(PowerBIMCPError):
 NO_SOPORTADO_AUN: Dict[str, str] = {}
 
 
+def nombre_de_pestana(pagina: Dict[str, Any]) -> Any:
+    """El nombre VISIBLE de la pagina que declara el spec.
+
+    `page.name` hacia de nombre visible y `displayName` -la clave que usa el
+    propio PBIR, y la primera que se le ocurre a quien escribe un spec- se
+    ignoraba en silencio: en la verificacion del «Comite de obra» se pidio
+    `{"name": "comite", "displayName": "Comite de obra"}` y la pestaña salio
+    «comite». Ahora `displayName` (o `display_name`) manda si viene.
+    """
+    for clave in ("displayName", "display_name"):
+        valor = pagina.get(clave)
+        if isinstance(valor, str) and valor.strip():
+            return valor.strip()
+    return pagina.get("name")
+
+
 def assert_soportado(spec: Dict[str, Any]) -> None:
     """Rechaza lo que el spec admite pero el escritor no sabe materializar.
 
@@ -159,8 +175,9 @@ def validate_schema(spec: Any, active: Any = None) -> List[Dict[str, str]]:
     if not isinstance(page, dict):
         errores.append(_err("$.page", "Falta el objeto 'page'."))
     else:
-        if not page.get("name"):
-            errores.append(_err("$.page.name", "La pagina necesita un nombre."))
+        if not nombre_de_pestana(page):
+            errores.append(_err("$.page.name", "La pagina necesita un nombre.",
+                                "Usa 'name' o 'displayName'."))
         for dim in ("width", "height"):
             if dim in page and not isinstance(page[dim], (int, float)):
                 errores.append(_err(f"$.page.{dim}", f"'{dim}' debe ser numerico."))
@@ -522,7 +539,8 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
         _resolver_interacciones(spec.get("interactions") or [], construidos),
         [c["visual"]["name"] for c in construidos])
 
-    return {"page_name": page["name"], "canvas": canvas, "visuals": construidos,
+    return {"page_name": nombre_de_pestana(page), "canvas": canvas,
+            "visuals": construidos,
             "positions": posiciones, "warnings": avisos,
             "layout_issues": geometria, "references": refs.get("references", []),
             "page_filter_config": filtros_pagina,

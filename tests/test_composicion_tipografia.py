@@ -228,10 +228,28 @@ def test_el_visualType_es_exactamente_el_tipo_oficial_solicitado(proyecto, tipo)
     assert salida["visual"]["visual"]["visualType"] == tipo
 
 
-def test_sin_opciones_la_tarjeta_no_se_toca(proyecto):
-    """No se inventa formato que nadie pidio."""
+def test_con_titulo_la_etiqueta_repetida_se_apaga_y_el_valor_no_se_toca(proyecto):
+    """Antes: "sin opciones la tarjeta no se toca". Pablo decidio el
+    2026-10-01, tras el «Comite de obra», que una tarjeta con titulo propio
+    apague la etiqueta que lo repite. El tamaño y color del valor siguen sin
+    tocarse si no se piden."""
     salida = visual_factory.build_visual(
         proyecto, "card", {"values": ["[TotalAmount]"]}, POS, title="T")
     objetos = salida["visual"]["visual"].get("objects", {})
-    assert "categoryLabels" not in objetos
+    assert objetos["categoryLabels"][0]["properties"]["show"] == {
+        "expr": {"Literal": {"Value": "false"}}}
     assert "labels" not in objetos
+
+
+def test_se_puede_pedir_la_etiqueta_aunque_haya_titulo(proyecto):
+    salida = visual_factory.build_visual(
+        proyecto, "card", {"values": ["[TotalAmount]"]}, POS, title="T",
+        options={"show_category_label": True})
+    assert "categoryLabels" not in (salida["visual"]["visual"].get("objects") or {})
+
+
+def test_sin_titulo_la_tarjeta_no_se_toca(proyecto):
+    salida = visual_factory.build_visual(
+        proyecto, "card", {"values": ["[TotalAmount]"]}, POS)
+    objetos = salida["visual"]["visual"].get("objects") or {}
+    assert "categoryLabels" not in objetos and "labels" not in objetos

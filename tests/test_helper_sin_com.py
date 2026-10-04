@@ -395,7 +395,8 @@ def test_una_accion_desconocida_dice_cuales_valen(monkeypatch):
 
     assert codigo == 2
     datos = json.loads(salida)
-    assert datos["valid"] == ["fit_to_page", "save_as", "select_page"]
+    assert datos["valid"] == ["fit_to_page", "read_canvas", "save_as",
+                             "select_page"]
     assert "volar" in datos["error"]
 
 

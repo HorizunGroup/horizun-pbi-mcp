@@ -15,7 +15,9 @@ from horizun_pbi_mcp.powerbi.errors import (MeasureExistsError, MeasureNotFoundE
                             PowerBIMCPError, TableNotFoundError,
                             ValidationError)
 from horizun_pbi_mcp.powerbi.model_reader import connect, lease_active_model
-from horizun_pbi_mcp.utils.validation import validate_measure_expression, validate_object_name
+from horizun_pbi_mcp.utils.validation import (normalizar_format_string,
+                                              validate_measure_expression,
+                                              validate_object_name)
 
 log = get_logger("model_writer")
 
@@ -170,6 +172,7 @@ def create_measure(
     table = validate_object_name(table, "tabla")
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
+    format_string = normalizar_format_string(format_string)
     with lease_active_model(session) as model, \
             connect(model) as (_server, db, mdl):
         target = _find_table(mdl, table)
@@ -237,6 +240,7 @@ def update_measure(
     name = validate_object_name(name, "medida")
     if expression is not None:
         expression = validate_measure_expression(expression)
+    format_string = normalizar_format_string(format_string)
     with lease_active_model(session) as model, \
             connect(model) as (_server, db, mdl):
         owner = _find_table(mdl, table)

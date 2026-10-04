@@ -25,6 +25,34 @@ def validate_object_name(name: str, kind: str = "objeto") -> str:
     return name.strip()
 
 
+def normalizar_format_string(valor: Any) -> Any:
+    """Un formato numerico de Power BI que llego como NUMERO JSON, a texto.
+
+    `"0"` es un formato valido (entero sin decimales), y un cliente que lo
+    escribe sin comillas manda el entero `0`. Antes eso se rechazaba por tipo
+    en la tool -«Input should be a valid string»- y, por `pbi_apply_plan`,
+    llegaba al escritor TMDL donde `if format_string:` lo descartaba EN
+    SILENCIO por ser falsy. Un entero se convierte sin perder nada.
+
+    Un decimal no: JSON no conserva los ceros a la derecha, asi que `0.00`
+    llega como `0.0` y convertirlo escribiria un formato distinto del pedido.
+    Se rechaza diciendo como pasarlo. `None` y el texto pasan tal cual; lo
+    demas (booleanos, listas) tambien, para que el tipo lo rechace con su
+    propio mensaje.
+    """
+    if isinstance(valor, bool) or valor is None or isinstance(valor, str):
+        return valor
+    if isinstance(valor, int):
+        return str(valor)
+    if isinstance(valor, float):
+        raise ValidationError(
+            f"format_string llego como numero decimal ({valor!r}). JSON no "
+            "conserva los ceros a la derecha, asi que no se puede saber que "
+            "formato se queria: pasalo entre comillas, p. ej. \"0.00\".",
+            details={"parameter": "format_string", "received": valor})
+    return valor
+
+
 def validate_dax_query(query: str) -> str:
     if not isinstance(query, str) or not query.strip():
         raise ValidationError("La consulta DAX esta vacia.")

@@ -182,8 +182,12 @@ def create_page_from_spec(active: ActivePbip, spec: Dict[str, Any],
     planificados = []
     warnings = []
     for v, pos in zip(visuals, positions):
+        # `options` viajaba en el spec y no llegaba a la fabrica: un
+        # `show_category_label` o un `background_color` se aceptaban y se
+        # perdian sin aviso.
         built = visual_factory.build_visual(
-            active, v["type"], v.get("fields", {}), pos, v.get("title"), measure_index)
+            active, v["type"], v.get("fields", {}), pos, v.get("title"),
+            measure_index, options=v.get("options"))
         planificados.append({
             "visual": built["visual"],
             "meta": {"type": built["actual_type"], "title": v.get("title"),

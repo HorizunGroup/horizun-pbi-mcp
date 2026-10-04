@@ -130,6 +130,41 @@ def contar_visuales(documento: str | Path, page_id: Optional[str]) -> Optional[i
         return None
 
 
+def titulos_de_pagina(documento: str | Path,
+                      page_id: Optional[str]) -> Optional[list]:
+    """Titulos VISIBLES que declaran los visuales de esa pagina en disco.
+
+    Sirven de testigo de que la ventana pinto la pagina: medido contra
+    Desktop real, cada titulo aparece en UI Automation como un grupo con ese
+    nombre cuando el visual esta en pantalla. Una captura tomada antes de que
+    Desktop pintara la pagina salio como un lienzo vacio sin ninguna otra
+    señal. `None` si no se puede saber (pbix, sin pagina, error de lectura).
+    """
+    doc = Path(str(documento))
+    if doc.suffix.casefold() != ".pbip" or not page_id:
+        return None
+    from horizun_pbi_mcp.powerbi.desktop_capture import _definicion_de_report
+
+    try:
+        carpeta = (_definicion_de_report(doc, raiz=doc.parent) / "pages"
+                   / page_id / "visuals")
+        titulos = []
+        for archivo in sorted(carpeta.glob("*/visual.json")):
+            datos = json.loads(archivo.read_text(encoding="utf-8-sig"))
+            bloques = (((datos.get("visual") or {}).get("visualContainerObjects")
+                        or {}).get("title") or [])
+            props = (bloques[0].get("properties") or {}) if bloques else {}
+            mostrar = (((props.get("show") or {}).get("expr") or {})
+                       .get("Literal") or {}).get("Value")
+            texto = (((props.get("text") or {}).get("expr") or {})
+                     .get("Literal") or {}).get("Value")
+            if mostrar == "true" and isinstance(texto, str) and len(texto) > 2:
+                titulos.append(texto[1:-1].replace("''", "'"))
+        return titulos
+    except Exception:                                     # noqa: BLE001
+        return None
+
+
 #: Cuanto se deja repintar la ventana antes de volver a mirarla.
 ESPERA_REPINTADO = 1.5
 
