@@ -132,6 +132,34 @@ def _llamadas_balanceadas(texto: str, funcion: str) -> List[str]:
 # Lint estatico
 # ---------------------------------------------------------------------------
 
+def _lint_nombre_de_database(path: Path) -> List[Dict[str, Any]]:
+    """Un nombre de base de datos con espacios y sin comillas no parsea.
+
+    `database Tablero Mirador` lo rechaza el serializador oficial ("Unexpected
+    line type: Other") y Power BI Desktop no abre el proyecto. Sin las DLL ese
+    error no se veia: este lint dejaba pasar un proyecto que no abre. Solo se
+    acusa lo que el serializador rechaza de verdad -espacios, '=' y una
+    comilla suelta-; `Demo-1`, `Año` o `a.b` sin comillas si los acepta.
+    """
+    if not path.exists():
+        return []
+    for numero, linea in enumerate(_leer(path), start=1):
+        if tmdl_reader._first_token(linea) != "database":
+            continue
+        nombre = linea.strip()[len("database"):].strip()
+        if nombre.startswith("'") or not re.search(r"[\s=']", nombre):
+            return []
+        return [_finding(
+            "tmdl_database_name_unquoted", "error",
+            {"kind": "database", "file": str(path), "line": numero},
+            {"line": linea.strip()},
+            "El nombre de la base de datos lleva espacios (o '=' o una comilla) "
+            "y va sin comillas simples. Escribelo como "
+            f"database '{nombre.replace(chr(39), chr(39) * 2)}' o Power BI "
+            "Desktop no abrira el proyecto.")]
+    return []
+
+
 def _lint_orden_de_propiedades(path: Path) -> List[Dict[str, Any]]:
     """Una propiedad de la tabla despues de sus hijos rompe el parseo.
 
@@ -585,6 +613,8 @@ def validate(definition: Path | str, use_tom: bool = True) -> Dict[str, Any]:
     model_bim = definition / "model.bim"
     if model_bim.exists():
         return _validate_model_bim(model_bim)
+
+    hallazgos.extend(_lint_nombre_de_database(definition / "database.tmdl"))
 
     tables_dir = definition / "tables"
     archivos = sorted(tables_dir.glob("*.tmdl")) if tables_dir.is_dir() else []

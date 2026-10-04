@@ -130,12 +130,57 @@ def _es_numero(v: str, sep: str) -> bool:
         return False
 
 
+#: Palabras de un encabezado que lo delatan como CODIGO: una etiqueta que se
+#: cruza con otras tablas, no una cantidad. `1.01`, `2.03`, `2.10` parecen
+#: numeros, pero tipados como numero `2.10` se vuelve `2.1` y deja de casar con
+#: el `2.10` de otra tabla (y con cultura es-ES, `1.01` se lee como 101).
+_PALABRAS_DE_CODIGO = {"codigo", "codigos", "cod", "code", "codes", "clave",
+                       "sku", "item", "ref", "referencia"}
+#: ...salvo que el encabezado diga que es una cantidad: `item_count`,
+#: `cantidad_items` o `valor_item` si son numeros.
+_PALABRAS_DE_CANTIDAD = {"cantidad", "cant", "count", "conteo", "qty", "total",
+                         "suma", "sum", "valor", "value", "monto", "precio",
+                         "price"}
+
+#: Entero con ceros a la izquierda: `007`, `0451`. Como numero pierde los ceros.
+_RE_CEROS_A_LA_IZQUIERDA = re.compile(r"^0\d+$")
+
+
+def _palabras(nombre: str) -> List[str]:
+    """Palabras de un encabezado, sin tildes ni mayusculas: 'CódigoPartida' ->
+    ['codigo', 'partida']."""
+    sin_tildes = "".join(c for c in unicodedata.normalize("NFKD", str(nombre))
+                         if not unicodedata.combining(c))
+    separado = re.sub(r"([a-z])([A-Z])", r"\1 \2", sin_tildes)
+    return [p for p in re.split(r"[^a-z0-9]+", separado.casefold()) if p]
+
+
+def _es_columna_de_codigo(nombre: Optional[str]) -> bool:
+    palabras = set(_palabras(nombre or ""))
+    return bool(palabras & _PALABRAS_DE_CODIGO) and not palabras & _PALABRAS_DE_CANTIDAD
+
+
+def _separador_de_columnas(encabezados: List[str],
+                           columnas_valores: List[List[str]]) -> Optional[str]:
+    """Separador decimal votado solo por las columnas que pueden ser numeros.
+
+    Los codigos no votan: en un archivo con `codigo` = 1.01 y `valor` = 439,54
+    el codigo empataria con el valor y podria decidir la cultura al reves.
+    """
+    return _separador_decimal([
+        v for n, col in zip(encabezados, columnas_valores)
+        if not _es_columna_de_codigo(n) for v in col])
+
+
 def _inferir_tipo(valores: List[str], sep_decimal: Optional[str]) -> str:
     """Tipo de una columna a partir de sus valores. Vacio no es un dato."""
     utiles = [v.strip() for v in valores if v is not None and v.strip() != ""]
     if not utiles:
         # Sin un solo valor no hay nada que deducir, y adivinar numerico
         # romperia la carga en cuanto llegara un texto.
+        return "string"
+    if any(_RE_CEROS_A_LA_IZQUIERDA.fullmatch(v) for v in utiles):
+        # `007` como numero es 7: el valor cambia y deja de casar.
         return "string"
 
     bajos = [v.casefold() for v in utiles]
@@ -148,6 +193,34 @@ def _inferir_tipo(valores: List[str], sep_decimal: Optional[str]) -> str:
     if all(_RE_ISO.match(v) or _RE_DMY.match(v) for v in utiles):
         return "dateTime"
     return "string"
+
+
+_NUMERICOS = ("int64", "double", "decimal")
+
+
+def _columnas(encabezados: List[str], columnas_valores: List[List[str]],
+              sep: Optional[str]) -> List[Dict[str, Any]]:
+    """Columnas del perfil con su tipo.
+
+    Una columna de CODIGO (por su encabezado, ver `_PALABRAS_DE_CODIGO`) se
+    queda en texto aunque sus valores parezcan numeros: convertirla cambia el
+    valor y rompe los cruces. Cuando eso cambia el tipo se anota en
+    `_texto_por` para que `perfilar` lo diga en `warnings`.
+    """
+    salida: List[Dict[str, Any]] = []
+    for nombre, valores in zip(encabezados, columnas_valores):
+        tipo = _inferir_tipo(valores, sep)
+        columna: Dict[str, Any] = {"name": nombre, "data_type": tipo}
+        if tipo in _NUMERICOS and _es_columna_de_codigo(nombre):
+            columna["data_type"] = "string"
+            columna["_texto_por"] = "codigo"
+        else:
+            utiles = [v.strip() for v in valores if v and v.strip()]
+            if (utiles and all(_RE_ENTERO.fullmatch(v) for v in utiles)
+                    and any(_RE_CEROS_A_LA_IZQUIERDA.fullmatch(v) for v in utiles)):
+                columna["_texto_por"] = "ceros"
+        salida.append(columna)
+    return salida
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +360,7 @@ def _perfilar_csv(ruta: Path, muestra: int,
     columnas_valores: List[List[str]] = [
         [f[i] if i < len(f) else "" for f in datos]
         for i in range(len(encabezados))]
-    sep = _separador_decimal([v for col in columnas_valores for v in col])
+    sep = _separador_de_columnas(encabezados, columnas_valores)
 
     return {
         "format": "csv", "path": str(ruta), "delimiter": delimitador,
@@ -296,8 +369,7 @@ def _perfilar_csv(ruta: Path, muestra: int,
         "row_sample": len(datos),
         "header_row": fila_encabezado,
         "warnings": _aviso_de_encabezado(fila_encabezado, skip_rows is not None),
-        "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
-                    for n, v in zip(encabezados, columnas_valores)],
+        "columns": _columnas(encabezados, columnas_valores, sep),
     }
 
 
@@ -457,7 +529,7 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
     datos = filas[fila_encabezado + 1:]
     columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
                         for i in range(len(encabezados))]
-    sep = _separador_decimal([v for col in columnas_valores for v in col])
+    sep = _separador_de_columnas(encabezados, columnas_valores)
 
     return {
         "format": "xlsx", "path": str(ruta), "sheet": hoja, "delimiter": None,
@@ -465,8 +537,7 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
         "row_sample": len(datos),
         "header_row": fila_encabezado,
         "warnings": _aviso_de_encabezado(fila_encabezado, skip_rows is not None),
-        "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
-                    for n, v in zip(encabezados, columnas_valores)],
+        "columns": _columnas(encabezados, columnas_valores, sep),
     }
 
 
@@ -490,13 +561,12 @@ def _perfilar_json(ruta: Path, muestra: int) -> Dict[str, Any]:
                 encabezados.append(k)
     columnas_valores = [["" if r.get(n) is None else str(r.get(n))
                          for r in registros] for n in encabezados]
-    sep = _separador_decimal([v for col in columnas_valores for v in col])
+    sep = _separador_de_columnas(encabezados, columnas_valores)
     return {
         "format": "json", "path": str(ruta), "sheet": None, "delimiter": None,
         "encoding": 65001, "has_bom": False, "decimal_separator": sep,
         "row_sample": len(registros),
-        "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
-                    for n, v in zip(encabezados, columnas_valores)],
+        "columns": _columnas(encabezados, columnas_valores, sep),
     }
 
 
@@ -646,7 +716,7 @@ def _perfilar_html(ruta: Path, muestra: int, table_id: Optional[str] = None
 
     columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
                         for i in range(ancho)]
-    sep = _separador_decimal([v for col in columnas_valores for v in col])
+    sep = _separador_de_columnas(encabezados, columnas_valores)
 
     return {
         "format": "html", "path": str(ruta), "sheet": None, "delimiter": None,
@@ -654,19 +724,23 @@ def _perfilar_html(ruta: Path, muestra: int, table_id: Optional[str] = None
         "decimal_separator": sep, "row_sample": len(datos),
         "table_id": tabla["id"], "table_index": indice,
         "promote_headers": promover, "warnings": avisos,
-        "columns": [{"name": n, "data_type": _inferir_tipo(v, sep)}
-                    for n, v in zip(encabezados, columnas_valores)],
+        "columns": _columnas(encabezados, columnas_valores, sep),
     }
 
 
 def perfilar(path: Path | str, sheet: Optional[str] = None,
              muestra: int = 200, table_id: Optional[str] = None,
-             skip_rows: Optional[int] = None) -> Dict[str, Any]:
+             skip_rows: Optional[int] = None,
+             text_columns: Optional[List[str]] = None) -> Dict[str, Any]:
     """Mira dentro del archivo y deduce columnas, tipos y cultura.
 
     `skip_rows`: cuantas filas saltar antes del encabezado. `None` (por
     defecto) autodetecta la primera fila que pueda serlo -sin huecos y sin
     nombres repetidos- entre las primeras, y lo dice en `warnings`.
+
+    `text_columns`: columnas que se cargan como texto si o si, para los
+    codigos que el encabezado no delata (p. ej. `partida` con 1.01, 2.10).
+    Un nombre que no existe en el archivo es un error, no se ignora.
     """
     ruta = Path(path).expanduser()
     if not ruta.exists():
@@ -731,6 +805,36 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
                 details={"first_index": anterior, "second_index": indice,
                          "header": nombre, "path": str(ruta)})
         vistos[clave] = (indice, nombre)
+
+    forzadas = {str(n).strip().casefold(): str(n) for n in (text_columns or [])
+                if str(n).strip()}
+    faltan = [original for clave, original in forzadas.items()
+              if clave not in vistos]
+    if faltan:
+        raise TableFromFileError(
+            f"text_columns nombra columnas que no estan en el archivo: "
+            f"{', '.join(faltan)}.",
+            details={"missing": faltan,
+                     "columns": [c["name"] for c in perfil["columns"]],
+                     "path": str(ruta)})
+    avisos = list(perfil.get("warnings") or [])
+    for columna in perfil["columns"]:
+        motivo = columna.pop("_texto_por", None)
+        if str(columna["name"]).casefold() in forzadas:
+            columna["data_type"] = "string"
+        elif motivo == "codigo":
+            avisos.append(
+                f"La columna '{columna['name']}' se carga como texto: su nombre "
+                "dice que es un codigo, y como numero 2.10 se volveria 2.1 y "
+                "dejaria de cruzar con otras tablas. Si de verdad es una "
+                "cantidad, cambia el tipo despues de cargar.")
+        elif motivo == "ceros":
+            avisos.append(
+                f"La columna '{columna['name']}' se carga como texto: trae "
+                "valores con ceros a la izquierda (p. ej. 007) que como numero "
+                "se perderian.")
+    if avisos:
+        perfil["warnings"] = avisos
 
     # La cultura sale de como escribe los decimales el propio archivo. Es el
     # unico dato que no obliga a suponer.
@@ -894,7 +998,8 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   description: Optional[str] = None, overwrite: bool = False,
                   dry_run: bool = False, muestra: int = 200,
                   table_id: Optional[str] = None,
-                  skip_rows: Optional[int] = None) -> Dict[str, Any]:
+                  skip_rows: Optional[int] = None,
+                  text_columns: Optional[List[str]] = None) -> Dict[str, Any]:
     """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre.
 
     `table_id`: solo para HTML/'.xls' que en realidad es HTML. El `id` de la
@@ -906,7 +1011,7 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
 
     ruta = Path(path).expanduser()
     perfil = perfilar(ruta, sheet=sheet, muestra=muestra, table_id=table_id,
-                      skip_rows=skip_rows)
+                      skip_rows=skip_rows, text_columns=text_columns)
 
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
     try:

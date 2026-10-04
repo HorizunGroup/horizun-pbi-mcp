@@ -22,6 +22,7 @@ from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.clr_bootstrap import load_tom
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError
 from horizun_pbi_mcp.powerbi.model_reader import connect
+from horizun_pbi_mcp.utils.validation import tmdl_quote_name
 
 log = get_logger("tmdl_export")
 
@@ -166,14 +167,7 @@ def rename_database(definition_dir: Path, nuevo_nombre: str) -> bool:
     for i, linea in enumerate(lineas):
         if linea.lstrip().startswith("database "):
             fin = "\r\n" if linea.endswith("\r\n") else "\n" if linea.endswith("\n") else ""
-            lineas[i] = f"database {_citar_tmdl(nuevo_nombre)}{fin}"
+            lineas[i] = f"database {tmdl_quote_name(nuevo_nombre)}{fin}"
             archivo.write_text("".join(lineas), encoding="utf-8")
             return True
     return False
-
-
-def _citar_tmdl(nombre: str) -> str:
-    """TMDL exige comillas cuando el nombre lleva espacios o caracteres raros."""
-    if nombre and all(c.isalnum() or c in "_-" for c in nombre):
-        return nombre
-    return "'" + nombre.replace("'", "''") + "'"

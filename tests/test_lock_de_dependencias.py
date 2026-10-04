@@ -544,6 +544,15 @@ def _venv_con_el_lock(destino: Path, lock: Path) -> dict[str, str]:
     subprocess.run([sys.executable, "-m", "venv", str(destino)], check=True,
                    capture_output=True, timeout=600)
     py = destino / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    # Mismo orden que el instalador real (plugin_bootstrap: pip y setuptools al
+    # dia ANTES del lock). El pip 23.0.1 que trae el venv de 3.10 no respeta el
+    # `PyJWT==` fijado cuando `mcp` lo pide como `pyjwt[crypto]`: busca la
+    # ultima de PyPI y --require-hashes la rechaza. Probar con ese pip probaba
+    # un camino que el producto no recorre, y se rompio solo el dia que salio
+    # PyJWT 2.15.1.
+    subprocess.run([str(py), "-m", "pip", "install", "--upgrade", "pip",
+                    "setuptools"], check=True, capture_output=True,
+                   timeout=1200)
     r = subprocess.run([str(py), "-m", "pip", "install", "--require-hashes",
                         "-r", str(lock)], capture_output=True, text=True,
                        timeout=2400)

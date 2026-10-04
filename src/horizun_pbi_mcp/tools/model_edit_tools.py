@@ -275,7 +275,9 @@ def register(mcp) -> None:
                                 description: str = "", overwrite: bool = False,
                                 dry_run: bool = False, table_id: str = "",
                                 skip_rows: Optional[int] = None,
-                                request_id: str = "") -> Dict[str, Any]:
+                                request_id: str = "",
+                                text_columns: Optional[List[str]] = None
+                                ) -> Dict[str, Any]:
         """Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.
 
         El mismo recorrido de Power Query —Obtener datos, promover encabezados,
@@ -319,6 +321,14 @@ def register(mcp) -> None:
         cuantas saltar cuando la deteccion no acierta; `skip_rows=0` obliga a
         usar la fila 1 tal cual. Aplica a csv y xlsx.
 
+        **Los codigos se cargan como texto.** Una columna cuyo encabezado
+        dice que es un codigo (`codigo`, `cod`, `code`, `clave`, `item`,
+        `sku`, `ref`...) queda en texto aunque sus valores parezcan numeros:
+        como numero `2.10` se vuelve `2.1` y deja de cruzar con otras tablas.
+        Igual con enteros con ceros a la izquierda (`007`). Se avisa en
+        `warnings`. `text_columns` fuerza texto en columnas que el encabezado
+        no delata (p. ej. `["partida"]`); un nombre que no exista es error.
+
         `dry_run=true` devuelve el TMDL y la M sin escribir nada.
         `sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.
 
@@ -330,7 +340,8 @@ def register(mcp) -> None:
             _proyecto_activo(), path, table_name=table_name,
             sheet=sheet or None, culture=culture or None,
             description=description or None, overwrite=overwrite,
-            dry_run=dry_run, table_id=table_id or None, skip_rows=skip_rows))
+            dry_run=dry_run, table_id=table_id or None, skip_rows=skip_rows,
+            text_columns=text_columns or None))
 
     @mcp.tool()
     def pbi_set_storage_mode(table: str, mode: str,
