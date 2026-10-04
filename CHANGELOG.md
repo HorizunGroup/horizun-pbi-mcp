@@ -5,16 +5,23 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [2.1.2] — 2026-10-03
+
+Two batches of defects, both found in real use rather than in review: the
+«Comité de obra» exercise (PR #51) and a course demo recorded on 2026-10-03
+(PR #54). Visuals built from the minimal template now also leave with a
+default format instead of bare.
+
+The frozen contract is intact: **0 breaking changes, 3 compatible ones**,
+checked against the golden of `v2.1.1`: a new optional parameter
+(`text_columns`) and a longer description on `pbi_add_table_from_file`, and a
+longer description on `pbi_validate_desktop_render`. Still 139 tools.
+
+### Fixed — TMDL quoting and code columns (PR #54)
 
 Defects seen on camera on 2026-10-03, while recording a course demo that
 went CSV -> `pbi_create_pbip_project` -> `pbi_add_table_from_file` -> Power BI
 Desktop. In both cases the agent had to edit the TMDL by hand.
-
-The frozen contract is intact: **0 breaking changes, 2 compatible ones** (a new
-optional parameter and a longer description on `pbi_add_table_from_file`).
-
-### Fixed
 
 - **`pbi_create_pbip_project` wrote `database.tmdl` with the name unquoted.** A
   project called `Tablero Mirador` got `database Tablero Mirador`, which the
@@ -56,6 +63,54 @@ optional parameter and a longer description on `pbi_add_table_from_file`).
   separator detection: in a `;` file with `codigo` = `1.01` and `valor` =
   `439,54` the votes tied, `en-US` won, and the values loaded multiplied by a
   hundred with no error.
+
+### Fixed — the «Comité de obra» run (PR #51)
+
+Defects found in a real run of the «Comité de obra» exercise (2026-10-01), plus
+what verifying them live against Power BI Desktop uncovered. The contract
+change is compatible: only the description of `pbi_validate_desktop_render`
+grew.
+
+- **`pbi_validate_desktop_render` said `data_loaded: true` over blank
+  visuals.** `data_loaded` counted rows in the engine, and the capture was taken
+  about two seconds after the XMLA refresh, before the window had repainted.
+  The canvas is now read through UI Automation (a read-only `read_canvas`
+  helper action that returns counts, never report text): Power BI's own
+  banners ("needs a manual refresh", "incomplete data"), `(Blank)` values, and
+  the **titles of the page's visuals** as the witness that it was painted. The
+  capture waits for a healthy canvas; if it never gets one, `data_loaded` is
+  `false`, `model_data_loaded` keeps what the engine said, and the capture is
+  flagged as not representative. Only visible elements count: after a refresh
+  the "incomplete data" banner stays in the tree with `IsOffscreen=1`
+  (measured).
+- **The capture kept only the top-left corner at 150 % scaling.** The server
+  does not declare DPI awareness, so `PrintWindow` saved 1721×1033 of a
+  2582×1550 window. The capture now switches the DPI context of its own thread
+  only.
+- **"Fit to page" on a reused session.** A window opened by this same server
+  (e.g. `pbi_open_and_refresh`), or a call with `refresh=true` + `confirm=true`,
+  now authorises the fit without `confirm_reuse`. The zoom is no longer taken
+  as verified from an announcement that repeats the same percentage — the real
+  zoom level is not readable through UI Automation (measured), so the check
+  stays weak, but it no longer gives false positives.
+- **`pbi_create_measure` rejected `format_string: 0`.** Pydantic refused it by
+  type, and through `pbi_apply_plan` the `0` reached the TMDL writer and was
+  **dropped silently**. An integer is now converted to text; a decimal is
+  rejected with a useful message. The published schema is still
+  `string|null`.
+- **`displayName` from the page spec was ignored**: the tab showed the internal
+  `name`. And `pbi_create_page_from_spec` did not pass each visual's `options`
+  to the factory.
+
+### Changed — a default format instead of the bare minimal template (PR #51)
+
+- Visuals built from the minimal template now leave with Horizun's base
+  format: a 12 pt semibold title in the theme's ink, a frame with background
+  and rounded border, and the real theme's colours (or the «claro» preset's when
+  the base theme does not define them). Whatever the theme already governs is
+  not overridden, and `options` always wins.
+- A card that has a title turns off the category label that repeats it
+  (`show_category_label=true` keeps it).
 
 ### Added
 
