@@ -164,7 +164,7 @@ function RegistrarMarketplaceChatGPT {
         $a = $actuales[0]
         if ($a.source.source -eq 'url' -and
             $a.source.url -eq 'https://github.com/HorizunGroup/horizun-pbi-mcp.git' -and
-            $a.source.ref -eq 'v2.1.1' -and
+            $a.source.ref -eq 'v2.1.2' -and
             $a.policy.installation -eq 'AVAILABLE' -and
             $a.policy.authentication -eq 'ON_INSTALL') {
             return [pscustomobject]@{ Path = $destino; Changed = $false; Backup = $null }
@@ -176,7 +176,7 @@ function RegistrarMarketplaceChatGPT {
         source = [pscustomobject]@{
             source = 'url'
             url = 'https://github.com/HorizunGroup/horizun-pbi-mcp.git'
-            ref = 'v2.1.1'
+            ref = 'v2.1.2'
         }
         policy = [pscustomobject]@{
             installation = 'AVAILABLE'
