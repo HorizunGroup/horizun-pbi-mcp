@@ -185,6 +185,12 @@ The MCP contract is frozen and checked against `tests/golden/tools_v1.json`.
 Real `.pbix`, `.pbip`, credentials, DLLs, outputs and backups are never
 committed. See [AGENTS.md](AGENTS.md) for the repository invariants.
 
+## Learn to direct it
+
+Horizun Hub teaches, in Spanish, how to direct AI agents in real construction and design work — and how to review what they deliver before you sign it. The course for this MCP is [Opera agentes en Power BI](https://horizunhub.com/academia/power-bi-con-ia/?utm_source=github&utm_medium=readme&utm_campaign=horizun-pbi-mcp): short classes on real construction work, with a verifiable certificate.
+
+New to agents? Level 1 of [Opera agentes de IA desde cero](https://horizunhub.com/academia/agentes-ia-desde-cero/?utm_source=github&utm_medium=readme&utm_campaign=horizun-pbi-mcp) is free with an account.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
