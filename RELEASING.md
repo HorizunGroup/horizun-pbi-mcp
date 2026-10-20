@@ -13,11 +13,12 @@ firma: **el instalador se firma en el arbol, antes de etiquetar**.
 3. **Recalcular los pines** del instalador a partir del archivo firmado
    (`python scripts/pin_instalador.py`).
 4. PR, CI en verde, merge, tag anotado `vX.Y.Z`.
-5. La CI construye, prueba, publica en PyPI y en el MCP Registry y deja la
-   GitHub Release como **borrador**.
-6. El job `firmar-y-publicar` queda **esperando la aprobacion de Pablo**
-   (environment `firma-certum`). Con SimplySign Desktop conectado, se aprueba
-   en la pestana Actions: el job verifica las firmas y publica el borrador.
+5. La CI construye, prueba y deja la GitHub Release como **borrador**.
+6. **Una aprobacion: conecta SimplySign Desktop -> Approve -> listo.** El job
+   `firmar-y-publicar` (environment `firma-certum`) verifica las firmas y
+   mantiene el borrador con `-SinPublicar`.
+7. Sin mas aprobaciones, la CI publica en PyPI, MCP Registry y finalmente la
+   release firmada de GitHub.
 
 ## Por que el instalador se firma en el arbol
 
@@ -59,8 +60,7 @@ Diseno vigente:
   y signtool intercala un CRLF entre el cuerpo y el bloque; el resto del cuerpo
   es LF puro, ASCII y sin BOM).
 
-PyPI y el MCP Registry **no esperan** a la firma: el wheel y el sdist no llevan
-binarios propios ni cambian por firmar el instalador.
+PyPI y el MCP Registry **esperan** la aprobacion y verificacion Certum, aunque el wheel y el sdist no cambian.
 
 ## Firma del instalador (paso a paso)
 
@@ -136,10 +136,10 @@ git push origin vX.Y.Z
 
 El tag dispara `.github/workflows/release.yml`:
 
-`build` -> `test` (3.10, 3.13) -> `publicar-pypi` -> `publicar-mcp` ->
-`publicar-github-release` (crea el **borrador**, relee cada asset por la API y
-compara el instalador con el manifest) -> `firmar-y-publicar` (**espera
-aprobacion**).
+`build` -> `test` (3.10, 3.13) -> `publicar-github-release` (crea
+el **borrador** y compara cada asset) -> `firmar-y-publicar` (**una sola
+aprobacion**) -> `publicar-pypi` -> `publicar-mcp` ->
+`publicar-release-firmada` (publica el borrador firmado).
 
 ### Aprobar la firma
 
@@ -153,8 +153,8 @@ aprobacion**).
    propios si los hubiera (aqui no hay), **exige** que `horizun-pbi-mcp-instalar.ps1`
    venga firmado (`-ExigirScripts`: firma Valid, huella de HORIZUN GROUP, emisor y
    sello de tiempo de Certum), regenera y compara hashes, sube lo que cambie
-   (nada, normalmente), relee y **publica el borrador**. Si algo falla, **no
-   publica**.
+   (nada, normalmente) y relee. El borrador sigue cerrado hasta que PyPI y
+   MCP Registry terminen bien; entonces se publica sin otra aprobacion.
 
 ### Despues de publicar
 
@@ -209,4 +209,8 @@ repetir; nunca despues de publicar.
 | `scripts/release_build.py` | instalador firmado (primer paso) y con el hash del manifest |
 | `scripts/release_verify.py [--authenticode]` | digests de `SHA256SUMS`; asset firmado, con CUERPO ASCII/LF/sin BOM (solo el bloque de firma admite CRLF) y el hash del manifest; version en todos los sitios; con `--authenticode`, `Get-AuthenticodeSignature` Valid, huella y Certum |
 | `scripts/release_publish.py` | borrador; sube exactamente lo firmado en `SHA256SUMS`; relee por la API y compara; el instalador remoto == manifest y firmado |
-| `scripts/firmar-release.ps1 -ExigirScripts` | firma Valid de HORIZUN GROUP con sello Certum en el `.ps1`; publica el borrador solo si todo cuadra |
+| `scripts/firmar-release.ps1 -ExigirScripts` | firma Valid de HORIZUN GROUP con sello Certum en el `.ps1`; mantiene el borrador hasta que PyPI y MCP Registry terminen |
+
+## Configuración de environments (2026-10-20)
+
+`firma-certum` es la única revisión humana. `pypi` conserva su nombre para Trusted Publishing, sin revisores. Se eliminaron `github-release` y `mcp-registry`, ya sin uso en el workflow. Cambios aplicados con `gh api`.
