@@ -11,3 +11,8 @@
 *.pbit binary
 *.png binary
 *.jpg binary
+
+# El instalador va FIRMADO (Authenticode) y su SHA-256 esta fijado en el repo:
+# git no puede normalizar ni un byte de lo que cubre el hash (el bloque de
+# firma trae CRLF). Ver RELEASING.md.
+scripts/instalar.ps1 -text

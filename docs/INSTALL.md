@@ -47,7 +47,7 @@ yours refuses the file, that is the first thing to check.
    check it yourself:
 
    ```powershell
-   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.2.mcpb
+   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.3.mcpb
    ```
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation.
@@ -137,7 +137,7 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.2/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.3/horizun-pbi-mcp-instalar.ps1'
 $sha = 'f01c2f0dee4486dbc2bcef35b45962b1f0d4e1e59526fdff30893b8e3a97deb8'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
