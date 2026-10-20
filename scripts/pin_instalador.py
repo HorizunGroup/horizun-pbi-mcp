@@ -15,7 +15,7 @@ posteriori y el bloque quedo apuntando al hash de antes de firmar). Por eso el
 diseno es: **firmar en el arbol, antes de etiquetar, y calcular los pines sobre
 el archivo firmado**. Este script es el segundo paso de ese diseno:
 
-    1. firmar scripts/instalar.ps1 con signtool (RELEASING.md)
+    1. firmar scripts/instalar.ps1 mediante el servicio local (RELEASING.md)
     2. python scripts/pin_instalador.py          # escribe los pines
     3. python scripts/pin_instalador.py --check  # comprueba que cuadran
 

@@ -76,13 +76,13 @@ y el arbol limpio.
 (Get-Item Cert:\CurrentUser\My\D19F95C700EFEB78F03B6A2F9F6FBF87BF9BF8FA).HasPrivateKey
 git status --short                       # vacio, salvo lo que se esta preparando
 
-# 1. FIRMAR EN EL ARBOL (Authenticode, sello de tiempo de Certum).
-& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign /sha1 D19F95C700EFEB78F03B6A2F9F6FBF87BF9BF8FA /fd sha256 /tr http://time.certum.pl /td sha256 scripts/instalar.ps1
+# 1. Enviar el .ps1 al servicio local de firma (cola/pendiente/*.json) y
+#    esperar su resultado en cola/hecho/*.json. El servicio aplica la firma
+#    Authenticode y el sello de tiempo de Certum.
 
 # 2. Comprobar la firma: Valid, emisor Certum, sello de tiempo Certum.
 $s = Get-AuthenticodeSignature scripts/instalar.ps1
 $s.Status; $s.SignerCertificate.Subject; $s.SignerCertificate.Issuer; $s.TimeStamperCertificate.Subject
-& "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" verify /pa scripts/instalar.ps1
 
 # 3. RECALCULAR LOS PINES a partir del archivo firmado (manifest, one_paste.ps1,
 #    INSTALL.md y la skill). Se niega a pinear un instalador sin firmar.
@@ -186,9 +186,8 @@ Y pegar el bloque de un pegado de `docs/INSTALL.md` en una consola de prueba.
 
 ## Si el job de firma falla por SimplySign desconectado
 
-El script comprueba que puede firmar **antes de tocar la release** y falla con
-`No se puede firmar (SimplySign desconectado o sesion caducada)`. La release
-sigue en borrador y no se ha subido nada.
+El script solicita las firmas al servicio local por cola. Si la sesión de
+SimplySign está desconectada, falla la firma y la release sigue en borrador.
 
 1. Reconectar SimplySign Desktop con la cuenta del runner (autenticar de nuevo).
 2. En la pestana Actions del run: **Re-run failed jobs** y aprobar de nuevo el
