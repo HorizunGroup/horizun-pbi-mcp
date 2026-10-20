@@ -44,8 +44,12 @@ RELEASE = WORKFLOWS / "release.yml"
 #: naturaleza: escribe EN ESTE repositorio y no se autentica contra nadie.
 JOB_RELEASE = "publicar-github-release"
 
+#: El job que firma/verifica con la clave Certum y PUBLICA el borrador. Corre en
+#: el runner self-hosted de Pablo y espera la aprobacion del environment.
+JOB_FIRMA = "firmar-y-publicar"
+
 #: Los jobs que efectivamente publican algo donde alguien lo puede descargar.
-JOBS_DE_PUBLICACION = ("publicar-pypi", "publicar-mcp", JOB_RELEASE)
+JOBS_DE_PUBLICACION = ("publicar-pypi", "publicar-mcp", JOB_RELEASE, JOB_FIRMA)
 
 #: Los que salen de GitHub y necesitan un token OIDC para identificarse.
 JOBS_OIDC = ("publicar-pypi", "publicar-mcp")
@@ -58,6 +62,7 @@ NEEDS_MINIMOS = {
     "publicar-pypi": ("build", "test"),
     "publicar-mcp": ("build", "test", "publicar-pypi"),
     JOB_RELEASE: ("build", "test", "publicar-pypi", "publicar-mcp"),
+    JOB_FIRMA: ("build", "test", "publicar-pypi", "publicar-mcp"),
 }
 
 #: Como se puede crear una release desde un workflow. `release_publish.py` es
@@ -176,17 +181,17 @@ def guarda_solo_el_job_de_release_escribe_contenidos(datos: dict) -> None:
     """`contents: write` es el permiso para crear tags y releases EN ESTE repo.
 
     Concederselo a `build` o a `test` significaria que un paso comprometido de
-    la construccion puede reescribir el repositorio. Lo tiene uno solo, y es el
-    unico que lo necesita.
+    la construccion puede reescribir el repositorio. Lo tienen DOS, y son los
+    unicos que lo necesitan: el que crea el borrador y el que lo publica tras
+    firmar.
     """
     escriben = sorted(n for n, job in datos["jobs"].items()
                       if (job.get("permissions") or {}).get("contents") == "write")
-    if JOB_RELEASE not in datos["jobs"]:
-        assert not escriben, f"escriben contenidos sin crear release: {escriben}"
-        return
-    assert escriben == [JOB_RELEASE], (
-        f"jobs con contents: write = {escriben}; solo puede tenerlo "
-        f"{JOB_RELEASE}")
+    # La ausencia del job de firma la denuncia SU guarda, no esta.
+    permitidos = sorted(j for j in (JOB_RELEASE, JOB_FIRMA) if j in datos["jobs"])
+    assert escriben == permitidos, (
+        f"jobs con contents: write = {escriben}; solo pueden tenerlo "
+        f"{JOB_RELEASE} y {JOB_FIRMA}")
 
 
 def guarda_publicacion_en_entorno_protegido(datos: dict) -> None:
@@ -240,6 +245,66 @@ def guarda_la_release_publica_lo_verificado(datos: dict) -> None:
         "se publica desde otro sitio que no es el artifact verificado")
     assert "--expect-version" in texto, (
         f"{JOB_RELEASE} no ata el tag a la version que declaran los manifiestos")
+
+
+def guarda_existe_el_job_de_firma(datos: dict) -> None:
+    """La release nace borrador y SOLO la publica el job que verifica la firma.
+
+    Sin este job el borrador se quedaria para siempre sin publicar, y con un
+    paso `gh release edit --draft=false` colado en otro sitio se publicaria sin
+    pasar por la clave Certum ni por la aprobacion humana.
+    """
+    assert JOB_FIRMA in datos["jobs"], (
+        f"no hay job {JOB_FIRMA}: nadie firma/verifica ni publica el borrador")
+
+
+def guarda_el_job_de_firma_espera_y_exige_la_firma(datos: dict) -> None:
+    job = datos["jobs"].get(JOB_FIRMA)
+    if job is None:
+        return
+    etiquetas = job.get("runs-on")
+    assert isinstance(etiquetas, list) and {
+        "self-hosted", "windows", "horizun-sign"} <= set(etiquetas), (
+        f"{JOB_FIRMA} no corre en el runner de firma (self-hosted, windows, "
+        f"horizun-sign): {etiquetas!r}")
+    assert job.get("environment") == "firma-certum", (
+        f"{JOB_FIRMA} no usa el environment firma-certum: se firmaria sin la "
+        "aprobacion de Pablo")
+    assert JOB_RELEASE in _needs(job), (
+        f"{JOB_FIRMA} no espera al borrador ({JOB_RELEASE}): no habria nada "
+        "que firmar")
+    pasos = [p for p in _pasos(job)
+             if "firmar-release.ps1" in str(p.get("run", ""))]
+    assert len(pasos) == 1, "falta (o sobra) el paso que ejecuta firmar-release.ps1"
+    paso = pasos[0]
+    orden = " ".join(str(paso["run"]).split())
+    assert paso.get("shell") == "pwsh", "el paso de firma no usa pwsh"
+    assert "-ExigirScripts" in orden, (
+        "sin -ExigirScripts el job aceptaria un instalador .ps1 SIN firmar")
+    assert "-Tag ${{ github.ref_name }}" in orden, "no firma el tag que se publica"
+    assert "-Repo ${{ github.repository }}" in orden
+    assert "GH_TOKEN" in (paso.get("env") or {}), (
+        "el script usa gh y necesita GH_TOKEN")
+
+
+def guarda_pypi_y_mcp_no_esperan_a_la_firma(datos: dict) -> None:
+    """Decision de diseno, fijada: el wheel y el sdist no llevan binarios
+    propios ni cambian por firmar el instalador, asi que PyPI y el MCP Registry
+    no esperan la aprobacion humana de la firma. Si algun dia llevaran un
+    binario, esta guarda se cambia a proposito y no por accidente."""
+    for nombre in ("publicar-pypi", "publicar-mcp", JOB_RELEASE):
+        job = datos["jobs"].get(nombre)
+        if job is None:
+            continue
+        assert JOB_FIRMA not in _needs(job), (
+            f"{nombre} espera a {JOB_FIRMA}: la firma no cubre nada de lo que "
+            "publica y bloquearia el paquete tras una aprobacion manual")
+
+
+def guarda_el_build_exige_la_firma_authenticode(datos: dict) -> None:
+    texto = _texto_de_pasos(datos["jobs"]["build"])
+    assert "release_verify.py" in texto and "--authenticode" in texto, (
+        "el job build ya no pide a Windows que verifique la firma del instalador")
 
 
 def guarda_nadie_reconstruye_al_publicar(datos: dict) -> None:
@@ -304,6 +369,10 @@ def guarda_acciones_pineadas_por_sha(datos: dict) -> None:
 
 GUARDAS = (
     guarda_existe_el_job_de_github_release,
+    guarda_existe_el_job_de_firma,
+    guarda_el_job_de_firma_espera_y_exige_la_firma,
+    guarda_pypi_y_mcp_no_esperan_a_la_firma,
+    guarda_el_build_exige_la_firma_authenticode,
     guarda_publicacion_depende_de_todo,
     guarda_publicacion_solo_desde_un_tag,
     guarda_dispatch_no_publica_por_defecto,
@@ -437,7 +506,67 @@ def _release_improvisa_los_assets(d):
     return d
 
 
+def _sin_job_de_firma(d):
+    d["jobs"].pop(JOB_FIRMA)
+    return d
+
+
+def _firma_sin_exigir_scripts(d):
+    for p in d["jobs"][JOB_FIRMA]["steps"]:
+        if "firmar-release.ps1" in str(p.get("run", "")):
+            p["run"] = str(p["run"]).replace("-ExigirScripts", "")
+    return d
+
+
+def _firma_sin_environment_de_firma(d):
+    d["jobs"][JOB_FIRMA]["environment"] = "github-release"
+    return d
+
+
+def _firma_en_runner_hospedado(d):
+    d["jobs"][JOB_FIRMA]["runs-on"] = "windows-latest"
+    return d
+
+
+def _firma_sin_esperar_el_borrador(d):
+    d["jobs"][JOB_FIRMA]["needs"] = ["build", "test", "publicar-pypi",
+                                      "publicar-mcp"]
+    return d
+
+
+def _pypi_espera_a_la_firma(d):
+    d["jobs"]["publicar-pypi"]["needs"] = ["build", "test", JOB_FIRMA]
+    return d
+
+
+def _build_sin_authenticode(d):
+    for p in d["jobs"]["build"]["steps"]:
+        if "release_verify.py" in str(p.get("run", "")):
+            p["run"] = str(p["run"]).replace("--authenticode", "")
+    return d
+
+
+def _contents_write_en_pypi(d):
+    d["jobs"]["publicar-pypi"]["permissions"]["contents"] = "write"
+    return d
+
+
 MUTACIONES = [
+    ("borrar el job de firma", _sin_job_de_firma, guarda_existe_el_job_de_firma),
+    ("firmar sin -ExigirScripts", _firma_sin_exigir_scripts,
+     guarda_el_job_de_firma_espera_y_exige_la_firma),
+    ("firmar sin el environment firma-certum", _firma_sin_environment_de_firma,
+     guarda_el_job_de_firma_espera_y_exige_la_firma),
+    ("firmar en un runner hospedado por GitHub", _firma_en_runner_hospedado,
+     guarda_el_job_de_firma_espera_y_exige_la_firma),
+    ("firmar sin esperar al borrador", _firma_sin_esperar_el_borrador,
+     guarda_el_job_de_firma_espera_y_exige_la_firma),
+    ("hacer que PyPI espere a la firma", _pypi_espera_a_la_firma,
+     guarda_pypi_y_mcp_no_esperan_a_la_firma),
+    ("quitar --authenticode del build", _build_sin_authenticode,
+     guarda_el_build_exige_la_firma_authenticode),
+    ("dar contents: write a publicar-pypi", _contents_write_en_pypi,
+     guarda_solo_el_job_de_release_escribe_contenidos),
     ("borrar el job de la GitHub Release", _sin_job_de_release,
      guarda_existe_el_job_de_github_release),
     ("publicar la release sin esperar a PyPI", _release_sin_pypi,
@@ -553,7 +682,10 @@ def test_el_build_es_uno_solo_y_los_demas_lo_consumen(release):
 
     consumidores = [n for n, job in release["jobs"].items()
                     if "download-artifact" in _texto_de_pasos(job)]
-    assert set(consumidores) == {"test", *JOBS_DE_PUBLICACION}, (
+    # El job de firma NO descarga el artifact: trabaja sobre el borrador de la
+    # release, que es lo que va a publicar.
+    esperados = {"test", *(j for j in JOBS_DE_PUBLICACION if j != JOB_FIRMA)}
+    assert set(consumidores) == esperados, (
         f"consumidores inesperados del artefacto: {consumidores}")
 
 

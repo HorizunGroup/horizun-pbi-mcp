@@ -133,7 +133,7 @@ class ClienteFalso:
         self.escrituras.append(f"crear:{tag}")
         self.release = {
             "id": 1, "tag_name": tag, "name": nombre, "body": cuerpo,
-            "draft": False, "prerelease": False,
+            "draft": rp.BORRADOR, "prerelease": False,
             "html_url": f"https://github.com/{self.repo}/releases/tag/{tag}",
             "upload_url": (f"https://uploads.github.com/repos/{self.repo}"
                            "/releases/1/assets{?name,label}"),
@@ -144,13 +144,18 @@ class ClienteFalso:
         salida = []
         for i, (nombre, crudo) in enumerate(sorted(self.contenido.items())):
             extra = self.meta.get(nombre, {})
+            # Un borrador sirve sus assets bajo una URL provisional: la
+            # publica solo existe cuando la release se publica.
+            carpeta = ("untagged-0123456789abcdef"
+                       if (self.release or {}).get("draft")
+                       else (self.release or {}).get("tag_name", "v0"))
             salida.append({
                 "id": 100 + i, "name": nombre, "size": len(crudo),
                 "state": extra.get("state", "uploaded"),
                 "browser_download_url": extra.get(
                     "browser_download_url",
                     f"https://github.com/{self.repo}/releases/download/"
-                    f"{(self.release or {}).get('tag_name', 'v0')}/{nombre}"),
+                    f"{carpeta}/{nombre}"),
             })
         return salida
 
@@ -165,15 +170,20 @@ class ClienteFalso:
         return self.contenido[asset["name"]]
 
 
-def _cliente_completo(artefacto, tag, **cambios) -> ClienteFalso:
-    """Un remoto que ya tiene la release entera y correcta."""
+def _cliente_completo(artefacto, tag, *, borrador=False,
+                      **cambios) -> ClienteFalso:
+    """Un remoto que ya tiene la release entera y correcta.
+
+    Por defecto ya PUBLICADA (el estado tras `firmar-y-publicar`); con
+    `borrador=True`, el borrador que deja `publicar-github-release`.
+    """
     assets = {n: p.read_bytes()
               for n, p in rv.assets_publicables(artefacto).items()}
     assets.update(cambios)
     cuerpo = rp.cuerpo_de_la_release(artefacto, tag)
     release = {
         "id": 1, "tag_name": tag, "name": tag, "body": cuerpo,
-        "draft": False, "prerelease": False,
+        "draft": borrador, "prerelease": False,
         "html_url": f"https://github.com/HorizunGroup/horizun-pbi-mcp/releases/tag/{tag}",
         "upload_url": ("https://uploads.github.com/repos/HorizunGroup/"
                        "horizun-pbi-mcp/releases/1/assets{?name,label}"),
@@ -222,7 +232,10 @@ def test_desde_cero_crea_la_release_y_sube_todo(artefacto, tag):
     resumen = rp.publicar(artefacto, tag, cliente)
 
     assert resumen["release_creada"] is True
-    assert resumen["draft"] is False, "una release en borrador no sirve el asset"
+    assert resumen["draft"] is True, (
+        "la release tiene que nacer BORRADOR: la publica firmar-y-publicar "
+        "despues de verificar las firmas, no este job")
+    assert cliente.release["draft"] is True
     assert set(resumen["assets"]) == set(rv.assets_publicables(artefacto))
     assert all(v == "subido" for v in resumen["assets"].values())
     assert f"crear:{tag}" in cliente.escrituras
@@ -278,7 +291,8 @@ def test_un_rerun_sobre_una_release_completa_termina_verde_sin_escribir(
 
 
 def test_un_rerun_a_medias_completa_solo_lo_que_falta(artefacto, tag):
-    cliente = _cliente_completo(artefacto, tag)
+    """Sobre el BORRADOR: es lo unico a lo que se le pueden subir assets."""
+    cliente = _cliente_completo(artefacto, tag, borrador=True)
     del cliente.contenido["sbom.cdx.json"]
     resumen = rp.publicar(artefacto, tag, cliente)
 
@@ -331,11 +345,44 @@ def test_un_asset_de_mas_en_la_release_para_la_publicacion(artefacto, tag):
         rp.publicar(artefacto, tag, cliente)
 
 
-def test_una_release_en_borrador_no_se_da_por_publicada(artefacto, tag):
-    cliente = _cliente_completo(artefacto, tag)
-    cliente.release["draft"] = True
+def test_un_rerun_sobre_el_borrador_completo_no_escribe_ni_lo_publica(
+        artefacto, tag):
+    """El borrador ya completo se re-verifica; publicarlo no es cosa de este job."""
+    cliente = _cliente_completo(artefacto, tag, borrador=True)
+    resumen = rp.publicar(artefacto, tag, cliente)
 
-    with pytest.raises(SystemExit, match="BORRADOR"):
+    assert resumen["release_creada"] is False
+    assert resumen["draft"] is True
+    assert cliente.escrituras == []
+    assert cliente.release["draft"] is True, "este job no publica el borrador"
+
+
+def test_a_una_release_ya_publicada_no_se_le_suben_assets(artefacto, tag):
+    """Publicada es inmutable: un asset que falta es una version nueva."""
+    cliente = _cliente_completo(artefacto, tag)           # publicada
+    del cliente.contenido["sbom.cdx.json"]
+
+    with pytest.raises(SystemExit, match="ya esta PUBLICADA"):
+        rp.publicar(artefacto, tag, cliente)
+    assert cliente.escrituras == []
+
+
+def test_el_borrador_nunca_se_crea_publicado():
+    assert rp.BORRADOR is True, (
+        "publicar-github-release tiene que crear la release como BORRADOR; "
+        "la publica firmar-y-publicar tras verificar las firmas")
+    assert rp.PRERELEASE is False
+
+
+def test_un_instalador_sin_la_firma_en_el_remoto_no_es_el_firmado(
+        artefacto, tag):
+    """Aunque el hash coincida con el manifest, sin firma no hay release."""
+    info = rv.analizar_instalador(INSTALADOR.read_bytes())
+    sin_firma = info["cuerpo"]
+    cliente = _cliente_completo(artefacto, tag, borrador=True)
+    cliente.contenido[_entrada()["name"]] = sin_firma
+
+    with pytest.raises(SystemExit, match="OTROS bytes"):
         rp.publicar(artefacto, tag, cliente)
 
 
@@ -365,8 +412,12 @@ def test_el_instalador_publicado_tiene_el_sha_del_manifest(artefacto, tag):
 
 
 def test_si_la_url_publicada_no_es_la_del_manifest_se_para(artefacto, tag):
-    """El defecto exacto del one-paste: la URL que se pega y el asset no cuadran."""
-    cliente = ClienteFalso()
+    """El defecto exacto del one-paste: la URL que se pega y el asset no cuadran.
+
+    Se comprueba sobre una release ya PUBLICADA, que es donde la URL publica
+    existe. En un borrador la URL es provisional y no se compara.
+    """
+    cliente = _cliente_completo(artefacto, tag)
     original = cliente.assets
 
     def con_otra_url(release):
@@ -381,6 +432,25 @@ def test_si_la_url_publicada_no_es_la_del_manifest_se_para(artefacto, tag):
     cliente.assets = con_otra_url
     with pytest.raises(SystemExit, match="la URL publicada no es la que pega"):
         rp.publicar(artefacto, tag, cliente)
+
+
+def test_en_un_borrador_la_url_provisional_no_es_un_error(artefacto, tag):
+    """El borrador sirve 'untagged-...': la comparacion es contra tag y nombre."""
+    cliente = ClienteFalso()
+    resumen = rp.publicar(artefacto, tag, cliente)
+    descargado = next(a for a in cliente.assets(cliente.release)
+                      if a["name"] == _entrada()["name"])
+    assert "untagged-" in descargado["browser_download_url"]
+    assert resumen["instalador"]["url"] == _entrada()["url"]
+
+
+def test_si_el_manifest_apunta_a_otro_tag_se_para_aun_en_borrador(
+        artefacto, tag, monkeypatch):
+    entrada = dict(_entrada())
+    entrada["url"] = entrada["url"].replace(f"/{tag}/", "/v0.0.0/")
+    monkeypatch.setattr(rp, "_entrada_instalador", lambda: entrada)
+    with pytest.raises(SystemExit):
+        rp.publicar(artefacto, tag, ClienteFalso())
 
 
 def test_la_url_del_manifest_apunta_al_tag_que_se_publica(tag):

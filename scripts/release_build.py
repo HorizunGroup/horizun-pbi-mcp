@@ -19,8 +19,9 @@ Salida (todo bajo --outdir):
     meta/SHA256SUMS        digest de cada archivo publicable
     meta/sbom.cdx.json     CycloneDX del entorno resuelto del wheel
     meta/horizun-pbi-mcp-instalar.ps1
-                           copia byte a byte de scripts/instalar.ps1, con su
-                           SHA-256 comprobado contra downloads_manifest.json
+                           copia byte a byte de scripts/instalar.ps1 YA FIRMADO
+                           (Authenticode, en el arbol), con su SHA-256
+                           comprobado contra downloads_manifest.json
     meta/horizun-pbi-mcp-<version>.mcpb
                            bundle local de Claude Desktop, reproducible y
                            construido solo desde el arbol Git confirmado
@@ -48,6 +49,7 @@ import sys
 from pathlib import Path
 
 import build_mcpb
+import release_verify
 
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = REPO / "scripts" / "downloads_manifest.json"
@@ -143,6 +145,12 @@ def construir(outdir: Path) -> dict:
 
     version = _version_declarada()
 
+    # 0. El instalador se firma EN EL ARBOL (Authenticode), antes de etiquetar, y
+    #    sus pines se calculan sobre el archivo FIRMADO. Se exige PRIMERO: un
+    #    .ps1 sin firma para la construccion en el acto y con la causa, no
+    #    despues de minutos de build.
+    release_verify.exigir_firmado(INSTALADOR.read_bytes(), "scripts/instalar.ps1")
+
     # 1. UNA construccion. `python -m build` saca el sdist y despues compila el
     #    wheel A PARTIR del sdist: si algo falta en el tarball, el wheel que
     #    sale de el lo pierde tambien, y se ve aqui.
@@ -192,6 +200,7 @@ def construir(outdir: Path) -> dict:
     # 4. El asset del instalador: copia byte a byte y hash comprobado contra el
     #    manifest. Aqui es donde se garantiza que lo que se publica bajo ese
     #    nombre es exactamente lo que las pruebas y el one-paste esperan.
+    #    El instalador va firmado desde el arbol (ver el paso 0).
     entrada = json.loads(MANIFEST.read_text(encoding="utf-8"))["downloads"]["instalar.ps1"]
     asset = meta / NOMBRE_ASSET
     shutil.copyfile(INSTALADOR, asset)
@@ -200,8 +209,8 @@ def construir(outdir: Path) -> dict:
         raise SystemExit(
             f"[release_build] el instalador no coincide con el manifest.\n"
             f"  manifest: {entrada['sha256']}\n  real:     {real}\n"
-            "  Si instalar.ps1 cambio, recalcula el hash y actualizalo en "
-            "downloads_manifest.json y en scripts/one_paste.ps1.")
+            "  Si instalar.ps1 se firmo o cambio, recalcula los pines con "
+            "python scripts/pin_instalador.py (manifest, one_paste.ps1 y docs).")
     if asset.stat().st_size != entrada["actual_bytes"]:
         raise SystemExit("[release_build] el tamano del instalador no coincide "
                          "con el manifest")

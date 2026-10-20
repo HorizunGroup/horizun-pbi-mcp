@@ -5,6 +5,43 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [2.1.3] — 2026-10-19
+
+Binarios firmados con el certificado de HORIZUN GROUP S.A.S. (Certum). Sin
+cambios de codigo funcional.
+
+The installer `scripts/instalar.ps1` — the only binary this repository ships
+with a signature — is now signed **in the tree**, before tagging, and its pins
+are computed from the signed file. Nothing in the MCP changed: 139 tools, the
+frozen contract is identical to `v2.1.2`.
+
+### Changed — release tooling only
+
+- **Why.** The installer's SHA-256 is pinned in `downloads_manifest.json`, the
+  one-paste block (`one_paste.ps1`), `docs/INSTALL.md` and the setup skill.
+  Signing the `.ps1` *after* the build changes its hash and the one-paste
+  rejects it. That is what happened with `v2.1.2`: the published asset was
+  re-signed afterwards (45 966 bytes, SHA-256 `5f608ad5…9360`) while the repo and
+  the one-paste block still pin the unsigned file (31 600 bytes,
+  `f01c2f0d…eb8`). Published releases are immutable, so the fix is this version.
+- `scripts/release_build.py`, `release_verify.py` and `release_publish.py`
+  require the installer to be Authenticode-signed (a `# SIG # Begin signature
+  block` at the end) and its hash to be the signed file's. The body must still be
+  ASCII, LF and BOM-free; only the signature block may carry CRLF.
+  `release_verify.py --authenticode` also asks Windows for a `Valid` signature
+  from the HORIZUN GROUP certificate with a Certum timestamp.
+- New `scripts/pin_instalador.py` recomputes the pins (manifest, one-paste
+  block, `INSTALL.md`, skill) from the signed file, and refuses an unsigned one.
+- `scripts/instalar.ps1` is `-text` in `.gitattributes`: git cannot normalize the
+  bytes the pinned hash covers.
+- `release.yml`: `publicar-github-release` now creates the release as a
+  **draft** and compares the installer against the draft's assets API; the new
+  `firmar-y-publicar` job (self-hosted `horizun-sign` runner, environment
+  `firma-certum`, approval required) verifies the signatures with
+  `scripts/firmar-release.ps1 -ExigirScripts` and publishes the draft. PyPI and
+  the MCP Registry do not wait for it: the wheel and sdist carry no binaries.
+- `RELEASING.md` documents the exact procedure.
+
 ## [2.1.2] — 2026-10-03
 
 Two batches of defects, both found in real use rather than in review: the

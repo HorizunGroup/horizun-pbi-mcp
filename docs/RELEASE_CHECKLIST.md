@@ -147,7 +147,8 @@ MCP Registry — the two standalone publish workflows are gone.
 
     tag v*  ->  build  ->  test (windows x 3.10/3.13)  ->  publicar-pypi
                                                               -> publicar-mcp
-                                                                 -> publicar-github-release
+                                                                 -> publicar-github-release (DRAFT)
+                                                                    -> firmar-y-publicar (waits for approval)
 
 The last link was **missing until v2.0.1** (RELEASE-004): nothing created a
 GitHub Release, while the one-paste block in this repository downloads
@@ -170,7 +171,11 @@ What that means in practice, and what to check before tagging:
    ```
 
 4. **The release asset `horizun-pbi-mcp-instalar.ps1` must be the frozen bytes**
-   of `scripts/instalar.ps1`. The size and SHA-256 are **not repeated here on
+   of `scripts/instalar.ps1` — the **Authenticode-signed** file. The installer is
+   signed in the tree before tagging and its pins are recomputed from the signed
+   file; signing it after the build would change the hash the one-paste block
+   verifies. The exact procedure, the approval of the `firma-certum` environment
+   and the runner are in [`../RELEASING.md`](../RELEASING.md). The size and SHA-256 are **not repeated here on
    purpose** — the one canonical copy lives in
    `scripts/downloads_manifest.json`, and a second copy in prose is a number
    that goes stale silently. (It did: this checklist claimed 21 016 bytes and a

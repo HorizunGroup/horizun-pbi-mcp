@@ -40,6 +40,27 @@ name: release
 # no encuentra el paquete. Por eso `needs` la ata a los cuatro anteriores; si
 # PyPI o el registro fallan o se saltan, este job no corre.
 #
+# FIRMA (certificado Certum de HORIZUN GROUP S.A.S.). El unico binario con firma
+# de este repo es el instalador scripts/instalar.ps1 (Authenticode), y su
+# SHA-256 esta FIJADO en el repo (downloads_manifest.json, el bloque de un
+# pegado, INSTALL.md, la skill). Firmarlo DESPUES de construir cambiaria ese
+# hash y rompe el one-paste -es lo que paso con la v2.1.2-, asi que el diseno
+# es: el instalador se firma EN EL ARBOL, antes de etiquetar (RELEASING.md), y
+# los pines se recalculan sobre el archivo FIRMADO (scripts/pin_instalador.py).
+# Este workflow lo EXIGE: `release_build.py` para si el .ps1 no lleva firma y
+# `release_verify.py --authenticode` pregunta a Windows si es valida.
+#
+#   ... -> publicar-github-release (crea el BORRADOR, no lo publica)
+#            |
+#            +-> firmar-y-publicar (runner self-hosted `horizun-sign`, con
+#                environment `firma-certum`: ESPERA la aprobacion de Pablo con
+#                SimplySign Desktop conectado; verifica las firmas con
+#                -ExigirScripts y publica el borrador)
+#
+# PyPI y el MCP Registry NO esperan a la firma: el wheel y el sdist no llevan
+# binarios propios ni cambian por firmar el instalador, asi que no hay nada
+# que firmar en ellos y esperar solo retrasaria la publicacion del paquete.
+#
 # Cada job consumidor descarga el MISMO artifact y llama a
 # scripts/release_verify.py antes de tocarlo. La logica vive en esos scripts y
 # no en pasos `run:` porque un workflow no se puede ejecutar en una maquina de
@@ -103,8 +124,11 @@ jobs:
       - name: Construir, verificar y firmar con hashes
         run: python scripts/release_build.py --outdir artefactos
 
+      # `--authenticode`: ademas de los digests, Windows comprueba que la firma
+      # del instalador es Valid, de la huella de HORIZUN GROUP y con sello de
+      # tiempo de Certum. Solo aqui (windows-latest) y no en el resto de jobs.
       - name: Releer el artefacto como lo hara cualquier consumidor
-        run: python scripts/release_verify.py --dir artefactos
+        run: python scripts/release_verify.py --dir artefactos --authenticode
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -278,11 +302,12 @@ jobs:
 
   # ---------------------------------------------- publicar GitHub Release ---
   publicar-github-release:
-    name: Publicar la GitHub Release con los bytes firmados
+    name: Crear el BORRADOR de la GitHub Release con los bytes verificados
     # RELEASE-004. Los CUATRO anteriores. Con `needs` basta: si alguno falla o
     # se salta, este no corre —es lo que paso en el intento de v2.0.0, donde
     # publicar-pypi fallo y publicar-mcp quedo omitido—. La release es lo
-    # ultimo que se publica porque es lo primero que la gente descarga.
+    # ultimo que se hace porque es lo primero que la gente descarga; aqui solo
+    # se crea el BORRADOR y `firmar-y-publicar` la publica.
     needs: [build, test, publicar-pypi, publicar-mcp]
     if: >-
       startsWith(github.ref, 'refs/tags/v') &&
@@ -312,14 +337,55 @@ jobs:
           python scripts/release_verify.py --dir artefactos
           --expect-version ${{ github.ref_name }}
 
-      # Crea la release NO borrador y sube exactamente los archivos firmados en
-      # SHA256SUMS. Si alguno ya existe con otros bytes, para; si la release ya
-      # esta completa, la re-verifica descargandola y termina en verde. Al
-      # final comprueba que el instalador remoto tiene el SHA-256 y la URL que
-      # publica scripts/downloads_manifest.json.
-      - name: Crear la release y publicar exactamente esos bytes
+      # Crea la release como BORRADOR (no se publica aqui) y sube exactamente los
+      # archivos verificados en SHA256SUMS. Si alguno ya existe con otros bytes,
+      # para; si el borrador ya esta completo, lo re-verifica descargando cada
+      # asset por la API y termina en verde. Al final comprueba que el
+      # instalador de la release tiene el SHA-256 (el del archivo FIRMADO) y el
+      # tamano que fija scripts/downloads_manifest.json, y que su URL apunta al
+      # tag y al nombre que se publican; un borrador no tiene URL publica que
+      # releer, asi que se compara contra la API de assets. La publica
+      # `firmar-y-publicar`.
+      - name: Crear el borrador y subir exactamente esos bytes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
           python scripts/release_publish.py --dir artefactos
           --tag ${{ github.ref_name }} --repo ${{ github.repository }}
+
+  # ------------------------------------------------- firmar y publicar ---
+  firmar-y-publicar:
+    name: Verificar las firmas Certum y publicar el borrador
+    # Tras el borrador, que es lo que este job publica. PyPI y el MCP Registry
+    # ya publicaron antes y no dependen de la firma (ver la cabecera).
+    needs: [build, test, publicar-pypi, publicar-mcp, publicar-github-release]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
+    # Runner self-hosted de Pablo (carpeta sign-runners/horizun-pbi-mcp bajo
+    # .horizun en su perfil), con SimplySign Desktop y la clave Certum.
+    runs-on: [self-hosted, windows, horizun-sign]
+    # El environment tiene a pablo-horizun como revisor obligatorio: el job
+    # ESPERA su aprobacion en la pestana Actions. No se salta ni se auto-aprueba.
+    environment: firma-certum
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # -ExigirScripts: el instalador .ps1 YA viene firmado del arbol (su hash
+      # esta fijado en el repo); este paso lo EXIGE y lo verifica (Valid, huella
+      # y sello de Certum), NO lo firma. Si no hay binarios propios que firmar
+      # (el wheel y el sdist no llevan), solo verifica y publica el borrador.
+      # Si SimplySign esta desconectado el script falla ANTES de tocar nada:
+      # reconectar y 'Re-run failed jobs' (RELEASING.md).
+      - name: Firmar, verificar y publicar la release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          ./scripts/firmar-release.ps1
+          -Repo ${{ github.repository }}
+          -Tag ${{ github.ref_name }}
+          -ExigirScripts
