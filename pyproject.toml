@@ -61,7 +61,7 @@ test = [
     "pytest>=8.0",
     "pyyaml>=6,<7",
     "tomli>=2; python_version < '3.11'",
-    "ruff>=0.16,<0.17",
+    "ruff>=0.16,<0.18",
     "mypy>=2.3,<2.4",
     "pytest-cov>=7.1,<8",
 ]
