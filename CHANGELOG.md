@@ -5,6 +5,47 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Three defects found on 2026-10-24 in a benchmark where four agents built the
+same Power BI model with this MCP at the same time. Two of the four delivered a
+project that Power BI Desktop would not open, and the cause was the tool, not
+the agents.
+
+The frozen contract is intact: no tool, parameter or default changed.
+
+### Fixed
+
+- **`pbi_create_calculated_table` wrote `sourceColumn` without brackets.** In a
+  calculated table `sourceColumn` is the column of the DAX result, and Desktop
+  needs `sourceColumn: [semana]`. With `sourceColumn: semana` it gave the column
+  an ID that doesn't exist and rejected every relationship to it ("La relación
+  "LB_Calendario" usa un Id. de columna 71 no válido"): the project did not
+  open. Columns are now written `[name]` (`]` doubled); a `source_column` that
+  already has brackets, such as `Tabla[col]`, is kept, and columns inferred
+  from the engine keep the engine's full name as their `sourceColumn`. With
+  only that change the two projects open in about 11 s and their measures are
+  exact.
+- **`pbi_validate_tmdl` passed those models as valid.** The official serializer
+  accepts the file, so only the lint can see it: the new rule
+  `tmdl_calculated_source_column_unbracketed` flags a calculated-table column
+  whose `sourceColumn` has no brackets: an error when a relationship uses it,
+  a warning otherwise (with no relationship Desktop does open the project, so
+  the preflight must not refuse it). Imported tables are not touched.
+  Because the Desktop preflight runs the same validator, `pbi_open_in_desktop`
+  now stops such a project in about 2 s with the findings, before launching
+  Desktop.
+- **`pbi_open_in_desktop` answered `desktop_timeout` after the whole wait.**
+  Desktop had shown «Se encontraron problemas» with the exact reason after
+  ~6 s. The wait now watches for an error dialog owned by the Desktop it
+  launched and fails at once with `desktop_load_failed`, the dialog title and
+  its text (`dialog_title`, `dialog_text`). The text is read through UI
+  Automation in the out-of-process helper (new read-only action
+  `read_dialog`), which needs the `export` extra; without it the error says so
+  and how to install it. A credentials dialog does not stop the wait, and a
+  timeout now lists the open dialogs (`open_dialogs`). Checked against real
+  Desktop on a copy of one of the broken projects.
+
 ## [2.1.3] — 2026-10-19
 
 Binarios firmados con el certificado de HORIZUN GROUP S.A.S. (Certum). Sin
