@@ -256,7 +256,7 @@ TOOLS_NUEVAS = (MACROFASE_A_TOOLS + MACROFASE_B_TOOLS + MACROFASE_C_TOOLS
                 + FUENTES_TOOLS + PUERTO_TOOLS
                 + EXPORTACION_Y_SHAREPOINT_TOOLS + CONTENIDO_TOOLS
                 + TORRE_AURORA_TOOLS + POWER_QUERY_TOOLS
-                + ENTREGA_TOOLS)
+                + ENTREGA_TOOLS + ["pbi_find_tool"])
 BASELINE_COUNT = 34
 EXPECTED_COUNT = BASELINE_COUNT + len(TOOLS_NUEVAS)
 
@@ -309,9 +309,14 @@ def test_all_tools_are_prefixed(snapshot):
 
 # ------------------------------------------------------------ contrato --------
 def test_contract_matches_golden(snapshot):
-    """El contrato completo (params, tipos, defaults, required) no cambio."""
+    """Las tools congeladas no cambian; las adiciones declaradas no reescriben el golden."""
     golden = contract_utils.load_golden()
-    breaking, compatible = contract_utils.diff_snapshots(golden, snapshot)
+    frozen_names = {tool["name"] for tool in golden["tools"]}
+    current_names = {tool["name"] for tool in snapshot["tools"]}
+    assert current_names - frozen_names == set(TOOLS_NUEVAS) - frozen_names
+    frozen_snapshot = {**snapshot, "tool_count": len(frozen_names),
+                       "tools": [tool for tool in snapshot["tools"] if tool["name"] in frozen_names]}
+    breaking, compatible = contract_utils.diff_snapshots(golden, frozen_snapshot)
     assert not breaking and not compatible, (
         "\n\nEl contrato MCP cambio respecto al golden:\n\n"
         + contract_utils.format_diff(breaking, compatible)

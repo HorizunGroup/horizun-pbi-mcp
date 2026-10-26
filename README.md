@@ -19,7 +19,7 @@ installs it and it prepares its own runtime: no Python, no JSON to edit.
 
 ![How it works](https://raw.githubusercontent.com/HorizunGroup/horizun-pbi-mcp/main/docs/assets/como-funciona.png)
 
-**v2.1.3** · 139 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
+**v2.1.3** · 140 tools · Windows · ChatGPT Desktop Free · Claude Desktop Free · Claude Code · Codex
 
 New to the project? Start with [what this Power BI MCP is, when to use it, and
 what it deliberately does not do](docs/POWER_BI_MCP.md).
@@ -62,14 +62,14 @@ Then open `/plugins`, pick the **Horizun** marketplace and install
 
 ### Desktop or Code?
 
-Same server, same 139 tools, same local runtime — install both and they share
+Same server, same 140 tools, same local runtime — install both and they share
 it. Pick by what you are doing: **Claude Desktop** to *use* Power BI, in chat,
 one click, free tier. **Claude Code** to *build* — it adds the terminal, git
 and your repo, and loads tool schemas on demand instead of all at once.
 
 On a new PC, the [verified one-paste installer](docs/INSTALL.md) prepares the
 prerequisites without administrator rights. First setup takes a few minutes:
-run `pbi_install_status` until `ready`, restart once, and confirm the 139 `pbi_*` tools appear.
+run `pbi_install_status` until `ready`, restart once, and confirm the 140 `pbi_*` tools appear.
 
 ## Your first minute
 
@@ -108,7 +108,7 @@ Document every measure in the model and export it to Excel.
 | Quality | Audit models and reports, document schemas, detect broken references and normalize report structures |
 | Delivery | Export verified PDF, Word, Excel and PowerPoint artifacts; ingest SharePoint data read-only |
 
-See the [tool catalog](docs/TOOL_CATALOG.md) for all 139 tools and their risk
+See the [tool catalog](docs/TOOL_CATALOG.md) for all 140 tools and their risk
 classifications.
 
 ## Why it is safe to point at real work
@@ -184,6 +184,17 @@ python -m tests.contract_utils
 The MCP contract is frozen and checked against `tests/golden/tools_v1.json`.
 Real `.pbix`, `.pbip`, credentials, DLLs, outputs and backups are never
 committed. See [AGENTS.md](AGENTS.md) for the repository invariants.
+
+## Small local models
+
+For Ollama models such as Qwen 3 4B/8B, set the **MCP server process** environment in your MCP-capable client (not the Ollama model parameters), then restart the server/client:
+```json
+{"env": {"HORIZUN_PBI_MCP_PROFILE": "local"}}
+```
+For a shell launch: `$env:HORIZUN_PBI_MCP_PROFILE="local"; horizun-pbi-mcp` (PowerShell). The profile exposes 12 tools for create/open → import → inspect → measures → page → validate → Desktop → refresh → DAX, with short schemas and compact replies; `tools/list` is tested below 4,000 estimated tokens (JSON characters / 4).
+Use `source="pbip"` and `mode="pbip"` while editing with Desktop closed. Open Desktop and refresh with `confirm=true` before querying data.
+`pbi_find_tool(query="gráfico")` searches the entire catalog in Spanish/English, including hidden tools, and reports availability. Set `HORIZUN_PBI_MCP_PROFILE=full` or remove the variable and restart to access them; calls to hidden tools are rejected in `local`.
+Compact replies mark omitted content in `_compact`; filter tables/DAX or switch to full for more detail. Errors, warnings, validation coverage and recovery journal paths remain available; there is no hard response-size cap on diagnostics. With no variable, existing tools retain their descriptions, parameters and full replies; discovery is the only addition.
 
 ## Learn to direct it
 

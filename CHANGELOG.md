@@ -7,6 +7,15 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 12 tools with short descriptions,
+  minimal schema metadata and compact replies for small Ollama/local models.
+  The real MCP listing has a regression budget below 4,000 estimated tokens.
+- Read-only `pbi_find_tool(query)` in every profile: bilingual, accent-insensitive
+  partial search over all tools, with availability and full-profile activation.
+  Existing full-profile contracts and responses remain unchanged.
+
 Three defects found on 2026-10-24 in a benchmark where four agents built the
 same Power BI model with this MCP at the same time. Two of the four delivered a
 project that Power BI Desktop would not open, and the cause was the tool, not

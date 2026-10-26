@@ -16,11 +16,13 @@ from mcp.server.fastmcp import FastMCP
 from horizun_pbi_mcp import branding
 from horizun_pbi_mcp.config import get_session, get_settings
 from horizun_pbi_mcp.logging_config import get_logger, setup_logging
+from horizun_pbi_mcp.tool_profiles import ProfileRegistrar, resolve_profile
 from horizun_pbi_mcp.tools import (
     audit_tools,
     convert_tools,
     dax_tools,
     design_tools,
+    discovery_tools,
     documentation_tools,
     export_tools,
     explore_tools,
@@ -76,8 +78,9 @@ def _anotar_riesgo(mcp: FastMCP, log) -> None:
               len(mcp._tool_manager.list_tools()))
 
 
-def build_server() -> FastMCP:
+def build_server(*, profile: str | None = None) -> FastMCP:
     settings = get_settings()
+    profile = resolve_profile(profile)
     setup_logging(settings.log_level, settings.log_file)
     log = get_logger("server")
 
@@ -96,12 +99,14 @@ def build_server() -> FastMCP:
     # la expone en el handshake. Sin esto, serverInfo devolveria la
     # version de la libreria mcp en vez de la del producto.
     mcp._mcp_server.version = branding.VERSION
+    registrar = ProfileRegistrar(mcp, profile)
     for module in _TOOL_MODULES:
-        module.register(mcp)
+        module.register(registrar)
+    discovery_tools.register(registrar, registrar.catalog, profile)
     _anotar_riesgo(mcp, log)
 
     log.info("%s %s listo. %d modulos de tools registrados.",
-             branding.PRODUCT_NAME, branding.VERSION, len(_TOOL_MODULES))
+             branding.PRODUCT_NAME, branding.VERSION, len(_TOOL_MODULES) + 1)
     return mcp
 
 

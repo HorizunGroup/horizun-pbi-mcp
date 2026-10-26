@@ -66,7 +66,7 @@ yours refuses the file, that is the first thing to check.
    Analysis Services libraries and the PBIR schemas, so on a normal connection
    allow a few minutes.
 4. **Restart Claude Desktop once.** Then confirm: a new chat should offer the
-   full `pbi_*` toolset (139 tools, `pbi_start_here` among them). If you still
+   full `pbi_*` toolset (140 tools, `pbi_start_here` among them). If you still
    see only the two installer tools, the client is still holding the bootstrap
    session — reopen it.
 
@@ -274,7 +274,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Setup starts automatically on the first session. While it progresses
 you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
-the client the 139 tools will appear. Nothing needs to be downloaded or run
+the client the 140 tools will appear. Nothing needs to be downloaded or run
 separately. The runtime and verified downloads stay in the plugin's local
 data, outside the repository and your projects.
 
@@ -284,7 +284,7 @@ Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 For Claude Desktop, prefer the release `.mcpb`: Claude supplies the bootstrap
 runtime and no manual Python or JSON configuration is needed.
 
-Reproducible guide from scratch. At the end, an MCP client should see 139 `pbi_*` tools.
+Reproducible guide from scratch. At the end, an MCP client should see 140 `pbi_*` tools.
 
 ---
 
@@ -394,7 +394,7 @@ horizun-pbi-completar
 The second command is **not optional**. The wheel cannot ship the Analysis
 Services DLLs (Microsoft binaries) or the PBIR schemas (no redistribution
 permission), so a bare `pip install` leaves a server that starts, speaks MCP and
-answers all 139 tools — and cannot work: the LIVE layer has nothing to talk to
+answers all 140 tools — and cannot work: the LIVE layer has nothing to talk to
 the model with, and every PBIR write fails with `schema_unavailable`.
 `horizun-pbi-completar` downloads both, verified by SHA-256, and
 `horizun-pbi-completar --check` tells you where you stand without downloading

@@ -1,6 +1,6 @@
-# Tool catalog — 139
+# Tool catalog — 140
 
-Generated from the contract frozen in `tests/golden/tools_v1.json`.
+The frozen baseline is in `tests/golden/tools_v1.json`; additive tools are declared in `tests/test_tool_contract.py`.
 The **34 baseline** tools keep their name, parameters, types, defaults and response shape since version 0.1.0.
 
 > Not sure where to start? Call **`pbi_start_here`**: it looks at the project's
@@ -37,7 +37,8 @@ tools registered.
 | U — Torre Aurora field report | 1 |
 | V — Power Query (M) | 2 |
 | W — file selection and PBIX delivery | 3 |
-| **Total** | **139** |
+| X — tool discovery | 1 |
+| **Total** | **140** |
 
 ---
 
@@ -45,6 +46,7 @@ tools registered.
 
 | Tool | What it does |
 |---|---|
+| `pbi_find_tool` | Read-only bilingual search over all tools, including those hidden by the local profile; reports availability and how to activate full |
 | `pbi_health_check` | General status: dependencies, DLLs, session, pending journals |
 | `pbi_capabilities` | What can be done **now**, and what can't, with the reason |
 | `pbi_session_info` | Active model and project, and their freshness |

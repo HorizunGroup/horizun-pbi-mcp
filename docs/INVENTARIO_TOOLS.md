@@ -51,14 +51,14 @@ dar por hecho al ver 134 filas en verde:
 
 | | |
 |---|---|
-| Tools | **139** |
-| Ejecutadas por MCP en cada corrida | **139** |
-| Con caso negativo que las hace fallar | **131** |
+| Tools | **140** |
+| Ejecutadas por MCP en cada corrida | **140** |
+| Con caso negativo que las hace fallar | **132** |
 | Sin modo de fallo (ejecutadas, se exige `ok: true`) | **8** |
 | Excepciones declaradas con motivo | **0** |
-| De solo lectura | **54** |
+| De solo lectura | **55** |
 | Con `confirm` | **12** |
-| Con payload congelado | **139** |
+| Con payload congelado | **140** |
 
 ## Las tools, una por una
 
@@ -121,6 +121,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_export_pbix` | escritura | 10 | 0 | — | sí | tipo invalido | `pbip_path` |
 | `pbi_export_report_content` | escritura | 8 | 1 | — | sí | falta un requerido | `select` |
 | `pbi_finalize_delivery` | escritura | 9 | 0 | — | sí | tipo invalido | `path` |
+| `pbi_find_tool` | solo lectura | 1 | 1 | — | sí | falta un requerido | `query` |
 | `pbi_generate_page_spec` | solo lectura | 6 | 1 | — | sí | falta un requerido | `page_name` |
 | `pbi_generate_pdf_report` | escritura | 7 | 0 | — | sí | tipo invalido | `report_type` |
 | `pbi_generate_report_page` | escritura | 6 | 1 | — | sí | falta un requerido | `page_name` |
