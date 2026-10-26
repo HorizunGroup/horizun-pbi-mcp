@@ -42,6 +42,22 @@ tools registered.
 
 ---
 
+## Local profile
+
+`HORIZUN_PBI_MCP_PROFILE=local` exposes these 13 tools with compact descriptions
+and replies; the MCP listing stays below 4,000 estimated tokens (JSON characters / 4):
+
+- Project and data: `pbi_create_pbip_project`, `pbi_open_pbip_project`,
+  `pbi_add_table_from_file`, `pbi_list_tables`.
+- Authoring: `pbi_create_relationship`, `pbi_create_measure`, `pbi_create_page_from_spec`.
+- Validation: `pbi_validate_tmdl`, `pbi_validate_pbip_project`.
+- Desktop and queries: `pbi_open_in_desktop`, `pbi_refresh_model`, `pbi_run_dax`.
+- Discovery: `pbi_find_tool`.
+
+Create relationships between existing columns with Desktop closed. Defaults are
+many-to-one, one-direction filtering and `overwrite=false`. Set the profile to
+`full` (or remove the variable) and restart to access the entire catalog.
+
 ## Session, capabilities and recovery
 
 | Tool | What it does |

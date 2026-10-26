@@ -9,8 +9,10 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ### Added
 
-- Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 12 tools with short descriptions,
+- Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 13 tools with short descriptions,
   minimal schema metadata and compact replies for small Ollama/local models.
+  Includes `pbi_create_relationship` to connect tables with Desktop closed,
+  using the existing parameters, defaults and mutation guards.
   The real MCP listing has a regression budget below 4,000 estimated tokens.
 - Read-only `pbi_find_tool(query)` in every profile: bilingual, accent-insensitive
   partial search over all tools, with availability and full-profile activation.

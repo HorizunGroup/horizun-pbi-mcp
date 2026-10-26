@@ -48,6 +48,7 @@ def test_local_registers_only_allowlist_and_cannot_call_hidden(monkeypatch):
     monkeypatch.setenv(PROFILE_ENV, " LoCaL ")
     server = build_server()
     assert set(listed(server)) == set(LOCAL_DESCRIPTIONS)
+    assert "pbi_create_relationship" in listed(server)
     assert {t.name for t in server._tool_manager.list_tools()} == set(LOCAL_DESCRIPTIONS)
     with pytest.raises(ToolError, match="Unknown tool"):
         call(server, "pbi_delete_measure", table="T", name="M", confirm=True)
@@ -109,7 +110,7 @@ def test_wire_listing_token_budget():
     local_count, local_tokens = asyncio.run(measure("local"))
     full_count, full_tokens = asyncio.run(measure("full"))
     print(f"tools/list: local={local_count}/{local_tokens} tokens; full={full_count}/{full_tokens} tokens")
-    assert local_count == 12
+    assert local_count == 13
     assert local_tokens < 4000
     assert local_tokens < full_tokens
 
@@ -130,16 +131,21 @@ def test_bilingual_partial_accent_insensitive_search(query, target):
     assert target in {m["name"] for m in result["matches"]}
 
 
-@pytest.mark.parametrize("profile,active", [("local", False), ("full", True)])
-def test_exact_hidden_tool_search_and_activation(profile, active):
-    result = call(build_server(profile=profile), "pbi_find_tool", query="pbi_delete_measure")
+@pytest.mark.parametrize("profile,target,active", [
+    ("local", "pbi_delete_measure", False), ("full", "pbi_delete_measure", True),
+    ("local", "pbi_create_relationship", True), ("full", "pbi_create_relationship", True),
+])
+def test_exact_tool_search_and_activation(profile, target, active):
+    result = call(build_server(profile=profile), "pbi_find_tool", query=target)
     match = result["matches"][0]
-    assert match["name"] == "pbi_delete_measure"
+    assert match["name"] == target
     assert match["in_active_profile"] is active
     assert "\n" not in match["description"]
     if not active:
         assert "HORIZUN_PBI_MCP_PROFILE=full" in match["activation"]
         assert "restart" in match["activation"]
+    else:
+        assert "activation" not in match
 
 
 @pytest.mark.parametrize("query", ["", "   ", "la de the", "zznonexistentzz"])
@@ -197,6 +203,21 @@ def test_local_offline_workflow_writes_and_rereads_real_synthetic_files(tmp_path
     assert added["ok"], added
     tables = call(server, "pbi_list_tables", source="pbip", tables=["Data"])
     assert {c["name"] for c in tables["tables"][0]["columns"]} == {"Category", "Amount"}
+    categories_csv = tmp_path / "categories.csv"
+    categories_csv.write_text("Category\nA\nB\n", encoding="utf-8")
+    categories = call(server, "pbi_add_table_from_file",
+                      path=str(categories_csv), table_name="Categories")
+    assert categories["ok"], categories
+    relationship = call(server, "pbi_create_relationship",
+                        from_table="Data", from_column="Category",
+                        to_table="Categories", to_column="Category", name="Data_Category")
+    assert relationship["ok"], relationship
+    model = tmdl_reader.read_semantic_model(session.require_active_pbip())
+    assert model["relationships"] == [{
+        "name": "Data_Category", "from_table": "Data", "from_column": "Category",
+        "to_table": "Categories", "to_column": "Category",
+        "is_active": True, "cross_filtering": "OneDirection",
+    }]
     measure = call(server, "pbi_create_measure", table="Data", name="Total",
                    expression="SUM('Data'[Amount])", mode="pbip", format_string=0,
                    request_id="local-measure")

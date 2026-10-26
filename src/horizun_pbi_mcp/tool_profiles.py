@@ -1,10 +1,10 @@
 """Opt-in tool registration for small local models.
 
-The twelve local tools cover an end-to-end file workflow: create/open a PBIP,
-import a file, inspect tables AND columns, create measures and a page, validate
-TMDL and the project, open Desktop, refresh and query DAX. Refresh is essential:
-opening a new PBIP does not load its data. Discovery is the twelfth tool and
-explains how to reach the full catalog. Editing existing layouts, relationships,
+The thirteen local tools cover an end-to-end file workflow: create/open a PBIP,
+import a file, inspect tables AND columns, create relationships, measures and a
+page, validate TMDL and the project, open Desktop, refresh and query DAX. Refresh
+is essential: opening a new PBIP does not load its data. Discovery is the
+thirteenth tool and explains how to reach the full catalog. Editing existing layouts,
 exports and recovery remain discoverable in full rather than crowding this set.
 
 Only registration/presentation changes. Original handlers, argument validation,
@@ -29,6 +29,7 @@ LOCAL_DESCRIPTIONS = {
     "pbi_create_pbip_project": "Crea y activa un PBIP vacío en out_dir/name; conserva overwrite=false para no reemplazar otro proyecto.",
     "pbi_add_table_from_file": "Importa CSV, Excel, JSON o HTML a TMDL con Desktop cerrado; path debe existir. dry_run=true ensaya, sheet elige hoja y text_columns fuerza texto.",
     "pbi_list_tables": "Lista tablas y columnas reales; usa source='pbip' offline o 'live' con Desktop abierto. detail='summary' resume; tables filtra por nombres.",
+    "pbi_create_relationship": "Crea una relación entre from_table/from_column y to_table/to_column en TMDL con Desktop cerrado; defecto muchos-a-uno, filtro unidireccional. overwrite=false evita reemplazos.",
     "pbi_create_measure": "Crea una medida DAX en table; usa mode='pbip' con Desktop cerrado o 'live' abierto (defecto). mode='both' está bloqueado; overwrite=false evita reemplazos.",
     "pbi_create_page_from_spec": "Crea página y visuales con Desktop cerrado; spec={page_name,layout:'grid',visuals:[{type:'card',title,fields:{Values:['Tabla[Medida]']}}]}. Usa nombres reales; conserva las advertencias de plantillas.",
     "pbi_validate_pbip_project": "Valida el proyecto activo, TMDL, PBIR y referencias de campos; revisa errores y cobertura.",
