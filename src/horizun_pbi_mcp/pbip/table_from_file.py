@@ -742,7 +742,9 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
     codigos que el encabezado no delata (p. ej. `partida` con 1.01, 2.10).
     Un nombre que no existe en el archivo es un error, no se ignora.
     """
-    ruta = Path(path).expanduser()
+    # Absoluta: Power Query no resuelve `File.Contents` contra el cwd del
+    # servidor (duelo ronda 2: `datos\x.csv` no se hallaba al refrescar).
+    ruta = Path(path).expanduser().resolve()
     if not ruta.exists():
         raise TableFromFileError(f"El archivo no existe: {ruta}",
                                  details={"path": str(ruta)})

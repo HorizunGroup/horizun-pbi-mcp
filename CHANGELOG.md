@@ -27,6 +27,11 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- **`pbi_add_table_from_file` wrote a relative path into the M.** Given
+  `datos\costos.csv`, the server found the file (relative to its own working
+  directory) and wrote `File.Contents("datos\costos.csv")`, which Power Query
+  cannot resolve at refresh time. The path is now made absolute before
+  profiling. Found in round 2 of the duel (qwen3:4b, local profile).
 - **`pbi_create_calculated_table` wrote `sourceColumn` without brackets.** In a
   calculated table `sourceColumn` is the column of the DAX result, and Desktop
   needs `sourceColumn: [semana]`. With `sourceColumn: semana` it gave the column
