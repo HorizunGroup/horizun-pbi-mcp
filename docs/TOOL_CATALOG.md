@@ -44,14 +44,19 @@ tools registered.
 
 ## Local profile
 
-`HORIZUN_PBI_MCP_PROFILE=local` exposes these 13 tools with compact descriptions
-and replies; the MCP listing stays below 4,000 estimated tokens (JSON characters / 4):
+`HORIZUN_PBI_MCP_PROFILE=local` exposes these 22 tools with compact descriptions
+and replies; the MCP listing stays below 5,000 estimated tokens (JSON characters / 4):
 
+- Start: `pbi_start_here` (its steps only name tools of this profile), `pbi_health_check`.
 - Project and data: `pbi_create_pbip_project`, `pbi_open_pbip_project`,
-  `pbi_add_table_from_file`, `pbi_list_tables`.
-- Authoring: `pbi_create_relationship`, `pbi_create_measure`, `pbi_create_page_from_spec`.
-- Validation: `pbi_validate_tmdl`, `pbi_validate_pbip_project`.
-- Desktop and queries: `pbi_open_in_desktop`, `pbi_refresh_model`, `pbi_run_dax`.
+  `pbi_add_table_from_file`, `pbi_get_power_query`, `pbi_update_power_query`,
+  `pbi_list_tables`.
+- Authoring: `pbi_create_relationship`, `pbi_create_measure`,
+  `pbi_create_calculated_table`, `pbi_create_calculated_column`,
+  `pbi_create_page_from_spec`, `pbi_delete_page`.
+- Validation: `pbi_validate_tmdl`, `pbi_validate_pbip_project`, `pbi_validate_measures`.
+- Desktop and queries: `pbi_open_in_desktop`, `pbi_refresh_model`, `pbi_close_desktop`,
+  `pbi_run_dax`.
 - Discovery: `pbi_find_tool`.
 
 Create relationships between existing columns with Desktop closed. Defaults are

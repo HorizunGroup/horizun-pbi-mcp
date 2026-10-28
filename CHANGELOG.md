@@ -9,11 +9,20 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ### Added
 
-- Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 13 tools with short descriptions,
+- Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 22 tools with short descriptions,
   minimal schema metadata and compact replies for small Ollama/local models.
   Includes `pbi_create_relationship` to connect tables with Desktop closed,
-  using the existing parameters, defaults and mutation guards.
-  The real MCP listing has a regression budget below 4,000 estimated tokens.
+  using the existing parameters, defaults and mutation guards. After round 2
+  of the duel it also carries `pbi_start_here`, `pbi_health_check`, reading
+  and replacing Power Query, calculated tables and columns, `pbi_delete_page`,
+  `pbi_close_desktop` and `pbi_validate_measures`: one model refused to start
+  without them and another closed Desktop with PowerShell five times.
+  `pbi_start_here` only names tools of the active profile.
+  The real MCP listing has a regression budget below 5,000 estimated tokens.
+- `pbi_create_pbip_project(subfolder=false)` writes `out_dir/name.pbip` with its
+  folders next to it, as Desktop saves them, and never replaces anything; an
+  `out_dir` that ends in `.pbip` does the same. The default still nests.
+- `pbi_add_table_from_file(keep_summary_rows=false)`: see Fixed.
 - Read-only `pbi_find_tool(query)` in every profile: bilingual, accent-insensitive
   partial search over all tools, with availability and full-profile activation.
   Existing full-profile contracts and responses remain unchanged.
@@ -27,6 +36,36 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- **`pbi_create_measure` in `pbip` mode wrote DAX that could not be evaluated,
+  and `pbi_validate_tmdl` passed it.** Round 2 of the duel: thirteen measures
+  with table names that have spaces left unquoted
+  (`SUMX(Presupuesto Edificio Mirador, ...)`) and measures cited without
+  brackets (`VAC = EAC - BAC`). With no engine to compile them, nothing caught
+  them until Desktop. A static reference check now refuses them before writing
+  (planner and writer) and the lint reports them as `tmdl_dax_reference`:
+  unquoted table names, unknown tables, columns or `[references]`, measures
+  without brackets and typographic operators such as `−`. Checked against the
+  211 measures of the duel models on disk: only the 12 invalid ones are flagged.
+- **`no_active_model` pointed to tools the local profile hides.** It now leads
+  with `mode='pbip'` and `pbi_open_in_desktop`, and names `pbi_select_model` only
+  in the full profile; when a `.pbip` is active with Desktop closed the reply
+  starts with "Repite esta misma llamada con mode='pbip'". One model failed
+  eight times in a row on the old wording.
+- **"El archivo no existe" did not say which files exist.** It now lists the
+  loadable files of that folder (up to 30); a small model had invented seven
+  file names.
+- **`pbi_add_table_from_file` loaded the TOTAL row and blank rows of a report.**
+  The TOTAL row doubled the sums and left a blank key that broke the 1:N
+  relationship. In csv and xlsx, rows with no value and rows whose first three
+  columns start with TOTAL, SUBTOTAL or GRAN TOTAL are removed in Power Query
+  (step "Filas vacias y totales quitadas") and reported in `warnings`;
+  `keep_summary_rows=true` keeps them. Detection reads the profiling sample, and
+  the M applies the same rule to the whole file.
+- **`pbi_create_page_from_spec` on an existing page answered `ok` and did
+  nothing.** The empty first page of `pbi_create_pbip_project` stayed empty for
+  good. An existing page with no visuals is now filled in one transaction
+  (`filled_existing_page: true`); one that already has visuals is refused with
+  the way out, instead of pretending the spec was applied.
 - **`pbi_add_table_from_file` wrote a relative path into the M.** Given
   `datos\costos.csv`, the server found the file (relative to its own working
   directory) and wrote `File.Contents("datos\costos.csv")`, which Power Query

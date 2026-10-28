@@ -1,11 +1,13 @@
 """Opt-in tool registration for small local models.
 
-The thirteen local tools cover an end-to-end file workflow: create/open a PBIP,
-import a file, inspect tables AND columns, create relationships, measures and a
-page, validate TMDL and the project, open Desktop, refresh and query DAX. Refresh
-is essential: opening a new PBIP does not load its data. Discovery is the
-thirteenth tool and explains how to reach the full catalog. Editing existing layouts,
-exports and recovery remain discoverable in full rather than crowding this set.
+The local tools cover an end-to-end file workflow: start/health, create/open a
+PBIP, import a file, read and replace its Power Query, inspect tables AND
+columns, create relationships, measures, calculated tables and columns, create
+and delete pages, validate TMDL, measures and the project, open, refresh and
+close Desktop, and query DAX. Refresh is essential: opening a new PBIP does not
+load its data. Discovery explains how to reach the full catalog. Editing
+existing layouts, exports and recovery remain discoverable in full rather than
+crowding this set.
 
 Only registration/presentation changes. Original handlers, argument validation,
 defaults, guards, transactions and risk annotations remain authoritative. Hidden
@@ -38,7 +40,31 @@ LOCAL_DESCRIPTIONS = {
     "pbi_refresh_model": "Carga datos en el modelo abierto; exige confirm=true y puede descartar cambios en memoria. Revisa warnings y rows_by_table; no publica en el Service.",
     "pbi_run_dax": "Consulta DAX de solo lectura en Desktop (EVALUATE o DEFINE...EVALUATE). max_rows limita filas; export=true guarda el resultado previo a la compactación local.",
     "pbi_find_tool": "Busca herramientas en español o inglés, incluidas las ocultas; indica si están activas y cómo acceder al perfil completo.",
+    # Duelo ronda 2: sin estas, un modelo se nego a empezar (el encargo pedia
+    # pbi_start_here y Power Query) y otro cerro Desktop con PowerShell.
+    "pbi_start_here": "Empieza aquí: mira el proyecto activo y devuelve los siguientes pasos con herramientas de este perfil.",
+    "pbi_health_check": "Estado del servidor, la sesión y el proyecto activo; dice si Desktop está conectado. Solo lectura.",
+    "pbi_get_power_query": "Lee la consulta M de una tabla (table) y su sha256; úsalo antes de pbi_update_power_query.",
+    "pbi_update_power_query": "Reemplaza la consulta M completa de una tabla con Desktop cerrado. dry_run=true (defecto) ensaya; aplica con dry_run=false y expected_sha256 de pbi_get_power_query.",
+    "pbi_create_calculated_table": "Crea una tabla calculada DAX (name, expression) en TMDL con Desktop cerrado; columns opcional. overwrite=false evita reemplazos.",
+    "pbi_create_calculated_column": "Crea una columna calculada DAX en table con Desktop cerrado; data_type string|int64|double|decimal|boolean|dateTime.",
+    "pbi_delete_page": "Borra una página por nombre o id con Desktop cerrado; exige confirm=true y no borra la última.",
+    "pbi_close_desktop": "Cierra SOLO el Desktop del proyecto activo (o path) para volver a escribir TMDL; exige confirm=true y descarta lo no guardado en esa ventana.",
+    "pbi_validate_measures": "Prueba medidas DAX en Desktop sin crearlas: measures=[{name,dax,table}]. Requiere el modelo abierto y refrescado.",
 }
+
+
+_ACTIVE_PROFILE = "full"
+
+
+def active_profile() -> str:
+    """El perfil con que arranco el servidor; los mensajes no nombran lo oculto."""
+    return _ACTIVE_PROFILE
+
+
+def set_active_profile(profile: str) -> None:
+    global _ACTIVE_PROFILE
+    _ACTIVE_PROFILE = profile
 
 
 def resolve_profile(profile: str | None = None) -> str:

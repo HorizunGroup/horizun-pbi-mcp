@@ -382,7 +382,7 @@ def check_contract(rep: Report, tools: Optional[List[Any]]) -> None:
                 "El servidor no arranco.", required=True)
         return
     esperadas = _expected_tool_count()
-    if esperadas and len(tools) < esperadas:
+    if esperadas and len(tools) != esperadas:
         rep.add("contract", "Contrato MCP", FAIL,
                 f"Se esperaban {esperadas} tools (segun el golden) y hay {len(tools)}.",
                 required=True,

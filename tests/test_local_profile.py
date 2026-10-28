@@ -110,8 +110,10 @@ def test_wire_listing_token_budget():
     local_count, local_tokens = asyncio.run(measure("local"))
     full_count, full_tokens = asyncio.run(measure("full"))
     print(f"tools/list: local={local_count}/{local_tokens} tokens; full={full_count}/{full_tokens} tokens")
-    assert local_count == 13
-    assert local_tokens < 4000
+    # 13 -> 22 tras el duelo ronda 2: el encargo pedia Power Query, tablas y
+    # columnas calculadas, borrar paginas, cerrar Desktop y pbi_start_here.
+    assert local_count == len(LOCAL_DESCRIPTIONS) == 22
+    assert local_tokens < 5000
     assert local_tokens < full_tokens
 
 

@@ -276,7 +276,8 @@ def register(mcp) -> None:
                                 dry_run: bool = False, table_id: str = "",
                                 skip_rows: Optional[int] = None,
                                 request_id: str = "",
-                                text_columns: Optional[List[str]] = None
+                                text_columns: Optional[List[str]] = None,
+                                keep_summary_rows: bool = False
                                 ) -> Dict[str, Any]:
         """Carga un archivo al modelo como lo haria una persona: abrir, transformar, cargar.
 
@@ -329,6 +330,13 @@ def register(mcp) -> None:
         `warnings`. `text_columns` fuerza texto en columnas que el encabezado
         no delata (p. ej. `["partida"]`); un nombre que no exista es error.
 
+        **Filas vacias y de TOTAL**: en csv y xlsx, las filas sin ningun valor
+        y las que empiezan por TOTAL, SUBTOTAL o GRAN TOTAL en una de las tres
+        primeras columnas se quitan en Power Query (paso 'Filas vacias y
+        totales quitadas') y se avisa en `warnings`. Una fila TOTAL dentro de
+        la tabla duplica las sumas y deja una clave en blanco que rompe las
+        relaciones. `keep_summary_rows=true` las conserva.
+
         `dry_run=true` devuelve el TMDL y la M sin escribir nada.
         `sheet`: hoja del libro; si se omite, la primera. Solo aplica a xlsx.
 
@@ -341,7 +349,8 @@ def register(mcp) -> None:
             sheet=sheet or None, culture=culture or None,
             description=description or None, overwrite=overwrite,
             dry_run=dry_run, table_id=table_id or None, skip_rows=skip_rows,
-            text_columns=text_columns or None))
+            text_columns=text_columns or None,
+            keep_summary_rows=keep_summary_rows))
 
     @mcp.tool()
     def pbi_set_storage_mode(table: str, mode: str,

@@ -309,14 +309,9 @@ def test_all_tools_are_prefixed(snapshot):
 
 # ------------------------------------------------------------ contrato --------
 def test_contract_matches_golden(snapshot):
-    """Las tools congeladas no cambian; las adiciones declaradas no reescriben el golden."""
+    """El contrato completo (params, tipos, defaults, required) no cambio."""
     golden = contract_utils.load_golden()
-    frozen_names = {tool["name"] for tool in golden["tools"]}
-    current_names = {tool["name"] for tool in snapshot["tools"]}
-    assert current_names - frozen_names == set(TOOLS_NUEVAS) - frozen_names
-    frozen_snapshot = {**snapshot, "tool_count": len(frozen_names),
-                       "tools": [tool for tool in snapshot["tools"] if tool["name"] in frozen_names]}
-    breaking, compatible = contract_utils.diff_snapshots(golden, frozen_snapshot)
+    breaking, compatible = contract_utils.diff_snapshots(golden, snapshot)
     assert not breaking and not compatible, (
         "\n\nEl contrato MCP cambio respecto al golden:\n\n"
         + contract_utils.format_diff(breaking, compatible)

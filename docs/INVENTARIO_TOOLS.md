@@ -66,7 +66,7 @@ dar por hecho al ver 134 filas en verde:
 |---|---|---|---|---|---|---|---|
 | `pbi_add_custom_visual` | escritura | 2 | 0 | — | sí | tipo invalido | `visual_id` |
 | `pbi_add_image_resource` | escritura | 4 | 1 | — | sí | falta un requerido | `path` |
-| `pbi_add_table_from_file` | escritura | 11 | 1 | — | sí | falta un requerido | `path` |
+| `pbi_add_table_from_file` | escritura | 12 | 1 | — | sí | falta un requerido | `path` |
 | `pbi_add_table_from_source` | escritura | 14 | 3 | — | sí | falta un requerido | `columns, source, table_name` |
 | `pbi_align_visuals` | escritura | 4 | 2 | — | sí | falta un requerido | `page, visual_ids` |
 | `pbi_analyze_model_quality` | solo lectura | 1 | 0 | — | sí | tipo invalido | `source` |
@@ -98,7 +98,7 @@ dar por hecho al ver 134 filas en verde:
 | `pbi_create_html_visual` | escritura | 5 | 3 | — | sí | falta un requerido | `html_measure, page, position` |
 | `pbi_create_measure` | escritura | 10 | 3 | — | sí | falta un requerido | `expression, name, table` |
 | `pbi_create_page_from_spec` | escritura | 2 | 1 | — | sí | falta un requerido | `spec` |
-| `pbi_create_pbip_project` | escritura | 9 | 2 | — | sí | falta un requerido | `name, out_dir` |
+| `pbi_create_pbip_project` | escritura | 10 | 2 | — | sí | falta un requerido | `name, out_dir` |
 | `pbi_create_relationship` | escritura | 11 | 4 | — | sí | falta un requerido | `from_column, from_table, to_column, to_table` |
 | `pbi_create_visual` | escritura | 7 | 4 | — | sí | falta un requerido | `fields, page, position, visual_type` |
 | `pbi_define_brief` | escritura | 9 | 2 | — | sí | falta un requerido | `audience, purpose` |

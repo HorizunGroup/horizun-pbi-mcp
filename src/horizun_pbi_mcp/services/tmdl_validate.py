@@ -318,6 +318,31 @@ def _lint_colisiones(tablas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return hallazgos
 
 
+def _lint_referencias_dax(tablas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Medidas que el motor no podra evaluar por sus referencias.
+
+    Duelo ronda 2: trece medidas con tablas sin comillas y medidas sin
+    corchetes pasaban este validador porque el TMDL era sintacticamente
+    correcto; el error solo aparecia al evaluarlas en Desktop.
+    """
+    from horizun_pbi_mcp.services import dax_refs
+
+    indice = dax_refs.indice_desde_tablas(tablas)
+    hallazgos: List[Dict[str, Any]] = []
+    for tabla in tablas:
+        for medida in tabla["measures"]:
+            expresion = medida.get("expression") or ""
+            for problema in dax_refs.revisar(expresion, indice):
+                hallazgos.append(_finding(
+                    "tmdl_dax_reference", "error",
+                    {"kind": "measure", "table": tabla["name"],
+                     "name": medida["name"], "file": tabla.get("file")},
+                    {"rule": problema["rule"],
+                     "reference": problema["reference"]},
+                    problema["message"]))
+    return hallazgos
+
+
 def _lint_medidas_duplicadas(tablas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """En un modelo tabular el nombre de medida es global, no por tabla."""
     por_nombre: Dict[str, List[str]] = {}
@@ -718,6 +743,7 @@ def validate(definition: Path | str, use_tom: bool = True) -> Dict[str, Any]:
         # Con una tabla ilegible el indice esta incompleto y daria falsos
         # positivos: se prefiere no acusar a acusar mal.
         hallazgos.extend(_lint_relaciones(tablas, relaciones))
+        hallazgos.extend(_lint_referencias_dax(tablas))
     cultura = _source_query_culture(definition)
     hallazgos.extend(_lint_cultura(definition, tablas, cultura))
 

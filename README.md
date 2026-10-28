@@ -191,7 +191,7 @@ For Ollama models such as Qwen 3 4B/8B, set the **MCP server process** environme
 ```json
 {"env": {"HORIZUN_PBI_MCP_PROFILE": "local"}}
 ```
-For a shell launch: `$env:HORIZUN_PBI_MCP_PROFILE="local"; horizun-pbi-mcp` (PowerShell). The profile exposes 13 tools for create/open → import → inspect → relationships → measures → page → validate → Desktop → refresh → DAX, with short schemas and compact replies; `tools/list` is tested below 4,000 estimated tokens (JSON characters / 4).
+For a shell launch: `$env:HORIZUN_PBI_MCP_PROFILE="local"; horizun-pbi-mcp` (PowerShell). The profile exposes 22 tools for start/health → create/open → import → Power Query → inspect → relationships → measures, calculated tables and columns → pages → validate → open/refresh/close Desktop → DAX, with short schemas and compact replies; `tools/list` is tested below 5,000 estimated tokens (JSON characters / 4).
 `pbi_create_relationship` connects existing columns with Desktop closed; defaults are many-to-one, one-direction filtering and `overwrite=false`. See the [local tool list](docs/TOOL_CATALOG.md#local-profile).
 Use `source="pbip"` and `mode="pbip"` while editing with Desktop closed. Open Desktop and refresh with `confirm=true` before querying data.
 `pbi_find_tool(query="gráfico")` searches the entire catalog in Spanish/English, including hidden tools, and reports availability. Set `HORIZUN_PBI_MCP_PROFILE=full` or remove the variable and restart to access them; calls to hidden tools are rejected in `local`.

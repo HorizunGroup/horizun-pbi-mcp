@@ -16,7 +16,7 @@ from mcp.server.fastmcp import FastMCP
 from horizun_pbi_mcp import branding
 from horizun_pbi_mcp.config import get_session, get_settings
 from horizun_pbi_mcp.logging_config import get_logger, setup_logging
-from horizun_pbi_mcp.tool_profiles import ProfileRegistrar, resolve_profile
+from horizun_pbi_mcp.tool_profiles import ProfileRegistrar, resolve_profile, set_active_profile
 from horizun_pbi_mcp.tools import (
     audit_tools,
     convert_tools,
@@ -81,6 +81,7 @@ def _anotar_riesgo(mcp: FastMCP, log) -> None:
 def build_server(*, profile: str | None = None) -> FastMCP:
     settings = get_settings()
     profile = resolve_profile(profile)
+    set_active_profile(profile)
     setup_logging(settings.log_level, settings.log_file)
     log = get_logger("server")
 

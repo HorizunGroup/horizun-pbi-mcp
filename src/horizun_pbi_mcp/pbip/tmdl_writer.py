@@ -152,6 +152,25 @@ def _write_transactional(active: ActivePbip, file_path: Path, lines: List[str],
     return t.summary()
 
 
+def _assert_referencias_dax(table_file: Path, name: str, expression: str) -> None:
+    """Rechaza ANTES de escribir una medida que el motor no podria evaluar.
+
+    En modo `pbip` no hay motor que la compile: sin esto, una tabla sin
+    comillas o una medida sin corchetes quedaba escrita, el TMDL validaba y el
+    fallo solo aparecia al abrir Desktop (duelo ronda 2). Va en las dos
+    mitades, planificar y escribir, por la misma razon que `_assert_nombre_libre`.
+    """
+    from horizun_pbi_mcp.services import dax_refs
+
+    indice = dax_refs.indice_desde_definicion(table_file.parent.parent)
+    problemas = dax_refs.revisar(expression, indice, medidas_extra=[name])
+    if problemas:
+        raise ValidationError(
+            f"La medida '{name}' no se escribio: {dax_refs.resumen(problemas)}",
+            details={"measure": name, "dax_problems": problemas,
+                     "expression": expression})
+
+
 def render_measure_change(
     active: ActivePbip,
     table: str,
@@ -172,6 +191,7 @@ def render_measure_change(
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
     file_path = find_table_file(active, table)
+    _assert_referencias_dax(file_path, name, expression)
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)
@@ -278,6 +298,7 @@ def create_measure_pbip(
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
     file_path = find_table_file(active, table)
+    _assert_referencias_dax(file_path, name, expression)
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)

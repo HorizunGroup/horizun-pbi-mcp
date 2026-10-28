@@ -200,10 +200,13 @@ def create_page_from_spec(active: ActivePbip, spec: Dict[str, Any],
         active, spec["page_name"], int(canvas["width"]), int(canvas["height"]),
         planificados, tool="pbi_create_page_from_spec")
 
-    return {"page_id": result["page_id"], "page_name": spec["page_name"],
+    salida = {"page_id": result["page_id"], "page_name": spec["page_name"],
             "canvas": canvas, "created": result.get("created", True),
             "visuals_created": result["visuals_created"], "warnings": warnings,
             "backup": result.get("backup"), "transaction": result.get("transaction")}
+    if result.get("filled_existing_page"):
+        salida["filled_existing_page"] = True
+    return salida
 
 
 # --------------------------------------------------------------- HTML maqueta ---
