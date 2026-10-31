@@ -32,7 +32,7 @@ ADOMD.NET / TOM     TMDL / PBIR / resources
 Power BI Desktop    project files
 ```
 
-The public surface is frozen in `tests/golden/tools_v1.json`: 139 tools in
+The public surface is frozen in `tests/golden/tools_v1.json`: 140 tools in
 2.0.1. Runtime diagnostics derive that count from the contract and verify the
 registered set against it. A documentation regression test forces this page to
 be updated when the golden changes.
