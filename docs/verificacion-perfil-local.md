@@ -113,10 +113,15 @@ En resumen:
   el bucle de `columns`.
 - Las 4 fallas que le quedan a qwen3:8b son los pendientes B (tareas 4 y 10,
   `request_id` copiado) y C (tarea 7 `datetime`, tarea 11 `bar_chart`).
-- qwen3:8b en `full` no se completó: con el catálogo de ~47 000 tokens
-  truncado a su contexto, una sola tarea tardó unos 15 min (acertó, con 62.864
-  tokens de entrada; en `local` la misma tarea gasta 24.837). Se cortó para no
-  demorar la entrega.
+- qwen3:8b en `full` se midió solo en 3 tareas (1, 5 y 8), con la GPU libre:
+  3/3 aciertos, pero con 62.886, 192.107 y 94.529 tokens de entrada y 71 a 97 s
+  por tarea. En `local` esas mismas tareas gastan 24.837, ~60.000 y 9.253
+  tokens y tardan 25 a 40 s. Con el catálogo de ~47 000 tokens truncado a un
+  contexto de 32 768, los aciertos son de un modelo que trabaja a ciegas
+  sobre parte del catálogo, no un resultado para generalizar.
+- Los tiempos de las corridas de qwen en `local` coincidieron con otra
+  medición de qwen3 en la misma GPU: los segundos no son comparables. Los
+  aciertos y los tokens no dependen de eso (temperatura 0).
 
 Límites del banco:
 
