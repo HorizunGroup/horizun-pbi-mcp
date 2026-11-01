@@ -46,7 +46,7 @@ LOCAL_DESCRIPTIONS = {
     "pbi_health_check": "Estado del servidor, la sesión y el proyecto activo; dice si Desktop está conectado. Solo lectura.",
     "pbi_get_power_query": "Lee la consulta M de una tabla (table) y su sha256; úsalo antes de pbi_update_power_query.",
     "pbi_update_power_query": "Reemplaza la consulta M completa de una tabla con Desktop cerrado. dry_run=true (defecto) ensaya; aplica con dry_run=false y expected_sha256 de pbi_get_power_query.",
-    "pbi_create_calculated_table": "Crea una tabla calculada DAX (name, expression) en TMDL con Desktop cerrado; columns opcional. overwrite=false evita reemplazos.",
+    "pbi_create_calculated_table": "Crea una tabla calculada DAX (name, expression) en TMDL con Desktop cerrado; pasa columns=[{name,data_type}] con cada columna del resultado. overwrite=false evita reemplazos.",
     "pbi_create_calculated_column": "Crea una columna calculada DAX en table con Desktop cerrado; data_type string|int64|double|decimal|boolean|dateTime.",
     "pbi_delete_page": "Borra una página por nombre o id con Desktop cerrado; exige confirm=true y no borra la última.",
     "pbi_close_desktop": "Cierra SOLO el Desktop del proyecto activo (o path) para volver a escribir TMDL; exige confirm=true y descarta lo no guardado en esa ventana.",
