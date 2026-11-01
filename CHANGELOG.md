@@ -5,7 +5,13 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [2.2.0] — 2026-10-31
+
+New opt-in `local` profile for small models, and fixes found when four agents
+and two small models built Power BI models with this MCP. Checked against Power
+BI Desktop 2.159.883.0 (`docs/verificacion-perfil-local.md`). Contract against
+`v2.1.3`: **0 breaking changes, 3 compatible ones** (`pbi_find_tool`,
+`pbi_create_pbip_project(subfolder)`, `pbi_add_table_from_file(keep_summary_rows)`).
 
 ### Added
 
@@ -36,6 +42,13 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- **`pbi_create_calculated_table` without `columns` sent small models into a
+  loop.** With Desktop closed it answered the generic `no_active_model` ("use
+  mode='pbip'"), but this tool has no `mode` and opening Desktop does not help
+  either, because writing the TMDL requires closing it. The error now says to
+  repeat the call with `columns=[{"name", "data_type"}]` and lists the types;
+  the local description no longer calls `columns` optional. Claude Haiku on
+  the local profile went from 16/18 to 18/18 tasks.
 - **`pbi_create_measure` in `pbip` mode wrote DAX that could not be evaluated,
   and `pbi_validate_tmdl` passed it.** Round 2 of the duel: thirteen measures
   with table names that have spaces left unquoted

@@ -16,7 +16,7 @@ instalador de un pegado y los remedios de esta skill.
   personal en `~/.agents/plugins/marketplace.json`. Después se reinicia la app
   y se instala **Horizun PBI MCP** desde **Plugins → Personal**. No usa API key.
 - **Claude Desktop Free:** se instala el asset
-  `horizun-pbi-mcp-2.1.3.mcpb` de la release con doble clic. Claude aporta el
+  `horizun-pbi-mcp-2.2.0.mcpb` de la release con doble clic. Claude aporta el
   bootstrap UV/Python; no exige Claude Code ni editar
   `claude_desktop_config.json`.
 - En ambos, primero pueden aparecer solo `pbi_install_runtime` y
@@ -37,7 +37,7 @@ administrador.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.3/horizun-pbi-mcp-instalar.ps1'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.2.0/horizun-pbi-mcp-instalar.ps1'
 $sha = '490b940942e1e38814c39339a9cd978b493f257b9e33c1cff2a997953f691634'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
