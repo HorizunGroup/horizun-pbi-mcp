@@ -36,6 +36,9 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- PR #64 review: CSV/XLSX summary detection and row counts cover the whole
+  file while type inference stays sampled. Power Query always filters blank
+  and TOTAL/SUBTOTAL rows in the first three columns unless explicitly kept.
 - PR #64 review: bare unknown identifiers in known DAX table argument slots
   now report `dax_unknown_table`, including `COUNTROWS(Inexistente)`.
 - PR #64 review: static DAX validation defers unresolved virtual columns
@@ -64,8 +67,8 @@ The frozen contract is intact: no tool, parameter or default changed.
   relationship. In csv and xlsx, rows with no value and rows whose first three
   columns start with TOTAL, SUBTOTAL or GRAN TOTAL are removed in Power Query
   (step "Filas vacias y totales quitadas") and reported in `warnings`;
-  `keep_summary_rows=true` keeps them. Detection reads the profiling sample, and
-  the M applies the same rule to the whole file.
+  `keep_summary_rows=true` keeps them. Detection counts the whole file, and
+  M applies the same rule independently of the profiling sample.
 - **`pbi_create_page_from_spec` on an existing page answered `ok` and did
   nothing.** The empty first page of `pbi_create_pbip_project` stayed empty for
   good. An existing page with no visuals is now filled in one transaction

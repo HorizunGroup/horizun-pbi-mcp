@@ -230,12 +230,12 @@ def test_keep_summary_rows_las_conserva(tmp_path):
     assert any("CONSERVAN" in a for a in perfil["warnings"])
 
 
-def test_un_csv_sin_totales_produce_la_misma_m_de_antes(tmp_path):
+def test_un_csv_sin_totales_tambien_filtra_en_futuros_refrescos(tmp_path):
     ruta = tmp_path / "limpio.csv"
     ruta.write_text("Documento,Valor\nFE-1,10.5\nFE-2,3.25\n", encoding="utf-8")
     perfil = table_from_file.perfilar(ruta)
-    assert "summary_rows" not in perfil
-    assert "Table.SelectRows" not in table_from_file.construir_m(perfil)
+    assert perfil["summary_rows"]["total_rows"] == []
+    assert "Table.SelectRows" in table_from_file.construir_m(perfil)
 
 
 # ------------------------------------------------------------------ 6 ---
