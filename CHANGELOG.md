@@ -36,6 +36,8 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- PR #64 review: failed scaffold compensation removes newly created entries
+  in nested and flat layouts, preserving preexisting files and directories.
 - PR #64 review: CSV/XLSX summary detection and row counts cover the whole
   file while type inference stays sampled. Power Query always filters blank
   and TOTAL/SUBTOTAL rows in the first three columns unless explicitly kept.
