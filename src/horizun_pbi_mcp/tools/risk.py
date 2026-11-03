@@ -102,6 +102,7 @@ RISK_BY_TOOL: Dict[str, str] = {
     "pbi_diagnose_data": READ_ONLY,
     "pbi_check_contract": READ_ONLY,
     "pbi_diff_page_spec": READ_ONLY,
+    "pbi_find_tool": READ_ONLY,
     "pbi_generate_page_spec": READ_ONLY,
     "pbi_get_object": READ_ONLY,
     "pbi_get_power_query": READ_ONLY,

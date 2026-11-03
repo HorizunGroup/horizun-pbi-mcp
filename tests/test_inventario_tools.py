@@ -95,11 +95,12 @@ def _nombres():
 
     Parametrizar con el servidor obligaría a construirlo al recolectar, que es
     antes de que existan las fixtures de aislamiento. Se leen del golden del
-    contrato, que es la misma lista y ya está congelada.
+    contrato y de las adiciones declaradas: añadir no obliga a reescribir el golden.
     """
     golden = json.loads((inv.REPO_ROOT / "tests" / "golden" / "tools_v1.json")
                         .read_text(encoding="utf-8"))
-    return sorted(t["name"] for t in golden["tools"])
+    from tests.test_tool_contract import TOOLS_NUEVAS
+    return sorted({t["name"] for t in golden["tools"]} | set(TOOLS_NUEVAS))
 
 
 def _romper_adaptador(monkeypatch, adaptador) -> None:

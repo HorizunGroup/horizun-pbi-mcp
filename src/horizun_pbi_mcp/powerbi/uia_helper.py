@@ -2173,10 +2173,40 @@ def leer_lienzo(peticion: Dict[str, Any]) -> Dict[str, Any]:
                       {"phase": "ventana", "hwnd": principal["hwnd"]}]}
 
 
+#: Tope del texto de un dialogo de error. El mensaje de Desktop es una frase o
+#: dos («La relacion "X" usa un Id. de columna 71 no valido»); mas que esto ya
+#: es otra cosa.
+MAX_TEXTO_DIALOGO = 1200
+
+
+def leer_dialogo(peticion: Dict[str, Any]) -> Dict[str, Any]:
+    """El texto de UN dialogo de Desktop (p. ej. «Se encontraron problemas»).
+
+    Solo lectura: no pulsa, no enfoca, no cierra. El cuerpo de ese dialogo es
+    un control HTML embebido (`Internet Explorer_Server`): Win32 no ve texto
+    en sus ventanas hijas, se comprobo contra Desktop real; UI Automation si.
+    La ventana tiene que seguir siendo de ese proceso, verificado por nombre y
+    hora de arranque: leer el dialogo de otra sesion seria contar lo ajeno.
+    """
+    pid = int(peticion["desktop_pid"])
+    hwnd = int(peticion["hwnd"])
+    identidad = verificar_proceso(pid, peticion.get("desktop_started"))
+    if hwnd not in {v["hwnd"] for v in ventanas_de(pid)}:
+        raise HelperError("ventana",
+                          "El dialogo ya no esta abierto en ese proceso.",
+                          hwnd=hwnd)
+    uia = Uia()
+    texto = uia.textos(uia.desde_hwnd(hwnd), maximo=MAX_TEXTO_DIALOGO)
+    return {"ok": True, "phase": "done",
+            "text": _redactar(texto, MAX_TEXTO_DIALOGO),
+            "steps": [{"phase": "identidad", **identidad}]}
+
+
 ACCIONES = {"save_as": guardar_como,
             "select_page": seleccionar_pagina,
             "fit_to_page": ajustar_a_pagina,
-            "read_canvas": leer_lienzo}
+            "read_canvas": leer_lienzo,
+            "read_dialog": leer_dialogo}
 
 
 def main() -> int:

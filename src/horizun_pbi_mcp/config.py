@@ -420,10 +420,7 @@ class Session:
         with self._lock:
             model = self._active_model
             if model is None:
-                raise NoActiveModelError(
-                    "No hay un modelo activo. Ejecuta pbi_list_desktop_models y luego "
-                    "pbi_select_model para elegir el modelo local abierto."
-                )
+                raise NoActiveModelError(_mensaje_sin_modelo_activo())
             verified = self._verified_fingerprint
             verified_identity = self._verified_identity
             verified_at = self._verified_at_monotonic
@@ -679,3 +676,22 @@ def get_session() -> Session:
             if _session is None:
                 _session = Session(settings)
     return _session
+
+
+def _mensaje_sin_modelo_activo() -> str:
+    """Primero el camino que el cliente SI tiene a mano.
+
+    Duelo ronda 2: el mensaje mandaba a pbi_list_desktop_models y
+    pbi_select_model, que el perfil `local` no registra; un modelo pequeno
+    fallo ocho veces seguidas sin probar mode='pbip'.
+    """
+    from horizun_pbi_mcp import tool_profiles
+
+    texto = ("No hay un modelo de Power BI Desktop seleccionado. Para escribir "
+             "en el proyecto .pbip usa mode='pbip' con Desktop cerrado; para "
+             "consultar valores abre el proyecto con pbi_open_in_desktop y "
+             "luego pbi_refresh_model.")
+    if tool_profiles.active_profile() == "full":
+        texto += (" Si Desktop ya esta abierto con otro modelo, elige con "
+                  "pbi_list_desktop_models y pbi_select_model.")
+    return texto

@@ -30,9 +30,9 @@ lo genera tiene un informe abierto.
 
 | | |
 |---|---|
-| Tools | **139** |
-| Con payload congelado | **139** |
-| — de éxito | **45** |
+| Tools | **140** |
+| Con payload congelado | **140** |
+| — de éxito | **46** |
 | — solo de error de dominio | **94** |
 | Sin payload congelado | **0** |
 
@@ -122,6 +122,7 @@ lo genera tiene un informe abierto.
 | `pbi_export_pbix` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (pbix_export_failed) |
 | `pbi_export_report_content` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_finalize_delivery` | error de dominio congelado | con-argumentos, sin-proyecto | solo error de dominio en estos escenarios (pbix_export_failed) |
+| `pbi_find_tool` | éxito congelado | con-argumentos | — |
 | `pbi_generate_page_spec` | éxito congelado | con-argumentos | — |
 | `pbi_generate_pdf_report` | error de dominio congelado | sin-proyecto | solo error de dominio en estos escenarios (validation_error) |
 | `pbi_generate_report_page` | error de dominio congelado | con-argumentos | solo error de dominio en estos escenarios (schema_unavailable) |

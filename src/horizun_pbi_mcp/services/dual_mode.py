@@ -179,10 +179,12 @@ def _con_pista_de_pbip(exc: PowerBIMCPError, session: Any) -> PowerBIMCPError:
     detalles = dict(exc.details or {})
     detalles.update({"suggested_mode": PBIP, "requested_mode": LIVE,
                      "reason": "desktop_cerrado_con_pbip_activo"})
+    # La salida va PRIMERO: un modelo pequeno lee la primera frase y actua
+    # sobre ella (duelo ronda 2: siete reintentos iguales con la pista al final).
     return type(exc)(
-        f"{exc.message} Pero hay un proyecto .pbip activo y Desktop no lo tiene "
-        "abierto, que es justo el estado que 'pbip' necesita: reintenta con "
-        "mode='pbip' (o mode='auto', que mira el estado y elige).",
+        "Repite esta misma llamada con mode='pbip': hay un proyecto .pbip "
+        "activo y Desktop no lo tiene abierto, que es justo el estado que "
+        f"'pbip' necesita (mode='auto' tambien lo elige). Detalle: {exc.message}",
         details=detalles)
 
 

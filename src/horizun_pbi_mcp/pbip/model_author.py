@@ -352,14 +352,19 @@ def infer_columns(session: Any, expression: str) -> List[Dict[str, str]]:
                     "bool": "boolean", "datetime": "dateTime",
                     "decimal": "decimal"}
     for c in r.get("column_types") or []:
-        nombre = str(c.get("name", "")).strip()
+        crudo = str(c.get("name", "")).strip()
+        nombre = crudo
         # El motor devuelve 'Tabla[Columna]' o '[Columna]'
         if "[" in nombre and nombre.endswith("]"):
             nombre = nombre[nombre.rindex("[") + 1:-1]
         if not nombre:
             continue
-        columnas.append({"name": nombre,
-                         "data_type": equivalencia.get(str(c.get("type")), "string")})
+        columna = {"name": nombre,
+                   "data_type": equivalencia.get(str(c.get("type")), "string")}
+        # Ese nombre completo es la columna del resultado: es el sourceColumn.
+        if crudo != nombre:
+            columna["source_column"] = crudo
+        columnas.append(columna)
     if not columnas:
         raise ModelAuthorError(
             "La expresion no devolvio ninguna columna, asi que no hay tabla que "
@@ -511,6 +516,27 @@ def resolver_destino_tabla(active: ActivePbip, nombre: str,
     return destino
 
 
+def source_column_calculada(col: Dict[str, str]) -> str:
+    """`sourceColumn` de una columna de tabla calculada: SIEMPRE entre corchetes.
+
+    En una tabla importada `sourceColumn` es el nombre de la columna en la
+    consulta M (`sourceColumn: semana`). En una tabla calculada es la columna
+    del RESULTADO DAX, y el motor la nombra `[semana]` o `Tabla[semana]`. Sin
+    corchetes Power BI Desktop no casa la columna con el resultado, le asigna
+    un identificador que no existe y rechaza toda relacion que la use («La
+    relacion usa un Id. de columna no valido»): el proyecto no abre. Paso en
+    el duelo de Power BI del 24-oct-2026 con `Calendario[semana]`.
+
+    Un `source_column` explicito que ya trae corchetes se respeta tal cual
+    (`Tabla[col]` es lo que devuelve el motor cuando la columna conserva su
+    linaje); uno sin corchetes, o ninguno, se escribe `[nombre]`.
+    """
+    origen = str(col.get("source_column") or col["name"]).strip()
+    if origen.endswith("]") and "[" in origen:
+        return origen
+    return "[" + origen.replace("]", "]]") + "]"
+
+
 def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
                             columns: Optional[List[Dict[str, str]]] = None,
                             session: Any = None,
@@ -551,7 +577,8 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
         lineas.append(f"\t\tdataType: {tipo}")
         lineas.append(f"\t\tlineageTag: {uuid.uuid4()}")
         lineas.append("\t\tsummarizeBy: none")
-        lineas.append(f"\t\tsourceColumn: {col['name']}")
+        lineas.append(
+            f"\t\tsourceColumn: {source_column_calculada(col)}")
         lineas.append("")
     lineas.append(f"\tpartition {tmdl_quote_name(name)} = calculated")
     lineas.append("\t\tmode: import")

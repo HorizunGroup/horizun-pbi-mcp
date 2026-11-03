@@ -360,7 +360,9 @@ def check_server_boots(rep: Report) -> Optional[List[Any]]:
         import asyncio
         from horizun_pbi_mcp.server import build_server
         t0 = time.perf_counter()
-        mcp = build_server()
+        # Installation diagnostics check the complete contract even when the
+        # interactive client is configured with the intentionally smaller set.
+        mcp = build_server(profile="full")
         tools = asyncio.run(mcp.list_tools())
         ms = (time.perf_counter() - t0) * 1000
         rep.add("server_boot", "El servidor MCP arranca", OK,
