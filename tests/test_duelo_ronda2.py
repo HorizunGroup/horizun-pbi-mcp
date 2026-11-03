@@ -17,7 +17,6 @@ Todo sintetico, en tmp_path.
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 import pytest
@@ -118,6 +117,7 @@ TABLA_CON_ESPACIOS = (
     ("Total * 2", "dax_measure_without_brackets"),
     ("SUM(Ventas[Inexistente])", "dax_unknown_column"),
     ("SUM(Compras[Monto])", "dax_unknown_table"),
+    ("COUNTROWS(Inexistente)", "dax_unknown_table"),
     ("[Total] − 1", "dax_typographic_character"),
     ("[Fantasma] + 1", "dax_unknown_reference"),
 ])
@@ -143,6 +143,14 @@ def test_una_medida_correcta_se_escribe(proyecto, dax):
     _tabla(proyecto, "Presupuesto Obra", TABLA_CON_ESPACIOS)
     res = tmdl_writer.create_measure_pbip(proyecto, "Ventas", "Nueva", dax)
     assert res["action"] == "created"
+
+
+def test_generated_columns_can_be_written_in_pbip(proyecto):
+    dax = 'SUMX(GENERATESERIES(1, 10), [Value])'
+    res = tmdl_writer.create_measure_pbip(proyecto, "Ventas", "Series", dax)
+    assert res["action"] == "created"
+    archivo = Path(proyecto.semantic_model_dir) / "definition" / "tables" / "Ventas.tmdl"
+    assert dax in archivo.read_text(encoding="utf-8-sig")
 
 
 def test_el_validador_rechaza_el_modelo_que_escribio_qwen4(proyecto):
@@ -221,12 +229,12 @@ def test_keep_summary_rows_las_conserva(tmp_path):
     assert any("CONSERVAN" in a for a in perfil["warnings"])
 
 
-def test_un_csv_sin_totales_produce_la_misma_m_de_antes(tmp_path):
+def test_un_csv_sin_totales_tambien_filtra_en_futuros_refrescos(tmp_path):
     ruta = tmp_path / "limpio.csv"
     ruta.write_text("Documento,Valor\nFE-1,10.5\nFE-2,3.25\n", encoding="utf-8")
     perfil = table_from_file.perfilar(ruta)
-    assert "summary_rows" not in perfil
-    assert "Table.SelectRows" not in table_from_file.construir_m(perfil)
+    assert perfil["summary_rows"]["total_rows"] == []
+    assert "Table.SelectRows" in table_from_file.construir_m(perfil)
 
 
 # ------------------------------------------------------------------ 6 ---

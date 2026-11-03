@@ -655,7 +655,7 @@ def _pids_de_desktop(pid: int) -> List[int]:
             if (hijo.name() or "").casefold() == "pbidesktop.exe":
                 pids.append(hijo.pid)
     except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-        pass
+        pass  # El proceso ya salió o no se puede leer: basta con el PID del lanzador.
     return pids
 
 

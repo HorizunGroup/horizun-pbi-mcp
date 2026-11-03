@@ -342,7 +342,8 @@ def _separar_filas_resumen(encabezados: List[str], datos: List[List[Any]]
         if etiqueta[0] not in columnas:
             columnas.append(etiqueta[0])
     return limpios, {"blank_rows": vacias, "total_rows": totales,
-                     "total_columns": columnas}
+                     "total_columns": columnas, "input_rows": len(datos),
+                     "clean_rows": len(limpios)}
 
 
 def _perfilar_csv(ruta: Path, muestra: int,
@@ -392,8 +393,9 @@ def _perfilar_csv(ruta: Path, muestra: int,
                      "path": str(ruta)})
 
     encabezados = [c.strip() for c in filas[fila_encabezado]]
-    datos = filas[fila_encabezado + 1:fila_encabezado + 1 + muestra]
+    datos = filas[fila_encabezado + 1:]
     datos, resumen = _separar_filas_resumen(encabezados, datos)
+    datos = datos[:muestra]
 
     columnas_valores: List[List[str]] = [
         [f[i] if i < len(f) else "" for f in datos]
@@ -474,7 +476,7 @@ def _serial_a_fecha(bruto: str) -> str:
     return (datetime(1899, 12, 30) + timedelta(days=dias)).strftime("%Y-%m-%d")
 
 
-def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]]:
+def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: Optional[int]) -> List[List[str]]:
     import xml.etree.ElementTree as ET
 
     estilos_fecha = _estilos_de_fecha(z)
@@ -505,7 +507,7 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
             fisica = int(fila.get("r") or esperada)
         except ValueError:
             fisica = esperada
-        while esperada < fisica and len(filas) <= muestra:
+        while esperada < fisica and (muestra is None or len(filas) <= muestra):
             filas.append([])
             esperada += 1
         esperada = fisica + 1
@@ -530,7 +532,7 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
                         bruto = _serial_a_fecha(bruto)
                 valores.append(bruto or "")
         filas.append(valores)
-        if len(filas) > muestra:
+        if muestra is not None and len(filas) > muestra:
             break
     return filas
 
@@ -548,10 +550,8 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
                 f"El libro no tiene la hoja '{hoja}'. Tiene: "
                 f"{', '.join(hojas)}.",
                 details={"sheets": hojas, "path": str(ruta)})
-        # Se leen las filas que se van a saltar ADEMAS de la muestra: si no,
-        # saltar diez filas dejaria diez filas menos de datos que perfilar.
-        margen = (skip_rows if skip_rows is not None else _MAX_FILAS_CANDIDATAS)
-        filas = _filas_xlsx(z, hojas.index(hoja), muestra + max(0, margen))
+        # Count and classify the whole sheet; only type inference is sampled.
+        filas = _filas_xlsx(z, hojas.index(hoja), None)
 
     if not filas:
         raise TableFromFileError(f"La hoja '{hoja}' esta vacia: {ruta}")
@@ -567,6 +567,7 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
     encabezados = [str(c).strip() for c in filas[fila_encabezado]]
     datos, resumen = _separar_filas_resumen(encabezados,
                                             filas[fila_encabezado + 1:])
+    datos = datos[:muestra]
     columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
                         for i in range(len(encabezados))]
     sep = _separador_de_columnas(encabezados, columnas_valores)
@@ -912,8 +913,13 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
                 "valores con ceros a la izquierda (p. ej. 007) que como numero "
                 "se perderian.")
     resumen = perfil.get("summary_rows") or {}
-    if resumen.get("blank_rows") or resumen.get("total_rows"):
+    if resumen:
         resumen["kept"] = bool(keep_summary_rows)
+        total = resumen["input_rows"]
+        excluded = 0 if keep_summary_rows else total - resumen["clean_rows"]
+        perfil["file_row_counts"] = {"input": total, "excluded": excluded,
+                                     "loaded": total - excluded}
+    if resumen.get("blank_rows") or resumen.get("total_rows"):
         partes = []
         if resumen.get("blank_rows"):
             partes.append(f"{resumen['blank_rows']} fila(s) vacia(s)")
@@ -930,8 +936,6 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
                 f"Se quitan {' y '.join(partes)} en Power Query (paso 'Filas "
                 "vacias y totales quitadas'): una fila TOTAL duplica las sumas "
                 "y deja claves en blanco. keep_summary_rows=true las conserva.")
-    elif resumen:
-        perfil.pop("summary_rows", None)
     if avisos:
         perfil["warnings"] = avisos
 
@@ -1033,23 +1037,19 @@ def construir_m(perfil: Dict[str, Any], culture: Optional[str] = None) -> str:
         anterior = '#"Encabezados promovidos"'
 
     resumen = perfil.get("summary_rows") or {}
-    if (resumen.get("blank_rows") or resumen.get("total_rows"))             and not resumen.get("kept"):
-        condiciones = []
-        if resumen.get("blank_rows"):
-            condiciones.append(
-                'List.NonNullCount(List.ReplaceValue(Record.FieldValues(_), '
-                '"", null, Replacer.ReplaceValue)) > 0')
-        if resumen.get("total_columns"):
-            # Misma regla que `_separar_filas_resumen`: lo que se detecto en
-            # la muestra es lo que se filtra en todo el archivo.
-            columnas = "{" + ", ".join(
-                _literal_m(c) for c in resumen["total_columns"]) + "}"
-            prefijos = " or ".join(
-                f"Text.StartsWith(t, {_literal_m(x)})" for x in _PREFIJOS_DE_TOTAL)
-            condiciones.append(
-                f'not List.AnyTrue(List.Transform({columnas}, (c) => let t = '
-                'Text.Upper(Text.Trim(Text.From(Record.Field(_, c)) ?? "")) '
-                f'in {prefijos}))')
+    if perfil["format"] in ("csv", "xlsx") and not resumen.get("kept"):
+        # Always apply both predicates to every row, including future refreshes.
+        condiciones = [
+            'List.AnyTrue(List.Transform(Record.FieldValues(_), (v) => '
+            'Text.Trim(Text.From(v) ?? "") <> ""))']
+        columnas = "{" + ", ".join(
+            _literal_m(c["name"]) for c in perfil["columns"][:_COLUMNAS_DE_ETIQUETA]) + "}"
+        prefijos = " or ".join(
+            f"Text.StartsWith(t, {_literal_m(x)})" for x in _PREFIJOS_DE_TOTAL)
+        condiciones.append(
+            f'not List.AnyTrue(List.Transform({columnas}, (c) => let t = '
+            'Text.Upper(Text.Trim(Text.From(Record.Field(_, c)) ?? "")) '
+            f'in {prefijos}))')
         pasos.append(f'    #"Filas vacias y totales quitadas" = Table.SelectRows('
                      f'{anterior}, each {" and ".join(condiciones)}),')
         anterior = '#"Filas vacias y totales quitadas"'
