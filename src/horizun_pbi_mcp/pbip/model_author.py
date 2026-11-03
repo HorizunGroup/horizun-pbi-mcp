@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.logging_config import get_logger
-from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
+from horizun_pbi_mcp.powerbi.errors import NoActiveModelError, PowerBIMCPError
 from horizun_pbi_mcp.pbip.tmdl_reader import (_parse_relationships, find_table_file,
                               parse_table_file)
 from horizun_pbi_mcp.utils.validation import (normalizar_format_string,
@@ -559,7 +559,21 @@ def create_calculated_table(active: ActivePbip, name: str, expression: str, *,
                 "Hacen falta las columnas de la tabla calculada. Pasalas en "
                 "'columns' o abre el modelo en Power BI Desktop para deducirlas "
                 "ejecutando la expresion.")
-        columns = infer_columns(session, expression)
+        try:
+            columns = infer_columns(session, expression)
+        except NoActiveModelError as exc:
+            # El mensaje generico manda a mode='pbip', que esta tool no tiene,
+            # y abrir Desktop tampoco sirve: escribir el TMDL exige cerrarlo.
+            # Con Desktop cerrado la unica salida es pasar `columns`; Haiku y
+            # qwen3:8b repetian la llamada sin ellas hasta rendirse.
+            raise NoActiveModelError(
+                f"La tabla calculada '{name}' no se escribio: con Power BI "
+                "Desktop cerrado sus columnas no se pueden deducir. Repite la "
+                "llamada con columns=[{\"name\": \"<columna>\", \"data_type\": "
+                "\"string\"}], una por cada columna que devuelve la expresion "
+                "(data_type: " + "|".join(TIPOS) + ").",
+                details={"table": name, "missing": "columns",
+                         "data_types": list(TIPOS)}) from exc
     columns = _normalizar_columnas(columns)
 
     lineas: List[str] = []
