@@ -36,6 +36,9 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- PR #64 review: static DAX validation defers unresolved virtual columns
+  (generated tables and table variables) instead of rejecting valid measures.
+
 - **`pbi_create_measure` in `pbip` mode wrote DAX that could not be evaluated,
   and `pbi_validate_tmdl` passed it.** Round 2 of the duel: thirteen measures
   with table names that have spaces left unquoted

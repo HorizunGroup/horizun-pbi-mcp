@@ -181,6 +181,19 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
                  if toks[k][0] == "ident" and toks[k][1].casefold() == "var"
                  and toks[k + 1][0] == "ident"}
 
+    # Offline we cannot resolve the row schema of table expressions. Defer
+    # unqualified references in that context; explicit model references below
+    # remain checkable. A VAR may hold a table, including a table constructor.
+    virtual_context = bool(variables) or any(t == "op" and v == "{" for t, v, _, _ in toks) or any(
+        t == "ident" and v.casefold() in {
+            "generateseries", "calendar", "calendarauto", "selectcolumns",
+            "addcolumns", "summarize", "summarizecolumns", "datatable",
+            "row", "groupby", "generate", "generateall", "union",
+            "crossjoin", "intersect", "except", "naturalinnerjoin",
+            "naturalleftouterjoin"}
+        and k + 1 < len(toks) and toks[k + 1][1] == "("
+        for k, (t, v, _, _) in enumerate(toks))
+
     for k, (tipo, valor, ini, _fin) in enumerate(toks):
         siguiente = toks[k + 1] if k + 1 < len(toks) else None
         previo = toks[k - 1] if k > 0 else None
@@ -206,7 +219,8 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
             if previo and tapado(previo[2]):
                 continue
             clave = valor.casefold()
-            if clave in medidas or clave in indice["columns"] or clave in literales:
+            if clave in medidas or clave in indice["columns"] or clave in literales \
+                    or virtual_context:
                 continue
             acusa("dax_unknown_reference", f"[{valor}]",
                   f"[{valor}] no es una medida ni una columna del modelo.")

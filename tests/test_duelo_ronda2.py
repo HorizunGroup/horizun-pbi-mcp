@@ -145,6 +145,14 @@ def test_una_medida_correcta_se_escribe(proyecto, dax):
     assert res["action"] == "created"
 
 
+def test_generated_columns_can_be_written_in_pbip(proyecto):
+    dax = 'SUMX(GENERATESERIES(1, 10), [Value])'
+    res = tmdl_writer.create_measure_pbip(proyecto, "Ventas", "Series", dax)
+    assert res["action"] == "created"
+    archivo = Path(proyecto.semantic_model_dir) / "definition" / "tables" / "Ventas.tmdl"
+    assert dax in archivo.read_text(encoding="utf-8-sig")
+
+
 def test_el_validador_rechaza_el_modelo_que_escribio_qwen4(proyecto):
     """La forma exacta de las medidas del duelo, con datos inventados."""
     _tabla(proyecto, "Presupuesto Obra", TABLA_CON_ESPACIOS.replace(
