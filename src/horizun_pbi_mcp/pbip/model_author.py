@@ -26,8 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.logging_config import get_logger
-from horizun_pbi_mcp.powerbi.errors import (NoActiveModelError, PowerBIMCPError,
-                                            ValidationError)
+from horizun_pbi_mcp.powerbi.errors import NoActiveModelError, PowerBIMCPError
 from horizun_pbi_mcp.pbip.tmdl_reader import (_parse_relationships, find_table_file,
                               parse_table_file)
 from horizun_pbi_mcp.utils.validation import (normalizar_format_string,
