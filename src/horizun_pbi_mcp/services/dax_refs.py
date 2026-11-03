@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 #: Palabras que DAX acepta sueltas, sin parentesis ni comillas.
 _PALABRAS = {
