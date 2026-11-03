@@ -15,7 +15,8 @@ from horizun_pbi_mcp.powerbi.errors import (MeasureExistsError, MeasureNotFoundE
                             PowerBIMCPError, TableNotFoundError,
                             ValidationError)
 from horizun_pbi_mcp.powerbi.model_reader import connect, lease_active_model
-from horizun_pbi_mcp.utils.validation import (normalizar_format_string,
+from horizun_pbi_mcp.utils.validation import (measure_column_collision,
+                                              normalizar_format_string,
                                               validate_measure_expression,
                                               validate_object_name)
 
@@ -208,6 +209,12 @@ def create_measure(
             measure = existing
             action = "updated"
         else:
+            collision = next((str(c.Name) for c in target.Columns
+                              if str(c.Name).casefold() == name.casefold()), None)
+            if collision is not None:
+                occupied = [str(obj.Name) for t in mdl.Tables
+                            for objects in (t.Columns, t.Measures) for obj in objects]
+                raise measure_column_collision(target.Name, name, collision, occupied)
             TOM = load_tom()
             measure = TOM.Measure()
             measure.Name = name

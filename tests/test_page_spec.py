@@ -50,6 +50,138 @@ def test_spec_valido():
     assert page_spec.validate_schema(spec_base()) == []
 
 
+def test_sort_y_unidades_llegan_al_pbir(proyecto):
+    active, md, _p, _s = proyecto
+    spec = spec_base()
+    spec["visuals"][0].update(display_units="none", decimals=0)
+    spec["visuals"][2].update(
+        sort={"field": "[TotalAmount]", "direction": "desc"},
+        display_units="thousands", decimals=2)
+    compiled = page_spec.compile_spec(active, spec, md, seed="sort")
+    card = compiled["visuals"][0]["visual"]["visual"]
+    chart = compiled["visuals"][2]["visual"]["visual"]
+    assert card["objects"]["labels"][0]["properties"]["labelDisplayUnits"] == {
+        "expr": {"Literal": {"Value": "1D"}}}
+    assert card["objects"]["labels"][0]["properties"]["labelPrecision"] == {
+        "expr": {"Literal": {"Value": "0L"}}}
+    assert chart["query"]["sortDefinition"] == {"sort": [{
+        "field": chart["query"]["queryState"]["Y"]["projections"][0]["field"],
+        "direction": "Descending"}]}
+    assert chart["objects"]["valueAxis"][0]["properties"]["labelDisplayUnits"] == {
+        "expr": {"Literal": {"Value": "1000D"}}}
+    assert chart["objects"]["valueAxis"][0]["properties"]["labelPrecision"] == {
+        "expr": {"Literal": {"Value": "2L"}}}
+    result = page_spec.apply_spec(active, compiled)
+    persisted = [json.loads(Path(v["file"]).read_text(encoding="utf-8"))["visual"]
+                 for v in pbir_reader.list_visuals(active, result["page_id"])]
+    assert chart in persisted and card in persisted
+    spec["visuals"][2]["sort"] = {"field": "Calendar[Year]", "direction": "asc"}
+    updated = page_spec.compile_spec(active, spec, md, seed="sort")
+    assert page_spec.apply_spec(active, updated)["change"] == "update"
+    assert page_spec.apply_spec(active, updated)["change"] == "no_change"
+
+
+@pytest.mark.parametrize("key,value,path", [
+    ("sort", None, "sort"),
+    ("sort", {"direction": "asc"}, "sort.field"),
+    ("sort", {"field": "[TotalAmount]", "direction": "DESC"}, "sort.direction"),
+    ("display_units", "billions", "display_units"),
+    ("display_units", [], "display_units"),
+    ("decimals", True, "decimals"),
+    ("decimals", 1.5, "decimals"),
+    ("decimals", -1, "decimals"),
+    ("decimals", 16, "decimals"),
+])
+def test_formato_numerico_invalido_trae_path(key, value, path):
+    spec = spec_base()
+    spec["visuals"][2][key] = value
+    assert any(e["path"] == f"$.visuals[2].{path}"
+               for e in page_spec.validate_schema(spec))
+
+
+def test_sort_desconocido_nombra_campos_y_no_escribe(proyecto):
+    active, md, project, _s = proyecto
+    spec = spec_base()
+    spec["visuals"][2]["sort"] = {"field": "[NoExiste]", "direction": "desc"}
+    before = huella(project)
+    with pytest.raises(ValidationError, match="NoExiste.*Campos disponibles") as exc:
+        page_spec.compile_spec(active, spec, md)
+    assert "Calendar[Year]" in exc.value.details["available_fields"]
+    assert "[TotalAmount]" in exc.value.details["available_fields"]
+    assert huella(project) == before
+
+
+def test_sort_conserva_agregacion_y_formato_clonado():
+    import copy
+
+    from horizun_pbi_mcp.pbip import visual_spec
+
+    expression = {"Aggregation": {"Expression": {"Column": {
+        "Expression": {"SourceRef": {"Entity": "Datos"}}, "Property": "Importe"}},
+        "Function": 0}}
+    document = {"visual": {"visualType": "clusteredBarChart", "query": {
+        "queryState": {"Y": {"projections": [{"field": expression}]}},
+        "sortDefinition": {"sort": [], "isDefaultSort": True}}, "objects": {
+            "valueAxis": [{"properties": {"show": {"expr": {"Literal": {
+                "Value": "true"}}}}}],
+            "labels": [{"selector": {"metadata": "Datos.Importe"},
+                        "properties": {"labelPrecision": {"expr": {"Literal": {
+                            "Value": "3L"}}}}}]}}}
+    before = copy.deepcopy(document)
+    visual_spec.apply(document, {"type": "clusteredBarChart"})
+    assert document == before, "sin claves nuevas no debe cambiar el PBIR"
+    visual_spec.apply(document, {"type": "clusteredBarChart", "decimals": 0,
+                                "sort": {"field": "Datos[Importe]", "direction": "asc"}})
+    visual = document["visual"]
+    assert visual["query"]["sortDefinition"] == {"sort": [
+        {"field": expression, "direction": "Ascending"}]}
+    assert visual["query"]["sortDefinition"]["sort"][0]["field"] is not expression
+    assert visual["objects"]["valueAxis"][0]["properties"]["show"] == {
+        "expr": {"Literal": {"Value": "true"}}}
+    assert visual["objects"]["labels"][0]["selector"] == {"metadata": "Datos.Importe"}
+    assert visual["objects"]["labels"][0]["properties"]["labelPrecision"] == {
+        "expr": {"Literal": {"Value": "0L"}}}
+    assert "labelDisplayUnits" not in visual["objects"]["valueAxis"][0]["properties"]
+
+
+@pytest.mark.parametrize("key,value", [
+    ("sort", {"field": "[TotalAmount]", "direction": "desc"}),
+    ("display_units", "none"), ("decimals", 0),
+])
+def test_opciones_numericas_rechazan_tipo_sin_soporte(key, value):
+    spec = spec_base()
+    spec["visuals"][0].update(type="table", **{key: value})
+    assert any(e["path"] == f"$.visuals[0].{key}"
+               for e in page_spec.validate_schema(spec))
+
+
+@pytest.mark.parametrize("visual_type,group", [
+    ("card", "labels"), ("cardVisual", "value"),
+    ("barChart", "valueAxis"), ("columnChart", "valueAxis"),
+    ("clusteredBarChart", "valueAxis"), ("clusteredColumnChart", "valueAxis"),
+])
+@pytest.mark.parametrize("units,literal", [
+    ("none", "1D"), ("auto", "0D"), ("thousands", "1000D"), ("millions", "1000000D"),
+])
+def test_unidades_por_tipo(proyecto, visual_type, group, units, literal):
+    active, md, _p, _s = proyecto
+    spec = spec_base()
+    v = spec["visuals"][2 if group == "valueAxis" else 0]
+    spec["visuals"] = [v]
+    v.update(type=visual_type, display_units=units, decimals=0)
+    if group == "valueAxis":
+        v["sort"] = {"field": "[TotalAmount]", "direction": "asc"}
+    compiled = page_spec.compile_spec(active, spec, md)
+    visual = compiled["visuals"][0]["visual"]["visual"]
+    props = visual["objects"][group][0]["properties"]
+    assert props["labelDisplayUnits"]["expr"]["Literal"]["Value"] == literal
+    assert props["labelPrecision"]["expr"]["Literal"]["Value"] == "0L"
+    from horizun_pbi_mcp.services import format_oracle
+
+    format_oracle.assert_managed_paths(compiled["visuals"][0]["visual"], [
+        ("objects", group, "labelDisplayUnits"), ("objects", group, "labelPrecision")])
+
+
 @pytest.mark.parametrize("mutacion,path_esperado", [
     (lambda s: s.pop("schema_version"), "$.schema_version"),
     (lambda s: s.update(schema_version="9.9"), "$.schema_version"),

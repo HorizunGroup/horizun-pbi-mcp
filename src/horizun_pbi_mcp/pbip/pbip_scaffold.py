@@ -361,8 +361,10 @@ def _crear_en_carpeta(base: Path, name: str, *, culture: str, width: int,
     un movimiento falla, las ya movidas vuelven al staging.
     """
     import os
+    import shutil
 
     from horizun_pbi_mcp.services import project_publish
+    from horizun_pbi_mcp.services import paths as safe_paths
 
     entradas = [f"{name}.pbip", f"{name}.Report", f"{name}.SemanticModel"]
     ocupadas = [e for e in entradas if (base / e).exists()]
@@ -376,7 +378,7 @@ def _crear_en_carpeta(base: Path, name: str, *, culture: str, width: int,
             details={"project_dir": str(base), "existing": ocupadas})
 
     stage = project_publish.create_stage(base)
-    movidas: list[str] = []
+    movidas: dict[str, tuple[int, int]] = {}
     try:
         construido = _construir_proyecto(
             stage, name, culture=culture, width=width, height=height,
@@ -388,13 +390,34 @@ def _crear_en_carpeta(base: Path, name: str, *, culture: str, width: int,
                         f"{e} aparecio en {base} mientras se creaba el proyecto.",
                         details={"project_dir": str(base)})
                 os.replace(stage / e, base / e)
-                movidas.append(e)
+                st = (base / e).stat()
+                movidas[e] = (st.st_dev, st.st_ino)
         except BaseException:
             for e in reversed(movidas):
+                owned = safe_paths.ensure_contained(
+                    base, base / e, kind="entrada nueva del proyecto")
+                if not owned.exists():
+                    continue
+                st = owned.stat()
+                if (st.st_dev, st.st_ino) != movidas[e]:
+                    raise ScaffoldError(
+                        "La entrada publicada cambio durante la compensacion; "
+                        "se conserva para no retirar contenido ajeno.",
+                        details={"path": str(owned)})
                 try:
                     os.replace(base / e, stage / e)
-                except OSError:                       # pragma: no cover
-                    log.error("No se pudo devolver %s al staging", base / e)
+                except OSError:
+                    # These entries did not exist before this invocation and
+                    # were successfully moved by us. A failed move back must
+                    # not leave a partial project in the user's directory.
+                    owned = safe_paths.ensure_contained(
+                        base, base / e, kind="entrada nueva del proyecto")
+                    safe_paths.assert_still_contained(
+                        base, owned, kind="entrada nueva del proyecto")
+                    if owned.is_dir():
+                        shutil.rmtree(owned)
+                    else:
+                        owned.unlink(missing_ok=True)
             raise
     finally:
         limpio = project_publish.discard_stage(stage)

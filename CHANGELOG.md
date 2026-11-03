@@ -15,6 +15,10 @@ BI Desktop 2.159.883.0 (`docs/verificacion-perfil-local.md`). Contract against
 
 ### Added
 
+- **Page specs set chart sort order and display units.** Optional per-visual
+  keys `sort` (`{"field", "direction"}`), `display_units`
+  (`none|auto|thousands|millions`) and `decimals`. Without them, specs produce
+  the same output as before.
 - Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 22 tools with short descriptions,
   minimal schema metadata and compact replies for small Ollama/local models.
   Includes `pbi_create_relationship` to connect tables with Desktop closed,
@@ -42,6 +46,20 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- **A measure named like an existing column stopped the agent to ask.** The
+  `measure_exists` error now carries `suggested_names` with three free
+  alternatives and tells the agent to retry with one of them, in `pbip` and
+  `live`, before anything is written.
+- PR #64 review: failed scaffold compensation removes newly created entries
+  in nested and flat layouts, preserving preexisting files and directories.
+- PR #64 review: CSV/XLSX summary detection and row counts cover the whole
+  file while type inference stays sampled. Power Query always filters blank
+  and TOTAL/SUBTOTAL rows in the first three columns unless explicitly kept.
+- PR #64 review: bare unknown identifiers in known DAX table argument slots
+  now report `dax_unknown_table`, including `COUNTROWS(Inexistente)`.
+- PR #64 review: static DAX validation defers unresolved virtual columns
+  (generated tables and table variables) instead of rejecting valid measures.
+
 - **`pbi_create_calculated_table` without `columns` sent small models into a
   loop.** With Desktop closed it answered the generic `no_active_model` ("use
   mode='pbip'"), but this tool has no `mode` and opening Desktop does not help
@@ -52,7 +70,7 @@ The frozen contract is intact: no tool, parameter or default changed.
 - **`pbi_create_measure` in `pbip` mode wrote DAX that could not be evaluated,
   and `pbi_validate_tmdl` passed it.** Round 2 of the duel: thirteen measures
   with table names that have spaces left unquoted
-  (`SUMX(Presupuesto Edificio Mirador, ...)`) and measures cited without
+  (`SUMX(Presupuesto Obra, ...)`) and measures cited without
   brackets (`VAC = EAC - BAC`). With no engine to compile them, nothing caught
   them until Desktop. A static reference check now refuses them before writing
   (planner and writer) and the lint reports them as `tmdl_dax_reference`:
@@ -72,8 +90,8 @@ The frozen contract is intact: no tool, parameter or default changed.
   relationship. In csv and xlsx, rows with no value and rows whose first three
   columns start with TOTAL, SUBTOTAL or GRAN TOTAL are removed in Power Query
   (step "Filas vacias y totales quitadas") and reported in `warnings`;
-  `keep_summary_rows=true` keeps them. Detection reads the profiling sample, and
-  the M applies the same rule to the whole file.
+  `keep_summary_rows=true` keeps them. Detection counts the whole file, and
+  M applies the same rule independently of the profiling sample.
 - **`pbi_create_page_from_spec` on an existing page answered `ok` and did
   nothing.** The empty first page of `pbi_create_pbip_project` stayed empty for
   good. An existing page with no visuals is now filled in one transaction

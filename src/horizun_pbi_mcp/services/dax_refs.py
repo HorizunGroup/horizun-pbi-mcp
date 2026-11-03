@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Set, Tuple
 
 #: Palabras que DAX acepta sueltas, sin parentesis ni comillas.
 _PALABRAS = {
@@ -120,6 +120,36 @@ def _citar_tabla(nombre: str) -> str:
     return "'" + nombre.replace("'", "''") + "'"
 
 
+def _bare_table_arguments(toks: List[Tuple[str, str, int, int]]) -> Set[int]:
+    """Only whole, bare arguments in known table slots are provably tables.
+
+    Do not guess signatures of arbitrary calls or classify scalar enums.
+    Track nested calls/constructors so their commas cannot change the slot.
+    """
+    first_table = {"countrows", "sumx", "averagex", "minx", "maxx", "countx",
+                   "countax", "filter", "selectcolumns", "addcolumns",
+                   "summarize", "groupby", "calculatetable", "all",
+                   "allexcept", "allselected", "distinct", "values"}
+    found: Set[int] = set()
+    stack: List[Tuple[str, int, int]] = []
+    for k, (kind, value, _, _) in enumerate(toks):
+        if kind != "op":
+            continue
+        if value in ("(", "{"):
+            name = toks[k - 1][1].casefold() if value == "(" and k and toks[k - 1][0] == "ident" else ""
+            stack.append((name, 0, k + 1))
+        elif value in (",", ";", ")", "}") and stack:
+            name, arg, start = stack[-1]
+            if name in first_table and arg == 0 and k == start + 1 \
+                    and toks[start][0] == "ident":
+                found.add(start)
+            if value in (",", ";"):
+                stack[-1] = (name, arg + 1, k + 1)
+            else:
+                stack.pop()
+    return found
+
+
 def revisar(expresion: str, indice: Dict[str, Any], *,
             medidas_extra: Iterable[str] = ()) -> List[Dict[str, str]]:
     """Problemas que impedirian evaluar la expresion. Lista vacia si ninguno.
@@ -137,6 +167,7 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
                               "message": mensaje})
 
     toks = tokens(expresion)
+    table_arguments = _bare_table_arguments(toks)
     tablas = indice["tables"]
     medidas = dict(indice["measures"])
     for extra in medidas_extra:
@@ -181,6 +212,19 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
                  if toks[k][0] == "ident" and toks[k][1].casefold() == "var"
                  and toks[k + 1][0] == "ident"}
 
+    # Offline we cannot resolve the row schema of table expressions. Defer
+    # unqualified references in that context; explicit model references below
+    # remain checkable. A VAR may hold a table, including a table constructor.
+    virtual_context = bool(variables) or any(t == "op" and v == "{" for t, v, _, _ in toks) or any(
+        t == "ident" and v.casefold() in {
+            "generateseries", "calendar", "calendarauto", "selectcolumns",
+            "addcolumns", "summarize", "summarizecolumns", "datatable",
+            "row", "groupby", "generate", "generateall", "union",
+            "crossjoin", "intersect", "except", "naturalinnerjoin",
+            "naturalleftouterjoin"}
+        and k + 1 < len(toks) and toks[k + 1][1] == "("
+        for k, (t, v, _, _) in enumerate(toks))
+
     for k, (tipo, valor, ini, _fin) in enumerate(toks):
         siguiente = toks[k + 1] if k + 1 < len(toks) else None
         previo = toks[k - 1] if k > 0 else None
@@ -206,7 +250,8 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
             if previo and tapado(previo[2]):
                 continue
             clave = valor.casefold()
-            if clave in medidas or clave in indice["columns"] or clave in literales:
+            if clave in medidas or clave in indice["columns"] or clave in literales \
+                    or virtual_context:
                 continue
             acusa("dax_unknown_reference", f"[{valor}]",
                   f"[{valor}] no es una medida ni una columna del modelo.")
@@ -228,6 +273,9 @@ def revisar(expresion: str, indice: Dict[str, Any], *,
                 acusa("dax_column_without_table", valor,
                       f"'{valor}' es una columna: citala como "
                       f"Tabla[{valor}].")
+            elif k in table_arguments:
+                acusa("dax_unknown_table", valor,
+                      f"La tabla '{valor}' no existe en el modelo.")
     # Tambien una tabla citada con comillas que no existe.
     for k, (tipo, valor, ini, _f) in enumerate(toks):
         if tipo == "table" and valor.casefold() not in tablas:

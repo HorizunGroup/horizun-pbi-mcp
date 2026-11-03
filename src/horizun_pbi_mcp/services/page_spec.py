@@ -22,6 +22,7 @@ from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.powerbi.errors import PowerBIMCPError, ValidationError
 from horizun_pbi_mcp.pbip import layout_engine, page_builder, pbir_reader, pbir_writer, visual_factory
 from horizun_pbi_mcp.services import layout_doctor, model_explorer
+from horizun_pbi_mcp.pbip import visual_spec
 
 SCHEMA_VERSION = "1.0"
 SUPPORTED_VERSIONS = ("1.0",)
@@ -216,6 +217,8 @@ def validate_schema(spec: Any, active: Any = None) -> List[Dict[str, str]]:
                         f"{base}.type", f"Tipo no soportado: '{v['type']}'.",
                         sugerencia))
             campos = v.get("fields")
+            for error in visual_spec.validate(v):
+                errores.append(_err(f"{base}.{error['path']}", error["message"]))
             if campos is not None and not isinstance(campos, dict):
                 errores.append(_err(f"{base}.fields",
                                     "'fields' debe ser un objeto rol -> campos."))
@@ -510,6 +513,7 @@ def compile_spec(active: ActivePbip, spec: Dict[str, Any],
         built = visual_factory.build_visual(
             active, v["type"], v.get("fields", {}), pos, v.get("title"),
             indice_medidas, options=_opciones_con_formato(v))
+        visual_spec.apply(built["visual"], v)
         vid = deterministic_id(seed, "visual", i)
         built["visual"]["name"] = vid
         construidos.append({"visual": built["visual"],
