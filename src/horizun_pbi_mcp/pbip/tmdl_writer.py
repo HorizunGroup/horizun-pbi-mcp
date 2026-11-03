@@ -19,7 +19,8 @@ from horizun_pbi_mcp.pbip.tmdl_reader import _first_token, _indent, _unquote, fi
 from horizun_pbi_mcp.services import project_state
 from horizun_pbi_mcp.services import txn as txn_service
 from horizun_pbi_mcp.utils.change_log import record_change
-from horizun_pbi_mcp.utils.validation import (normalizar_format_string, tmdl_quote_name,
+from horizun_pbi_mcp.utils.validation import (measure_column_collision,
+                                              normalizar_format_string, tmdl_quote_name,
                                               validate_measure_expression,
                                               validate_object_name)
 
@@ -253,23 +254,21 @@ def _assert_nombre_libre(active: ActivePbip, table: str, name: str) -> None:
         log.info("No se pudo comprobar el nombre '%s': %s", name, exc)
         return
 
+    tablas = []
     for archivo in archivos:
         try:
-            leida = parse_table_file(archivo)
+            tablas.append(parse_table_file(archivo))
         except Exception:                                    # noqa: BLE001
             continue
-        propia = leida["name"] == table
+    ocupados = [obj["name"] for leida in tablas
+                for tipo in ("columns", "measures") for obj in leida[tipo]]
+    for leida in tablas:
+        propia = leida["name"].casefold() == table.casefold()
         if propia:
             choque = next((c["name"] for c in leida["columns"]
                            if c["name"].casefold() == clave), None)
             if choque is not None:
-                raise MeasureExistsError(
-                    f"En '{table}' ya hay una COLUMNA '{choque}': una medida no "
-                    "puede llamarse igual. Power BI no abriria el proyecto "
-                    f"—diria que no puede crear la medida '{name}'—. Renombra "
-                    f"la medida (p.ej. '{name} Total').",
-                    details={"table": table, "measure": name,
-                             "column": choque, "rule": "measure_column_collision"})
+                raise measure_column_collision(table, name, choque, ocupados)
             continue
         gemela = next((m["name"] for m in leida["measures"]
                        if m["name"].casefold() == clave), None)
