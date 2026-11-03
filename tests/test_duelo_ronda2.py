@@ -118,6 +118,7 @@ TABLA_CON_ESPACIOS = (
     ("Total * 2", "dax_measure_without_brackets"),
     ("SUM(Ventas[Inexistente])", "dax_unknown_column"),
     ("SUM(Compras[Monto])", "dax_unknown_table"),
+    ("COUNTROWS(Inexistente)", "dax_unknown_table"),
     ("[Total] − 1", "dax_typographic_character"),
     ("[Fantasma] + 1", "dax_unknown_reference"),
 ])

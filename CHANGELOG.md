@@ -36,6 +36,8 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- PR #64 review: bare unknown identifiers in known DAX table argument slots
+  now report `dax_unknown_table`, including `COUNTROWS(Inexistente)`.
 - PR #64 review: static DAX validation defers unresolved virtual columns
   (generated tables and table variables) instead of rejecting valid measures.
 
