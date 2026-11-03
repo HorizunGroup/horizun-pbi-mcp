@@ -30,6 +30,24 @@ def test_create_page_from_spec(session, sample_pbip):
     assert vs[0]["measures"] == ["Ventas[Total]"]
 
 
+def test_create_page_from_spec_con_sort_y_unidades(session, sample_pbip):
+    from horizun_pbi_mcp.utils.json_utils import read_json
+
+    project_locator.open_project(session, str(sample_pbip))
+    active = session.require_active_pbip()
+    spec = {"page_name": "Ordenado", "visuals": [
+        {"type": "barChart", "fields": {
+            "category": "Ventas[Categoria]", "values": ["[Total]"]},
+         "sort": {"field": "[Total]", "direction": "desc"},
+         "display_units": "none", "decimals": 0}]}
+    result = page_builder.create_page_from_spec(active, spec, {"Total": "Ventas"})
+    path = pbir_reader.list_visuals(active, result["page_id"])[0]["file"]
+    visual = read_json(path)["visual"]
+    assert visual["query"]["sortDefinition"]["sort"][0]["direction"] == "Descending"
+    assert visual["objects"]["valueAxis"][0]["properties"]["labelDisplayUnits"] == {
+        "expr": {"Literal": {"Value": "1D"}}}
+
+
 def test_create_page_auto_layout(session, sample_pbip):
     project_locator.open_project(session, str(sample_pbip))
     active = session.require_active_pbip()

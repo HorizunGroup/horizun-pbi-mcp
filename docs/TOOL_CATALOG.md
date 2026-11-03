@@ -190,6 +190,26 @@ many-to-one, one-direction filtering and `overwrite=false`. Set the profile to
 | `pbi_validate_generated_page` | Verifies the page already written |
 | `pbi_page_building_blocks` · `pbi_preview_spec_html` · `pbi_create_page_from_spec` · `pbi_generate_report_page` | Original (baseline) flow |
 
+En `pbi_create_page_from_spec` y `pbi_apply_page_spec`, cada visual admite
+estas claves opcionales:
+
+```json
+{
+  "type": "clusteredBarChart",
+  "fields": {"category": "Datos[Categoria]", "values": ["[Total]"]},
+  "sort": {"field": "[Total]", "direction": "desc"},
+  "display_units": "none",
+  "decimals": 0
+}
+```
+
+`sort` ordena barras/columnas por un campo del propio visual (`Tabla[Columna]`
+o `[Medida]`), con direccion `asc` o `desc`. Un campo desconocido produce un
+error que enumera los disponibles. `display_units` acepta `none` (numero
+completo), `auto`, `thousands` o `millions`; `decimals` acepta enteros de 0 a 15.
+Ambos configuran tarjetas clasicas/nuevas y etiquetas de datos/ejes de
+barras, columnas y lineas. Sin estas claves se conserva el comportamiento previo.
+
 ## Audit
 
 | Tool | What it does |

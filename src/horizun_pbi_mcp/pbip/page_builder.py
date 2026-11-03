@@ -19,6 +19,7 @@ from horizun_pbi_mcp.config import ActivePbip
 from horizun_pbi_mcp.logging_config import get_logger
 from horizun_pbi_mcp.powerbi.errors import ValidationError
 from horizun_pbi_mcp.pbip import layout_engine, pbir_reader, pbir_writer, visual_factory
+from horizun_pbi_mcp.pbip import visual_spec
 
 log = get_logger("page_builder")
 
@@ -188,6 +189,7 @@ def create_page_from_spec(active: ActivePbip, spec: Dict[str, Any],
         built = visual_factory.build_visual(
             active, v["type"], v.get("fields", {}), pos, v.get("title"),
             measure_index, options=v.get("options"))
+        visual_spec.apply(built["visual"], v)
         planificados.append({
             "visual": built["visual"],
             "meta": {"type": built["actual_type"], "title": v.get("title"),
