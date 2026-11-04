@@ -5,10 +5,20 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
-## [Unreleased]
+## [2.2.0] — 2026-10-31
+
+New opt-in `local` profile for small models, and fixes found when four agents
+and two small models built Power BI models with this MCP. Checked against Power
+BI Desktop 2.159.883.0 (`docs/verificacion-perfil-local.md`). Contract against
+`v2.1.3`: **0 breaking changes, 3 compatible ones** (`pbi_find_tool`,
+`pbi_create_pbip_project(subfolder)`, `pbi_add_table_from_file(keep_summary_rows)`).
 
 ### Added
 
+- **Page specs set chart sort order and display units.** Optional per-visual
+  keys `sort` (`{"field", "direction"}`), `display_units`
+  (`none|auto|thousands|millions`) and `decimals`. Without them, specs produce
+  the same output as before.
 - Opt-in `HORIZUN_PBI_MCP_PROFILE=local`: 22 tools with short descriptions,
   minimal schema metadata and compact replies for small Ollama/local models.
   Includes `pbi_create_relationship` to connect tables with Desktop closed,
@@ -36,6 +46,10 @@ The frozen contract is intact: no tool, parameter or default changed.
 
 ### Fixed
 
+- **A measure named like an existing column stopped the agent to ask.** The
+  `measure_exists` error now carries `suggested_names` with three free
+  alternatives and tells the agent to retry with one of them, in `pbip` and
+  `live`, before anything is written.
 - PR #64 review: failed scaffold compensation removes newly created entries
   in nested and flat layouts, preserving preexisting files and directories.
 - PR #64 review: CSV/XLSX summary detection and row counts cover the whole
@@ -46,10 +60,17 @@ The frozen contract is intact: no tool, parameter or default changed.
 - PR #64 review: static DAX validation defers unresolved virtual columns
   (generated tables and table variables) instead of rejecting valid measures.
 
+- **`pbi_create_calculated_table` without `columns` sent small models into a
+  loop.** With Desktop closed it answered the generic `no_active_model` ("use
+  mode='pbip'"), but this tool has no `mode` and opening Desktop does not help
+  either, because writing the TMDL requires closing it. The error now says to
+  repeat the call with `columns=[{"name", "data_type"}]` and lists the types;
+  the local description no longer calls `columns` optional. Claude Haiku on
+  the local profile went from 16/18 to 18/18 tasks.
 - **`pbi_create_measure` in `pbip` mode wrote DAX that could not be evaluated,
   and `pbi_validate_tmdl` passed it.** Round 2 of the duel: thirteen measures
   with table names that have spaces left unquoted
-  (`SUMX(Presupuesto Edificio Mirador, ...)`) and measures cited without
+  (`SUMX(Presupuesto Obra, ...)`) and measures cited without
   brackets (`VAC = EAC - BAC`). With no engine to compile them, nothing caught
   them until Desktop. A static reference check now refuses them before writing
   (planner and writer) and the lint reports them as `tmdl_dax_reference`:
