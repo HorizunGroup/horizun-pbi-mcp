@@ -7,6 +7,10 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ## [Unreleased]
 
+---
+
+## [2.2.1] — 2026-11-08
+
 Fixes from an end-to-end audit on 2026-11-07: 118 MCP calls over stdio against a
 real Power BI Desktop, from an empty project to an exported `.pbix`, plus the
 plugin launcher on a machine where the server failed with `Connection closed`.
@@ -38,7 +42,6 @@ Contract against `v2.2.0`: **no change** (one new response field).
   whatever `find` came first. GNU `find` always fails there, so the Microsoft
   Store `python` alias was no longer skipped. `where.exe` and `find.exe` now go
   by full path.
-
 - **Plugin install errors reached `install.log` empty.** The installer runs
   detached and starts each step with `CREATE_NO_WINDOW`. A step that only
   inherited stdout/stderr wrote to a new hidden console, so a clean install that
