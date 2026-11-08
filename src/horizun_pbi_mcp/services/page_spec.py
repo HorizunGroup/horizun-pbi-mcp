@@ -139,6 +139,41 @@ PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
+def grafico_de_bloque(tipo: str, medidas: List[str], category: str,
+                      n: int, usados: set) -> Optional[Dict[str, Any]]:
+    """El grafico numero `n` de un preset: una medida DISTINTA por grafico.
+
+    Auditoria del 2026-11-07 contra Desktop real: todos los graficos de un
+    preset usaban `medidas[0]`, y la pagina ejecutiva salia con el protagonista
+    y el de apoyo pintando la misma serie ("Total monto por categoria" dos
+    veces) aunque se habian dado dos medidas. Con menos medidas que graficos se
+    rota; un par medida-categoria que ya tiene grafico no se repite (None).
+    """
+    if not medidas:
+        return None
+    medida = medidas[n % len(medidas)]
+    if medida in usados:
+        return None
+    usados.add(medida)
+    etiqueta = category.split("[")[-1].rstrip("]")
+    return {"type": tipo, "title": f"{medida} por {etiqueta}",
+            "fields": {"category": category, "values": [f"[{medida}]"]}}
+
+
+def nombre_de_medida(ref: str) -> str:
+    """El nombre pelado de una medida, venga como `Total` o como `[Total]`.
+
+    Los generadores envuelven cada medida en corchetes para referenciarla. Un
+    agente que ya la pasaba como `[Total]` -que es como se escribe en DAX y
+    como la piden los propios specs- terminaba con `[[Total]]`, un campo
+    invalido, o con "esa medida no existe" aunque existiera.
+    """
+    nombre = str(ref).strip()
+    if nombre.startswith("[") and nombre.endswith("]") and nombre.count("[") == 1:
+        nombre = nombre[1:-1].strip()
+    return nombre
+
+
 def list_presets() -> List[Dict[str, Any]]:
     return [{"preset": k, **{kk: vv for kk, vv in v.items() if kk != "blocks"},
              "blocks": v["blocks"]} for k, v in sorted(PRESETS.items())]
