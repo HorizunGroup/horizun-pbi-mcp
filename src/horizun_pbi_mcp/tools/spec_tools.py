@@ -70,9 +70,10 @@ def register(mcp) -> None:
                     f"Preset desconocido: '{preset}'.",
                     details={"available": sorted(page_spec.PRESETS)})
             definicion = page_spec.PRESETS[preset]
-            medidas = list(measures or [])
+            medidas = [page_spec.nombre_de_medida(m) for m in (measures or [])]
             visuals: List[Dict[str, Any]] = []
             avisos: List[str] = []
+            graficos, usados = 0, set()
 
             for bloque in definicion["blocks"]:
                 for i in range(bloque["count"]):
@@ -91,11 +92,15 @@ def register(mcp) -> None:
                                 f"El bloque '{bloque['role']}' necesita una medida y "
                                 "una categoria; se omite.")
                             break
-                        visuals.append({
-                            "type": bloque["type"],
-                            "title": f"{medidas[0]} por {category.split('[')[-1].rstrip(']')}",
-                            "fields": {"category": category,
-                                       "values": [f"[{medidas[0]}]"]}})
+                        visual = page_spec.grafico_de_bloque(
+                            bloque["type"], medidas, category, graficos, usados)
+                        graficos += 1
+                        if visual is None:
+                            avisos.append(
+                                f"El bloque '{bloque['role']}' se omite: no quedan "
+                                "medidas sin grafico (da mas medidas para llenarlo).")
+                            break
+                        visuals.append(visual)
 
             spec = {
                 "schema_version": page_spec.SCHEMA_VERSION,

@@ -524,6 +524,8 @@ Official references: [Microsoft Graph app-only authentication](https://learn.mic
 | Report changes were lost | Desktop was open and saved over them | Edit the PBIR **with Desktop closed**. Backups are in `backups/` |
 | Server starts but the client doesn't see it | Wrong path or interpreter in the config | `python scripts/make_mcp_config.py --client <your-client>` and paste again |
 | Session pointing to a dead port | Stale `outputs/session.json` | `python scripts/doctor.py` detects it; delete the file or reselect |
+| `Connection closed` right after the plugin updated | A server registered **by hand** points to the plugin cache of the old version (`...\plugins\cache\horizun\horizun-pbi-mcp\<version>\scripts\launch.cmd`). The update empties that folder, so the command no longer exists | The plugin already registers its own server: remove the manual entry (`claude mcp remove horizun-pbi-mcp -s user`; in Codex, delete `[mcp_servers.horizun-pbi-mcp]` from `~/.codex/config.toml`). Never register a path that contains a version number |
+| The plugin lists only `pbi_install_runtime` and `pbi_install_status` | First session after installing or updating: the runtime of the new version isn't installed yet | Let the agent call `pbi_install_runtime`, then restart the client |
 
 ---
 

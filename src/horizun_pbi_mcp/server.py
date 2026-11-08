@@ -105,6 +105,9 @@ def build_server(*, profile: str | None = None) -> FastMCP:
         module.register(registrar)
     discovery_tools.register(registrar, registrar.catalog, profile)
     _anotar_riesgo(mcp, log)
+    # Un argumento mal escrito ya no se pierde en silencio (ver el modulo).
+    from horizun_pbi_mcp.services import argumentos
+    argumentos.instalar(mcp)
 
     log.info("%s %s listo. %d modulos de tools registrados.",
              branding.PRODUCT_NAME, branding.VERSION, len(_TOOL_MODULES) + 1)

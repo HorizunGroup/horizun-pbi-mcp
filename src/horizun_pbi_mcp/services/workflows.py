@@ -49,6 +49,7 @@ def _construir_pagina(active: ActivePbip, model_data: Optional[Dict[str, Any]],
         raise ValidationError(
             "Se necesita el modelo para construir una pagina: abre el .pbip o "
             "selecciona un modelo en vivo.")
+    measures = [page_spec.nombre_de_medida(m) for m in measures]
     resumen_modelo = model_explorer.summary(model_data)
     disponibles = [m["name"] for m in model_data.get("measures", [])]
     faltan = [m for m in measures if m not in disponibles]
@@ -64,6 +65,7 @@ def _construir_pagina(active: ActivePbip, model_data: Optional[Dict[str, Any]],
     definicion = page_spec.PRESETS[preset]
     visuals: List[Dict[str, Any]] = []
     avisos: List[str] = []
+    graficos, usados = 0, set()
     for bloque in definicion["blocks"]:
         for i in range(bloque["count"]):
             if bloque["role"] == "kpi":
@@ -79,14 +81,15 @@ def _construir_pagina(active: ActivePbip, model_data: Optional[Dict[str, Any]],
                     avisos.append(f"El bloque '{bloque['role']}' necesita una "
                                   "categoria; se omite.")
                     break
-                if i > 0:
+                visual = page_spec.grafico_de_bloque(bloque["type"], measures,
+                                                     category, graficos, usados)
+                graficos += 1
+                if visual is None:
+                    avisos.append(
+                        f"El bloque '{bloque['role']}' se omite: no quedan "
+                        "medidas sin grafico (da mas medidas para llenarlo).")
                     break
-                etiqueta = category.split("[")[-1].rstrip("]")
-                visuals.append({
-                    "type": bloque["type"],
-                    "title": f"{measures[0]} por {etiqueta}",
-                    "fields": {"category": category,
-                               "values": [f"[{measures[0]}]"]}})
+                visuals.append(visual)
     if not visuals:
         raise ValidationError(
             "No se pudo componer ningun visual: revisa las medidas y la categoria.")

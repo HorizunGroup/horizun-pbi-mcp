@@ -905,6 +905,26 @@ def _instalar_validador(sp: dict[str, Path], env: dict[str, str],
     return {"state": "installed", "node": version}
 
 
+def _salida_al_registro() -> dict[str, Any]:
+    """stdout/stderr del instalador para el hijo, si son archivos reales.
+
+    Bajo `pythonw` o con los flujos cerrados no hay a donde escribir: entonces
+    se hereda como antes en vez de fallar la instalacion por el registro.
+    """
+    kwargs: dict[str, Any] = {}
+    for nombre in ("stdout", "stderr"):
+        flujo = getattr(sys, nombre, None)
+        try:
+            if flujo is not None:
+                flujo.flush()
+                flujo.fileno()
+                kwargs[nombre] = flujo
+        except (AttributeError, OSError, ValueError):
+            # Sin descriptor real (pythonw, flujo cerrado): el hijo hereda.
+            continue
+    return kwargs
+
+
 def _run(command: list[str], *, env: dict[str, str], intentos: int = 3) -> None:
     """Ejecuta un paso de la instalacion, con reintentos si es una descarga.
 
@@ -917,8 +937,14 @@ def _run(command: list[str], *, env: dict[str, str], intentos: int = 3) -> None:
     """
     for intento in range(1, intentos + 1):
         try:
+            # Imprimimos ANTES de lanzar y pasamos stdout/stderr EXPLICITOS:
+            # el instalador corre desprendido y con CREATE_NO_WINDOW, y un hijo
+            # que solo los HEREDA escribe en una consola oculta nueva, no en
+            # `install.log`. Auditoria del 2026-11-07: una instalacion limpia
+            # fallo en `python -m venv` y el registro quedo en 0 bytes.
+            print(f"[install] {' '.join(command)}", flush=True)
             subprocess.run(command, cwd=str(PLUGIN_ROOT), env=env, check=True,
-                           **flags_sin_ventana())
+                           **_salida_al_registro(), **flags_sin_ventana())
             return
         except subprocess.CalledProcessError:
             if intento == intentos:
@@ -996,8 +1022,12 @@ def install(base: Path | None = None, *, include_validator: bool = True) -> int:
                 # aparte POR SU CUENTA y sin flags: esa era la ultima ventana que
                 # quedaba, y la unica que la persona veia titulada con la ruta del
                 # runtime. Creandolo nosotros, hereda la consola oculta.
-                _run([sys.executable, "-m", "venv", str(sp["runtime"])],
-                     env=env, intentos=1)
+                # `--clear` + 2 intentos: la auditoria del 2026-11-07 vio fallar
+                # este paso UNA vez en una instalacion limpia con la maquina
+                # cargada, y pasar al repetirlo. Sin `--clear`, el segundo
+                # intento heredaria la carpeta a medias del primero.
+                _run([sys.executable, "-m", "venv", "--clear", str(sp["runtime"])],
+                     env=env, intentos=2)
 
             _write_status(p, state="installing", ready=False, step="python-packages",
                           message="Instalando el paquete abierto y sus dependencias.")

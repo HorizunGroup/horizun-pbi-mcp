@@ -26,7 +26,9 @@ def load_model(source: str = "live") -> Dict[str, Any]:
     session = get_session()
     if s == "pbip":
         return tmdl_reader.read_semantic_model(session.require_active_pbip())
-    return model_reader.read_model(session)
+    from horizun_pbi_mcp.services import dual_mode
+
+    return dual_mode.leer_modelo_live(session)
 
 
 def register(mcp) -> None:

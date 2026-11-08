@@ -57,6 +57,11 @@ class ThemeError(PowerBIMCPError):
     code = "theme_error"
 
 
+#: Tamano del valor de una tarjeta (pt). Igual al `callout` de textClasses
+#: menos margen: cabe "1.551.550,00" en una tarjeta de 300 px de ancho.
+TAMANO_VALOR_TARJETA = 28
+
+
 def _texto(tamano: int, color: str) -> Dict[str, Any]:
     """Clase de texto del tema.
 
@@ -105,6 +110,13 @@ def _estilos(fondo: str, tinta: str, tinta2: str,
                             "fontSize": 9}],
             }
         },
+        # En la tarjeta clasica `labels` NO son etiquetas de datos: es el valor
+        # principal. El comodin de arriba (9 pt) la dejaba diminuta; auditoria
+        # del 2026-11-07, captura de Desktop real con "1.551,50" a 9 pt en una
+        # tarjeta de 300x120. Un tipo concreto pesa mas que `*` en el tema.
+        "card": {"*": {"labels": [{
+                                   "color": {"solid": {"color": tinta}},
+                                   "fontSize": TAMANO_VALOR_TARJETA}]}},
         "page": {"*": {"background": [{"color": {"solid": {"color": fondo}},
                                        "transparency": 0}],
                        "outspace": [{"color": {"solid": {"color": fondo}}}]}},

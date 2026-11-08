@@ -5,6 +5,56 @@ Semantic versioning. **The contract of the original 34 tools is never broken.**
 
 ---
 
+## [Unreleased]
+
+Fixes from an end-to-end audit on 2026-11-07: 118 MCP calls over stdio against a
+real Power BI Desktop, from an empty project to an exported `.pbix`, plus the
+plugin launcher on a machine where the server failed with `Connection closed`.
+Contract against `v2.2.0`: **no change** (one new response field).
+
+### Fixed
+
+- **A misspelled argument no longer runs the tool with defaults.** FastMCP drops
+  keys a tool does not declare. `pbi_align_visuals(alignment="top")` (the
+  parameter is `edge`) aligned left and stacked one chart on another, then
+  answered `ok: true`. Write tools now refuse with `unknown_arguments` before
+  doing anything, naming each key and the likely parameter. Read-only tools
+  still run and say so in `ignored_arguments` and `warnings`.
+- **Card values were 9 pt under the bundled themes.** The theme's wildcard
+  `labels.fontSize` for data labels also hit the classic card, where `labels`
+  is the main value. The themes now set the card value to 28 pt.
+- **Page presets drew the same chart twice.** Every chart took the first
+  measure, so the executive page showed its hero and support charts with the
+  same series. Each chart now takes a different measure. A chart with no
+  measure left is skipped with a warning.
+- **`[Measure]` references in page generators.** `pbi_generate_page_spec`
+  produced `[[Total]]`. `pbi_build_executive_page` and `pbi_build_dashboard`
+  reported a bracketed measure as missing.
+- **Reads with Desktop closed point at the fix.** With a `.pbip` active,
+  `source='live'` reads (`pbi_list_tables`, `pbi_model_summary`…) said to open
+  Desktop. They now say to repeat the call with `source='pbip'`, and return
+  `suggested_source` in `details`.
+- **Plugin launcher with Git for Windows first on `PATH`.** `launch.cmd` used
+  whatever `find` came first. GNU `find` always fails there, so the Microsoft
+  Store `python` alias was no longer skipped. `where.exe` and `find.exe` now go
+  by full path.
+
+- **Plugin install errors reached `install.log` empty.** The installer runs
+  detached and starts each step with `CREATE_NO_WINDOW`. A step that only
+  inherited stdout/stderr wrote to a new hidden console, so a clean install that
+  failed at `python -m venv` left a 0-byte log. Each step now logs its command
+  and writes its output to the log.
+- **The `venv` step of a clean plugin install is retried once** (with `--clear`).
+  It failed once under load during the audit and passed when repeated.
+
+### Docs
+
+- `docs/INSTALL.md`: covers `Connection closed` right after a plugin update. A
+  leftover manual MCP entry points at the old, emptied versioned cache.
+  Remove it. The plugin registers its own server.
+
+---
+
 ## [2.2.0] — 2026-10-31
 
 New opt-in `local` profile for small models, and fixes found when four agents
