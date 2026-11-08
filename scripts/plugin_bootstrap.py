@@ -920,7 +920,8 @@ def _salida_al_registro() -> dict[str, Any]:
                 flujo.fileno()
                 kwargs[nombre] = flujo
         except (AttributeError, OSError, ValueError):
-            pass
+            # Sin descriptor real (pythonw, flujo cerrado): el hijo hereda.
+            continue
     return kwargs
 
 
