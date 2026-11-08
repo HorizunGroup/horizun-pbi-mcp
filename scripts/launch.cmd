@@ -27,8 +27,11 @@ rem 1) el py launcher (viene con las instalaciones de python.org / winget)
 call :probar py -3
 
 rem 2) cualquier python del PATH que no sea el alias de la Store
-for /f "delims=" %%P in ('where python 2^>nul') do (
-  echo %%P| find /i "WindowsApps" >nul || call :probar "%%P"
+rem    where.exe y find.exe van con ruta completa: si el cliente arranca el
+rem    servidor con Git for Windows o MSYS delante en el PATH, "find" es el de
+rem    GNU, falla siempre y el alias de la Store dejaba de descartarse.
+for /f "delims=" %%P in ('"%SystemRoot%\System32\where.exe" python 2^>nul') do (
+  echo %%P| "%SystemRoot%\System32\find.exe" /i "WindowsApps" >nul || call :probar "%%P"
 )
 
 rem 3) instalaciones que el PATH de ESTA consola todavia no ve. Es el caso de
