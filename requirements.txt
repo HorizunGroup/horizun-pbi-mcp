@@ -15,7 +15,7 @@
 # Upper bound on purpose: the server sets the product version through
 # `mcp._mcp_server.version` because FastMCP.__init__ does NOT accept
 # `version`. That is private API, so a major bump could withdraw it.
-mcp>=1.28.1,<2
+mcp>=1.28.1,<3
 
 # .NET interop, to load ADOMD.NET (DAX) and TOM (model).
 pythonnet>=3.0.5,<4
