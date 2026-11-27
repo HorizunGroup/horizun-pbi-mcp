@@ -62,7 +62,7 @@ test = [
     "pyyaml>=6,<7",
     "tomli>=2; python_version < '3.11'",
     "ruff>=0.16,<0.17",
-    "mypy>=2.3,<2.4",
+    "mypy>=2.3,<2.5",
     "pytest-cov>=7.1,<8",
 ]
 # comtypes: exportar un .pbip a .pbix conduce el cuadro "Guardar como" de
