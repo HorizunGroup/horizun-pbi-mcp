@@ -19,7 +19,8 @@ from horizun_pbi_mcp.pbip.tmdl_reader import _first_token, _indent, _unquote, fi
 from horizun_pbi_mcp.services import project_state
 from horizun_pbi_mcp.services import txn as txn_service
 from horizun_pbi_mcp.utils.change_log import record_change
-from horizun_pbi_mcp.utils.validation import (normalizar_format_string, tmdl_quote_name,
+from horizun_pbi_mcp.utils.validation import (measure_column_collision,
+                                              normalizar_format_string, tmdl_quote_name,
                                               validate_measure_expression,
                                               validate_object_name)
 
@@ -152,6 +153,25 @@ def _write_transactional(active: ActivePbip, file_path: Path, lines: List[str],
     return t.summary()
 
 
+def _assert_referencias_dax(table_file: Path, name: str, expression: str) -> None:
+    """Rechaza ANTES de escribir una medida que el motor no podria evaluar.
+
+    En modo `pbip` no hay motor que la compile: sin esto, una tabla sin
+    comillas o una medida sin corchetes quedaba escrita, el TMDL validaba y el
+    fallo solo aparecia al abrir Desktop (duelo ronda 2). Va en las dos
+    mitades, planificar y escribir, por la misma razon que `_assert_nombre_libre`.
+    """
+    from horizun_pbi_mcp.services import dax_refs
+
+    indice = dax_refs.indice_desde_definicion(table_file.parent.parent)
+    problemas = dax_refs.revisar(expression, indice, medidas_extra=[name])
+    if problemas:
+        raise ValidationError(
+            f"La medida '{name}' no se escribio: {dax_refs.resumen(problemas)}",
+            details={"measure": name, "dax_problems": problemas,
+                     "expression": expression})
+
+
 def render_measure_change(
     active: ActivePbip,
     table: str,
@@ -172,6 +192,7 @@ def render_measure_change(
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
     file_path = find_table_file(active, table)
+    _assert_referencias_dax(file_path, name, expression)
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)
@@ -233,23 +254,21 @@ def _assert_nombre_libre(active: ActivePbip, table: str, name: str) -> None:
         log.info("No se pudo comprobar el nombre '%s': %s", name, exc)
         return
 
+    tablas = []
     for archivo in archivos:
         try:
-            leida = parse_table_file(archivo)
+            tablas.append(parse_table_file(archivo))
         except Exception:                                    # noqa: BLE001
             continue
-        propia = leida["name"] == table
+    ocupados = [obj["name"] for leida in tablas
+                for tipo in ("columns", "measures") for obj in leida[tipo]]
+    for leida in tablas:
+        propia = leida["name"].casefold() == table.casefold()
         if propia:
             choque = next((c["name"] for c in leida["columns"]
                            if c["name"].casefold() == clave), None)
             if choque is not None:
-                raise MeasureExistsError(
-                    f"En '{table}' ya hay una COLUMNA '{choque}': una medida no "
-                    "puede llamarse igual. Power BI no abriria el proyecto "
-                    f"—diria que no puede crear la medida '{name}'—. Renombra "
-                    f"la medida (p.ej. '{name} Total').",
-                    details={"table": table, "measure": name,
-                             "column": choque, "rule": "measure_column_collision"})
+                raise measure_column_collision(table, name, choque, ocupados)
             continue
         gemela = next((m["name"] for m in leida["measures"]
                        if m["name"].casefold() == clave), None)
@@ -278,6 +297,7 @@ def create_measure_pbip(
     name = validate_object_name(name, "medida")
     expression = validate_measure_expression(expression)
     file_path = find_table_file(active, table)
+    _assert_referencias_dax(file_path, name, expression)
     lines = file_path.read_text(encoding="utf-8-sig").splitlines()
 
     loc = _locate_measure(lines, name)

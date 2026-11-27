@@ -88,6 +88,8 @@ Your call:
 | `plan_token_stale` | The project changed since the plan was computed | Regenerate the plan |
 | `request_id_conflict` | Same `request_id`, different arguments | Use a new one |
 | `dual_mode_not_safely_available` | `mode="both"` | Choose `live` or `pbip` |
+| `unknown_arguments` | A write tool got a parameter it doesn't have (a typo, or a name from another tool). Nothing ran | Use the name in `details.suggestions`; `details.valid_arguments` lists them all |
+| `no_active_model` with `suggested_source` | A `source='live'` read with Desktop closed and a `.pbip` active | Repeat the call with `source='pbip'` |
 | `rollback_incomplete` | The reversion wasn't clean | Follow §3 with the error's journal |
 | `bulk_partially_applied` | Disk was written and the live side failed, without being able to compensate | `details.journal` has the originals |
 | `.tmp` inside the `.pbip` | Shouldn't happen since 1A | It's garbage: delete it. The original is intact |

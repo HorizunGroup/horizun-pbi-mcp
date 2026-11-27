@@ -192,6 +192,76 @@ def _lint_orden_de_propiedades(path: Path) -> List[Dict[str, Any]]:
     return hallazgos
 
 
+_RE_PARTICION_CALCULADA = re.compile(r"^partition\s.+=\s*calculated\s*$")
+
+
+def _lint_source_column_calculada(
+        path: Path, relacionadas: set) -> List[Dict[str, Any]]:
+    """En una tabla calculada, `sourceColumn` va entre corchetes.
+
+    `sourceColumn: semana` parsea -el serializador oficial lo acepta- pero
+    Power BI Desktop no casa la columna con el resultado DAX: le asigna un
+    identificador que no existe y rechaza cada relacion que la usa («La
+    relacion usa un Id. de columna 71 no valido»). El proyecto no abre y el
+    parseo con TOM no lo ve, asi que solo un lint lo puede acusar. Lo correcto
+    es `sourceColumn: [semana]` (o `Tabla[semana]`).
+
+    Es ERROR solo si una relacion usa la columna (`relacionadas`: pares
+    `(tabla, columna)` en minusculas). Sin relacion Desktop SI abre el
+    proyecto -medido con el fixture `desktop_openable`, cuya `Datos[Valor]`
+    va sin corchetes-, y bloquearlo en el preflight seria negarse a abrir algo
+    que abre: ahi queda como aviso.
+
+    Solo mira tablas con una particion `= calculated`; en una tabla importada
+    `sourceColumn` es el nombre de la columna M y va sin corchetes.
+    """
+    lineas = _leer(path)
+    if not any(tmdl_reader._indent(l) == 1 and
+               _RE_PARTICION_CALCULADA.match(l.strip()) for l in lineas):
+        return []
+    tabla = next((tmdl_reader._unquote(l.strip()[len("table"):].strip())
+                  for l in lineas if tmdl_reader._indent(l) == 0 and
+                  tmdl_reader._first_token(l) == "table"), "")
+    hallazgos: List[Dict[str, Any]] = []
+    columna: Optional[str] = None
+    for numero, linea in enumerate(lineas, start=1):
+        limpio = linea.strip()
+        if not limpio or limpio.startswith("///"):
+            continue
+        nivel = tmdl_reader._indent(linea)
+        if nivel <= 1:
+            columna = None
+            if nivel == 1 and tmdl_reader._first_token(linea) == "column":
+                cabecera = limpio[len("column"):]
+                # `column X = ...` es una columna calculada: no tiene origen.
+                if "=" not in cabecera:
+                    columna = tmdl_reader._unquote(cabecera.strip())
+            continue
+        if columna is None or nivel != 2 or not limpio.startswith("sourceColumn:"):
+            continue
+        valor = limpio.split(":", 1)[1].strip()
+        if valor.endswith("]") and "[" in valor:
+            continue
+        en_relacion = (tabla.casefold(), columna.casefold()) in relacionadas
+        correcto = f"sourceColumn: [{valor.replace(']', ']]')}]"
+        hallazgos.append(_finding(
+            "tmdl_calculated_source_column_unbracketed",
+            "error" if en_relacion else "warning",
+            {"kind": "column", "file": str(path), "line": numero,
+             "table": tabla, "column": columna},
+            {"line": limpio, "used_by_relationship": en_relacion},
+            (f"La columna '{columna}' es de una tabla calculada, una relacion "
+             f"la usa y su sourceColumn va sin corchetes: Power BI Desktop "
+             f"rechazara esa relacion («Id. de columna no valido») y el "
+             f"proyecto no abrira. Escribelo {correcto}.")
+            if en_relacion else
+            (f"La columna '{columna}' es de una tabla calculada y su "
+             f"sourceColumn va sin corchetes. Hoy ninguna relacion la usa y "
+             f"el proyecto abre, pero en cuanto una la use dejara de abrir. "
+             f"Escribelo {correcto}.")))
+    return hallazgos
+
+
 def _lint_descripcion_en_relaciones(path: Path) -> List[Dict[str, Any]]:
     """Un `///` sobre una relacion se serializa como `description`.
 
@@ -245,6 +315,31 @@ def _lint_colisiones(tablas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     f"Renombra la medida: en '{tabla['name']}' ya hay una "
                     f"columna '{choque}' y el motor no admite el mismo nombre "
                     "para las dos."))
+    return hallazgos
+
+
+def _lint_referencias_dax(tablas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Medidas que el motor no podra evaluar por sus referencias.
+
+    Duelo ronda 2: trece medidas con tablas sin comillas y medidas sin
+    corchetes pasaban este validador porque el TMDL era sintacticamente
+    correcto; el error solo aparecia al evaluarlas en Desktop.
+    """
+    from horizun_pbi_mcp.services import dax_refs
+
+    indice = dax_refs.indice_desde_tablas(tablas)
+    hallazgos: List[Dict[str, Any]] = []
+    for tabla in tablas:
+        for medida in tabla["measures"]:
+            expresion = medida.get("expression") or ""
+            for problema in dax_refs.revisar(expresion, indice):
+                hallazgos.append(_finding(
+                    "tmdl_dax_reference", "error",
+                    {"kind": "measure", "table": tabla["name"],
+                     "name": medida["name"], "file": tabla.get("file")},
+                    {"rule": problema["rule"],
+                     "reference": problema["reference"]},
+                    problema["message"]))
     return hallazgos
 
 
@@ -634,6 +729,12 @@ def validate(definition: Path | str, use_tom: bool = True) -> Dict[str, Any]:
     relaciones_file = definition / "relationships.tmdl"
     hallazgos.extend(_lint_descripcion_en_relaciones(relaciones_file))
     relaciones = tmdl_reader._parse_relationships(relaciones_file)
+    relacionadas = {
+        (str(r.get(f"{lado}_table") or "").casefold(),
+         str(r.get(f"{lado}_column") or "").casefold())
+        for r in relaciones for lado in ("from", "to")}
+    for archivo in archivos:
+        hallazgos.extend(_lint_source_column_calculada(archivo, relacionadas))
 
     hallazgos.extend(_lint_colisiones(tablas))
     hallazgos.extend(_lint_medidas_duplicadas(tablas))
@@ -642,6 +743,7 @@ def validate(definition: Path | str, use_tom: bool = True) -> Dict[str, Any]:
         # Con una tabla ilegible el indice esta incompleto y daria falsos
         # positivos: se prefiere no acusar a acusar mal.
         hallazgos.extend(_lint_relaciones(tablas, relaciones))
+        hallazgos.extend(_lint_referencias_dax(tablas))
     cultura = _source_query_culture(definition)
     hallazgos.extend(_lint_cultura(definition, tablas, cultura))
 

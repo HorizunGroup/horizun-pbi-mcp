@@ -287,6 +287,11 @@ def test_tabla_calculada_declara_columnas_y_particion(proyecto):
     assert "partition Modulos = calculated" in texto
     assert "mode: import" in texto
     assert 'source = ROW("modulo", "x")' in texto
+    # En una tabla calculada sourceColumn es la columna del resultado DAX y
+    # va entre corchetes; sin ellos Desktop rechaza las relaciones a ella.
+    assert "sourceColumn: [modulo]" in texto
+    assert "sourceColumn: [puntaje]" in texto
+    assert "sourceColumn: modulo\n" not in texto
     # las columnas van declaradas ANTES de la particion
     assert texto.index("column modulo") < texto.index("partition")
     objetivos = {Path(f["path"]).name for f in r["transaction"]["files"]}
@@ -487,3 +492,49 @@ def test_una_tabla_sin_particion_lo_dice(proyecto):
     with pytest.raises(ModelAuthorError) as exc:
         model_author.set_storage_mode(proyecto, "Ventas", "directQuery")
     assert "particion" in str(exc.value)
+
+
+def test_tabla_calculada_relacionada_pasa_el_validador(proyecto):
+    """Duelo de Power BI del 24-oct-2026: el `Calendario` calculado no abria.
+
+    `sourceColumn: semana` sin corchetes dejaba la relacion hacia
+    Calendario[semana] con «Id. de columna no valido» y Desktop no cargaba el
+    proyecto. El validador tiene que dar por bueno lo que escribe la tool.
+    """
+    r = model_author.create_calculated_table(
+        proyecto, "Calendario",
+        'SELECTCOLUMNS(GENERATESERIES(1, 61, 1), "semana", [Value])',
+        columns=[{"name": "semana", "data_type": "int64"},
+                 {"name": "fin]semana", "data_type": "int64"},
+                 {"name": "linaje", "data_type": "string",
+                  "source_column": "Ventas[Producto]"}])
+    texto = Path(r["file"]).read_text(encoding="utf-8-sig")
+
+    assert "sourceColumn: [semana]" in texto
+    assert "sourceColumn: [fin]]semana]" in texto      # `]` se escapa doblado
+    assert "sourceColumn: Ventas[Producto]" in texto   # el linaje se respeta
+    definition = Path(proyecto.semantic_model_dir) / "definition"
+    hallazgos = tmdl_validate.validate(definition, use_tom=False)["findings"]
+    assert not [f for f in hallazgos
+                if f["rule"] == "tmdl_calculated_source_column_unbracketed"]
+
+
+def test_infer_columns_conserva_el_nombre_del_motor_como_origen():
+    class _Sesion:
+        pass
+
+    from horizun_pbi_mcp.powerbi import dax_runner
+
+    original = dax_runner.run_dax
+    dax_runner.run_dax = lambda *_a, **_k: {"column_types": [
+        {"name": "[semana]", "type": "int"},
+        {"name": "Ventas[Producto]", "type": "str"}]}
+    try:
+        columnas = model_author.infer_columns(_Sesion(), "Ventas")
+    finally:
+        dax_runner.run_dax = original
+
+    assert columnas == [
+        {"name": "semana", "data_type": "int64", "source_column": "[semana]"},
+        {"name": "Producto", "data_type": "string",
+         "source_column": "Ventas[Producto]"}]

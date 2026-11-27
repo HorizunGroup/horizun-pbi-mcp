@@ -1,7 +1,7 @@
 {
   "payload_contract_version": 2,
-  "muestras": 182,
-  "tools_cubiertas": 139,
+  "muestras": 183,
+  "tools_cubiertas": 140,
   "note": "Forma de los payloads: claves y tipos, nunca valores ni longitudes. Una clave por `<tool>.<escenario>`. La cobertura tool por tool, con la dependencia medida de cada exclusion, esta en docs/COBERTURA_PAYLOADS.md.",
   "payloads": {
     "guide.situacion": {
@@ -1252,6 +1252,26 @@
       "request_id": "str",
       "side_effects": [],
       "status": "str",
+      "warnings": []
+    },
+    "pbi_find_tool.con-argumentos": {
+      "duration_ms": "float",
+      "full_profile": "str",
+      "matches": [
+        {
+          "description": "str",
+          "in_active_profile": "bool",
+          "name": "str"
+        }
+      ],
+      "ok": "bool",
+      "operation": "str",
+      "profile": "str",
+      "request_id": "str",
+      "side_effects": [],
+      "status": "str",
+      "total_matches": "int",
+      "truncated": "bool",
       "warnings": []
     },
     "pbi_generate_page_spec.con-argumentos": {

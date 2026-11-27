@@ -164,7 +164,7 @@ function RegistrarMarketplaceChatGPT {
         $a = $actuales[0]
         if ($a.source.source -eq 'url' -and
             $a.source.url -eq 'https://github.com/HorizunGroup/horizun-pbi-mcp.git' -and
-            $a.source.ref -eq 'v2.1.3' -and
+            $a.source.ref -eq 'v2.2.1' -and
             $a.policy.installation -eq 'AVAILABLE' -and
             $a.policy.authentication -eq 'ON_INSTALL') {
             return [pscustomobject]@{ Path = $destino; Changed = $false; Backup = $null }
@@ -176,7 +176,7 @@ function RegistrarMarketplaceChatGPT {
         source = [pscustomobject]@{
             source = 'url'
             url = 'https://github.com/HorizunGroup/horizun-pbi-mcp.git'
-            ref = 'v2.1.3'
+            ref = 'v2.2.1'
         }
         policy = [pscustomobject]@{
             installation = 'AVAILABLE'
@@ -644,8 +644,8 @@ Write-Host "-------------------------------------------------------------"
 # SIG # Begin signature block
 # MIInawYJKoZIhvcNAQcCoIInXDCCJ1gCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCDEsmDLwT/1hW4O
-# aGFNvJ7g14pnajcXk46breI/PQO33aCCIB8wggXJMIIEsaADAgECAhAbtY8lKt8j
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCC4CXxCBm+KF1hb
+# H0Ve3UlgVPMau+jcVtuClZVh2IqEO6CCIB8wggXJMIIEsaADAgECAhAbtY8lKt8j
 # AEkoya49fu0nMA0GCSqGSIb3DQEBDAUAMH4xCzAJBgNVBAYTAlBMMSIwIAYDVQQK
 # ExlVbml6ZXRvIFRlY2hub2xvZ2llcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2Vy
 # dGlmaWNhdGlvbiBBdXRob3JpdHkxIjAgBgNVBAMTGUNlcnR1bSBUcnVzdGVkIE5l
@@ -821,36 +821,36 @@ Write-Host "-------------------------------------------------------------"
 # ZW1zIFMuQS4xJDAiBgNVBAMTG0NlcnR1bSBDb2RlIFNpZ25pbmcgMjAyMSBDQQIQ
 # ay4+2jxzX0MszKxJ5KKzXDANBglghkgBZQMEAgEFAKCBhDAYBgorBgEEAYI3AgEM
 # MQowCKACgAChAoAAMBkGCSqGSIb3DQEJAzEMBgorBgEEAYI3AgEEMBwGCisGAQQB
-# gjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCAdDhs8H69bfwXp
-# Cv0eoR8pzM6UpkHiSvTm2yclSsfxLTANBgkqhkiG9w0BAQEFAASCAYBJbtf5Xeog
-# ihgIWIG5A/WNTe9Ofqq1uEH3PxR0A0VMLC1FA29bOYzyirpDFOkIZYzu3k4Ol88m
-# RQqn3u8jkkXtS6rEZwwZlwtRhDzmajv5fH1vgxuMx2h5331IU+UyK/WHXrVOodxZ
-# 7sf4/tbJaTAY90TjLGYZdayI9d1xEHxAviFIUtVP8LzN7G7dUKjeStA9tqcMIcqb
-# 5bi9eItnnwXiipr6GvtxF9FXED45lNEEdQn+lXgayUTiuE1HftAWutvhyyt5n5S5
-# AZFIuHn6yQ3mpSLpSedpGWs7ZulAu+YQaFLYMtEBKaBcZvuaNZz03KQC7fP1asIx
-# 4Y8/WZqfEmohnI5F7M3YuvdDEt5wnUytd0pZpBi+rgrvqbB/J4av+Jw7Zii7T258
-# oGjvMxiG9sJaRfD8jDyATuqN0MpUtGLvd7jjIfWExe8DRkAHOn6DasSeS0s+MApZ
-# 2yLTpnyCLsKRXqgQuLJLgQhA8eBDEY3x4Wa76XE0ICoYQhH+rV+GWFahggQCMIID
+# gjcCAQsxDjAMBgorBgEEAYI3AgEVMC8GCSqGSIb3DQEJBDEiBCB8jdX6S4gupgS2
+# mud/+0NKICPATNunph5lpFWsYoDoHDANBgkqhkiG9w0BAQEFAASCAYCWzeWy51TQ
+# H9XgasaLozYlKGqpBf6LwhajOSe9f7PwchoRysrFRKb95f0xsgn0NWktApQx4bmt
+# OdqI1LrhWXKrvYMuox3JBfwXdYhX1Iy34nCSWROTCYkFMX2oEEeHwII0vM+CbIRy
+# g7mjrp+eKqoA0ZTMmYoX9XoUWTNrSBtWlJ86qxyv1d+VxTxbRwMb96TkHgpqGwFp
+# LeODdnivPPJc98njwZRGCcxeI8HKU0RnUZnK/lvaMEqLKihEUXZR/C0vmuvFl/UT
+# HxkLCRvHFZWP1mUQCulK/5ewoSKjLEjqr/X7kT0FsQ9wxmugugsj0sOdfU1Z3RdW
+# Q/vYH7XbGrmtMHfgJQEtRZHRdKkM/4qVpTMgE4lgiSGYBm6fi3oMVFJDTPFh1wEd
+# m1sldwRP2ZhSjBP7vb9yUOLOebfi05Y87ZorR48iNEagGIobqVg7ongxF5MtGmdb
+# DVSAG580ZRvy+MK9zPNMZJ8OsnNcMqm/f6nI5VPbN+//GesHZn1VgyShggQCMIID
 # /gYJKoZIhvcNAQkGMYID7zCCA+sCAQEwajBWMQswCQYDVQQGEwJQTDEhMB8GA1UE
 # ChMYQXNzZWNvIERhdGEgU3lzdGVtcyBTLkEuMSQwIgYDVQQDExtDZXJ0dW0gVGlt
 # ZXN0YW1waW5nIDIwMjEgQ0ECECjwd8EcNr3+X3QyR3AnLgMwDQYJYIZIAWUDBAIC
 # BQCgggFWMBoGCSqGSIb3DQEJAzENBgsqhkiG9w0BCRABBDAcBgkqhkiG9w0BCQUx
-# DxcNMjYxMDIwMDI1MTU3WjA3BgsqhkiG9w0BCRACLzEoMCYwJDAiBCCFvpDhCtJD
-# jXzJKLavSLCasggXfOz4sBJsWNORBSXEPDA/BgkqhkiG9w0BCQQxMgQwPSR3xD4M
-# ntnZgoDg8uvwFYfXwFCNVznBvZUEsXYH/5uLHvXkG6v57M1cT+UNAYgVMIGfBgsq
+# DxcNMjYxMTA4MTk0NjIyWjA3BgsqhkiG9w0BCRACLzEoMCYwJDAiBCCFvpDhCtJD
+# jXzJKLavSLCasggXfOz4sBJsWNORBSXEPDA/BgkqhkiG9w0BCQQxMgQw1M5OYab7
+# pS8bbQMmjZ3dU7JnuTHzmYsq2hDcBd0KzDkT11c8l0qGj5lkxopaICsjMIGfBgsq
 # hkiG9w0BCRACDDGBjzCBjDCBiTCBhgQUVxRoQQyoWvNCTvkWSlE2EPTTjZgwbjBa
 # pFgwVjELMAkGA1UEBhMCUEwxITAfBgNVBAoTGEFzc2VjbyBEYXRhIFN5c3RlbXMg
 # Uy5BLjEkMCIGA1UEAxMbQ2VydHVtIFRpbWVzdGFtcGluZyAyMDIxIENBAhAo8HfB
-# HDa9/l90MkdwJy4DMA0GCSqGSIb3DQEBAQUABIICABD3yl7gWYkcag0d4+1x9QjM
-# 9Tt20/Ab/ShlYB8wE329Hg2mElT8wNng8euqCmPiA8fjJzs74zVXSWFDPONsb2ay
-# RUrcFGPadtoPgp7nn8W+YTxAav3GIKX0MOUULfJpguLnelQtAjQZcaVwMU2F52HX
-# OafYNZvKVbLp8SZ4z092lrhRO7jQR+TJVYm2LOs10RBlC6S1L6IGUUx5EBo1JdXL
-# B/v14WvCyRlZWQt1KJIc6TTnMzoVkRcLgeVkup2Ah61dBL2/2JJNxC8DHEoQ+K1M
-# /5sAPCWIfcwSr1trKja1OGNXM4CKUMi8jbPEAaHNmxf8iSsKRdvEnvKwDhhqrQGW
-# swgAKRjWePrp0g+aMEgR7JbL7v39BOorbjITXaOLSgjac9kMef/zopnS1ZRfzLz0
-# xD5kTQx0af5ziVt1St/rLwBOggL1U8geoPLLKDRFpWpFtJKKtDip8csPauaBjyST
-# uIk4KVp5H+WHrAUynYPkibBQM7/R25TQRkluCTI0d9TQS8jIsx43MsLJQEJqOZTA
-# l0ANBzivmNihCqs9CUPkefMsLwwd7ZQKTOy8qA0CCf7o8G7iR/YWjfRdTXVXmAn2
-# KynNZU5v75eXldzPqbqGvmOQ9XZTbnizYEcEL1Cq0ZvH7L+sfRpYXvc1B28DTJOg
-# a5+SLeiBuy0YyVGD9prO
+# HDa9/l90MkdwJy4DMA0GCSqGSIb3DQEBAQUABIICADNz4/bGUqTkc25a650iL5bu
+# +K8OKY04Y0yEgXvVHF4ILEowmpoltoRKt8HQ6dj5G8lKPYaBoxXUrQzFdDgWP1uT
+# j8HHjFqTseza6fOLvcILhmjUqhOK5GbLElMtGaNMlYWSFHLfbPuApKKZjLIVkARD
+# BSXEujK2NdierLjnxf5gxpHcoojBpyzauh1N8rIyaccPdlLhVGsxx/1SVUmnyGNf
+# C0L792doSglnISQaXQbdAOcq4EyN2pTJYv1Hcm4h7iYgUUjW7bo6+JN4bI6/6A4x
+# 2Vnl8Px4cvuTmwjizimb6k6nvuLPEu8VD7NmDDPPoVE/U+GI3Hh9E7LbVUdm4odr
+# z8dHtY03Tx5a1V/flDcFCib1rNsuTB+NdZu2/GGtBAZ3+lL8Zd+TygkrWPTEd7k4
+# 9nD7nr7GbU919pcil68IyXrNyhMJjMayN6686DpcFkUe7UVijRsJpb9BHuzCF79m
+# 6Tm9y0wpsDLp9hqMtsga+XmBC8LAysaVl8oytfF0VqPG25BvGYMUkj9u56iHF2s3
+# 9hK2r/zyhiz/90EgMZaRMmjZy1gKFBykRwtRcczU+NrAY5MQb3TaXxYBPD9i2wmi
+# avYhbdrqxlWEmebMHpwHaJBSh4qpYg8cBh7B+zHKkBWCVxUQ8inM1JvlesUmBE9P
+# 8Nrit957kZhMQHB7QbPa
 # SIG # End signature block

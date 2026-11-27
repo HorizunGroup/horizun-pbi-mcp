@@ -390,8 +390,12 @@ def create_page_with_visuals(
     materializado = plan_page_with_visuals(active, display_name, width, height,
                                            visuals)
     if materializado["page_exists"]:
-        return {"page_id": materializado["page_id"], "created": False,
-                "note": "La pagina ya existia.", "visuals_created": []}
+        if not visuals:
+            return {"page_id": materializado["page_id"], "created": False,
+                    "note": "La pagina ya existia.", "visuals_created": []}
+        return _fill_existing_page(active, materializado["page_id"],
+                                   display_name, visuals, tool=tool,
+                                   do_backup=do_backup)
 
     _assert_escritura_pbir(active, operation="Crear una pagina con visuales")
 
@@ -422,6 +426,54 @@ def create_page_with_visuals(
                       backup=result["journal"])
     return {"page_id": page_id, "created": True, "display_name": display_name,
             "width": width, "height": height, "visuals_created": creados,
+            "backup": result["journal"], "transaction": result}
+
+
+def _fill_existing_page(active: ActivePbip, page_id: str, display_name: str,
+                        visuals: List[Dict[str, Any]], *, tool: str,
+                        do_backup: bool) -> Dict[str, Any]:
+    """Llena una pagina que existe pero no tiene visuales.
+
+    Antes se devolvia `created: False` con `ok: true` sin escribir nada: la
+    pagina inicial de `pbi_create_pbip_project` quedaba vacia para siempre
+    (duelo ronda 2, Haiku). Una pagina CON visuales no se toca: decirlo es
+    mejor que fingir que se aplico el spec.
+    """
+    page_dir = safe_paths.safe_join(pages_dir(active), page_id, kind="ruta de pagina")
+    existentes = sorted((page_dir / "visuals").glob("*/visual.json")) \
+        if (page_dir / "visuals").is_dir() else []
+    if existentes:
+        raise ValidationError(
+            f"La pagina '{display_name}' ya existe y tiene {len(existentes)} "
+            "visuales; no se cambio nada. Usa otro page_name, borra la pagina "
+            "con pbi_delete_page o actualizala con pbi_apply_page_spec.",
+            details={"page_id": page_id, "existing_visuals": len(existentes)})
+
+    _assert_escritura_pbir(active, operation="Llenar una pagina existente")
+    planificados = []
+    for item in visuals:
+        vdict = dict(item["visual"])
+        vid = vdict.get("name") or new_id()
+        vdict["name"] = vid
+        vdict.setdefault("$schema", SCHEMA_VISUAL)
+        planificados.append({"id": vid, "path": _visual_path(page_dir, vid),
+                             "visual": vdict, "meta": item.get("meta", {})})
+
+    with txn_service.project_transaction(
+            active, [p["path"] for p in planificados], tool=tool) as t:
+        for p in planificados:
+            t.write_json(p["path"], p["visual"])
+    result = t.summary()
+    creados = [{"id": p["id"], "file": str(p["path"]), **p["meta"]}
+               for p in planificados]
+    if do_backup:
+        record_change(tool,
+                      f"Pagina vacia '{display_name}' llenada con {len(creados)} "
+                      "visuales en una sola transaccion.",
+                      files=[str(p["path"]) for p in planificados],
+                      backup=result["journal"])
+    return {"page_id": page_id, "created": False, "filled_existing_page": True,
+            "display_name": display_name, "visuals_created": creados,
             "backup": result["journal"], "transaction": result}
 
 

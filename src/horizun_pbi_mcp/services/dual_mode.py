@@ -179,11 +179,39 @@ def _con_pista_de_pbip(exc: PowerBIMCPError, session: Any) -> PowerBIMCPError:
     detalles = dict(exc.details or {})
     detalles.update({"suggested_mode": PBIP, "requested_mode": LIVE,
                      "reason": "desktop_cerrado_con_pbip_activo"})
+    # La salida va PRIMERO: un modelo pequeno lee la primera frase y actua
+    # sobre ella (duelo ronda 2: siete reintentos iguales con la pista al final).
     return type(exc)(
-        f"{exc.message} Pero hay un proyecto .pbip activo y Desktop no lo tiene "
-        "abierto, que es justo el estado que 'pbip' necesita: reintenta con "
-        "mode='pbip' (o mode='auto', que mira el estado y elige).",
+        "Repite esta misma llamada con mode='pbip': hay un proyecto .pbip "
+        "activo y Desktop no lo tiene abierto, que es justo el estado que "
+        f"'pbip' necesita (mode='auto' tambien lo elige). Detalle: {exc.message}",
         details=detalles)
+
+
+def leer_modelo_live(session: Any) -> Dict[str, Any]:
+    """Lee el modelo en vivo; si no hay, dice que el .pbip activo se puede leer.
+
+    Las tools de lectura con `source` tienen 'live' por defecto. Con Desktop
+    cerrado y un proyecto .pbip activo -justo despues de crearlo o editarlo-
+    respondian `no_active_model` mandando a abrir Desktop y refrescar, cuando
+    la definicion que se queria consultar estaba en disco: auditoria del
+    2026-11-07, quince lecturas fallidas seguidas tras crear el proyecto. El
+    error conserva su codigo; solo se antepone la salida que existe.
+    """
+    from horizun_pbi_mcp.powerbi import model_reader
+
+    try:
+        return model_reader.read_model(session)
+    except PowerBIMCPError as exc:
+        if exc.code not in _LIVE_NO_DISPONIBLE or                 getattr(session, "active_pbip", None) is None:
+            raise
+        detalles = dict(exc.details or {})
+        detalles.update({"suggested_source": PBIP, "requested_source": LIVE})
+        raise type(exc)(
+            "Repite esta misma llamada con source='pbip': lee la definicion del "
+            "proyecto .pbip activo sin abrir Desktop (tablas, columnas, "
+            f"medidas, relaciones; no valores). Detalle: {exc.message}",
+            details=detalles) from exc
 
 
 def relanzar_con_pista(exc: PowerBIMCPError, session: Any) -> NoReturn:
