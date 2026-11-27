@@ -33,6 +33,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 ARGUMENTOS = {
+    "pbi_find_tool": {"query": "pbi_create_measure"},
     # --- informe: paginas y visuales sobre el proyecto sintetico -------------
     "pbi_list_visuals": {"page": "pg1"},
     "pbi_get_visual": {"page": "pg1", "visual_id": "v1"},

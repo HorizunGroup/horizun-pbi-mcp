@@ -38,8 +38,8 @@
 # tambien en scripts/downloads_manifest.json; una prueba comprueba los tres
 # contra los bytes reales del archivo.
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.3/horizun-pbi-mcp-instalar.ps1'
-$sha = '490b940942e1e38814c39339a9cd978b493f257b9e33c1cff2a997953f691634'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.2.1/horizun-pbi-mcp-instalar.ps1'
+$sha = '7890fb08f1c5c38528c05819c65a7d48d989f27121a06fea3747b263d2f15bdb'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una

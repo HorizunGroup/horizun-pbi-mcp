@@ -33,7 +33,9 @@ def _load_model_data(source: str = "live") -> Dict[str, Any]:
     if source == "pbip":
         active = session.require_active_pbip()
         return tmdl_reader.read_semantic_model(active)
-    return model_reader.read_model(session)
+    from horizun_pbi_mcp.services import dual_mode
+
+    return dual_mode.leer_modelo_live(session)
 
 
 def register(mcp) -> None:

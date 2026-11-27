@@ -117,6 +117,8 @@ def verificar(python: Path, *, env: dict[str, str] | None = None,
     # El checkout no puede rescatar a un runtime roto: si `src/` esta en el
     # path, esto mediria el repositorio y no lo que se acaba de construir.
     entorno["PYTHONPATH"] = ""
+    # Check installation completeness, not the user's chosen interactive subset.
+    entorno["HORIZUN_PBI_MCP_PROFILE"] = "full"
     entorno.setdefault("PBI_MCP_LOG_LEVEL", "ERROR")
 
     try:

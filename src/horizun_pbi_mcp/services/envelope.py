@@ -251,6 +251,8 @@ def failure(code: str, message: str, details: Optional[Dict[str, Any]], *,
     }
     if details:
         out["details"] = details
+        if "suggested_names" in details:
+            out["suggested_names"] = details["suggested_names"]
         # Si el error trae informacion de compensacion, se expone como efecto.
         comp = details.get("compensation")
         if isinstance(comp, dict):

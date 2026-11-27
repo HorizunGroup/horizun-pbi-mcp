@@ -156,6 +156,25 @@ def test_la_m_lleva_siempre_la_cultura_explicita(tmp_path):
     assert 'Csv.Document' in m and "Encoding = 65001" in m
 
 
+def test_una_ruta_relativa_llega_absoluta_a_la_m(tmp_path, monkeypatch):
+    """Duelo ronda 2 (qwen3:4b): pidio `datos\\x.csv` y la M quedo relativa.
+
+    El servidor la encontraba (su cwd era la carpeta del competidor), pero
+    Power Query resuelve `File.Contents` sin ese cwd: el refresh no hallaba
+    el archivo. La ruta se fija absoluta al perfilar.
+    """
+    (tmp_path / "datos").mkdir()
+    _csv(tmp_path / "datos", "costos.csv", CSV_PUNTO)
+    monkeypatch.chdir(tmp_path)
+
+    perfil = table_from_file.perfilar(Path("datos") / "costos.csv")
+    m = table_from_file.construir_m(perfil)
+
+    absoluta = str((tmp_path / "datos" / "costos.csv").resolve())
+    assert perfil["path"] == absoluta
+    assert absoluta in m
+
+
 def test_la_m_de_un_csv_con_coma_decimal_no_usa_en_US(tmp_path):
     perfil = table_from_file.perfilar(_csv(tmp_path, "costos.csv", CSV_COMA))
     m = table_from_file.construir_m(perfil)

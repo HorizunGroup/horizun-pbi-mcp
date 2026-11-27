@@ -77,8 +77,13 @@ def register(mcp) -> None:
                                 page_name: str = "Pagina 1",
                                 overwrite: bool = False,
                                 open_project: bool = True,
-                                request_id: str = "") -> Dict[str, Any]:
+                                request_id: str = "",
+                                subfolder: bool = True) -> Dict[str, Any]:
         """Crea un proyecto .pbip vacio pero valido, y lo deja activo.
+
+        Por defecto escribe out_dir/name/name.pbip. Con subfolder=false (o si
+        out_dir ya termina en .pbip) escribe out_dir/name.pbip con sus carpetas
+        al lado, como Desktop, sin reemplazar nada que ya exista.
 
         Es el punto de partida para armar un tablero solo con rutas de
         archivos: crear el proyecto, cargarle los datos con
@@ -99,7 +104,7 @@ def register(mcp) -> None:
 
             salida = pbip_scaffold.crear_proyecto(
                 out_dir, name, culture=culture, width=width, height=height,
-                page_name=page_name, overwrite=overwrite)
+                page_name=page_name, overwrite=overwrite, subfolder=subfolder)
             if open_project:
                 try:
                     salida["active"] = project_locator.open_project(

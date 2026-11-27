@@ -74,7 +74,7 @@ def test_una_medida_escrita_se_reporta_como_confirmada(session, sample_pbip):
     activo = session.require_active_pbip()
 
     txn = tmdl_writer.create_measure_pbip(
-        activo, "Ventas", "Total Regresion", "SUM(Ventas[Importe])")["transaction"]
+        activo, "Ventas", "Total Regresion", "SUM(Ventas[Monto])")["transaction"]
 
     assert txn["committed"] is True
     assert txn["rolled_back"] is False
