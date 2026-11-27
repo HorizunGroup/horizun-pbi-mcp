@@ -454,13 +454,26 @@ def test_el_instalador_sigue_siendo_ascii_sin_bom_y_con_lf():
     """PowerShell 5.1 lee UTF-8 sin BOM con la codepage OEM y destroza acentos.
 
     Ademas, los bytes de este archivo son los del asset publicado: si el CRLF
-    entrara aqui, el SHA-256 congelado dejaria de coincidir con lo descargado.
+    entrara en el CUERPO, el SHA-256 congelado dejaria de coincidir con lo
+    descargado.
+
+    El instalador va FIRMADO en el arbol (Authenticode). El bloque de firma
+    `# SIG # Begin signature block` lo escribe signtool, es ASCII y puede traer
+    CRLF: es el unico sitio donde se admite un CR. El cuerpo -lo que cubre la
+    firma- sigue siendo ASCII puro, sin BOM y con LF. La forma se valida con la
+    misma funcion que usan release_build y release_verify; que ademas este
+    firmado lo exige `tests/test_firma_instalador.py`.
     """
+    sys.path.insert(0, str(RAIZ / "scripts"))
+    try:
+        import release_verify
+    finally:
+        sys.path.remove(str(RAIZ / "scripts"))
     crudo = INSTALADOR.read_bytes()
-    assert not crudo.startswith(b"\xef\xbb\xbf"), "instalar.ps1 lleva BOM"
-    assert b"\r" not in crudo, "instalar.ps1 tiene CRLF; .gitattributes exige LF"
-    no_ascii = [b for b in crudo if b > 127]
-    assert not no_ascii, f"instalar.ps1 dejo de ser ASCII ({len(no_ascii)} bytes)"
+    try:
+        release_verify.analizar_instalador(crudo)
+    except release_verify.InstaladorInvalido as exc:
+        pytest.fail(f"instalar.ps1 ya no cumple ASCII/sin BOM/LF: {exc}")
 
 
 # ============================================================================

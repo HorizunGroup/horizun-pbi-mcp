@@ -138,8 +138,53 @@ def _sin_proyecto(session) -> Dict[str, Any]:
     }
 
 
+#: En el perfil `local` la guia no puede mandar a tools que no estan: se
+#: cambia por la equivalente registrada o se omite el paso.
+_SUSTITUTOS_LOCAL = {
+    "pbi_compose_page": "pbi_create_page_from_spec",
+    "pbi_apply_page_spec": "pbi_create_page_from_spec",
+    "pbi_list_desktop_models": "pbi_open_in_desktop",
+    "pbi_select_model": "pbi_open_in_desktop",
+    "pbi_audit_project": "pbi_validate_pbip_project",
+    "pbi_audit_report_only": "pbi_validate_pbip_project",
+    "pbi_model_summary": "pbi_list_tables",
+    "pbi_prepare_project": "pbi_open_pbip_project",
+}
+
+
+def _al_perfil(salida: Dict[str, Any]) -> Dict[str, Any]:
+    from horizun_pbi_mcp import tool_profiles
+
+    if tool_profiles.active_profile() != "local":
+        return salida
+    disponibles = set(tool_profiles.LOCAL_DESCRIPTIONS)
+
+    def local(tool: str) -> Optional[str]:
+        tool = _SUSTITUTOS_LOCAL.get(tool, tool)
+        return tool if tool in disponibles else None
+
+    pasos, vistos = [], set()
+    for paso in salida.get("next_steps") or []:
+        tool = local(paso.get("tool", ""))
+        if tool and tool not in vistos:
+            vistos.add(tool)
+            pasos.append({**paso, "tool": tool} if tool != paso["tool"]
+                         else paso)
+    tareas = []
+    for tarea in salida.get("common_tasks") or []:
+        steps = list(dict.fromkeys(t for t in map(local, tarea["steps"]) if t))
+        if steps:
+            tareas.append({**tarea, "steps": steps})
+    return {**salida, "next_steps": pasos, "common_tasks": tareas,
+            "profile": "local"}
+
+
 def situacion(session) -> Dict[str, Any]:
     """Donde estas y que toca ahora. No escribe nada."""
+    return _al_perfil(_situacion(session))
+
+
+def _situacion(session) -> Dict[str, Any]:
     active = session.active_pbip
     if active is None:
         base = _sin_proyecto(session)

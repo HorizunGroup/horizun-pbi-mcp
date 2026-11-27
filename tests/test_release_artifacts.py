@@ -337,6 +337,30 @@ def test_el_asset_con_crlf_para_el_pipeline(copia):
     assert res.returncode != 0, "un asset con CRLF paso la verificacion"
 
 
+def test_el_asset_sin_firmar_para_el_pipeline(copia):
+    """El instalador se firma en el arbol: un asset sin bloque de firma NO pasa.
+
+    Se le quita el bloque a un asset que si venia firmado, y se actualizan
+    SHA256SUMS, para que lo unico que falle sea la firma y no un digest.
+    """
+    asset = copia / "meta" / "horizun-pbi-mcp-instalar.ps1"
+    crudo = asset.read_bytes()
+    marca = crudo.index(b"# SIG # Begin signature block")
+    sin_firma = crudo[:marca].removesuffix(bytes([13, 10]))   # el CRLF que intercala signtool
+    asset.write_bytes(sin_firma)
+    sumas = copia / "meta" / "SHA256SUMS"
+    lineas = []
+    for linea in sumas.read_text(encoding="ascii").splitlines():
+        if linea.endswith("meta/" + asset.name):
+            linea = f"{hashlib.sha256(sin_firma).hexdigest()}  meta/{asset.name}"
+        lineas.append(linea)
+    sumas.write_text(chr(10).join(lineas) + chr(10), encoding="ascii", newline=chr(10))
+
+    res = _verificar(copia)
+    assert res.returncode != 0, "un instalador sin firmar paso la verificacion"
+    assert "NO ESTA FIRMADO" in res.stdout + res.stderr
+
+
 def test_sin_sha256sums_no_hay_artefacto_que_valga(copia):
     (copia / "meta" / "SHA256SUMS").unlink()
 

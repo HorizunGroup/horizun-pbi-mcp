@@ -26,9 +26,15 @@ Lo que se exige aqui, y por que cada cosa:
   descargando cada asset y termina en verde sin escribir nada.
 * **Se comprueba DESPUES de subir.** Que el `PUT` no diera error no dice que lo
   que hay al otro lado sea lo que mandamos. Se descarga cada asset de vuelta y
-  se compara su SHA-256, y del instalador se comprueba ademas que su
-  `browser_download_url` es **exactamente** la URL que publica
-  `scripts/downloads_manifest.json`: es la que la gente pega.
+  se compara su SHA-256, y del instalador se comprueba ademas que su hash y su
+  tamano son los de `scripts/downloads_manifest.json` (los del archivo FIRMADO),
+  que sigue firmado, y que la URL del manifest apunta al tag y al nombre que se
+  publican: es la que la gente pega.
+* **La release nace BORRADOR y aqui no se publica.** La publica el job
+  `firmar-y-publicar` (runner con la clave Certum, tras aprobar el environment
+  `firma-certum`). Un borrador no tiene URL publica que releer, asi que el
+  instalador se compara por la API de assets; la URL `browser_download_url` solo
+  se compara en una release ya publicada (un rerun).
 
 La logica vive en este script y no en pasos `run:` por la misma razon que
 `release_build.py`: un workflow no se puede ejecutar en una maquina de
@@ -59,9 +65,13 @@ REPO = rv.REPO
 API = "https://api.github.com"
 SUBIDAS = "https://uploads.github.com"
 
-#: Ni una release en borrador ni una prerelease: el one-paste apunta a la URL
-#: de descarga, y en un borrador esa URL no existe para nadie de fuera.
-BORRADOR = False
+#: La release se crea como BORRADOR y NO se publica aqui. El instalador va
+#: firmado en el arbol, pero la release solo sale al publico cuando el job
+#: `firmar-y-publicar` (runner con la clave Certum, tras la aprobacion del
+#: environment `firma-certum`) verifica las firmas y la publica. Mientras es
+#: borrador, la URL de descarga del instalador no existe para nadie de fuera:
+#: eso es exactamente lo que se quiere.
+BORRADOR = True
 PRERELEASE = False
 
 
@@ -127,24 +137,36 @@ class ClienteGitHub:
         return json.loads(crudo) if crudo else {}
 
     def release_por_tag(self, tag: str) -> dict | None:
+        """La release de `tag`, publicada O en borrador.
+
+        `GET /releases/tags/{tag}` solo devuelve las publicadas: un borrador da
+        404 aunque exista, y un rerun crearia un segundo borrador. Por eso, si
+        no hay publicada, se recorre el listado, que si incluye borradores.
+        """
         url = f"{self.api}/repos/{self.repo}/releases/tags/{tag}"
         codigo, crudo = self._peticion("GET", url)
-        if codigo == 404:
-            return None
-        if codigo >= 400:
+        if codigo < 400:
+            return json.loads(crudo)
+        if codigo != 404:
             raise SystemExit(
                 f"[release_publish] no se pudo consultar la release {tag}: "
                 f"{codigo} {crudo[:800].decode('utf-8', 'replace')}")
-        return json.loads(crudo)
+        for pagina in range(1, 11):
+            listado = self._json(
+                "GET", f"{self.api}/repos/{self.repo}/releases"
+                       f"?per_page=100&page={pagina}")
+            for release in listado:
+                if release.get("tag_name") == tag:
+                    return release
+            if len(listado) < 100:
+                break
+        return None
 
     def crear_release(self, tag: str, nombre: str, cuerpo: str) -> dict:
         return self._json(
             "POST", f"{self.api}/repos/{self.repo}/releases",
             {"tag_name": tag, "name": nombre, "body": cuerpo,
-             "draft": BORRADOR, "prerelease": PRERELEASE,
-             # El tag ya existe y es inmutable: que la API no invente uno si
-             # algun dia se llamara a esto con un tag que no se ha empujado.
-             "make_latest": "true"})
+             "draft": BORRADOR, "prerelease": PRERELEASE})
 
     def assets(self, release: dict) -> list[dict]:
         url = (f"{self.api}/repos/{self.repo}/releases/"
@@ -211,18 +233,15 @@ def publicar(raiz: Path, tag: str, cliente) -> dict:
     esperados = {nombre: _sha256(ruta) for nombre, ruta in assets.items()}
     cuerpo = cuerpo_de_la_release(raiz, tag)
 
-    # 2. La release. Si ya existe, no se toca: se comprueba que es la misma.
+    # 2. La release. Nace BORRADOR. Si ya existe (borrador de un intento
+    #    anterior, o ya publicada tras la firma), no se toca: se comprueba que
+    #    es la misma. Una release PUBLICADA es inmutable: aqui solo se relee.
     release = cliente.release_por_tag(tag)
     creada = False
     if release is None:
         release = cliente.crear_release(tag, tag, cuerpo)
         creada = True
     else:
-        if release.get("draft"):
-            raise SystemExit(
-                f"[release_publish] la release {tag} existe como BORRADOR. Un "
-                "borrador no sirve el asset a nadie de fuera y el one-paste "
-                "seguiria roto. Resuelvelo a mano antes de volver a correr esto")
         if release.get("prerelease"):
             raise SystemExit(
                 f"[release_publish] la release {tag} existe como PRERELEASE")
@@ -236,9 +255,15 @@ def publicar(raiz: Path, tag: str, cliente) -> dict:
     #    PARAR ante el que esta y es otro.
     acciones: dict[str, str] = {}
     presentes = {a["name"]: a for a in cliente.assets(release)}
+    es_borrador = bool(release.get("draft"))
     for nombre in sorted(assets):
         actual = presentes.get(nombre)
         if actual is None:
+            if not es_borrador:
+                raise SystemExit(
+                    f"[release_publish] la release {tag} ya esta PUBLICADA y no "
+                    f"tiene {nombre}. Una release publicada es inmutable: no se "
+                    "le suben assets; se corrige en una version nueva")
             cliente.subir_asset(release, nombre, assets[nombre].read_bytes())
             acciones[nombre] = "subido"
             continue
@@ -279,8 +304,10 @@ def publicar(raiz: Path, tag: str, cliente) -> dict:
                 f"  firmado: {esperados[nombre]}\n  remoto:  {real}")
 
     # 5. Y el que de verdad importa: el instalador que la gente pega. Su hash y
-    #    su URL tienen que ser EXACTAMENTE los del manifest, que es de donde
-    #    salen el README, docs/INSTALL.md, la skill y el bloque de un pegado.
+    #    su tamano -los del archivo FIRMADO- tienen que ser EXACTAMENTE los del
+    #    manifest, de donde salen el README, docs/INSTALL.md, la skill y el
+    #    bloque de un pegado. Se comparan contra los bytes que devuelve la API
+    #    de assets de la release (en un borrador no hay URL publica que leer).
     entrada = _entrada_instalador()
     instalador = finales.get(entrada["name"])
     if instalador is None:
@@ -292,14 +319,30 @@ def publicar(raiz: Path, tag: str, cliente) -> dict:
     real = _sha256_bytes(crudo)
     if real != entrada["sha256"]:
         raise SystemExit(
-            f"[release_publish] el instalador publicado NO es el del manifest.\n"
+            f"[release_publish] el instalador de la release NO es el del manifest.\n"
             f"  manifest: {entrada['sha256']}\n  remoto:   {real}")
     if len(crudo) != entrada["actual_bytes"]:
         raise SystemExit(
-            "[release_publish] el instalador publicado no tiene el tamano "
+            "[release_publish] el instalador de la release no tiene el tamano "
             f"declarado: {len(crudo)} vs {entrada['actual_bytes']}")
+    rv.exigir_firmado(crudo, f"{entrada['name']} (remoto)")
+
+    # La URL que pega la gente es la del manifest y tiene que apuntar al tag y
+    # al nombre que se publican; eso se comprueba SIEMPRE, sin depender del
+    # remoto.
+    url_esperada = (f"https://github.com/{cliente.repo}/releases/download/"
+                    f"{tag}/{entrada['name']}")
+    if entrada["url"] != url_esperada:
+        raise SystemExit(
+            "[release_publish] la URL del manifest no es la del asset que se "
+            f"publica.\n  manifest: {entrada['url']}\n  esperada: {url_esperada}")
     url = str(instalador.get("browser_download_url") or "")
-    if url != entrada["url"]:
+    if es_borrador:
+        # Un borrador sirve el asset bajo una URL provisional ('untagged-...')
+        # que no es la publica; la publica solo existe al publicar. No se
+        # compara con el remoto: se comprobo arriba contra tag y nombre.
+        url = entrada["url"]
+    elif url != entrada["url"]:
         raise SystemExit(
             "[release_publish] la URL publicada no es la que pega la gente.\n"
             f"  manifest: {entrada['url']}\n  release:  {url}")

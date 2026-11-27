@@ -16,6 +16,7 @@ usuario y se deja como estaba.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 from dataclasses import dataclass
@@ -48,6 +49,18 @@ class DesktopNotFoundError(PowerBIMCPError):
 
 class DesktopTimeoutError(PowerBIMCPError):
     code = "desktop_timeout"
+
+
+class DesktopLoadError(PowerBIMCPError):
+    """Desktop mostro un dialogo de error al abrir: no va a servir el modelo.
+
+    Antes esto acababa en `desktop_timeout` al agotar el plazo entero, con un
+    "puede estar pidiendo credenciales" que no decia nada: el motivo real
+    estaba escrito en la pantalla («La relacion "X" usa un Id. de columna 71
+    no valido») y nadie lo leia.
+    """
+
+    code = "desktop_load_failed"
 
 
 class DesktopPreflightError(PowerBIMCPError):
@@ -614,15 +627,141 @@ def _sirve_otro_documento(instancia: Dict[str, Any],
     return False
 
 
+#: Titulos de los dialogos con los que Desktop ABORTA una apertura. Medido
+#: contra Desktop real (24-oct-2026): «Se encontraron problemas», ventana
+#: WinForms POSEIDA por la principal, a los ~6 s de lanzar. Un dialogo de
+#: credenciales no casa: ese espera una respuesta y la espera sigue.
+_TITULO_DIALOGO_DE_ERROR = re.compile(
+    r"se encontraron problemas|problems? (were )?found|"
+    r"no se pudo (abrir|cargar)|couldn'?t (open|load)|unable to (open|load)|"
+    r"\berror\b", re.I)
+
+#: Lo que el dialogo trae detras del mensaje: sus botones.
+_RE_BOTONES_DEL_DIALOGO = re.compile(
+    r"\s*(copiar los detalles al portapapeles|copy details to clipboard)?"
+    r"\s*(cerrar|close)\s*$", re.I)
+
+#: Plazo para leer el texto del dialogo en el proceso auxiliar.
+_PLAZO_LECTURA_DIALOGO = 20.0
+
+
+def _pids_de_desktop(pid: int) -> List[int]:
+    """El proceso lanzado y los PBIDesktop que cuelgan de el (reexec)."""
+    import psutil
+
+    pids = [int(pid)]
+    try:
+        for hijo in psutil.Process(int(pid)).children(recursive=True):
+            if (hijo.name() or "").casefold() == "pbidesktop.exe":
+                pids.append(hijo.pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+        pass  # El proceso ya salió o no se puede leer: basta con el PID del lanzador.
+    return pids
+
+
+def _dialogos_abiertos(pid: int) -> List[Dict[str, Any]]:
+    """Dialogos (ventanas POSEIDAS y con titulo) de ese Desktop. Solo Win32.
+
+    La ventana principal no tiene propietaria y su titulo es el del proyecto:
+    un proyecto llamado `errores` no debe pasar por un dialogo de error.
+    """
+    from horizun_pbi_mcp.powerbi import uia_helper
+
+    salida: List[Dict[str, Any]] = []
+    for candidato in _pids_de_desktop(pid):
+        try:
+            ventanas = uia_helper.ventanas_de(candidato)
+        except Exception:                                 # noqa: BLE001
+            continue
+        for ventana in ventanas:
+            titulo = (ventana.get("title") or "").strip()
+            if titulo and uia_helper._propietaria(ventana["hwnd"]):
+                salida.append({"pid": candidato, "hwnd": ventana["hwnd"],
+                               "title": titulo})
+    return salida
+
+
+def _leer_texto_del_dialogo(dialogo: Dict[str, Any]) -> Dict[str, Any]:
+    """Texto del dialogo por UI Automation, en el proceso auxiliar.
+
+    Sin el extra `export` (comtypes) no hay forma de leerlo: el cuerpo es un
+    control HTML que Win32 no expone. Se dice, con como instalarlo, en vez de
+    inventar un texto.
+    """
+    from horizun_pbi_mcp.powerbi import desktop_helper
+
+    try:
+        respuesta = desktop_helper.ejecutar(
+            {"action": "read_dialog", "desktop_pid": dialogo["pid"],
+             "hwnd": dialogo["hwnd"],
+             "desktop_started": _process_started(dialogo["pid"])},
+            timeout=_PLAZO_LECTURA_DIALOGO)
+    except desktop_helper.DesktopHelperUnavailable as exc:
+        return {"text_unavailable_reason": str(exc),
+                "install": (exc.details or {}).get("install")}
+    except desktop_helper.DesktopHelperError as exc:
+        return {"text_unavailable_reason": str(exc)}
+    texto = " ".join(str(respuesta.get("text") or "").split())
+    if texto.casefold().startswith(dialogo["title"].casefold()):
+        texto = texto[len(dialogo["title"]):].strip()
+    return {"text": _RE_BOTONES_DEL_DIALOGO.sub("", texto).strip()}
+
+
+def _fallar_si_hay_dialogo_de_error(pid: Optional[int], nombre: str,
+                                    inicio: float) -> None:
+    """Si Desktop ya mostro un dialogo de error, se falla AHORA con su texto.
+
+    Esperar el plazo entero no arregla nada: ese dialogo no se va solo y el
+    motor no llega a servir el modelo.
+    """
+    if not pid:
+        return
+    dialogo = next((d for d in _dialogos_abiertos(pid)
+                    if _TITULO_DIALOGO_DE_ERROR.search(d["title"])), None)
+    if dialogo is None:
+        return
+    lectura = _leer_texto_del_dialogo(dialogo)
+    texto = lectura.get("text") or None
+    if texto:
+        mensaje = f"Power BI Desktop no pudo abrir '{nombre}': «{texto}»"
+    else:
+        mensaje = (f"Power BI Desktop no pudo abrir '{nombre}': mostro el "
+                   f"dialogo «{dialogo['title']}», pero su texto no se pudo "
+                   "leer. Revisa la ventana de Desktop o ejecuta "
+                   "pbi_validate_tmdl sobre el proyecto.")
+    detalles: Dict[str, Any] = {
+        "pbix": nombre, "dialog_title": dialogo["title"],
+        "dialog_text": texto, "text_read": bool(texto),
+        "waited_seconds": round(time.monotonic() - inicio, 1),
+        "next_step": ("Corrige lo que dice el dialogo; pbi_validate_tmdl "
+                      "detecta muchos de estos fallos sin abrir Desktop.")}
+    for clave in ("text_unavailable_reason", "install"):
+        if lectura.get(clave):
+            detalles[clave] = lectura[clave]
+    raise DesktopLoadError(mensaje, details=detalles)
+
+
+def _titulos_de_dialogos(pid: Optional[int]) -> List[str]:
+    """Para el mensaje de un timeout: que dialogos habia abiertos."""
+    if not pid:
+        return []
+    try:
+        return [d["title"] for d in _dialogos_abiertos(pid)]
+    except Exception:                                     # noqa: BLE001
+        return []
+
+
 def _esperar_instancia_nueva(previas: set, timeout: int,
                              nombre: str, *,
                              pbix_path: Optional[Path] = None,
                              launched_pid: Optional[int] = None) -> Dict[str, Any]:
-    limite = time.monotonic() + timeout
+    inicio = time.monotonic()
+    limite = inicio + timeout
     candidate = None
     candidate_since = None
     while time.monotonic() < limite:
         time.sleep(_INTERVALO_SONDEO)
+        _fallar_si_hay_dialogo_de_error(launched_pid, nombre, inicio)
 
         # Correlacion fuerte 1: Desktop mantiene abierto el archivo exacto.
         if pbix_path is not None:
@@ -657,21 +796,26 @@ def _esperar_instancia_nueva(previas: set, timeout: int,
         else:
             candidate = None
             candidate_since = None
+    abiertos = _titulos_de_dialogos(launched_pid)
     raise DesktopTimeoutError(
         f"Power BI Desktop no llego a servir el modelo de '{nombre}' con datos "
         f"en {timeout} s. Revisa la ventana de Desktop: puede estar pidiendo "
         "credenciales del origen de datos o mostrando un aviso. Si el informe "
-        "es grande, sube 'desktop_timeout'.",
-        details={"timeout": timeout, "pbix": nombre},
+        "es grande, sube 'desktop_timeout'."
+        + (f" Dialogos abiertos: {', '.join(abiertos)}." if abiertos else ""),
+        details={"timeout": timeout, "pbix": nombre,
+                 "open_dialogs": abiertos},
     )
 
 
 def _esperar_instancia_de(desktop_pid: int, timeout: int) -> Dict[str, Any]:
-    limite = time.monotonic() + timeout
+    inicio = time.monotonic()
+    limite = inicio + timeout
     while time.monotonic() < limite:
         instancia = _instancia_de_proceso(desktop_pid)
         if instancia:
             return _estabilizar(instancia)
+        _fallar_si_hay_dialogo_de_error(desktop_pid, str(desktop_pid), inicio)
         time.sleep(_INTERVALO_SONDEO)
     raise DesktopTimeoutError(
         f"El proceso {desktop_pid} de Power BI Desktop tiene el archivo abierto "

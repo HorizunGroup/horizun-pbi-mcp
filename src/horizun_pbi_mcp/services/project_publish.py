@@ -147,6 +147,7 @@ def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
             "El destino del proyecto existe pero no es una carpeta.",
             details={"target": str(destino)})
 
+    destino_existia = destino.exists()
     existentes = _files(destino)
     # Los archivos no describen toda la topologia: una carpeta vacia tambien
     # puede ser parte valida del proyecto. Se conserva para poder reconstruirla
@@ -179,19 +180,40 @@ def publish_tree(stage: Path | str, target: Path | str, *, overwrite: bool,
         destino, get_settings().backups_dir, extra_forbidden=(staging,))
     cm = txn_service.transaction(
         destino, backup_root, objetivos, tool=tool, request_id=request_id)
+    creados: Dict[Path, tuple[int, int]] = {}
     try:
         with cm as tx:
             for rel, archivo in existentes.items():
                 if rel not in nuevos:
                     tx.delete(archivo)
             for rel, archivo in nuevos.items():
-                tx.write_bytes(destino / rel, archivo.read_bytes())
+                target_file = destino / rel
+                data = archivo.read_bytes()
+                try:
+                    tx.write_bytes(target_file, data)
+                finally:
+                    if rel not in existentes and target_file.is_file() \
+                            and target_file.read_bytes() == data:
+                        st = target_file.stat()
+                        creados[target_file] = (st.st_dev, st.st_ino)
             for rel in sorted(nuevos_dirs, key=lambda p: len(Path(p).parts)):
                 tx.ensure_directory(destino / rel)
             # Los directorios viejos ya vacios tambien son residuo: un directorio
             # de pagina sin page.json confunde tanto a Desktop como al lector.
             _remove_empty_dirs(destino, set(nuevos_dirs))
     except BaseException as exc:
+        # A journal rollback can itself fail. Remove only new files we wrote,
+        # with the same filesystem identity, never files present on entry.
+        for archivo, identity in creados.items():
+            safe_paths.assert_still_contained(
+                destino, archivo, kind="archivo nuevo del proyecto")
+            if archivo.exists():
+                st = archivo.stat()
+                if (st.st_dev, st.st_ino) == identity:
+                    archivo.unlink()
+        _remove_empty_dirs(destino, directorios_originales)
+        if not destino_existia and destino.exists() and not any(destino.iterdir()):
+            destino.rmdir()
         # El rollback de archivos ya termino al llegar aqui. Reconstruimos la
         # topologia original que no puede representarse en un journal de
         # archivos (incluidos directorios vacios retirados antes del fallo).

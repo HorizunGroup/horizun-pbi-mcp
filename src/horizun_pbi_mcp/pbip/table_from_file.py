@@ -308,6 +308,44 @@ def _aviso_de_encabezado(indice: int, explicito: bool) -> List[str]:
             f"{indice} anteriores. Pasa 'skip_rows' si no es lo que querias."]
 
 
+_PREFIJOS_DE_TOTAL = ("TOTAL", "SUBTOTAL", "GRAN TOTAL")
+_COLUMNAS_DE_ETIQUETA = 3
+
+
+def _separar_filas_resumen(encabezados: List[str], datos: List[List[Any]]
+                           ) -> Tuple[List[List[Any]], Dict[str, Any]]:
+    """Aparta las filas vacias y las de TOTAL de la muestra.
+
+    Duelo ronda 2: la fila TOTAL del presupuesto entro como un capitulo mas,
+    duplico el BAC y rompio la relacion 1:N (clave en blanco). La deteccion es
+    la MISMA regla que la M aplica despues (`construir_m`): texto que empieza
+    por TOTAL, SUBTOTAL o GRAN TOTAL en una de las primeras columnas.
+    """
+    limpios: List[List[Any]] = []
+    vacias = 0
+    totales: List[Dict[str, Any]] = []
+    columnas: List[str] = []
+    for fila in datos:
+        celdas = [str(c).strip() if c is not None else "" for c in fila]
+        if not any(celdas):
+            vacias += 1
+            continue
+        etiqueta = None
+        for i, valor in enumerate(celdas[:_COLUMNAS_DE_ETIQUETA]):
+            if i < len(encabezados) and valor.upper().startswith(_PREFIJOS_DE_TOTAL):
+                etiqueta = (encabezados[i], valor)
+                break
+        if etiqueta is None:
+            limpios.append(fila)
+            continue
+        totales.append({"column": etiqueta[0], "value": etiqueta[1]})
+        if etiqueta[0] not in columnas:
+            columnas.append(etiqueta[0])
+    return limpios, {"blank_rows": vacias, "total_rows": totales,
+                     "total_columns": columnas, "input_rows": len(datos),
+                     "clean_rows": len(limpios)}
+
+
 def _perfilar_csv(ruta: Path, muestra: int,
                   skip_rows: Optional[int] = None) -> Dict[str, Any]:
     crudo = ruta.read_bytes()
@@ -355,7 +393,9 @@ def _perfilar_csv(ruta: Path, muestra: int,
                      "path": str(ruta)})
 
     encabezados = [c.strip() for c in filas[fila_encabezado]]
-    datos = filas[fila_encabezado + 1:fila_encabezado + 1 + muestra]
+    datos = filas[fila_encabezado + 1:]
+    datos, resumen = _separar_filas_resumen(encabezados, datos)
+    datos = datos[:muestra]
 
     columnas_valores: List[List[str]] = [
         [f[i] if i < len(f) else "" for f in datos]
@@ -364,6 +404,7 @@ def _perfilar_csv(ruta: Path, muestra: int,
 
     return {
         "format": "csv", "path": str(ruta), "delimiter": delimitador,
+        "summary_rows": resumen,
         "encoding": 65001, "has_bom": tiene_bom, "sheet": None,
         "decimal_separator": sep,
         "row_sample": len(datos),
@@ -435,7 +476,7 @@ def _serial_a_fecha(bruto: str) -> str:
     return (datetime(1899, 12, 30) + timedelta(days=dias)).strftime("%Y-%m-%d")
 
 
-def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]]:
+def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: Optional[int]) -> List[List[str]]:
     import xml.etree.ElementTree as ET
 
     estilos_fecha = _estilos_de_fecha(z)
@@ -466,7 +507,7 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
             fisica = int(fila.get("r") or esperada)
         except ValueError:
             fisica = esperada
-        while esperada < fisica and len(filas) <= muestra:
+        while esperada < fisica and (muestra is None or len(filas) <= muestra):
             filas.append([])
             esperada += 1
         esperada = fisica + 1
@@ -491,7 +532,7 @@ def _filas_xlsx(z: zipfile.ZipFile, indice: int, muestra: int) -> List[List[str]
                         bruto = _serial_a_fecha(bruto)
                 valores.append(bruto or "")
         filas.append(valores)
-        if len(filas) > muestra:
+        if muestra is not None and len(filas) > muestra:
             break
     return filas
 
@@ -509,10 +550,8 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
                 f"El libro no tiene la hoja '{hoja}'. Tiene: "
                 f"{', '.join(hojas)}.",
                 details={"sheets": hojas, "path": str(ruta)})
-        # Se leen las filas que se van a saltar ADEMAS de la muestra: si no,
-        # saltar diez filas dejaria diez filas menos de datos que perfilar.
-        margen = (skip_rows if skip_rows is not None else _MAX_FILAS_CANDIDATAS)
-        filas = _filas_xlsx(z, hojas.index(hoja), muestra + max(0, margen))
+        # Count and classify the whole sheet; only type inference is sampled.
+        filas = _filas_xlsx(z, hojas.index(hoja), None)
 
     if not filas:
         raise TableFromFileError(f"La hoja '{hoja}' esta vacia: {ruta}")
@@ -526,13 +565,16 @@ def _perfilar_xlsx(ruta: Path, hoja: Optional[str], muestra: int,
                      "sheet": hoja, "path": str(ruta)})
 
     encabezados = [str(c).strip() for c in filas[fila_encabezado]]
-    datos = filas[fila_encabezado + 1:]
+    datos, resumen = _separar_filas_resumen(encabezados,
+                                            filas[fila_encabezado + 1:])
+    datos = datos[:muestra]
     columnas_valores = [[f[i] if i < len(f) else "" for f in datos]
                         for i in range(len(encabezados))]
     sep = _separador_de_columnas(encabezados, columnas_valores)
 
     return {
         "format": "xlsx", "path": str(ruta), "sheet": hoja, "delimiter": None,
+        "summary_rows": resumen,
         "encoding": None, "has_bom": False, "decimal_separator": sep,
         "row_sample": len(datos),
         "header_row": fila_encabezado,
@@ -728,10 +770,45 @@ def _perfilar_html(ruta: Path, muestra: int, table_id: Optional[str] = None
     }
 
 
+_MAX_ARCHIVOS_EN_ERROR = 30
+
+
+def _archivo_no_existe(ruta: Path) -> tuple[str, Dict[str, Any]]:
+    """Mensaje que deja corregir el nombre sin adivinar otro.
+
+    Duelo ronda 2: un modelo pequeno invento 7 nombres de archivo y cada error
+    solo repetia la ruta. Con la lista de lo que si hay, el siguiente intento
+    puede copiar un nombre real.
+    """
+    carpeta = ruta.parent
+    detalles: Dict[str, Any] = {"path": str(ruta), "folder": str(carpeta)}
+    if not carpeta.is_dir():
+        detalles["folder_exists"] = False
+        return (f"El archivo no existe: {ruta}. Tampoco existe la carpeta "
+                f"{carpeta}.", detalles)
+    try:
+        candidatos = sorted(p.name for p in carpeta.iterdir()
+                            if p.is_file() and p.suffix.lower() in
+                            set(_FORMATOS) | {".xls"})
+    except OSError:
+        candidatos = []
+    detalles["folder_exists"] = True
+    detalles["available_files"] = candidatos[:_MAX_ARCHIVOS_EN_ERROR]
+    if len(candidatos) > _MAX_ARCHIVOS_EN_ERROR:
+        detalles["available_files_truncated"] = len(candidatos)
+    if not candidatos:
+        return (f"El archivo no existe: {ruta}. La carpeta {carpeta} no tiene "
+                "archivos que se puedan cargar.", detalles)
+    return (f"El archivo no existe: {ruta}. Archivos que si hay en "
+            f"{carpeta}: {', '.join(detalles['available_files'])}. Usa uno de "
+            "esos nombres exactos.", detalles)
+
+
 def perfilar(path: Path | str, sheet: Optional[str] = None,
              muestra: int = 200, table_id: Optional[str] = None,
              skip_rows: Optional[int] = None,
-             text_columns: Optional[List[str]] = None) -> Dict[str, Any]:
+             text_columns: Optional[List[str]] = None,
+             keep_summary_rows: bool = False) -> Dict[str, Any]:
     """Mira dentro del archivo y deduce columnas, tipos y cultura.
 
     `skip_rows`: cuantas filas saltar antes del encabezado. `None` (por
@@ -742,10 +819,12 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
     codigos que el encabezado no delata (p. ej. `partida` con 1.01, 2.10).
     Un nombre que no existe en el archivo es un error, no se ignora.
     """
-    ruta = Path(path).expanduser()
+    # Absoluta: Power Query no resuelve `File.Contents` contra el cwd del
+    # servidor (duelo ronda 2: `datos\x.csv` no se hallaba al refrescar).
+    ruta = Path(path).expanduser().resolve()
     if not ruta.exists():
-        raise TableFromFileError(f"El archivo no existe: {ruta}",
-                                 details={"path": str(ruta)})
+        mensaje, detalles = _archivo_no_existe(ruta)
+        raise TableFromFileError(mensaje, details=detalles)
     if ruta.suffix.lower() == ".xls":
         # '.xls' no se toma por su palabra: se mira la firma real del
         # archivo (ver `_formato_real_de_xls`).
@@ -833,6 +912,30 @@ def perfilar(path: Path | str, sheet: Optional[str] = None,
                 f"La columna '{columna['name']}' se carga como texto: trae "
                 "valores con ceros a la izquierda (p. ej. 007) que como numero "
                 "se perderian.")
+    resumen = perfil.get("summary_rows") or {}
+    if resumen:
+        resumen["kept"] = bool(keep_summary_rows)
+        total = resumen["input_rows"]
+        excluded = 0 if keep_summary_rows else total - resumen["clean_rows"]
+        perfil["file_row_counts"] = {"input": total, "excluded": excluded,
+                                     "loaded": total - excluded}
+    if resumen.get("blank_rows") or resumen.get("total_rows"):
+        partes = []
+        if resumen.get("blank_rows"):
+            partes.append(f"{resumen['blank_rows']} fila(s) vacia(s)")
+        if resumen.get("total_rows"):
+            valores = ", ".join(sorted({t["value"] for t in resumen["total_rows"]}))
+            partes.append(f"{len(resumen['total_rows'])} fila(s) de total "
+                          f"({valores}) en {', '.join(resumen['total_columns'])}")
+        if keep_summary_rows:
+            avisos.append(
+                f"Se encontraron {' y '.join(partes)} y se CONSERVAN "
+                "(keep_summary_rows=true): sumarlas duplica los totales.")
+        else:
+            avisos.append(
+                f"Se quitan {' y '.join(partes)} en Power Query (paso 'Filas "
+                "vacias y totales quitadas'): una fila TOTAL duplica las sumas "
+                "y deja claves en blanco. keep_summary_rows=true las conserva.")
     if avisos:
         perfil["warnings"] = avisos
 
@@ -933,6 +1036,24 @@ def construir_m(perfil: Dict[str, Any], culture: Optional[str] = None) -> str:
                      f'{anterior}, [PromoteAllScalars = true]),')
         anterior = '#"Encabezados promovidos"'
 
+    resumen = perfil.get("summary_rows") or {}
+    if perfil["format"] in ("csv", "xlsx") and not resumen.get("kept"):
+        # Always apply both predicates to every row, including future refreshes.
+        condiciones = [
+            'List.AnyTrue(List.Transform(Record.FieldValues(_), (v) => '
+            'Text.Trim(Text.From(v) ?? "") <> ""))']
+        columnas = "{" + ", ".join(
+            _literal_m(c["name"]) for c in perfil["columns"][:_COLUMNAS_DE_ETIQUETA]) + "}"
+        prefijos = " or ".join(
+            f"Text.StartsWith(t, {_literal_m(x)})" for x in _PREFIJOS_DE_TOTAL)
+        condiciones.append(
+            f'not List.AnyTrue(List.Transform({columnas}, (c) => let t = '
+            'Text.Upper(Text.Trim(Text.From(Record.Field(_, c)) ?? "")) '
+            f'in {prefijos}))')
+        pasos.append(f'    #"Filas vacias y totales quitadas" = Table.SelectRows('
+                     f'{anterior}, each {" and ".join(condiciones)}),')
+        anterior = '#"Filas vacias y totales quitadas"'
+
     # La cultura va SIEMPRE explicita, como tercer argumento. Es la diferencia
     # entre un numero correcto y uno multiplicado por cien sin previo aviso.
     pasos.append(f'    #"Tipo cambiado" = Table.TransformColumnTypes('
@@ -999,7 +1120,8 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
                   dry_run: bool = False, muestra: int = 200,
                   table_id: Optional[str] = None,
                   skip_rows: Optional[int] = None,
-                  text_columns: Optional[List[str]] = None) -> Dict[str, Any]:
+                  text_columns: Optional[List[str]] = None,
+                  keep_summary_rows: bool = False) -> Dict[str, Any]:
     """Carga un archivo como tabla del modelo, y comprueba que el TMDL abre.
 
     `table_id`: solo para HTML/'.xls' que en realidad es HTML. El `id` de la
@@ -1011,7 +1133,8 @@ def agregar_tabla(active: Any, path: Path | str, table_name: str = "",
 
     ruta = Path(path).expanduser()
     perfil = perfilar(ruta, sheet=sheet, muestra=muestra, table_id=table_id,
-                      skip_rows=skip_rows, text_columns=text_columns)
+                      skip_rows=skip_rows, text_columns=text_columns,
+                      keep_summary_rows=keep_summary_rows)
 
     nombre = validate_object_name(table_name or ruta.stem, "tabla")
     try:

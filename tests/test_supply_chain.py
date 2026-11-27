@@ -196,3 +196,7 @@ def test_el_instalador_publicado_esta_congelado_en_el_manifest():
     assert entrada["source_path"] == "scripts/instalar.ps1"
     assert entrada["eol"] == "lf" and entrada["encoding"] == "ascii"
     assert entrada["bom"] is False
+    # encoding/eol/bom describen el CUERPO; el archivo va firmado (Authenticode).
+    assert entrada["signed"] is True
+    assert entrada["signature"]["type"] == "authenticode"
+    assert entrada["signature"]["thumbprint"] == "D19F95C700EFEB78F03B6A2F9F6FBF87BF9BF8FA"

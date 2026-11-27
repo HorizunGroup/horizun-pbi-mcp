@@ -4,9 +4,9 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict, Iterable, Union
 
-from horizun_pbi_mcp.powerbi.errors import PathSecurityError, ValidationError
+from horizun_pbi_mcp.powerbi.errors import MeasureExistsError, PathSecurityError, ValidationError
 
 PathLike = Union[str, Path]
 
@@ -23,6 +23,30 @@ def validate_object_name(name: str, kind: str = "objeto") -> str:
     if len(name) > 512:
         raise ValidationError(f"El nombre de {kind} es demasiado largo (>512).")
     return name.strip()
+
+
+def measure_column_collision(table: str, name: str, column: str,
+                             occupied: Iterable[str]) -> MeasureExistsError:
+    """Error compartido por PBIP y TOM, con tres alternativas ya comprobadas."""
+    used = {n.casefold() for n in occupied}
+    suggested = []
+    for prefix, suffix in (("Total ", ""), ("", " (medida)"), ("", " Total")):
+        number = 1
+        while True:
+            ending = suffix + (f" {number}" if number > 1 else "")
+            candidate = prefix + name[:512 - len(prefix) - len(ending)] + ending
+            if candidate.casefold() not in used:
+                suggested.append(candidate)
+                used.add(candidate.casefold())
+                break
+            number += 1
+    return MeasureExistsError(
+        f"En '{table}' ya hay una COLUMNA '{column}': una medida no puede "
+        "llamarse igual (sin distinguir mayusculas). Reintenta "
+        "pbi_create_measure con uno de los nombres de suggested_names, "
+        "sin preguntar al usuario: " + ", ".join(suggested) + ".",
+        details={"table": table, "measure": name, "column": column,
+                 "rule": "measure_column_collision", "suggested_names": suggested})
 
 
 def normalizar_format_string(valor: Any) -> Any:

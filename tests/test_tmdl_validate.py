@@ -492,3 +492,100 @@ def test_resolve_encuentra_el_semantic_model_con_model_bim(tmp_path):
     pbip.write_text('{"version": "1.0"}', encoding="utf-8")
 
     assert tmdl_validate.resolve_definition_dir(pbip) == modelo
+
+
+# --------------------------------------------------------------------------
+# Tabla calculada con sourceColumn sin corchetes -> "Id. de columna no valido"
+# --------------------------------------------------------------------------
+# Duelo de Power BI del 24-oct-2026: `pbi_create_calculated_table` escribio
+# `sourceColumn: semana` y Desktop rechazo la relacion hacia Calendario[semana]
+# («La relacion "LB_Calendario" usa un Id. de columna 71 no valido»). El
+# serializador oficial lo acepta, asi que solo el lint puede acusarlo.
+
+CALENDARIO_SIN_CORCHETES = """table Calendario
+\tlineageTag: a5e5f829-fd40-4880-a154-52a3b94f577a
+
+\tcolumn semana
+\t\tdataType: int64
+\t\tlineageTag: 0507bf57-f9e6-4796-a8d1-f10dd6a0a836
+\t\tsummarizeBy: none
+\t\tsourceColumn: semana
+
+\tcolumn 'fecha corte'
+\t\tdataType: dateTime
+\t\tlineageTag: 3a97089d-5e6a-4afb-9a79-e1e1b589d274
+\t\tsummarizeBy: none
+\t\tsourceColumn: fecha corte
+
+\tpartition Calendario = calculated
+\t\tmode: import
+\t\tsource = SELECTCOLUMNS(GENERATESERIES(1, 61, 1), "semana", [Value], "fecha corte", DATE(2026, 6, 1) + 7 * [Value])
+"""
+
+AVANCE_IMPORTADO = """table Avance
+\tlineageTag: 11111111-1111-1111-1111-111111111111
+
+\tcolumn semana
+\t\tdataType: int64
+\t\tlineageTag: 22222222-2222-2222-2222-222222222222
+\t\tsummarizeBy: none
+\t\tsourceColumn: semana
+
+\tpartition Avance = m
+\t\tmode: import
+\t\tsource = #table({"semana"}, {{1}})
+"""
+
+
+RELACION_A_CALENDARIO = """relationship 9a1f0c2e-0000-4000-8000-000000000001
+	fromColumn: Avance.semana
+	toColumn: Calendario.semana
+"""
+
+
+def test_detecta_tabla_calculada_con_source_column_sin_corchetes(tmp_path):
+    """Error donde una relacion usa la columna: es lo que no abre."""
+    definition = _definition(tmp_path, {"Calendario": CALENDARIO_SIN_CORCHETES,
+                                        "Avance": AVANCE_IMPORTADO},
+                             relaciones=RELACION_A_CALENDARIO)
+    r = tmdl_validate.validate(definition, use_tom=False)
+
+    hallazgos = {f["object"]["column"]: f for f in r["findings"]
+                 if f["rule"] == "tmdl_calculated_source_column_unbracketed"}
+    assert r["valid"] is False
+    assert set(hallazgos) == {"semana", "fecha corte"}
+    assert hallazgos["semana"]["severity"] == "error"
+    assert hallazgos["semana"]["evidence"]["used_by_relationship"] is True
+    assert "sourceColumn: [semana]" in hallazgos["semana"]["recommendation"]
+    # Sin relacion no impide abrir: aviso, no error.
+    assert hallazgos["fecha corte"]["severity"] == "warning"
+    assert all(h["object"]["file"].endswith("Calendario.tmdl")
+               for h in hallazgos.values())
+
+
+def test_sin_relacion_la_columna_sin_corchetes_solo_avisa(tmp_path):
+    """Desktop abre una tabla calculada sin corchetes si nada la relaciona
+    (el fixture `desktop_openable` lo demuestra): el preflight no la bloquea."""
+    definition = _definition(tmp_path, {"Calendario": CALENDARIO_SIN_CORCHETES,
+                                        "Avance": AVANCE_IMPORTADO})
+    r = tmdl_validate.validate(definition, use_tom=False)
+
+    reglas = [f for f in r["findings"]
+              if f["rule"] == "tmdl_calculated_source_column_unbracketed"]
+    assert len(reglas) == 2
+    assert {f["severity"] for f in reglas} == {"warning"}
+    assert r["valid"] is True
+
+
+def test_tabla_calculada_con_corchetes_y_tabla_importada_no_disparan(tmp_path):
+    corregida = (CALENDARIO_SIN_CORCHETES
+                 .replace("sourceColumn: semana", "sourceColumn: [semana]")
+                 .replace("sourceColumn: fecha corte",
+                          "sourceColumn: Calendario[fecha corte]"))
+    definition = _definition(tmp_path, {"Calendario": corregida,
+                                        "Avance": AVANCE_IMPORTADO},
+                             relaciones=RELACION_A_CALENDARIO)
+    r = tmdl_validate.validate(definition, use_tom=False)
+
+    assert "tmdl_calculated_source_column_unbracketed" not in _reglas(r)
+    assert r["valid"] is True

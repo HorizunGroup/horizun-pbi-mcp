@@ -17,7 +17,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -46,6 +49,146 @@ SITIOS_DE_VERSION = {
     # Se colaba porque solo lo miraba una prueba de empaquetado, no el gate.
     "scripts/plugin_bootstrap.py": lambda t: re.search(r'^VERSION = "([^"]+)"', t, re.M).group(1),
 }
+
+
+# --------------------------------------------- el instalador y su firma ---
+#: Marcas del bloque Authenticode que anade `signtool` / `Set-AuthenticodeSignature`
+#: al FINAL de un .ps1. Lo que hay antes es el cuerpo que se firmo.
+MARCA_FIRMA_INICIO = b"# SIG # Begin signature block"
+MARCA_FIRMA_FIN = b"# SIG # End signature block"
+
+#: Huella del certificado Certum de HORIZUN GROUP S.A.S. con el que se firma.
+HUELLA_CERTUM = "D19F95C700EFEB78F03B6A2F9F6FBF87BF9BF8FA"
+
+AYUDA_FIRMA = (
+    "El instalador scripts/instalar.ps1 se firma EN EL ARBOL, antes de etiquetar, "
+    "y sus pines se recalculan DESPUES de firmar. Procedimiento exacto: "
+    "RELEASING.md, seccion 'Firma del instalador'.")
+
+
+class InstaladorInvalido(ValueError):
+    """El .ps1 no tiene la forma que exige el pipeline."""
+
+
+def analizar_instalador(crudo: bytes) -> dict:
+    """Separa cuerpo y bloque de firma, y valida la FORMA de cada parte.
+
+    Contrato (el mismo que declara `downloads_manifest.json`):
+
+    * sin BOM;
+    * el CUERPO -todo lo anterior al bloque de firma- es ASCII puro y con LF:
+      PowerShell 5.1 lee un .ps1 sin BOM con la codepage OEM, y un CR suelto
+      cambiaria el hash que se publica;
+    * el BLOQUE (`# SIG # Begin signature block` ... `# SIG # End signature
+      block`) es ASCII, va al final del archivo y cada linea empieza por `# `.
+      El bloque lo escribe signtool y trae CRLF; signtool ademas intercala un
+      CRLF entre el cuerpo y el bloque. Son los UNICOS CR que se admiten.
+
+    Devuelve `{"firmado": bool, "cuerpo": bytes, "bloque": bytes | None}`.
+    Un archivo SIN firmar es valido en cuanto a forma (`firmado: False`); quien
+    exige la firma llama a `exigir_firmado`.
+    """
+    if crudo.startswith(b"\xef\xbb\xbf"):
+        raise InstaladorInvalido("el instalador lleva BOM")
+    cuenta = crudo.count(MARCA_FIRMA_INICIO)
+    if cuenta > 1:
+        raise InstaladorInvalido("el instalador tiene mas de un bloque de firma")
+    if cuenta == 0:
+        cuerpo, bloque = crudo, None
+    else:
+        i = crudo.index(MARCA_FIRMA_INICIO)
+        if i != 0 and crudo[i - 1:i] != b"\n":
+            raise InstaladorInvalido(
+                "la marca de firma no abre una linea del instalador")
+        cuerpo, bloque = crudo[:i], crudo[i:]
+        lineas = bloque.replace(b"\r\n", b"\n").split(b"\n")
+        while lineas and lineas[-1] == b"":
+            lineas.pop()
+        if lineas[-1] != MARCA_FIRMA_FIN:
+            raise InstaladorInvalido(
+                "el bloque de firma no termina en '# SIG # End signature block': "
+                "hay bytes detras de la firma o la firma esta cortada")
+        malas = [l[:40] for l in lineas if not l.startswith(b"# ")]
+        if malas:
+            raise InstaladorInvalido(
+                f"lineas del bloque de firma sin el prefijo '# ': {malas[:3]}")
+        if any(b > 127 for b in bloque):
+            raise InstaladorInvalido("el bloque de firma no es ASCII")
+    # signtool intercala un unico CRLF entre el cuerpo y el bloque de firma
+    # (una linea en blanco, que ya forma parte de lo firmado). Es el unico CR
+    # que admite el cuerpo; cualquier otro cambiaria el hash al descargar.
+    sin_marco = (cuerpo[:-2] if bloque is not None and cuerpo.endswith(b"\r\n")
+                 else cuerpo)
+    if b"\r" in sin_marco:
+        raise InstaladorInvalido(
+            "el CUERPO del instalador tiene CR (CRLF): solo el bloque de firma "
+            "(y el CRLF que signtool intercala justo antes) admite CRLF; el "
+            "cuerpo es LF puro")
+    if any(b > 127 for b in cuerpo):
+        raise InstaladorInvalido("el cuerpo del instalador no es ASCII")
+    return {"firmado": bloque is not None, "cuerpo": cuerpo, "bloque": bloque}
+
+
+def exigir_firmado(crudo: bytes, nombre: str = "scripts/instalar.ps1") -> dict:
+    """Falla de forma EXPLICITA si el instalador no lleva el bloque de firma."""
+    try:
+        info = analizar_instalador(crudo)
+    except InstaladorInvalido as exc:
+        raise SystemExit(f"[release_verify] {nombre} no es valido: {exc}")
+    if not info["firmado"]:
+        raise SystemExit(
+            f"[release_verify] {nombre} NO ESTA FIRMADO (no hay '# SIG # Begin "
+            "signature block'). Un instalador sin firma Authenticode no se "
+            f"construye ni se publica. {AYUDA_FIRMA}")
+    return info
+
+
+def verificar_authenticode(ruta: Path) -> dict:
+    """Pregunta a Windows si la firma es valida y es la de HORIZUN GROUP.
+
+    `Status = Valid` quiere decir que el hash del cuerpo coincide con la firma
+    y que la cadena llega a una raiz de confianza; ademas se exige la huella de
+    la empresa y el sello de tiempo, que es lo que mantiene valida la firma
+    cuando el certificado caduque. Solo Windows: en otro sistema no hay
+    `Get-AuthenticodeSignature` y se para en vez de dar la firma por buena.
+    """
+    ps = shutil.which("pwsh") or shutil.which("powershell")
+    if not ps:
+        raise SystemExit("[release_verify] no hay PowerShell para comprobar la "
+                         "firma Authenticode; esta comprobacion es de Windows")
+    orden = (
+        "$s = Get-AuthenticodeSignature -LiteralPath $env:HORIZUN_VERIFICAR_RUTA; "
+        "[pscustomobject]@{ status = [string]$s.Status; "
+        "thumbprint = [string]$s.SignerCertificate.Thumbprint; "
+        "subject = [string]$s.SignerCertificate.Subject; "
+        "issuer = [string]$s.SignerCertificate.Issuer; "
+        "timestamp = [string]$s.TimeStamperCertificate.Subject } "
+        "| ConvertTo-Json -Compress")
+    # La ruta viaja por el entorno: con `-Command` los argumentos sobrantes se
+    # pegan al texto del comando y no llegan a `$args`.
+    entorno = dict(os.environ, HORIZUN_VERIFICAR_RUTA=str(ruta))
+    res = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command", orden],
+                         capture_output=True, text=True, timeout=120,
+                         encoding="utf-8", errors="replace", env=entorno)
+    if res.returncode != 0 or not res.stdout.strip():
+        raise SystemExit("[release_verify] Get-AuthenticodeSignature fallo: "
+                         + (res.stderr or res.stdout)[-600:])
+    datos = json.loads(res.stdout.strip().splitlines()[-1])
+    problemas = []
+    if datos["status"] != "Valid":
+        problemas.append(f"estado de la firma: {datos['status']} (se exige Valid)")
+    if datos["thumbprint"].upper() != HUELLA_CERTUM:
+        problemas.append(f"firmado por la huella {datos['thumbprint'] or '(ninguna)'}, "
+                         f"no por {HUELLA_CERTUM}")
+    if "Certum" not in datos["issuer"]:
+        problemas.append(f"el emisor no es Certum: {datos['issuer']}")
+    if "Certum" not in datos["timestamp"]:
+        problemas.append("sin sello de tiempo de Certum")
+    if problemas:
+        raise SystemExit(
+            f"[release_verify] la firma Authenticode de {ruta.name} NO es valida:"
+            "\n  - " + "\n  - ".join(problemas))
+    return datos
 
 
 def _ref(texto: str) -> str:
@@ -133,7 +276,12 @@ def assets_publicables(raiz: Path) -> dict:
 
 
 def verificar_instalador(raiz: Path) -> str:
-    """El asset de la release tiene que ser el archivo congelado, byte a byte."""
+    """El asset de la release tiene que ser el archivo congelado, byte a byte.
+
+    «Congelado» es el archivo FIRMADO: el hash del manifest es el del `.ps1`
+    con su bloque de firma. Un instalador sin firmar se rechaza aqui, antes de
+    mirar el hash, para que el mensaje diga la causa y no solo «no coincide».
+    """
     entrada = json.loads(
         (REPO / "scripts" / "downloads_manifest.json").read_text(encoding="utf-8")
     )["downloads"]["instalar.ps1"]
@@ -141,17 +289,18 @@ def verificar_instalador(raiz: Path) -> str:
     if not asset.exists():
         raise SystemExit(f"[release_verify] falta el asset {entrada['name']}")
 
+    crudo = asset.read_bytes()
+    exigir_firmado(crudo, entrada["name"])
+
     real = _sha256(asset)
     if real != entrada["sha256"]:
         raise SystemExit(
             f"[release_verify] el asset del instalador no es el congelado.\n"
-            f"  manifest: {entrada['sha256']}\n  real:     {real}")
-    crudo = asset.read_bytes()
+            f"  manifest: {entrada['sha256']}\n  real:     {real}\n"
+            "  Si el instalador se firmo o cambio, recalcula los pines: "
+            "python scripts/pin_instalador.py")
     if len(crudo) != entrada["actual_bytes"]:
         raise SystemExit("[release_verify] el asset no tiene el tamano declarado")
-    if b"\r" in crudo:
-        raise SystemExit("[release_verify] el asset llego con CRLF: el hash "
-                         "publicado dejaria de coincidir con lo descargado")
     return real
 
 
@@ -174,6 +323,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dir", required=True, type=Path)
     ap.add_argument("--expect-version", default=None)
+    ap.add_argument("--authenticode", action="store_true",
+                    help="ademas, Windows comprueba la firma del instalador "
+                         "(estado Valid, huella y sello de Certum)")
     args = ap.parse_args(argv)
 
     raiz = args.dir.resolve()
@@ -182,7 +334,12 @@ def main(argv=None) -> int:
     print("[release_verify] digests OK:")
     for a in archivos:
         print(f"  - {a}")
-    print(f"[release_verify] asset del instalador OK: {digest_instalador}")
+    print(f"[release_verify] asset del instalador OK (firmado): {digest_instalador}")
+    if args.authenticode:
+        nombre = json.loads((REPO / "scripts" / "downloads_manifest.json").read_text(
+            encoding="utf-8"))["downloads"]["instalar.ps1"]["name"]
+        firma = verificar_authenticode(raiz / "meta" / nombre)
+        print(f"[release_verify] firma Authenticode Valid: {firma['subject']}")
 
     if args.expect_version:
         leidas = verificar_version(args.expect_version)

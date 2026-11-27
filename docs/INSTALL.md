@@ -47,7 +47,7 @@ yours refuses the file, that is the first thing to check.
    check it yourself:
 
    ```powershell
-   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.1.2.mcpb
+   python scripts/build_mcpb.py --output horizun-pbi-mcp-2.2.1.mcpb
    ```
 2. Double-click the file, or in Claude Desktop open **Settings → Extensions →
    Advanced settings → Install Extension**, and approve the installation.
@@ -66,7 +66,7 @@ yours refuses the file, that is the first thing to check.
    Analysis Services libraries and the PBIR schemas, so on a normal connection
    allow a few minutes.
 4. **Restart Claude Desktop once.** Then confirm: a new chat should offer the
-   full `pbi_*` toolset (139 tools, `pbi_start_here` among them). If you still
+   full `pbi_*` toolset (140 tools, `pbi_start_here` among them). If you still
    see only the two installer tools, the client is still holding the bootstrap
    session — reopen it.
 
@@ -137,8 +137,8 @@ the canonical copy is [`scripts/one_paste.ps1`](../scripts/one_paste.ps1).
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.1.2/horizun-pbi-mcp-instalar.ps1'
-$sha = 'f01c2f0dee4486dbc2bcef35b45962b1f0d4e1e59526fdff30893b8e3a97deb8'
+$url = 'https://github.com/HorizunGroup/horizun-pbi-mcp/releases/download/v2.2.1/horizun-pbi-mcp-instalar.ps1'
+$sha = '7890fb08f1c5c38528c05819c65a7d48d989f27121a06fea3747b263d2f15bdb'
 $max = 131072
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('horizun-' + [guid]::NewGuid().ToString('N') + '.ps1')
 # En que punto se quedo, para que el mensaje final diga la verdad y no una
@@ -274,7 +274,7 @@ claude plugin install horizun-pbi-mcp@horizun
 
 Setup starts automatically on the first session. While it progresses
 you'll see `pbi_install_runtime` and `pbi_install_status`; after restarting
-the client the 139 tools will appear. Nothing needs to be downloaded or run
+the client the 140 tools will appear. Nothing needs to be downloaded or run
 separately. The runtime and verified downloads stay in the plugin's local
 data, outside the repository and your projects.
 
@@ -284,7 +284,7 @@ Power BI Desktop. Node 20 is only needed for the optional PBIR validator.
 For Claude Desktop, prefer the release `.mcpb`: Claude supplies the bootstrap
 runtime and no manual Python or JSON configuration is needed.
 
-Reproducible guide from scratch. At the end, an MCP client should see 139 `pbi_*` tools.
+Reproducible guide from scratch. At the end, an MCP client should see 140 `pbi_*` tools.
 
 ---
 
@@ -394,7 +394,7 @@ horizun-pbi-completar
 The second command is **not optional**. The wheel cannot ship the Analysis
 Services DLLs (Microsoft binaries) or the PBIR schemas (no redistribution
 permission), so a bare `pip install` leaves a server that starts, speaks MCP and
-answers all 139 tools — and cannot work: the LIVE layer has nothing to talk to
+answers all 140 tools — and cannot work: the LIVE layer has nothing to talk to
 the model with, and every PBIR write fails with `schema_unavailable`.
 `horizun-pbi-completar` downloads both, verified by SHA-256, and
 `horizun-pbi-completar --check` tells you where you stand without downloading
@@ -524,6 +524,8 @@ Official references: [Microsoft Graph app-only authentication](https://learn.mic
 | Report changes were lost | Desktop was open and saved over them | Edit the PBIR **with Desktop closed**. Backups are in `backups/` |
 | Server starts but the client doesn't see it | Wrong path or interpreter in the config | `python scripts/make_mcp_config.py --client <your-client>` and paste again |
 | Session pointing to a dead port | Stale `outputs/session.json` | `python scripts/doctor.py` detects it; delete the file or reselect |
+| `Connection closed` right after the plugin updated | A server registered **by hand** points to the plugin cache of the old version (`...\plugins\cache\horizun\horizun-pbi-mcp\<version>\scripts\launch.cmd`). The update empties that folder, so the command no longer exists | The plugin already registers its own server: remove the manual entry (`claude mcp remove horizun-pbi-mcp -s user`; in Codex, delete `[mcp_servers.horizun-pbi-mcp]` from `~/.codex/config.toml`). Never register a path that contains a version number |
+| The plugin lists only `pbi_install_runtime` and `pbi_install_status` | First session after installing or updating: the runtime of the new version isn't installed yet | Let the agent call `pbi_install_runtime`, then restart the client |
 
 ---
 
