@@ -1,7 +1,7 @@
 {
   "contract_version": 1,
   "server": "horizun-pbi-mcp",
-  "tool_count": 139,
+  "tool_count": 140,
   "tools": [
     "pbi_add_custom_visual",
     "pbi_add_image_resource",
@@ -60,6 +60,7 @@
     "pbi_export_pbix",
     "pbi_export_report_content",
     "pbi_finalize_delivery",
+    "pbi_find_tool",
     "pbi_generate_page_spec",
     "pbi_generate_pdf_report",
     "pbi_generate_report_page",

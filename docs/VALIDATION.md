@@ -106,6 +106,27 @@ in the same table. It also blocks a semantic model with no tables
 (`tmdl_empty_model`), which would otherwise just produce a timeout waiting
 for an engine that never gets to serve.
 
+A column of a **calculated table** must have its `sourceColumn` in brackets
+(`sourceColumn: [semana]`, or `Calendario[semana]`). Unbracketed, the official
+serializer still parses the file, but Desktop can't match the column to the
+DAX result and rejects every relationship that uses it ("the relationship uses
+an invalid column ID"), so the project doesn't open. Only the lint sees it:
+`tmdl_calculated_source_column_unbracketed`. It is an **error** when a
+relationship uses the column, and a **warning** otherwise: with no relationship
+Desktop does open the project (the `desktop_openable` fixture proves it), and
+the preflight must not refuse a project that opens. Tables imported through M
+keep `sourceColumn` bare, and are not flagged.
+
+If Desktop shows an error dialog while opening (for example "Se encontraron
+problemas"), `pbi_open_in_desktop` returns `desktop_load_failed` as soon as the
+dialog appears, with its title and text in `dialog_title` / `dialog_text`,
+instead of waiting for the whole timeout. The text is read through UI
+Automation, which needs the `export` extra (`comtypes`): the dialog body is an
+embedded HTML control that Win32 can't read. Without it the error still comes
+back immediately, with the title, `text_read: false` and how to install the
+extra. A credentials dialog doesn't match: it waits for an answer, and if the
+wait times out the `desktop_timeout` lists the open dialogs in `open_dialogs`.
+
 ---
 
 ## Pre-existing diagnostics

@@ -75,7 +75,7 @@ cliente esperando que continúe solo.
 **En la mayoría de los casos no hay que hacer nada.** Si la actualización falla,
 el lanzador sirve solo el último runtime bueno: verifica el runtime antes de
 entregarle el canal del cliente, y si no pasa, elige el anterior. Reinicia el
-cliente MCP y sigues con la versión anterior y sus 134 tools.
+cliente MCP y sigues con la versión anterior y sus tools.
 
 Para comprobar cuál se serviría:
 
