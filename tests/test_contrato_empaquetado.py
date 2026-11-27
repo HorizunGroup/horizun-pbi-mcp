@@ -91,12 +91,15 @@ def test_el_baseline_viaja_dentro_del_paquete_y_no_en_tests():
 
 
 def test_el_contrato_declara_todas_las_tools_y_el_servidor():
-    from tests.test_tool_contract import EXPECTED_COUNT
+    from tests.test_tool_contract import BASELINE_TOOLS, TOOLS_NUEVAS
 
     c = healthcheck.contrato()
     assert c["server"] == "horizun-pbi-mcp"
-    assert len(c["tools"]) == len(CONTRATO) == EXPECTED_COUNT
+    # The packaged baseline tracks the frozen golden; additive tools need not
+    # rewrite either artifact. Current registration is checked independently.
+    assert len(c["tools"]) == len(CONTRATO)
     assert set(c["tools"]) == set(CONTRATO)
+    assert set(c["tools"]) <= set(BASELINE_TOOLS + TOOLS_NUEVAS)
 
 
 # ============================================================================
@@ -108,6 +111,23 @@ def test_un_runtime_que_sirve_el_contrato_entero_pasa(runtime):
     assert veredicto["ok"] is True, veredicto
     assert veredicto["tools"] == len(CONTRATO)
     assert veredicto["servidor"] == "horizun-pbi-mcp"
+
+
+def test_healthcheck_verifica_full_aunque_el_cliente_use_local(runtime, monkeypatch):
+    py = runtime(version="2.0.0")
+    monkeypatch.setenv("HORIZUN_PBI_MCP_PROFILE", "local")
+    original = healthcheck.subprocess.Popen
+    observed = []
+
+    def launch(*args, **kwargs):
+        observed.append(kwargs["env"]["HORIZUN_PBI_MCP_PROFILE"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(healthcheck.subprocess, "Popen", launch)
+    result = _verificar(py, version_esperada="2.0.0")
+    assert result["ok"], result
+    assert observed == ["full"]
+    assert os.environ["HORIZUN_PBI_MCP_PROFILE"] == "local"
 
 
 def test_las_tools_de_MAS_no_rompen_nada(runtime):

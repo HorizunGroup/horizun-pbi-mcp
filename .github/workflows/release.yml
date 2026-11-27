@@ -10,22 +10,9 @@ name: release
 # cuenta con el mismo tag: la publicacion corria EN PARALELO al CI, asi que un
 # CI en rojo no impedia publicar nada.
 #
-# El DAG de ahora, de arriba abajo y sin atajos:
-#
-#   tag v*  ->  build (una construccion, hashes, SBOM, twine check, asset,
-#                 |      notas de release y migracion, todo firmado)
-#                 |
-#                 +-> test  (windows x {3.10, 3.13}) sobre ESOS bytes:
-#                 |         se verifica SHA256SUMS, se instala el wheel
-#                 |         construido y la suite corre contra el paquete
-#                 |         instalado, no contra src/
-#                 |
-#                 +--------> publicar-pypi   (needs: build + test)
-#                                |
-#                                +----------> publicar-mcp (needs: + pypi)
-#                                                  |
-#                                                  +-> publicar-github-release
-#                                                      (needs: + mcp)
+# Orden: build -> test -> borrador -> firma Certum (unica aprobacion) ->
+# PyPI -> MCP Registry -> publicacion final de GitHub. Todos consumen
+# los mismos artefactos probados y el instalador ya firmado en el arbol.
 #
 # RELEASE-004 — el ultimo eslabon faltaba y no se veia. Hasta v2.0.0 este
 # workflow publicaba en PyPI y en el MCP Registry y NO creaba ninguna GitHub
@@ -35,31 +22,10 @@ name: release
 # ofrece a la gente apuntaba a un asset que ningun job creaba jamas. El pipeline
 # habria terminado en verde con el one-paste en 404.
 #
-# La release va la ULTIMA a proposito. Publicarla antes que PyPI seria peor que
-# no publicarla: la gente descarga el instalador, y el `pip install` de dentro
-# no encuentra el paquete. Por eso `needs` la ata a los cuatro anteriores; si
-# PyPI o el registro fallan o se saltan, este job no corre.
-#
-# FIRMA (certificado Certum de HORIZUN GROUP S.A.S.). El unico binario con firma
-# de este repo es el instalador scripts/instalar.ps1 (Authenticode), y su
-# SHA-256 esta FIJADO en el repo (downloads_manifest.json, el bloque de un
-# pegado, INSTALL.md, la skill). Firmarlo DESPUES de construir cambiaria ese
-# hash y rompe el one-paste -es lo que paso con la v2.1.2-, asi que el diseno
-# es: el instalador se firma EN EL ARBOL, antes de etiquetar (RELEASING.md), y
-# los pines se recalculan sobre el archivo FIRMADO (scripts/pin_instalador.py).
-# Este workflow lo EXIGE: `release_build.py` para si el .ps1 no lleva firma y
-# `release_verify.py --authenticode` pregunta a Windows si es valida.
-#
-#   ... -> publicar-github-release (crea el BORRADOR, no lo publica)
-#            |
-#            +-> firmar-y-publicar (runner self-hosted `horizun-sign`, con
-#                environment `firma-certum`: ESPERA la aprobacion de Pablo con
-#                SimplySign Desktop conectado; verifica las firmas con
-#                -ExigirScripts y publica el borrador)
-#
-# PyPI y el MCP Registry NO esperan a la firma: el wheel y el sdist no llevan
-# binarios propios ni cambian por firmar el instalador, asi que no hay nada
-# que firmar en ellos y esperar solo retrasaria la publicacion del paquete.
+# El borrador se crea tras las pruebas. El job de firma tiene la unica
+# aprobacion humana y verifica los assets antes de cualquier publicacion.
+# La release se publica despues de PyPI y MCP Registry para que el instalador
+# apunte a un paquete ya disponible.
 #
 # Cada job consumidor descarga el MISMO artifact y llama a
 # scripts/release_verify.py antes de tocarlo. La logica vive en esos scripts y
@@ -201,7 +167,7 @@ jobs:
   # -------------------------------------------------------- publicar PyPI ---
   publicar-pypi:
     name: Publicar en PyPI el artefacto probado
-    needs: [build, test]
+    needs: [build, test, firmar-y-publicar]
     # Tres condiciones a la vez: solo desde un tag (nunca desde una rama), y si
     # la ejecucion es manual hay que haber escrito el tag exacto en el input.
     # Un workflow_dispatch con los valores por defecto NO publica.
@@ -250,7 +216,6 @@ jobs:
       (github.event_name == 'push' ||
        github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
     runs-on: ubuntu-latest
-    environment: mcp-registry
     permissions:
       contents: read
       id-token: write
@@ -303,18 +268,13 @@ jobs:
   # ---------------------------------------------- publicar GitHub Release ---
   publicar-github-release:
     name: Crear el BORRADOR de la GitHub Release con los bytes verificados
-    # RELEASE-004. Los CUATRO anteriores. Con `needs` basta: si alguno falla o
-    # se salta, este no corre —es lo que paso en el intento de v2.0.0, donde
-    # publicar-pypi fallo y publicar-mcp quedo omitido—. La release es lo
-    # ultimo que se hace porque es lo primero que la gente descarga; aqui solo
-    # se crea el BORRADOR y `firmar-y-publicar` la publica.
-    needs: [build, test, publicar-pypi, publicar-mcp]
+    # Crear el borrador solo con los bytes probados, antes de la firma.
+    needs: [build, test]
     if: >-
       startsWith(github.ref, 'refs/tags/v') &&
       (github.event_name == 'push' ||
        github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
     runs-on: ubuntu-latest
-    environment: github-release
     # El UNICO job del workflow con escritura de contenidos, y solo con eso:
     # sin `id-token`, porque no se autentica contra nada de fuera.
     permissions:
@@ -325,8 +285,8 @@ jobs:
         with:
           python-version: "3.13"
 
-      # UNA sola descarga, del mismo artifact que probo `test` y que subieron
-      # los dos publicadores anteriores. No se reconstruye nada.
+      # UNA sola descarga, del mismo artifact que probo `test`.
+      # No se reconstruye nada.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ env.ARTEFACTO }}
@@ -345,7 +305,7 @@ jobs:
       # tamano que fija scripts/downloads_manifest.json, y que su URL apunta al
       # tag y al nombre que se publican; un borrador no tiene URL publica que
       # releer, asi que se compara contra la API de assets. La publica
-      # `firmar-y-publicar`.
+      # `publicar-release-firmada` despues de PyPI y MCP Registry.
       - name: Crear el borrador y subir exactamente esos bytes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -355,10 +315,9 @@ jobs:
 
   # ------------------------------------------------- firmar y publicar ---
   firmar-y-publicar:
-    name: Verificar las firmas Certum y publicar el borrador
-    # Tras el borrador, que es lo que este job publica. PyPI y el MCP Registry
-    # ya publicaron antes y no dependen de la firma (ver la cabecera).
-    needs: [build, test, publicar-pypi, publicar-mcp, publicar-github-release]
+    name: Verificar las firmas Certum y mantener el borrador
+    # La unica aprobacion ocurre aqui, antes de PyPI y MCP Registry.
+    needs: [build, test, publicar-github-release]
     if: >-
       startsWith(github.ref, 'refs/tags/v') &&
       (github.event_name == 'push' ||
@@ -377,10 +336,10 @@ jobs:
       # -ExigirScripts: el instalador .ps1 YA viene firmado del arbol (su hash
       # esta fijado en el repo); este paso lo EXIGE y lo verifica (Valid, huella
       # y sello de Certum), NO lo firma. Si no hay binarios propios que firmar
-      # (el wheel y el sdist no llevan), solo verifica y publica el borrador.
+      # (el wheel y el sdist no llevan), solo verifica el borrador.
       # Si SimplySign esta desconectado el script falla ANTES de tocar nada:
       # reconectar y 'Re-run failed jobs' (RELEASING.md).
-      - name: Firmar, verificar y publicar la release
+      - name: Firmar y verificar la release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -389,3 +348,20 @@ jobs:
           -Repo ${{ github.repository }}
           -Tag ${{ github.ref_name }}
           -ExigirScripts
+          -SinPublicar
+
+  publicar-release-firmada:
+    name: Publicar la release firmada tras PyPI y MCP Registry
+    needs: [firmar-y-publicar, publicar-pypi, publicar-mcp]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (github.event_name == 'push' ||
+       github.event.inputs.publicar == format('PUBLICAR-{0}', github.ref_name))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publicar el borrador firmado
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" -R "${{ github.repository }}" --draft=false

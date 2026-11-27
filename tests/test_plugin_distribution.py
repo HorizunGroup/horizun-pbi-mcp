@@ -176,6 +176,37 @@ def test_el_lanzador_no_se_queda_con_un_py_huerfano(tmp_path):
     assert "103" not in huerfano.stderr, "el codigo crudo no es un mensaje util"
 
 
+@pytest.mark.skipif(os.name != "nt", reason="launch.cmd es el arranque de Windows")
+def test_el_alias_de_la_store_se_descarta_aunque_find_sea_el_de_gnu(tmp_path):
+    """Con Git for Windows delante en el PATH, `find` no es el de Windows.
+
+    El filtro del alias de la Store era `echo ruta | find /i "WindowsApps"`.
+    Si el cliente arranca el servidor con /usr/bin de Git o MSYS delante,
+    `find` es el de GNU: falla siempre, el `||` deja pasar el alias y el
+    lanzador lo elige como si fuera Python. Aqui un `find.cmd` falso hace de
+    GNU find; el alias tiene que seguir descartado.
+    """
+    falsos = tmp_path / "gnu"
+    falsos.mkdir()
+    (falsos / "find.cmd").write_text("@echo off\nexit /b 1\n", encoding="ascii")
+    alias = tmp_path / "WindowsApps"
+    alias.mkdir()
+    (alias / "python.cmd").write_text("@echo off\nexit /b 0\n", encoding="ascii")
+    vacio = tmp_path / "sin-python"
+    vacio.mkdir()
+    sistema = Path(os.environ["SystemRoot"]) / "System32"
+    env = os.environ.copy()
+    env["PATH"] = os.pathsep.join([str(falsos), str(alias), str(sistema)])
+    env["LOCALAPPDATA"] = str(vacio)
+    env["ProgramFiles"] = str(vacio)
+    env["HORIZUN_PBI_PLUGIN_NO_AUTO_INSTALL"] = "1"
+    r = subprocess.run(
+        ["cmd", "/d", "/c", str(REPO / "scripts/launch.cmd")],
+        env=env, input="", capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1, (r.returncode, r.stdout, r.stderr)
+    assert "No hay un Python real" in r.stderr, r.stderr
+
+
 def test_el_instalador_de_un_pegado_es_ascii_y_sin_admin():
     """instalar.ps1: PS 5.1 lee UTF-8 sin BOM con codepage OEM — solo ASCII.
 

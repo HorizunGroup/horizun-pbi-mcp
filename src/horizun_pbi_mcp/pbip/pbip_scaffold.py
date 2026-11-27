@@ -265,12 +265,17 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
                    culture: str = "es-ES",
                    width: int = 1280, height: int = 1080,
                    page_name: str = "Pagina 1",
-                   overwrite: bool = False) -> Dict[str, Any]:
+                   overwrite: bool = False,
+                   subfolder: bool = True) -> Dict[str, Any]:
     """Escribe un .pbip vacio y devuelve sus rutas.
 
     El arbol se construye y valida en staging. Solo entonces se publica con
     backup y una transaccion unica, de modo que un fallo no deje medio proyecto
     ni ``overwrite`` mezcle paginas antiguas con el esqueleto nuevo.
+
+    ``subfolder=False`` deja ``name.pbip``, ``name.Report`` y
+    ``name.SemanticModel`` directamente en ``out_dir``, como los guarda
+    Desktop. Tambien se usa si ``out_dir`` ya es la ruta del ``.pbip``.
     """
     if not str(name).strip():
         raise ScaffoldError("Hace falta un nombre para el proyecto.")
@@ -287,6 +292,19 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
     from horizun_pbi_mcp.services import project_publish
 
     base = Path(out_dir).expanduser().resolve()
+    if base.suffix.lower() == ".pbip":
+        # Duelo ronda 2: el encargo nombraba `carpeta\Proyecto.pbip` y el
+        # proyecto acababa en `carpeta\Proyecto\Proyecto.pbip`.
+        if base.stem != name:
+            raise ScaffoldError(
+                f"out_dir apunta a '{base.name}' pero name es '{name}'. Usa el "
+                "mismo nombre o pasa la carpeta en out_dir.",
+                details={"out_dir": str(base), "name": name})
+        base, subfolder = base.parent, False
+    if not subfolder:
+        return _crear_en_carpeta(base, name, culture=culture, width=width,
+                                 height=height, page_name=page_name,
+                                 overwrite=overwrite)
     raiz = base / name
     if raiz.exists() and not raiz.is_dir():
         raise ScaffoldError(
@@ -328,4 +346,99 @@ def crear_proyecto(out_dir: Path | str, name: str, *,
         "culture": culture,
         "created": True,
         "warnings": avisos,
+    }
+
+
+def _crear_en_carpeta(base: Path, name: str, *, culture: str, width: int,
+                      height: int, page_name: str,
+                      overwrite: bool) -> Dict[str, Any]:
+    """Publica el proyecto como hermanos dentro de ``base``.
+
+    ``publish_tree`` reemplaza una carpeta ENTERA; aqui la carpeta es del
+    usuario (datos, informes), asi que no se reemplaza nada: si ya existe
+    alguna de las tres entradas del proyecto, se rechaza. Se construye en un
+    staging dentro de ``base`` y se mueve cada entrada con ``os.replace``; si
+    un movimiento falla, las ya movidas vuelven al staging.
+    """
+    import os
+    import shutil
+
+    from horizun_pbi_mcp.services import project_publish
+    from horizun_pbi_mcp.services import paths as safe_paths
+
+    entradas = [f"{name}.pbip", f"{name}.Report", f"{name}.SemanticModel"]
+    ocupadas = [e for e in entradas if (base / e).exists()]
+    if ocupadas:
+        raise ScaffoldError(
+            f"Ya existe {', '.join(ocupadas)} en {base}. Con subfolder=false no "
+            "se reemplaza nada"
+            + (" (overwrite no aplica aqui)" if overwrite else "")
+            + ": usa otro name, borra el proyecto anterior o crea con "
+            "subfolder=true.",
+            details={"project_dir": str(base), "existing": ocupadas})
+
+    stage = project_publish.create_stage(base)
+    movidas: dict[str, tuple[int, int]] = {}
+    try:
+        construido = _construir_proyecto(
+            stage, name, culture=culture, width=width, height=height,
+            page_name=page_name)
+        try:
+            for e in entradas:
+                if (base / e).exists():
+                    raise ScaffoldError(
+                        f"{e} aparecio en {base} mientras se creaba el proyecto.",
+                        details={"project_dir": str(base)})
+                os.replace(stage / e, base / e)
+                st = (base / e).stat()
+                movidas[e] = (st.st_dev, st.st_ino)
+        except BaseException:
+            for e in reversed(movidas):
+                owned = safe_paths.ensure_contained(
+                    base, base / e, kind="entrada nueva del proyecto")
+                if not owned.exists():
+                    continue
+                st = owned.stat()
+                if (st.st_dev, st.st_ino) != movidas[e]:
+                    raise ScaffoldError(
+                        "La entrada publicada cambio durante la compensacion; "
+                        "se conserva para no retirar contenido ajeno.",
+                        details={"path": str(owned)})
+                try:
+                    os.replace(base / e, stage / e)
+                except OSError:
+                    # These entries did not exist before this invocation and
+                    # were successfully moved by us. A failed move back must
+                    # not leave a partial project in the user's directory.
+                    owned = safe_paths.ensure_contained(
+                        base, base / e, kind="entrada nueva del proyecto")
+                    safe_paths.assert_still_contained(
+                        base, owned, kind="entrada nueva del proyecto")
+                    if owned.is_dir():
+                        shutil.rmtree(owned)
+                    else:
+                        owned.unlink(missing_ok=True)
+            raise
+    finally:
+        limpio = project_publish.discard_stage(stage)
+
+    log.info("Proyecto .pbip creado en %s sin subcarpeta (%sx%s, cultura %s)",
+             base, width, height, culture)
+    return {
+        "report_validation": construido["report_validation"],
+        "model_validation": construido["model_validation"],
+        "publication": {"target": str(base), "files": None,
+                        "replaced_files": 0, "transaction": None,
+                        "layout": "flat", "entries": entradas},
+        "project_dir": str(base),
+        "pbip_path": str(base / f"{name}.pbip"),
+        "report_dir": str(base / f"{name}.Report"),
+        "semantic_model_dir": str(base / f"{name}.SemanticModel"),
+        "page_id": construido["page_id"],
+        "canvas": {"width": width, "height": height},
+        "culture": culture,
+        "created": True,
+        "warnings": [] if limpio else [
+            "El proyecto se publico, pero no se pudo retirar su carpeta temporal "
+            "de staging; puede limpiarse manualmente cuando deje de estar en uso."],
     }
