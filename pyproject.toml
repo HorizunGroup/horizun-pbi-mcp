@@ -40,7 +40,7 @@ dependencies = [
     # Verifiable data and report exports.
     "openpyxl>=3.1,<4",
     "reportlab>=4.2,<6",
-    "pypdf>=5,<7",
+    "pypdf>=5,<8",
     # Microsoft's official app-only authentication for SharePoint/Graph.
     "msal>=1.31,<2",
 ]
